@@ -54,6 +54,32 @@ class Logger {
     this.log('success', requester, `REQUEST: ${messageContent}`);
   }
 
+  logIncoming(
+    username: string,
+    userId: string,
+    channelType: string,
+    guildName: string | null,
+    content: string
+  ): void {
+    const location = guildName ? `Guild: ${guildName}` : 'DM';
+    const preview = content.length > 100 ? content.substring(0, 100) + '...' : content;
+    const logMsg = `INCOMING: (${location}) [${channelType}] "${preview}"`;
+    this.log('success', username, logMsg);
+    console.log(`[INCOMING] @${username} (${userId}) | ${location} | "${preview}"`);
+  }
+
+  logIgnored(username: string, reason: string): void {
+    const logMsg = `IGNORED: ${reason}`;
+    this.log('success', username, logMsg);
+    console.log(`[IGNORED] @${username} | ${reason}`);
+  }
+
+  logDefault(username: string, content: string): void {
+    const logMsg = `USING_DEFAULT: No keyword found, defaulting to Ollama`;
+    this.log('success', username, logMsg);
+    console.log(`[DEFAULT] @${username} | No keyword matched, using Ollama for: "${content.substring(0, 80)}"`);
+  }
+
   logReply(requester: string, messageContent: string): void {
     this.log('success', requester, `REPLY: ${messageContent}`);
   }

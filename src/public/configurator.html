@@ -371,6 +371,10 @@
             <input type="number" id="default_timeout" data-env="DEFAULT_TIMEOUT" placeholder="300">
           </div>
         </div>
+        <div class="field narrow">
+          <label>Max Attachments per Message <span class="note">1–10, Discord limit is 10</span></label>
+          <input type="number" id="max_attachments" data-env="MAX_ATTACHMENTS" placeholder="10" min="1" max="10">
+        </div>
       </div>
     </section>
 
@@ -546,6 +550,7 @@
       document.getElementById('output_base_url').value = cfg.http.outputBaseUrl;
       document.getElementById('file_size_threshold').value = cfg.limits.fileSizeThreshold;
       document.getElementById('default_timeout').value = cfg.limits.defaultTimeout;
+      document.getElementById('max_attachments').value = cfg.limits.maxAttachments;
 
       // Populate Ollama model (saved selection)
       const modelSelect = document.getElementById('ollama_model');

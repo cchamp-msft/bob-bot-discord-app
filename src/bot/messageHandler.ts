@@ -1,7 +1,6 @@
 import {
   Message,
   EmbedBuilder,
-  AnyThreadChannel,
   ChannelType,
 } from 'discord.js';
 import { config, KeywordConfig } from '../utils/config';
@@ -35,8 +34,23 @@ class MessageHandler {
     // Guard: client.user should always exist after 'ready' but be defensive
     if (!message.client.user) return;
 
-    // Check if bot is mentioned
-    if (!message.mentions.has(message.client.user.id)) return;
+    // Determine if this is a DM
+    const isDM = message.channel.type === ChannelType.DM;
+    const isMentioned = message.mentions.has(message.client.user.id);
+
+    // Only process DMs or @mentions — ignore everything else
+    if (!isDM && !isMentioned) return;
+
+    // Log incoming message details for diagnostics
+    const guildName = message.guild?.name ?? null;
+    const channelTypeName = isDM ? 'DM' : message.channel.type === ChannelType.GuildText ? 'GuildText' : 'Channel';
+    logger.logIncoming(
+      message.author.username,
+      message.author.id,
+      channelTypeName,
+      guildName,
+      message.content
+    );
 
     // Extract message content — remove mention patterns like <@123> or <@!123>
     const mentionRegex = new RegExp(
@@ -46,58 +60,24 @@ class MessageHandler {
     const content = message.content.replace(mentionRegex, '').trim();
 
     if (!content) {
+      logger.logIgnored(message.author.username, 'Empty message after mention removal');
       await message.reply(
         'Please provide a prompt or question after mentioning me!'
       );
       return;
     }
 
-    // Find matching keyword
-    const keywordConfig = this.findKeyword(content);
+    // Find matching keyword — fall back to Ollama (chat) if none found
+    let keywordConfig = this.findKeyword(content);
 
     if (!keywordConfig) {
-      await message.reply(
-        'I did not recognize any keywords in your message. Available keywords: ' +
-          config
-            .getKeywords()
-            .map((k) => `\`${k.keyword}\``)
-            .join(', ')
-      );
-      return;
-    }
-
-    // Create or reuse a thread for the response
-    const threadName = `${keywordConfig.keyword} - ${message.author.username} - ${new Date().toLocaleTimeString()}`;
-    let thread: AnyThreadChannel | null = null;
-
-    try {
-      if (message.channel.isThread()) {
-        thread = message.channel;
-      } else if (message.hasThread && message.thread) {
-        thread = message.thread;
-      } else if (
-        message.channel.type === ChannelType.GuildText ||
-        message.channel.type === ChannelType.GuildAnnouncement
-      ) {
-        thread = await message.startThread({
-          name: threadName.substring(0, 100), // Discord limit
-          autoArchiveDuration: 60,
-        });
-      }
-    } catch (error) {
-      logger.logError(
-        message.author.username,
-        `Failed to create thread: ${error}`
-      );
-      await message.reply('❌ Failed to create a response thread.');
-      return;
-    }
-
-    if (!thread) {
-      await message.reply(
-        '❌ Unable to create a thread in this channel. Please try in a text channel.'
-      );
-      return;
+      keywordConfig = {
+        keyword: 'chat',
+        api: 'ollama',
+        timeout: config.getDefaultTimeout(),
+        description: 'Default chat via Ollama',
+      };
+      logger.logDefault(message.author.username, content);
     }
 
     // Log the request
@@ -106,8 +86,17 @@ class MessageHandler {
       `[${keywordConfig.keyword}] ${content}`
     );
 
-    // Notify user that processing has started
-    await thread.send('⏳ Processing your request...');
+    // Send inline processing message as a reply
+    let processingMessage: Message;
+    try {
+      processingMessage = await message.reply('⏳ Processing your request...');
+    } catch (error) {
+      logger.logError(
+        message.author.username,
+        `Failed to send processing message: ${error}`
+      );
+      return;
+    }
 
     try {
       // Execute through the queue (handles locking + timeout)
@@ -129,9 +118,11 @@ class MessageHandler {
         const errorDetail = apiResult.error ?? 'Unknown API error';
         logger.logError(message.author.username, errorDetail);
 
-        // Only send error message to Discord if rate limit allows
+        // Edit processing message with error
         if (this.canSendErrorMessage()) {
-          await thread.send(`⚠️ ${config.getErrorMessage()}`);
+          await processingMessage.edit(`⚠️ ${config.getErrorMessage()}`);
+        } else {
+          await processingMessage.edit('⚠️ An error occurred processing your request.');
         }
         return;
       }
@@ -140,13 +131,13 @@ class MessageHandler {
       if (keywordConfig.api === 'comfyui') {
         await this.handleComfyUIResponse(
           apiResult as ComfyUIResponse,
-          thread,
+          processingMessage,
           message.author.username
         );
       } else {
         await this.handleOllamaResponse(
           apiResult as OllamaResponse,
-          thread,
+          processingMessage,
           message.author.username
         );
       }
@@ -155,7 +146,7 @@ class MessageHandler {
         error instanceof Error ? error.message : 'Unknown error';
 
       if (errorMsg.startsWith('API_BUSY:')) {
-        await thread.send(
+        await processingMessage.edit(
           `🔄 The **${keywordConfig.api}** API became busy. ` +
             `Please try again by mentioning me with your request!`
         );
@@ -163,9 +154,11 @@ class MessageHandler {
         // Log full error to console always
         logger.logError(message.author.username, errorMsg);
 
-        // Only send error message to Discord if rate limit allows
+        // Edit processing message with error
         if (this.canSendErrorMessage()) {
-          await thread.send(`⚠️ ${config.getErrorMessage()}`);
+          await processingMessage.edit(`⚠️ ${config.getErrorMessage()}`);
+        } else {
+          await processingMessage.edit('⚠️ An error occurred processing your request.');
         }
       }
     }
@@ -184,11 +177,11 @@ class MessageHandler {
 
   private async handleComfyUIResponse(
     apiResult: ComfyUIResponse,
-    thread: AnyThreadChannel,
+    processingMessage: Message,
     requester: string
   ): Promise<void> {
     if (!apiResult.data?.images || apiResult.data.images.length === 0) {
-      await thread.send('No images were generated.');
+      await processingMessage.edit('No images were generated.');
       return;
     }
 
@@ -197,8 +190,10 @@ class MessageHandler {
       .setTitle('ComfyUI Generation Complete')
       .setTimestamp();
 
-    // Process each image
+    // Process each image — collect attachable files
     let savedCount = 0;
+    const attachments: { attachment: Buffer; name: string }[] = [];
+
     for (let i = 0; i < apiResult.data.images.length; i++) {
       const imageUrl = apiResult.data.images[i];
 
@@ -217,15 +212,11 @@ class MessageHandler {
           inline: false,
         });
 
-        // Attach file if small enough
+        // Collect file for attachment if small enough
         if (fileHandler.shouldAttachFile(fileOutput.size)) {
           const fileBuffer = fileHandler.readFile(fileOutput.filePath);
           if (fileBuffer) {
-            await thread.send({
-              files: [
-                { attachment: fileBuffer, name: fileOutput.fileName },
-              ],
-            });
+            attachments.push({ attachment: fileBuffer, name: fileOutput.fileName });
           }
         }
         savedCount++;
@@ -233,11 +224,31 @@ class MessageHandler {
     }
 
     if (savedCount === 0) {
-      await thread.send('Images were generated but could not be saved or displayed.');
+      await processingMessage.edit('Images were generated but could not be saved or displayed.');
       return;
     }
 
-    await thread.send({ embeds: [embed] });
+    // Chunk attachments to respect Discord's per-message limit
+    const maxPerMessage = config.getMaxAttachments();
+    const firstBatch = attachments.slice(0, maxPerMessage);
+
+    // Edit the processing message with embed and first batch of attachments
+    await processingMessage.edit({
+      content: '',
+      embeds: [embed],
+      ...(firstBatch.length > 0 ? { files: firstBatch } : {}),
+    });
+
+    // Send remaining attachments as follow-up messages in batches
+    for (let i = maxPerMessage; i < attachments.length; i += maxPerMessage) {
+      const batch = attachments.slice(i, i + maxPerMessage);
+      if ('send' in processingMessage.channel) {
+        await processingMessage.channel.send({ content: '📎 Additional images', files: batch });
+      } else {
+        logger.logError(requester, `Cannot send overflow attachments: channel does not support send`);
+      }
+    }
+
     logger.logReply(
       requester,
       `ComfyUI response sent: ${apiResult.data.images.length} images`
@@ -246,7 +257,7 @@ class MessageHandler {
 
   private async handleOllamaResponse(
     apiResult: OllamaResponse,
-    thread: AnyThreadChannel,
+    processingMessage: Message,
     requester: string
   ): Promise<void> {
     const text = apiResult.data?.text || 'No response generated.';
@@ -259,14 +270,25 @@ class MessageHandler {
       chunks.push(text.substring(i, i + maxLength));
     }
 
-    for (const chunk of chunks) {
+    // Edit processing message with first chunk
+    const firstEmbed = new EmbedBuilder()
+      .setColor('#0099FF')
+      .setTitle('Ollama Response')
+      .setDescription(chunks[0])
+      .setTimestamp();
+
+    await processingMessage.edit({ content: '', embeds: [firstEmbed] });
+
+    // Send remaining chunks as follow-up messages in the same channel
+    for (let i = 1; i < chunks.length; i++) {
       const embed = new EmbedBuilder()
         .setColor('#0099FF')
-        .setTitle('Ollama Response')
-        .setDescription(chunk)
+        .setDescription(chunks[i])
         .setTimestamp();
 
-      await thread.send({ embeds: [embed] });
+      if ('send' in processingMessage.channel) {
+        await processingMessage.channel.send({ embeds: [embed] });
+      }
     }
 
     logger.logReply(

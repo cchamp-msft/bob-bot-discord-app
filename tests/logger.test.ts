@@ -110,5 +110,47 @@ describe('Logger', () => {
       expect(content).toContain('[timeout]');
       expect(content).toContain('TIMEOUT: generate');
     });
+
+    it('logIncoming should log message details with INCOMING prefix', () => {
+      logger.logIncoming('alice', '12345', 'DM', null, 'hello bot');
+
+      const content = readLatestLog();
+      expect(content).toContain('[success]');
+      expect(content).toContain('[alice]');
+      expect(content).toContain('INCOMING:');
+      expect(content).toContain('DM');
+      expect(content).toContain('"hello bot"');
+    });
+
+    it('logIncoming should show guild name when provided', () => {
+      logger.logIncoming('bob', '67890', 'GuildText', 'My Server', 'test message');
+
+      const content = readLatestLog();
+      expect(content).toContain('Guild: My Server');
+    });
+
+    it('logIncoming should truncate long content to 100 chars', () => {
+      const longContent = 'a'.repeat(150);
+      logger.logIncoming('carol', '11111', 'DM', null, longContent);
+
+      const content = readLatestLog();
+      expect(content).toContain('a'.repeat(100) + '...');
+    });
+
+    it('logIgnored should prefix with IGNORED:', () => {
+      logger.logIgnored('dave', 'Empty message after mention removal');
+
+      const content = readLatestLog();
+      expect(content).toContain('[success]');
+      expect(content).toContain('IGNORED: Empty message after mention removal');
+    });
+
+    it('logDefault should prefix with USING_DEFAULT:', () => {
+      logger.logDefault('eve', 'what is the weather?');
+
+      const content = readLatestLog();
+      expect(content).toContain('[success]');
+      expect(content).toContain('USING_DEFAULT: No keyword found, defaulting to Ollama');
+    });
   });
 });

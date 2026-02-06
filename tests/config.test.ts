@@ -126,6 +126,31 @@ describe('Config', () => {
       delete process.env.FILE_SIZE_THRESHOLD;
       expect(config.getFileSizeThreshold()).toBe(10485760);
     });
+
+    it('getMaxAttachments should return default 10 when not set', () => {
+      delete process.env.MAX_ATTACHMENTS;
+      expect(config.getMaxAttachments()).toBe(10);
+    });
+
+    it('getMaxAttachments should parse valid int', () => {
+      process.env.MAX_ATTACHMENTS = '5';
+      expect(config.getMaxAttachments()).toBe(5);
+    });
+
+    it('getMaxAttachments should clamp values above 10 to 10', () => {
+      process.env.MAX_ATTACHMENTS = '25';
+      expect(config.getMaxAttachments()).toBe(10);
+    });
+
+    it('getMaxAttachments should clamp values below 1 to 1', () => {
+      process.env.MAX_ATTACHMENTS = '0';
+      expect(config.getMaxAttachments()).toBe(1);
+    });
+
+    it('getMaxAttachments should clamp negative values to 1', () => {
+      process.env.MAX_ATTACHMENTS = '-3';
+      expect(config.getMaxAttachments()).toBe(1);
+    });
   });
 
   describe('getPublicConfig', () => {

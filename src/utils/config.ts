@@ -107,6 +107,15 @@ class Config {
   }
 
   /**
+   * Maximum number of file attachments per Discord message.
+   * Clamped to 1–10 (Discord's hard limit is 10).
+   */
+  getMaxAttachments(): number {
+    const raw = this.parseIntEnv('MAX_ATTACHMENTS', 10);
+    return Math.max(1, Math.min(raw, 10));
+  }
+
+  /**
    * Load the ComfyUI workflow JSON from .config/comfyui-workflow.json.
    * Returns the raw JSON string, or empty string if not found.
    */
@@ -167,6 +176,7 @@ class Config {
     const prevOllamaModel = this.getOllamaModel();
     const prevErrorMsg = this.getErrorMessage();
     const prevErrorRate = this.getErrorRateLimitMinutes();
+    const prevMaxAttach = this.getMaxAttachments();
 
     // Re-parse .env into process.env
     const envPath = path.join(__dirname, '../../.env');
@@ -194,6 +204,7 @@ class Config {
     if (this.getOllamaModel() !== prevOllamaModel) reloaded.push('OLLAMA_MODEL');
     if (this.getErrorMessage() !== prevErrorMsg) reloaded.push('ERROR_MESSAGE');
     if (this.getErrorRateLimitMinutes() !== prevErrorRate) reloaded.push('ERROR_RATE_LIMIT_MINUTES');
+    if (this.getMaxAttachments() !== prevMaxAttach) reloaded.push('MAX_ATTACHMENTS');
 
     // Reload keywords
     this.loadKeywords();
@@ -232,6 +243,7 @@ class Config {
       limits: {
         fileSizeThreshold: this.getFileSizeThreshold(),
         defaultTimeout: this.getDefaultTimeout(),
+        maxAttachments: this.getMaxAttachments(),
       },
       keywords: this.getKeywords(),
     };

@@ -1,10 +1,10 @@
 # Bob Bot - Discord AI Integration
 
-A Discord bot that monitors @mentions and keywords, routes requests to ComfyUI or Ollama APIs, and returns results as threaded replies or ephemeral slash commands with organized file outputs and comprehensive logging.
+A Discord bot that monitors @mentions and DMs, routes keyword-matched requests to ComfyUI or Ollama APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
 
 ## Features
 
-- ✅ @mention detection with threaded replies
+- ✅ @mention and DM detection with inline replies
 - ✅ Slash commands with ephemeral responses (shareable by user)
 - ✅ ComfyUI integration for image generation
 - ✅ Ollama integration for AI text generation
@@ -20,7 +20,7 @@ A Discord bot that monitors @mentions and keywords, routes requests to ComfyUI o
 - ✅ **Rate-limited error messages** — configurable user-facing error messages with minimum interval
 - ✅ Comprehensive request logging with date/requester/status tracking
 - ✅ Organized output directory structure with date formatting
-- ✅ **Unit test suite** — 71 tests covering core functionality
+- ✅ **Unit test suite** — 100+ tests covering core functionality
 
 ## Project Structure
 
@@ -29,7 +29,7 @@ src/
 ├── index.ts              # Main bot entry point
 ├── bot/
 │   ├── discordManager.ts # Discord client lifecycle (start/stop/test)
-│   └── messageHandler.ts # @mention detection and threading
+│   └── messageHandler.ts # @mention / DM detection and inline replies
 ├── commands/
 │   ├── index.ts          # Command handler
 │   └── commands.ts       # Slash command definitions
@@ -94,7 +94,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`
 
 ### Running the Bot
 
@@ -156,7 +156,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **ComfyUI Workflow Upload**: Upload a workflow JSON file with `%prompt%` placeholder validation
 - **Error Handling**: Configure user-facing error message and rate limit interval
 - **HTTP Server**: Adjust port and output base URL
-- **Limits**: Set file size threshold and default timeout
+- **Limits**: Set file size threshold, default timeout, and max attachments per message
 - **Keywords Management**: Add/edit/remove keyword→API mappings with custom timeouts
 - **Status Console**: Real-time log stream showing config changes, API tests, and bot status
 
@@ -169,6 +169,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - Output base URL
 - File size threshold
 - Default timeout
+- Max attachments per message
 - Keywords (entire list)
 - Discord token and client ID (stop and re-start the bot from configurator)
 
@@ -230,7 +231,7 @@ Mention the bot with a keyword and prompt:
 @BobBot ask what is the meaning of life?
 ```
 
-The bot will create a thread for the response.
+The bot replies inline — the initial "Processing" message is edited in-place with the final response. You can also DM the bot directly without needing an @mention.
 
 ### Slash Commands
 Use slash commands for ephemeral responses:
