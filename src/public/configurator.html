@@ -121,7 +121,7 @@
     color: var(--accent);
     font-size: 0.9em;
   }
-  .field input, .field select {
+  .field input, .field select, .field textarea {
     width: 100%;
     padding: 8px 10px;
     background: var(--bg);
@@ -131,11 +131,11 @@
     font-size: 0.9em;
     font-family: inherit;
   }
-  .field input:focus, .field select:focus {
+  .field input:focus, .field select:focus, .field textarea:focus {
     outline: none;
     border-color: var(--accent);
   }
-  .field input.dirty {
+  .field input.dirty, .field textarea.dirty {
     border-color: var(--warn);
   }
   .field-row {
@@ -321,6 +321,17 @@
           <select id="ollama_model" data-env="OLLAMA_MODEL" onchange="markDirty()">
             <option value="">— click Test to load models —</option>
           </select>
+        </div>
+        <div class="field">
+          <label>
+            System Prompt
+            <span class="note">sets the bot's personality for all Ollama responses</span>
+            <button class="btn-sm" style="margin-left:8px;font-size:0.85em;vertical-align:middle" onclick="resetSystemPrompt()">Reset to Default</button>
+          </label>
+          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
+            This prompt is sent with every Ollama request to set context and personality. Leave empty to use raw model behavior with no system context.
+          </p>
+          <textarea id="ollama_system_prompt" data-env="OLLAMA_SYSTEM_PROMPT" rows="4" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9em;font-family:inherit;resize:vertical" placeholder="You are a helpful Discord bot assistant. Be friendly and helpful by default, but match the user's tone when appropriate—if someone is being snarky or playful, feel free to respond in kind. Always prioritize being useful and respectful."></textarea>
         </div>
       </div>
     </section>
@@ -534,6 +545,16 @@
     });
   }
 
+  // ── System prompt reset ────────────────────────────
+  const DEFAULT_SYSTEM_PROMPT = "You are a helpful Discord bot assistant. Be friendly and helpful by default, but match the user's tone when appropriate\u2014if someone is being snarky or playful, feel free to respond in kind. Always prioritize being useful and respectful.";
+
+  function resetSystemPrompt() {
+    const el = document.getElementById('ollama_system_prompt');
+    el.value = DEFAULT_SYSTEM_PROMPT;
+    el.classList.add('dirty');
+    markDirty();
+  }
+
   // ── Load config ────────────────────────────────────
   async function loadConfig() {
     try {
@@ -572,6 +593,12 @@
         workflowStatus.innerHTML = '<span style="color:var(--ok)">✓ Workflow configured</span>';
       } else {
         workflowStatus.innerHTML = '<span style="color:var(--text-dim)">No workflow uploaded</span>';
+      }
+
+      // Populate Ollama system prompt
+      const systemPromptEl = document.getElementById('ollama_system_prompt');
+      if (cfg.apis.ollamaSystemPrompt) {
+        systemPromptEl.value = cfg.apis.ollamaSystemPrompt;
       }
 
       // Populate error handling fields

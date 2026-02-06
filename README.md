@@ -16,6 +16,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **Discord start/stop controls** — manage bot connection from the configurator
 - ✅ **Hot-reload support** — API endpoints and keywords reload without restart
 - ✅ **Ollama model discovery** — test connection loads available models for selection
+- ✅ **Ollama system prompt** — configurable personality/context sent with every request
 - ✅ **ComfyUI workflow upload** — upload JSON workflow with `%prompt%` placeholder substitution
 - ✅ **Rate-limited error messages** — configurable user-facing error messages with minimum interval
 - ✅ Comprehensive request logging with date/requester/status tracking
@@ -94,7 +95,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`
 
 ### Running the Bot
 
@@ -153,6 +154,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **Connection Status**: Live indicator showing stopped / connecting / running / error
 - **API Endpoints**: Configure ComfyUI/Ollama URLs with live connection testing
 - **Ollama Model Selection**: Test connection auto-discovers available models; select and save desired model
+- **Ollama System Prompt**: Configurable system prompt sets the bot's personality; reset-to-default button included
 - **ComfyUI Workflow Upload**: Upload a workflow JSON file with `%prompt%` placeholder validation
 - **Error Handling**: Configure user-facing error message and rate limit interval
 - **HTTP Server**: Adjust port and output base URL
@@ -165,6 +167,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 **Hot-Reload (no restart needed):**
 - ComfyUI/Ollama endpoints
 - Ollama model selection
+- Ollama system prompt
 - Error message and rate limit
 - Output base URL
 - File size threshold

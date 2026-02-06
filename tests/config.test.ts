@@ -153,6 +153,28 @@ describe('Config', () => {
     });
   });
 
+  describe('getOllamaSystemPrompt', () => {
+    const { config } = require('../src/utils/config');
+
+    it('should return default prompt when env not set', () => {
+      delete process.env.OLLAMA_SYSTEM_PROMPT;
+      const prompt = config.getOllamaSystemPrompt();
+      expect(prompt).toContain('helpful Discord bot assistant');
+      expect(prompt).toContain('snarky');
+    });
+
+    it('should return custom prompt when env is set', () => {
+      process.env.OLLAMA_SYSTEM_PROMPT = 'You are a pirate bot.';
+      expect(config.getOllamaSystemPrompt()).toBe('You are a pirate bot.');
+    });
+
+    it('should be included in getPublicConfig', () => {
+      process.env.OLLAMA_SYSTEM_PROMPT = 'Custom prompt';
+      const pub = config.getPublicConfig();
+      expect(pub.apis.ollamaSystemPrompt).toBe('Custom prompt');
+    });
+  });
+
   describe('getPublicConfig', () => {
     const { config } = require('../src/utils/config');
 

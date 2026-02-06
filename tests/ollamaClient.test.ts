@@ -25,6 +25,7 @@ jest.mock('../src/utils/config', () => ({
   config: {
     getOllamaEndpoint: jest.fn(() => 'http://localhost:11434'),
     getOllamaModel: jest.fn(() => 'llama2'),
+    getOllamaSystemPrompt: jest.fn(() => ''),
   },
 }));
 
@@ -48,6 +49,7 @@ describe('OllamaClient', () => {
     mockInstance.post.mockReset();
     (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
     (config.getOllamaEndpoint as jest.Mock).mockReturnValue('http://localhost:11434');
+    (config.getOllamaSystemPrompt as jest.Mock).mockReturnValue('');
   });
 
   describe('listModels', () => {
@@ -176,6 +178,52 @@ describe('OllamaClient', () => {
         prompt: 'hello',
         stream: false,
       });
+    });
+
+    it('should include system prompt in request when configured', async () => {
+      (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
+      (config.getOllamaSystemPrompt as jest.Mock).mockReturnValue('You are a helpful bot.');
+
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: { models: [{ name: 'llama2', size: 0, details: {} }] },
+      });
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { response: 'Hi there!' },
+      });
+
+      const result = await ollamaClient.generate('hello', 'user1');
+
+      expect(result.success).toBe(true);
+      expect(mockInstance.post).toHaveBeenCalledWith('/api/generate', {
+        model: 'llama2',
+        prompt: 'hello',
+        stream: false,
+        system: 'You are a helpful bot.',
+      });
+    });
+
+    it('should omit system field when system prompt is empty', async () => {
+      (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
+      (config.getOllamaSystemPrompt as jest.Mock).mockReturnValue('');
+
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: { models: [{ name: 'llama2', size: 0, details: {} }] },
+      });
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { response: 'Raw response' },
+      });
+
+      const result = await ollamaClient.generate('hello', 'user1');
+
+      expect(result.success).toBe(true);
+      const callArgs = mockInstance.post.mock.calls[0][1];
+      expect(callArgs).not.toHaveProperty('system');
     });
 
     it('should use explicit model parameter over configured default', async () => {

@@ -100,14 +100,17 @@ class OllamaClient {
         `Ollama ${selectedModel}: ${prompt.substring(0, 100)}...`
       );
 
-      const response = await this.client.post(
-        '/api/generate',
-        {
-          model: selectedModel,
-          prompt: prompt,
-          stream: false,
-        }
-      );
+      const systemPrompt = config.getOllamaSystemPrompt();
+      const requestBody: Record<string, unknown> = {
+        model: selectedModel,
+        prompt: prompt,
+        stream: false,
+      };
+      if (systemPrompt) {
+        requestBody.system = systemPrompt;
+      }
+
+      const response = await this.client.post('/api/generate', requestBody);
 
       if (response.status === 200 && response.data.response) {
         logger.logReply(

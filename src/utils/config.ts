@@ -98,6 +98,14 @@ class Config {
     return process.env.OLLAMA_MODEL || '';
   }
 
+  /**
+   * System prompt sent with every Ollama request to set the bot's personality.
+   * Defaults to a friendly, tone-matching Discord bot persona.
+   */
+  getOllamaSystemPrompt(): string {
+    return process.env.OLLAMA_SYSTEM_PROMPT || 'You are a helpful Discord bot assistant. Be friendly and helpful by default, but match the user\'s tone when appropriate—if someone is being snarky or playful, feel free to respond in kind. Always prioritize being useful and respectful.';
+  }
+
   getErrorMessage(): string {
     return process.env.ERROR_MESSAGE || "I'm experiencing technical difficulties. Please try again later.";
   }
@@ -174,6 +182,7 @@ class Config {
     const prevThreshold = this.getFileSizeThreshold();
     const prevTimeout = this.getDefaultTimeout();
     const prevOllamaModel = this.getOllamaModel();
+    const prevSystemPrompt = this.getOllamaSystemPrompt();
     const prevErrorMsg = this.getErrorMessage();
     const prevErrorRate = this.getErrorRateLimitMinutes();
     const prevMaxAttach = this.getMaxAttachments();
@@ -202,6 +211,7 @@ class Config {
     if (this.getFileSizeThreshold() !== prevThreshold) reloaded.push('FILE_SIZE_THRESHOLD');
     if (this.getDefaultTimeout() !== prevTimeout) reloaded.push('DEFAULT_TIMEOUT');
     if (this.getOllamaModel() !== prevOllamaModel) reloaded.push('OLLAMA_MODEL');
+    if (this.getOllamaSystemPrompt() !== prevSystemPrompt) reloaded.push('OLLAMA_SYSTEM_PROMPT');
     if (this.getErrorMessage() !== prevErrorMsg) reloaded.push('ERROR_MESSAGE');
     if (this.getErrorRateLimitMinutes() !== prevErrorRate) reloaded.push('ERROR_RATE_LIMIT_MINUTES');
     if (this.getMaxAttachments() !== prevMaxAttach) reloaded.push('MAX_ATTACHMENTS');
@@ -230,6 +240,7 @@ class Config {
         comfyui: this.getComfyUIEndpoint(),
         ollama: this.getOllamaEndpoint(),
         ollamaModel: this.getOllamaModel(),
+        ollamaSystemPrompt: this.getOllamaSystemPrompt(),
         comfyuiWorkflowConfigured: this.hasComfyUIWorkflow(),
       },
       errorHandling: {
