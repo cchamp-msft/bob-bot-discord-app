@@ -1,12 +1,75 @@
 # Privacy Policy
 
-This is the privacy policy for the Bob Bot Discord app. Your privacy is critically important to us.
+**Last Updated:** February 6, 2026
 
-## Information Collection and Use
-We collect several different types of information for various purposes to provide and improve our service to you.
+## Overview
 
-## Usage Data
-We may also collect information about how the service is accessed and used. This usage data may include information such as your computer's Internet Protocol address (e.g. IP address), browser type, browser version, the pages of our service that you visit, the time and date of your visit, the time spent on those pages, and other diagnostic data.
+Bob Bot Discord App ("the Bot") collects minimal user data for operational and debugging purposes. This Privacy Policy explains our data practices.
 
-## Contact Us
-If you have any questions about this privacy policy, please contact us.
+## What Data is Collected
+
+The Bot **logs the following information**:
+- **Discord username** of users who interact with the bot
+- **Discord user ID**
+- **Channel type** (DM or Guild text channel)
+- **Guild/server name** (if in a server, null if DM)
+- **Message content preview** (up to 100 characters of user messages)
+- **Interaction timestamps**
+- **Request status** (success, error, busy, timeout)
+
+## How Data is Used
+
+This data is logged for:
+- **Operational tracking** — monitoring bot activity and request processing
+- **Debugging** — diagnosing API failures, timeouts, and errors
+- **Audit trail** — maintaining a record of bot interactions
+
+## Data Retention
+
+Log files are stored indefinitely in the `outputs/logs/` directory as daily log files (`YYYY-MM-DD.log`). There is **no automatic purging or retention policy**. Logs persist for an indeterminate period unless manually deleted.
+
+## Data Storage Location
+
+All logs are stored locally on the server running the Bot:
+- **Path:** `outputs/logs/`
+- **Format:** Plain text daily log files
+- **Accessibility:** Local file system only (HTTP access to logs directory is blocked)
+
+## Who Has Access
+
+Log files are accessible to:
+- Anyone with direct file system access to the server
+- Server administrators who can access the `outputs/logs/` directory
+
+Logs are **not transmitted** to external services unless you explicitly configure third-party integrations.
+
+## Third-Party Services
+
+The Bot may interact with third-party APIs (ComfyUI, Ollama, etc.). These interactions:
+- Include your username and message content (as needed for the request)
+- Are made directly from your request
+- Are subject to the privacy policies of those third-party services
+- May be logged by those services according to their own terms
+
+We are not responsible for third-party data practices.
+
+## Your Rights
+
+You have the right to:
+- **Request deletion** of your logged data by asking the server administrator
+- **Opt out** by not using the Bot
+- **Access your data** by requesting log files from the server administrator
+
+We do not have a centralized system for data subject access requests; you must contact the server administrator directly.
+
+## Changes to This Policy
+
+We may update this Privacy Policy at any time. Your continued use of the Bot constitutes acceptance of any changes.
+
+## Contact
+
+For questions about this Privacy Policy or to request data deletion, please contact the server administrator or the repository owner.
+
+---
+
+**Note:** While we log usernames and minimal interaction data, your Discord account and message history are subject to [Discord's Privacy Policy](https://discord.com/privacy).
