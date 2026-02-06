@@ -1,0 +1,28 @@
+{
+  "keywords": [
+    {
+      "keyword": "generate",
+      "api": "comfyui",
+      "timeout": 300,
+      "description": "Generate image using ComfyUI"
+    },
+    {
+      "keyword": "imagine",
+      "api": "comfyui",
+      "timeout": 300,
+      "description": "Generate image using ComfyUI"
+    },
+    {
+      "keyword": "ask",
+      "api": "ollama",
+      "timeout": 300,
+      "description": "Ask a question using Ollama"
+    },
+    {
+      "keyword": "chat",
+      "api": "ollama",
+      "timeout": 300,
+      "description": "Chat with Ollama AI"
+    }
+  ]
+}
