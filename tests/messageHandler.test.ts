@@ -25,6 +25,9 @@ jest.mock('../src/utils/config', () => ({
     getKeywords: jest.fn(() => []),
     getKeywordConfig: jest.fn(),
     getDefaultTimeout: jest.fn(() => 300),
+    getReplyChainEnabled: jest.fn(() => true),
+    getReplyChainMaxDepth: jest.fn(() => 10),
+    getReplyChainMaxTokens: jest.fn(() => 16000),
   },
 }));
 
@@ -128,5 +131,264 @@ describe('MessageHandler error rate limiting', () => {
     // Second call is blocked — timestamp should not change
     (messageHandler as any).canSendErrorMessage();
     expect((messageHandler as any).lastErrorMessageTime).toBe(firstTimestamp);
+  });
+});
+
+describe('MessageHandler collectReplyChain', () => {
+  /**
+   * Helper to build a minimal mock Message for collectReplyChain.
+   * Each message has an author, optional reference, and a fetchReference stub.
+   */
+  function createMockMessage(
+    id: string,
+    authorId: string,
+    authorUsername: string,
+    content: string,
+    reference?: { messageId: string },
+    fetchReferenceResult?: any,
+    memberDisplayName?: string
+  ): any {
+    return {
+      id,
+      content,
+      author: { id: authorId, username: authorUsername },
+      member: memberDisplayName ? { displayName: memberDisplayName } : null,
+      reference: reference ? { messageId: reference.messageId } : null,
+      client: { user: { id: 'bot-id' } },
+      fetchReference: jest.fn().mockResolvedValue(fetchReferenceResult),
+    };
+  }
+
+  it('should prefix user messages with display name when multiple humans are in the chain', async () => {
+    // Deepest message — from User A (no further reference)
+    const msgA = createMockMessage(
+      'msg-a', 'user-a', 'Alice', 'Hello everyone',
+      undefined, undefined, 'Alice Display'
+    );
+
+    // Middle message — bot reply to User A
+    const msgBot = createMockMessage(
+      'msg-bot', 'bot-id', 'Bot', 'Hi Alice!',
+      { messageId: 'msg-a' }, msgA
+    );
+
+    // Reply from User B to bot — references the bot message
+    const msgB = createMockMessage(
+      'msg-b', 'user-b', 'Bob', 'What about me?',
+      { messageId: 'msg-bot' }, msgBot, 'Bob Display'
+    );
+
+    // Current message from User B referencing their own previous message
+    const currentMsg = createMockMessage(
+      'msg-current', 'user-b', 'Bob', 'Follow up question',
+      { messageId: 'msg-b' }, msgB, 'Bob Display'
+    );
+
+    const chain = await (messageHandler as any).collectReplyChain(currentMsg);
+
+    // Chain should be oldest-first: Alice's msg, bot's msg, Bob's msg
+    expect(chain).toHaveLength(3);
+
+    // Alice's message should be prefixed with her display name (multi-user)
+    expect(chain[0].role).toBe('user');
+    expect(chain[0].content).toBe('Alice Display: Hello everyone');
+
+    // Bot message — no prefix
+    expect(chain[1].role).toBe('assistant');
+    expect(chain[1].content).toBe('Hi Alice!');
+
+    // Bob's message should be prefixed with his display name (multi-user)
+    expect(chain[2].role).toBe('user');
+    expect(chain[2].content).toBe('Bob Display: What about me?');
+  });
+
+  it('should NOT prefix user messages when only one human is in the chain', async () => {
+    // Deepest message — from User A (no further reference)
+    const msgA = createMockMessage(
+      'msg-a', 'user-a', 'Alice', 'First question',
+      undefined, undefined, 'Alice Display'
+    );
+
+    // Bot reply
+    const msgBot = createMockMessage(
+      'msg-bot', 'bot-id', 'Bot', 'Here is the answer',
+      { messageId: 'msg-a' }, msgA
+    );
+
+    // Current message — same user replying to bot
+    const currentMsg = createMockMessage(
+      'msg-current', 'user-a', 'Alice', 'Follow up',
+      { messageId: 'msg-bot' }, msgBot, 'Alice Display'
+    );
+
+    const chain = await (messageHandler as any).collectReplyChain(currentMsg);
+
+    expect(chain).toHaveLength(2);
+
+    // Single user — no prefix
+    expect(chain[0].role).toBe('user');
+    expect(chain[0].content).toBe('First question');
+
+    expect(chain[1].role).toBe('assistant');
+    expect(chain[1].content).toBe('Here is the answer');
+  });
+
+  it('should use member displayName over author username when available', async () => {
+    // Message with a guild member displayName
+    const msgA = createMockMessage(
+      'msg-a', 'user-a', 'alice123', 'Hello',
+      undefined, undefined, 'Alice Wonderland'
+    );
+
+    // Message from another user to trigger multi-user attribution
+    const msgB = createMockMessage(
+      'msg-b', 'user-b', 'bob456', 'Hi',
+      { messageId: 'msg-a' }, msgA, 'Bob Builder'
+    );
+
+    const currentMsg = createMockMessage(
+      'msg-current', 'user-b', 'bob456', 'Question',
+      { messageId: 'msg-b' }, msgB, 'Bob Builder'
+    );
+
+    const chain = await (messageHandler as any).collectReplyChain(currentMsg);
+
+    // Should use member displayName, not username
+    expect(chain[0].content).toBe('Alice Wonderland: Hello');
+    expect(chain[1].content).toBe('Bob Builder: Hi');
+  });
+
+  it('should fall back to author username when member is null (e.g. DMs)', async () => {
+    // Message without guild member (DM context)
+    const msgA = createMockMessage(
+      'msg-a', 'user-a', 'alice123', 'DM message',
+      undefined, undefined, undefined // no member
+    );
+
+    // Another user to trigger multi-user
+    const msgB = createMockMessage(
+      'msg-b', 'user-b', 'bob456', 'Reply',
+      { messageId: 'msg-a' }, msgA, undefined
+    );
+
+    const currentMsg = createMockMessage(
+      'msg-current', 'user-b', 'bob456', 'Follow up',
+      { messageId: 'msg-b' }, msgB, undefined
+    );
+
+    const chain = await (messageHandler as any).collectReplyChain(currentMsg);
+
+    // Should fall back to username
+    expect(chain[0].content).toBe('alice123: DM message');
+    expect(chain[1].content).toBe('bob456: Reply');
+  });
+
+  it('should stop when total character budget is exceeded', async () => {
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(50);
+
+    // Build a chain of 3 messages each with 30 chars of content
+    const msg1 = createMockMessage(
+      'msg-1', 'user-a', 'Alice', 'a'.repeat(30),
+      undefined, undefined, 'Alice'
+    );
+    const msg2 = createMockMessage(
+      'msg-2', 'bot-id', 'Bot', 'b'.repeat(30),
+      { messageId: 'msg-1' }, msg1
+    );
+    const msg3 = createMockMessage(
+      'msg-3', 'user-a', 'Alice', 'c'.repeat(30),
+      { messageId: 'msg-2' }, msg2, 'Alice'
+    );
+    const currentMsg = createMockMessage(
+      'msg-current', 'user-a', 'Alice', 'question',
+      { messageId: 'msg-3' }, msg3, 'Alice'
+    );
+
+    const chain = await (messageHandler as any).collectReplyChain(currentMsg);
+
+    // Should have stopped before collecting all 3 — budget is 50 chars
+    // First message (30 chars) fits, second (30 chars) pushes to 60 > 50
+    expect(chain.length).toBeLessThan(3);
+    expect(chain.length).toBe(1);
+  });
+});
+
+describe('MessageHandler shouldRespond — guild reply to bot', () => {
+  function createGuildMessage(opts: {
+    authorBot?: boolean;
+    isMentioned?: boolean;
+    isDM?: boolean;
+    reference?: { messageId: string };
+    fetchReferenceResult?: any;
+    content?: string;
+  }): any {
+    const botUserId = 'bot-123';
+    const channelMessages = new Map<string, any>();
+    // Pre-cache the referenced message if provided
+    if (opts.reference && opts.fetchReferenceResult) {
+      channelMessages.set(opts.reference.messageId, opts.fetchReferenceResult);
+    }
+    return {
+      author: { bot: opts.authorBot ?? false, id: 'user-1', username: 'testuser' },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: opts.isDM ? 1 : 0, // 1 = DM, 0 = GuildText
+        messages: { cache: channelMessages },
+        send: jest.fn(),
+      },
+      guild: opts.isDM ? null : { name: 'TestGuild' },
+      mentions: { has: jest.fn(() => opts.isMentioned ?? false) },
+      reference: opts.reference ?? null,
+      content: opts.content ?? 'hello bot',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn().mockResolvedValue(opts.fetchReferenceResult),
+    };
+  }
+
+  it('should process a guild reply to the bot even without @mention', async () => {
+    const botReply = {
+      author: { id: 'bot-123', username: 'Bot' },
+      content: 'I am the bot',
+    };
+    const msg = createGuildMessage({
+      reference: { messageId: 'bot-msg-1' },
+      fetchReferenceResult: botReply,
+      content: 'follow up question',
+    });
+
+    await messageHandler.handleMessage(msg);
+
+    // Should have proceeded to send a processing message (reply was called)
+    expect(msg.reply).toHaveBeenCalled();
+  });
+
+  it('should ignore guild messages that are not mentions, DMs, or replies to bot', async () => {
+    const msg = createGuildMessage({
+      content: 'random message',
+    });
+
+    await messageHandler.handleMessage(msg);
+
+    // Should NOT have called reply (message was ignored)
+    expect(msg.reply).not.toHaveBeenCalled();
+  });
+
+  it('should ignore guild replies to other users (not the bot)', async () => {
+    const otherUserMsg = {
+      author: { id: 'other-user', username: 'OtherUser' },
+      content: 'some message',
+    };
+    const msg = createGuildMessage({
+      reference: { messageId: 'other-msg' },
+      fetchReferenceResult: otherUserMsg,
+      content: 'reply to other user',
+    });
+
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).not.toHaveBeenCalled();
   });
 });

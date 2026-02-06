@@ -68,7 +68,7 @@ describe('ApiManager', () => {
 
       const result = await apiManager.executeRequest('ollama', 'user1', 'hello', 300);
 
-      expect(ollamaClient.generate).toHaveBeenCalledWith('hello', 'user1', 'llama2');
+      expect(ollamaClient.generate).toHaveBeenCalledWith('hello', 'user1', 'llama2', undefined);
       expect(result.success).toBe(true);
     });
 
@@ -80,7 +80,23 @@ describe('ApiManager', () => {
 
       await apiManager.executeRequest('ollama', 'user1', 'write code', 300, 'codellama');
 
-      expect(ollamaClient.generate).toHaveBeenCalledWith('write code', 'user1', 'codellama');
+      expect(ollamaClient.generate).toHaveBeenCalledWith('write code', 'user1', 'codellama', undefined);
+    });
+
+    it('should pass conversation history to ollamaClient', async () => {
+      (ollamaClient.generate as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { text: 'follow-up response' },
+      });
+
+      const history = [
+        { role: 'user' as const, content: 'first message' },
+        { role: 'assistant' as const, content: 'first response' },
+      ];
+
+      await apiManager.executeRequest('ollama', 'user1', 'follow up', 300, undefined, history);
+
+      expect(ollamaClient.generate).toHaveBeenCalledWith('follow up', 'user1', 'llama2', history);
     });
   });
 

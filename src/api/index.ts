@@ -1,6 +1,7 @@
 import { comfyuiClient, ComfyUIResponse } from './comfyuiClient';
 import { ollamaClient, OllamaResponse, OllamaHealthResult } from './ollamaClient';
 import { config } from '../utils/config';
+import { ChatMessage } from '../types';
 
 export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult };
 
@@ -10,12 +11,13 @@ class ApiManager {
     requester: string,
     data: string,
     _timeout: number,
-    model?: string
+    model?: string,
+    conversationHistory?: ChatMessage[]
   ): Promise<ComfyUIResponse | OllamaResponse> {
     if (api === 'comfyui') {
       return await comfyuiClient.generateImage(data, requester);
     } else {
-      return await ollamaClient.generate(data, requester, model || config.getOllamaModel());
+      return await ollamaClient.generate(data, requester, model || config.getOllamaModel(), conversationHistory);
     }
   }
 

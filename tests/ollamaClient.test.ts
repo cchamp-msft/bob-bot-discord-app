@@ -50,6 +50,8 @@ describe('OllamaClient', () => {
     (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
     (config.getOllamaEndpoint as jest.Mock).mockReturnValue('http://localhost:11434');
     (config.getOllamaSystemPrompt as jest.Mock).mockReturnValue('');
+    // Clear the model cache between tests
+    (ollamaClient as any).modelCache = { names: new Set(), expiry: 0 };
   });
 
   describe('listModels', () => {
@@ -130,6 +132,41 @@ describe('OllamaClient', () => {
 
       expect(await ollamaClient.validateModel('gpt-4')).toBe(false);
     });
+
+    it('should cache model list and not call /api/tags again within TTL', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          models: [{ name: 'llama2', size: 0, details: {} }],
+        },
+      });
+
+      // First call — fetches from server
+      await ollamaClient.validateModel('llama2');
+      expect(mockInstance.get).toHaveBeenCalledTimes(1);
+
+      // Second call — should use cache
+      await ollamaClient.validateModel('llama2');
+      expect(mockInstance.get).toHaveBeenCalledTimes(1); // still 1
+    });
+
+    it('should invalidate cache after refresh()', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          models: [{ name: 'llama2', size: 0, details: {} }],
+        },
+      });
+
+      await ollamaClient.validateModel('llama2');
+      expect(mockInstance.get).toHaveBeenCalledTimes(1);
+
+      // Refresh clears cache
+      ollamaClient.refresh();
+
+      await ollamaClient.validateModel('llama2');
+      expect(mockInstance.get).toHaveBeenCalledTimes(2); // re-fetched
+    });
   });
 
   describe('generate', () => {
@@ -166,16 +203,16 @@ describe('OllamaClient', () => {
       // generate → success
       mockInstance.post.mockResolvedValue({
         status: 200,
-        data: { response: 'Hello! How can I help?' },
+        data: { message: { content: 'Hello! How can I help?' } },
       });
 
       const result = await ollamaClient.generate('hello', 'user1');
 
       expect(result.success).toBe(true);
       expect(result.data?.text).toBe('Hello! How can I help?');
-      expect(mockInstance.post).toHaveBeenCalledWith('/api/generate', {
+      expect(mockInstance.post).toHaveBeenCalledWith('/api/chat', {
         model: 'llama2',
-        prompt: 'hello',
+        messages: [{ role: 'user', content: 'hello' }],
         stream: false,
       });
     });
@@ -191,21 +228,23 @@ describe('OllamaClient', () => {
 
       mockInstance.post.mockResolvedValue({
         status: 200,
-        data: { response: 'Hi there!' },
+        data: { message: { content: 'Hi there!' } },
       });
 
       const result = await ollamaClient.generate('hello', 'user1');
 
       expect(result.success).toBe(true);
-      expect(mockInstance.post).toHaveBeenCalledWith('/api/generate', {
+      expect(mockInstance.post).toHaveBeenCalledWith('/api/chat', {
         model: 'llama2',
-        prompt: 'hello',
+        messages: [
+          { role: 'system', content: 'You are a helpful bot.' },
+          { role: 'user', content: 'hello' },
+        ],
         stream: false,
-        system: 'You are a helpful bot.',
       });
     });
 
-    it('should omit system field when system prompt is empty', async () => {
+    it('should omit system message when system prompt is empty', async () => {
       (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
       (config.getOllamaSystemPrompt as jest.Mock).mockReturnValue('');
 
@@ -216,14 +255,17 @@ describe('OllamaClient', () => {
 
       mockInstance.post.mockResolvedValue({
         status: 200,
-        data: { response: 'Raw response' },
+        data: { message: { content: 'Raw response' } },
       });
 
       const result = await ollamaClient.generate('hello', 'user1');
 
       expect(result.success).toBe(true);
       const callArgs = mockInstance.post.mock.calls[0][1];
-      expect(callArgs).not.toHaveProperty('system');
+      // Should only have user message, no system message
+      expect(callArgs.messages).toEqual([
+        { role: 'user', content: 'hello' },
+      ]);
     });
 
     it('should use explicit model parameter over configured default', async () => {
@@ -236,15 +278,15 @@ describe('OllamaClient', () => {
 
       mockInstance.post.mockResolvedValue({
         status: 200,
-        data: { response: 'code result' },
+        data: { message: { content: 'code result' } },
       });
 
       const result = await ollamaClient.generate('write code', 'user1', 'codellama');
 
       expect(result.success).toBe(true);
-      expect(mockInstance.post).toHaveBeenCalledWith('/api/generate', {
+      expect(mockInstance.post).toHaveBeenCalledWith('/api/chat', {
         model: 'codellama',
-        prompt: 'write code',
+        messages: [{ role: 'user', content: 'write code' }],
         stream: false,
       });
     });
@@ -263,6 +305,41 @@ describe('OllamaClient', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('timeout');
+    });
+
+    it('should include conversation history in messages when provided', async () => {
+      (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
+      (config.getOllamaSystemPrompt as jest.Mock).mockReturnValue('Be helpful.');
+
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: { models: [{ name: 'llama2', size: 0, details: {} }] },
+      });
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { message: { content: 'Sure, here is the follow-up.' } },
+      });
+
+      const history = [
+        { role: 'user' as const, content: 'What is 2+2?' },
+        { role: 'assistant' as const, content: '4' },
+      ];
+
+      const result = await ollamaClient.generate('And 3+3?', 'user1', undefined, history);
+
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toBe('Sure, here is the follow-up.');
+      expect(mockInstance.post).toHaveBeenCalledWith('/api/chat', {
+        model: 'llama2',
+        messages: [
+          { role: 'system', content: 'Be helpful.' },
+          { role: 'user', content: 'What is 2+2?' },
+          { role: 'assistant', content: '4' },
+          { role: 'user', content: 'And 3+3?' },
+        ],
+        stream: false,
+      });
     });
   });
 

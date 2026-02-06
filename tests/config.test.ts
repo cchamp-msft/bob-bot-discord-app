@@ -117,9 +117,12 @@ describe('Config', () => {
       expect(config.getDefaultTimeout()).toBe(60);
     });
 
-    it('should throw on non-numeric env value', () => {
+    it('should fall back to default on non-numeric env value', () => {
       process.env.DEFAULT_TIMEOUT = 'abc';
-      expect(() => config.getDefaultTimeout()).toThrow('not a valid number');
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      expect(config.getDefaultTimeout()).toBe(300);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('not a valid number'));
+      warnSpy.mockRestore();
     });
 
     it('getFileSizeThreshold should return default when not set', () => {
@@ -200,6 +203,84 @@ describe('Config', () => {
       expect(pub).toHaveProperty('http');
       expect(pub).toHaveProperty('limits');
       expect(pub).toHaveProperty('keywords');
+      expect(pub).toHaveProperty('replyChain');
+    });
+
+    it('should include replyChain enabled, maxDepth, and maxTokens', () => {
+      delete process.env.REPLY_CHAIN_ENABLED;
+      delete process.env.REPLY_CHAIN_MAX_DEPTH;
+      delete process.env.REPLY_CHAIN_MAX_TOKENS;
+      const pub = config.getPublicConfig();
+      expect(pub.replyChain).toEqual({ enabled: true, maxDepth: 10, maxTokens: 16000 });
+    });
+  });
+
+  describe('reply chain config', () => {
+    const { config } = require('../src/utils/config');
+
+    it('getReplyChainEnabled should default to true when env not set', () => {
+      delete process.env.REPLY_CHAIN_ENABLED;
+      expect(config.getReplyChainEnabled()).toBe(true);
+    });
+
+    it('getReplyChainEnabled should return false when env is "false"', () => {
+      process.env.REPLY_CHAIN_ENABLED = 'false';
+      expect(config.getReplyChainEnabled()).toBe(false);
+    });
+
+    it('getReplyChainEnabled should return true for any value other than "false"', () => {
+      process.env.REPLY_CHAIN_ENABLED = 'true';
+      expect(config.getReplyChainEnabled()).toBe(true);
+      process.env.REPLY_CHAIN_ENABLED = '1';
+      expect(config.getReplyChainEnabled()).toBe(true);
+    });
+
+    it('getReplyChainMaxDepth should default to 10 when env not set', () => {
+      delete process.env.REPLY_CHAIN_MAX_DEPTH;
+      expect(config.getReplyChainMaxDepth()).toBe(10);
+    });
+
+    it('getReplyChainMaxDepth should parse valid int', () => {
+      process.env.REPLY_CHAIN_MAX_DEPTH = '25';
+      expect(config.getReplyChainMaxDepth()).toBe(25);
+    });
+
+    it('getReplyChainMaxDepth should clamp to 1 minimum', () => {
+      process.env.REPLY_CHAIN_MAX_DEPTH = '0';
+      expect(config.getReplyChainMaxDepth()).toBe(1);
+    });
+
+    it('getReplyChainMaxDepth should clamp to 50 maximum', () => {
+      process.env.REPLY_CHAIN_MAX_DEPTH = '100';
+      expect(config.getReplyChainMaxDepth()).toBe(50);
+    });
+
+    it('getReplyChainMaxTokens should default to 16000 when env not set', () => {
+      delete process.env.REPLY_CHAIN_MAX_TOKENS;
+      expect(config.getReplyChainMaxTokens()).toBe(16000);
+    });
+
+    it('getReplyChainMaxTokens should parse valid int', () => {
+      process.env.REPLY_CHAIN_MAX_TOKENS = '32000';
+      expect(config.getReplyChainMaxTokens()).toBe(32000);
+    });
+
+    it('getReplyChainMaxTokens should clamp to 1000 minimum', () => {
+      process.env.REPLY_CHAIN_MAX_TOKENS = '100';
+      expect(config.getReplyChainMaxTokens()).toBe(1000);
+    });
+
+    it('getReplyChainMaxTokens should clamp to 128000 maximum', () => {
+      process.env.REPLY_CHAIN_MAX_TOKENS = '500000';
+      expect(config.getReplyChainMaxTokens()).toBe(128000);
+    });
+
+    it('getReplyChainMaxTokens should fall back to default on non-numeric value', () => {
+      process.env.REPLY_CHAIN_MAX_TOKENS = 'xyz';
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      expect(config.getReplyChainMaxTokens()).toBe(16000);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('not a valid number'));
+      warnSpy.mockRestore();
     });
   });
 

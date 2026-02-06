@@ -115,6 +115,34 @@ class Config {
   }
 
   /**
+   * Whether reply chain context collection is enabled.
+   * When true, the bot traverses Discord reply chains to build
+   * conversation history for Ollama chat requests.
+   */
+  getReplyChainEnabled(): boolean {
+    return process.env.REPLY_CHAIN_ENABLED !== 'false';
+  }
+
+  /**
+   * Maximum number of messages to traverse in a reply chain.
+   * Deeper chains are truncated at this limit. Default: 10.
+   */
+  getReplyChainMaxDepth(): number {
+    const raw = this.parseIntEnv('REPLY_CHAIN_MAX_DEPTH', 10);
+    return Math.max(1, Math.min(raw, 50));
+  }
+
+  /**
+   * Maximum total characters of reply chain content sent to Ollama.
+   * Once the accumulated context exceeds this limit, older messages are
+   * dropped from the front. Default: 16000 (~4k tokens).
+   */
+  getReplyChainMaxTokens(): number {
+    const raw = this.parseIntEnv('REPLY_CHAIN_MAX_TOKENS', 16000);
+    return Math.max(1000, Math.min(raw, 128000));
+  }
+
+  /**
    * Maximum number of file attachments per Discord message.
    * Clamped to 1–10 (Discord's hard limit is 10).
    */
@@ -152,7 +180,8 @@ class Config {
     if (!raw) return defaultValue;
     const parsed = parseInt(raw, 10);
     if (isNaN(parsed)) {
-      throw new Error(`Environment variable ${name} is not a valid number: "${raw}"`);
+      console.warn(`Environment variable ${name} is not a valid number: "${raw}" — using default ${defaultValue}`);
+      return defaultValue;
     }
     return parsed;
   }
@@ -186,6 +215,9 @@ class Config {
     const prevErrorMsg = this.getErrorMessage();
     const prevErrorRate = this.getErrorRateLimitMinutes();
     const prevMaxAttach = this.getMaxAttachments();
+    const prevReplyChainEnabled = this.getReplyChainEnabled();
+    const prevReplyChainMaxDepth = this.getReplyChainMaxDepth();
+    const prevReplyChainMaxTokens = this.getReplyChainMaxTokens();
 
     // Re-parse .env into process.env
     const envPath = path.join(__dirname, '../../.env');
@@ -215,6 +247,9 @@ class Config {
     if (this.getErrorMessage() !== prevErrorMsg) reloaded.push('ERROR_MESSAGE');
     if (this.getErrorRateLimitMinutes() !== prevErrorRate) reloaded.push('ERROR_RATE_LIMIT_MINUTES');
     if (this.getMaxAttachments() !== prevMaxAttach) reloaded.push('MAX_ATTACHMENTS');
+    if (this.getReplyChainEnabled() !== prevReplyChainEnabled) reloaded.push('REPLY_CHAIN_ENABLED');
+    if (this.getReplyChainMaxDepth() !== prevReplyChainMaxDepth) reloaded.push('REPLY_CHAIN_MAX_DEPTH');
+    if (this.getReplyChainMaxTokens() !== prevReplyChainMaxTokens) reloaded.push('REPLY_CHAIN_MAX_TOKENS');
 
     // Reload keywords
     this.loadKeywords();
@@ -257,6 +292,11 @@ class Config {
         maxAttachments: this.getMaxAttachments(),
       },
       keywords: this.getKeywords(),
+      replyChain: {
+        enabled: this.getReplyChainEnabled(),
+        maxDepth: this.getReplyChainMaxDepth(),
+        maxTokens: this.getReplyChainMaxTokens(),
+      },
     };
   }
 }

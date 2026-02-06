@@ -96,6 +96,17 @@ describe('ConfigWriter', () => {
       const content = fs.readFileSync(envPath, 'utf-8');
       expect(content).toContain('KEY=val');
     });
+
+    it('should clear a value by writing an empty string', async () => {
+      fs.writeFileSync(envPath, 'OLLAMA_MODEL=llama3\nOTHER=keep\n');
+
+      await configWriter.updateEnv({ OLLAMA_MODEL: '' });
+
+      const content = fs.readFileSync(envPath, 'utf-8');
+      expect(content).toContain('OLLAMA_MODEL=');
+      expect(content).not.toContain('OLLAMA_MODEL=llama3');
+      expect(content).toContain('OTHER=keep');
+    });
   });
 
   describe('updateKeywords', () => {

@@ -388,7 +388,32 @@
         </div>
       </div>
     </section>
-
+    <!-- Reply Chain Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">Reply Chain Context</h2>
+      <div class="body">
+        <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
+          When users reply to previous messages, the bot traverses the reply chain to build conversation history for Ollama. This enables multi-turn conversations.
+        </p>
+        <div class="field-row">
+          <div class="field narrow">
+            <label>Enabled</label>
+            <select id="reply_chain_enabled" data-env="REPLY_CHAIN_ENABLED" onchange="markDirty()">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Max Depth <span class="note">1–50 messages</span></label>
+            <input type="number" id="reply_chain_max_depth" data-env="REPLY_CHAIN_MAX_DEPTH" placeholder="10" min="1" max="50">
+          </div>
+          <div class="field narrow">
+            <label>Max Tokens <span class="note">1,000–128,000 chars</span></label>
+            <input type="number" id="reply_chain_max_tokens" data-env="REPLY_CHAIN_MAX_TOKENS" placeholder="16000" min="1000" max="128000">
+          </div>
+        </div>
+      </div>
+    </section>
     <!-- Keywords Section -->
     <section>
       <h2 class="open" onclick="toggleSection(this)">Keywords → API Routing</h2>
@@ -605,6 +630,12 @@
       document.getElementById('error_message').value = cfg.errorHandling?.errorMessage || '';
       document.getElementById('error_rate_limit').value = cfg.errorHandling?.errorRateLimitMinutes || 60;
 
+      // Populate reply chain fields
+      const rcEnabled = document.getElementById('reply_chain_enabled');
+      rcEnabled.value = cfg.replyChain?.enabled === false ? 'false' : 'true';
+      document.getElementById('reply_chain_max_depth').value = cfg.replyChain?.maxDepth || 10;
+      document.getElementById('reply_chain_max_tokens').value = cfg.replyChain?.maxTokens || 16000;
+
       // Token field is always empty (write-only) — just show placeholder
       document.getElementById('discord_token').value = '';
       document.getElementById('discord_token').placeholder =
@@ -682,15 +713,16 @@
     saveMsg.className = 'msg';
 
     try {
-      // Collect env changes
+      // Collect env changes — include empty values so users can clear fields
       const env = {};
       document.querySelectorAll('[data-env]').forEach(input => {
         const key = input.dataset.env;
-        const val = input.value.trim();
-        if (val) env[key] = val;
+        // Skip DISCORD_TOKEN here — handled specially below
+        if (key === 'DISCORD_TOKEN') return;
+        env[key] = input.value.trim();
       });
 
-      // Include token only if user typed a new value
+      // Include token only if user typed a new value (write-only field)
       const tokenInput = document.getElementById('discord_token');
       const tokenVal = tokenInput.value.trim();
       if (tokenVal) {

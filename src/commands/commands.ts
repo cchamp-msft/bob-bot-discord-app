@@ -8,6 +8,7 @@ import { config } from '../utils/config';
 import { requestQueue } from '../utils/requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse } from '../api';
 import { logger } from '../utils/logger';
+import { chunkText } from '../utils/chunkText';
 import { fileHandler } from '../utils/fileHandler';
 
 export abstract class BaseCommand {
@@ -57,8 +58,10 @@ class GenerateCommand extends BaseCommand {
       );
 
       if (!apiResult.success) {
+        const errorDetail = apiResult.error ?? 'Unknown API error';
+        logger.logError(requester, errorDetail);
         await interaction.editReply({
-          content: `❌ Error: ${apiResult.error}`,
+          content: `⚠️ ${config.getErrorMessage()}`,
         });
         return;
       }
@@ -68,16 +71,10 @@ class GenerateCommand extends BaseCommand {
     } catch (error) {
       const errorMsg =
         error instanceof Error ? error.message : 'Unknown error';
-      if (errorMsg.startsWith('API_BUSY:')) {
-        await interaction.editReply({
-          content: '🔄 The ComfyUI API became busy. Please retry with `/generate`.',
-        });
-      } else {
-        logger.logError(requester, errorMsg);
-        await interaction.editReply({
-          content: `❌ Error processing request: ${errorMsg}`,
-        });
-      }
+      logger.logError(requester, errorMsg);
+      await interaction.editReply({
+        content: `⚠️ ${config.getErrorMessage()}`,
+      });
     }
   }
 
@@ -184,8 +181,10 @@ class AskCommand extends BaseCommand {
       );
 
       if (!apiResult.success) {
+        const errorDetail = apiResult.error ?? 'Unknown API error';
+        logger.logError(requester, errorDetail);
         await interaction.editReply({
-          content: `❌ Error: ${apiResult.error}`,
+          content: `⚠️ ${config.getErrorMessage()}`,
         });
         return;
       }
@@ -195,16 +194,10 @@ class AskCommand extends BaseCommand {
     } catch (error) {
       const errorMsg =
         error instanceof Error ? error.message : 'Unknown error';
-      if (errorMsg.startsWith('API_BUSY:')) {
-        await interaction.editReply({
-          content: '🔄 The Ollama API became busy. Please retry with `/ask`.',
-        });
-      } else {
-        logger.logError(requester, errorMsg);
-        await interaction.editReply({
-          content: `❌ Error processing request: ${errorMsg}`,
-        });
-      }
+      logger.logError(requester, errorMsg);
+      await interaction.editReply({
+        content: `⚠️ ${config.getErrorMessage()}`,
+      });
     }
   }
 
@@ -214,21 +207,17 @@ class AskCommand extends BaseCommand {
     requester: string
   ): Promise<void> {
     const text = apiResult.data?.text || 'No response generated.';
-    const truncated = text.length > 4096;
-    const displayText = truncated
-      ? text.substring(0, 4050) + '\n\n… *(response truncated)*'
-      : text;
 
-    const embed = new EmbedBuilder()
-      .setColor('#0099FF')
-      .setTitle('Ollama Response')
-      .setDescription(displayText)
-      .setTimestamp();
+    // Split into Discord-safe chunks (newline-aware)
+    const chunks = chunkText(text);
 
-    await interaction.editReply({
-      content: '',
-      embeds: [embed],
-    });
+    // Edit the deferred reply with the first chunk
+    await interaction.editReply({ content: chunks[0] });
+
+    // Send remaining chunks as follow-ups (keep ephemeral to match deferred reply)
+    for (let i = 1; i < chunks.length; i++) {
+      await interaction.followUp({ content: chunks[i], ephemeral: true });
+    }
 
     logger.logReply(requester, `Ollama response sent: ${text.length} characters`);
   }

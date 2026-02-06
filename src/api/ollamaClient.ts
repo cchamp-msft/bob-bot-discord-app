@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
+import { ChatMessage } from '../types';
 
 export interface OllamaResponse {
   success: boolean;
@@ -27,6 +28,10 @@ export interface OllamaHealthResult {
 class OllamaClient {
   private client: AxiosInstance;
 
+  /** Cached model names with expiry to avoid per-request /api/tags calls */
+  private modelCache: { names: Set<string>; expiry: number } = { names: new Set(), expiry: 0 };
+  private static MODEL_CACHE_TTL_MS = 60_000; // 1 minute
+
   constructor() {
     this.client = axios.create({
       baseURL: config.getOllamaEndpoint(),
@@ -41,6 +46,8 @@ class OllamaClient {
     this.client = axios.create({
       baseURL: config.getOllamaEndpoint(),
     });
+    // Invalidate model cache when endpoint changes
+    this.modelCache = { names: new Set(), expiry: 0 };
   }
 
   /**
@@ -67,16 +74,26 @@ class OllamaClient {
 
   /**
    * Check whether a specific model name exists on the Ollama instance.
+   * Uses a short-lived cache to avoid hitting /api/tags on every request.
    */
   async validateModel(model: string): Promise<boolean> {
+    const now = Date.now();
+    if (now < this.modelCache.expiry && this.modelCache.names.size > 0) {
+      return this.modelCache.names.has(model);
+    }
     const models = await this.listModels();
-    return models.some((m) => m.name === model);
+    this.modelCache = {
+      names: new Set(models.map(m => m.name)),
+      expiry: now + OllamaClient.MODEL_CACHE_TTL_MS,
+    };
+    return this.modelCache.names.has(model);
   }
 
   async generate(
     prompt: string,
     requester: string,
-    model?: string
+    model?: string,
+    conversationHistory?: ChatMessage[]
   ): Promise<OllamaResponse> {
     const selectedModel = model || config.getOllamaModel();
 
@@ -101,18 +118,32 @@ class OllamaClient {
       );
 
       const systemPrompt = config.getOllamaSystemPrompt();
-      const requestBody: Record<string, unknown> = {
-        model: selectedModel,
-        prompt: prompt,
-        stream: false,
-      };
+
+      // Build messages array for /api/chat
+      const messages: ChatMessage[] = [];
+
+      // Add system prompt if configured
       if (systemPrompt) {
-        requestBody.system = systemPrompt;
+        messages.push({ role: 'system', content: systemPrompt });
       }
 
-      const response = await this.client.post('/api/generate', requestBody);
+      // Add conversation history from reply chain (if any)
+      if (conversationHistory && conversationHistory.length > 0) {
+        messages.push(...conversationHistory);
+      }
 
-      if (response.status === 200 && response.data.response) {
+      // Add current user message
+      messages.push({ role: 'user', content: prompt });
+
+      const requestBody: Record<string, unknown> = {
+        model: selectedModel,
+        messages,
+        stream: false,
+      };
+
+      const response = await this.client.post('/api/chat', requestBody);
+
+      if (response.status === 200 && response.data.message?.content) {
         logger.logReply(
           requester,
           `Ollama response received for prompt: ${prompt.substring(0, 50)}...`
@@ -121,7 +152,7 @@ class OllamaClient {
         return {
           success: true,
           data: {
-            text: response.data.response,
+            text: response.data.message.content,
           },
         };
       }

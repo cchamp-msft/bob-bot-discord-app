@@ -19,6 +19,8 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **Ollama system prompt** — configurable personality/context sent with every request
 - ✅ **ComfyUI workflow upload** — upload JSON workflow with `%prompt%` placeholder substitution
 - ✅ **Rate-limited error messages** — configurable user-facing error messages with minimum interval
+- ✅ **Reply chain context** — traverses Discord reply threads to provide conversation history to Ollama
+- ✅ **Conversational responses** — Ollama replies use plain text instead of embed blocks for a natural feel
 - ✅ Comprehensive request logging with date/requester/status tracking
 - ✅ Organized output directory structure with date formatting
 - ✅ **Unit test suite** — 100+ tests covering core functionality
@@ -95,7 +97,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`
 
 ### Running the Bot
 
@@ -169,6 +171,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - Ollama model selection
 - Ollama system prompt
 - Error message and rate limit
+- Reply chain settings (enabled, max depth, max tokens)
 - Output base URL
 - File size threshold
 - Default timeout
@@ -181,7 +184,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 
 ## Running Tests
 
-The bot includes a comprehensive unit test suite with 71 tests covering configuration, logging, file handling, request queuing, and config persistence.
+The bot includes a comprehensive unit test suite with 165 tests covering configuration, logging, file handling, request queuing, message handling, API clients, and config persistence.
 
 ### Run all tests:
 ```bash
@@ -201,6 +204,57 @@ npm run test:watch
 - **requestQueue.test.ts** — API locking, timeouts, concurrency
 
 All tests run without requiring Discord connection or external APIs.
+
+## Discord Intents & Permissions
+
+The bot requires the following **Gateway Intents** configured in the [Discord Developer Portal](https://discord.com/developers/applications) under **Bot → Privileged Gateway Intents**:
+
+| Intent | Required | Purpose |
+|--------|----------|--------|
+| `Guilds` | Yes | Access guild (server) metadata and channel lists |
+| `GuildMessages` | Yes | Receive message events in server channels |
+| `DirectMessages` | Yes | Receive DM messages from users |
+| `MessageContent` | Yes ⚠️ | Read message text and access reply chain references (`message.reference`) |
+
+> ⚠️ **`MessageContent` is a Privileged Intent.** It must be explicitly enabled in the Developer Portal. For bots in **100+ servers**, Discord requires verification and approval for this intent. Without it, the bot cannot read message content or traverse reply chains.
+
+### Bot Permissions
+
+When generating an OAuth2 invite link, include these **Bot Permissions**:
+
+- **Send Messages** — reply to users
+- **Read Message History** — fetch referenced messages in reply chains
+- **Attach Files** — send generated images
+- **Embed Links** — send ComfyUI response embeds
+- **Use Slash Commands** — register and respond to `/generate` and `/ask`
+
+## Reply Chain Context
+
+When a user replies to a previous message (theirs or the bot's), the bot automatically traverses the Discord reply chain to build conversation history. This context is sent to Ollama using the `/api/chat` endpoint with proper role-based messages (`user` / `assistant`), enabling multi-turn conversations.
+
+### How It Works
+
+1. User sends a message that replies to a previous bot response
+2. Bot traverses `message.reference` links up the chain (up to max depth)
+3. Each message in the chain is tagged as `user` or `assistant` based on the author
+4. The full conversation is sent to Ollama's chat API with the system prompt
+5. Ollama responds with awareness of the entire conversation
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REPLY_CHAIN_ENABLED` | `true` | Set to `false` to disable reply chain traversal |
+| `REPLY_CHAIN_MAX_DEPTH` | `10` | Maximum messages to traverse (1–50) |
+| `REPLY_CHAIN_MAX_TOKENS` | `16000` | Character budget for collected context (1,000–128,000) |
+
+### Behavior Notes
+
+- Only applies to **Ollama** text generation (not ComfyUI image generation)
+- Deleted or inaccessible messages in the chain are skipped gracefully
+- Circular references are detected and traversal stops
+- Single messages (not replies) work exactly as before — no context overhead
+- Bot responses are sent as **plain text** (not embed blocks) for a conversational feel
 
 ## Usage
 
@@ -246,8 +300,8 @@ Use slash commands for ephemeral responses:
 ## API Rate Limiting
 
 - **Serial Processing**: Only 1 request per API endpoint at a time
-- **Queueing**: Additional requests are queued and processed in order
-- **Busy Status**: Users are notified if an API is busy and can retry
+- **FIFO Queueing**: Additional requests are queued and processed in order
+- **Timeout Cancellation**: Timed-out requests are aborted so they don't overlap with subsequent work
 - **Discord Rate Limits**: Respects Discord API rate limits
 
 ## Output Organization
