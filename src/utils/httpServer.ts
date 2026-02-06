@@ -1,6 +1,7 @@
 import express, { Express } from 'express';
 import * as path from 'path';
 import { config } from './config';
+import { logger } from './logger';
 
 class HttpServer {
   private app: Express;
@@ -14,6 +15,11 @@ class HttpServer {
 
   private setupRoutes(): void {
     const outputsDir = path.join(__dirname, '../../outputs');
+
+    // Block access to logs directory
+    this.app.use('/logs', (_req, res) => {
+      res.status(403).json({ error: 'Forbidden' });
+    });
 
     // Serve static files from outputs directory
     this.app.use(express.static(outputsDir));
@@ -31,12 +37,8 @@ class HttpServer {
 
   start(): void {
     this.app.listen(this.port, () => {
-      console.log(
-        `HTTP server listening on http://localhost:${this.port}`
-      );
-      console.log(
-        `Serving outputs from: http://localhost:${this.port}/`
-      );
+      logger.log('success', 'system', `HTTP server listening on http://localhost:${this.port}`);
+      logger.log('success', 'system', `Serving outputs from: http://localhost:${this.port}/`);
     });
   }
 

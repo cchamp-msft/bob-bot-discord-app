@@ -27,6 +27,23 @@ class Config {
     try {
       const data = fs.readFileSync(keywordsPath, 'utf-8');
       const config: ConfigData = JSON.parse(data);
+
+      if (!Array.isArray(config.keywords)) {
+        throw new Error('keywords.json: "keywords" must be an array');
+      }
+
+      for (const entry of config.keywords) {
+        if (!entry.keyword || typeof entry.keyword !== 'string') {
+          throw new Error(`keywords.json: invalid keyword entry — missing "keyword" string`);
+        }
+        if (entry.api !== 'comfyui' && entry.api !== 'ollama') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui" or "ollama"`);
+        }
+        if (typeof entry.timeout !== 'number' || entry.timeout <= 0) {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid timeout — must be a positive number`);
+        }
+      }
+
       this.keywords = config.keywords;
       console.log(`Loaded ${this.keywords.length} keywords from config`);
     } catch (error) {
@@ -66,7 +83,7 @@ class Config {
   }
 
   getHttpPort(): number {
-    return parseInt(process.env.HTTP_PORT || '3000', 10);
+    return this.parseIntEnv('HTTP_PORT', 3000);
   }
 
   getOutputBaseUrl(): string {
@@ -74,11 +91,21 @@ class Config {
   }
 
   getFileSizeThreshold(): number {
-    return parseInt(process.env.FILE_SIZE_THRESHOLD || '10485760', 10);
+    return this.parseIntEnv('FILE_SIZE_THRESHOLD', 10485760);
   }
 
   getDefaultTimeout(): number {
-    return parseInt(process.env.DEFAULT_TIMEOUT || '300', 10);
+    return this.parseIntEnv('DEFAULT_TIMEOUT', 300);
+  }
+
+  private parseIntEnv(name: string, defaultValue: number): number {
+    const raw = process.env[name];
+    if (!raw) return defaultValue;
+    const parsed = parseInt(raw, 10);
+    if (isNaN(parsed)) {
+      throw new Error(`Environment variable ${name} is not a valid number: "${raw}"`);
+    }
+    return parsed;
   }
 
   getApiEndpoint(api: 'comfyui' | 'ollama'): string {

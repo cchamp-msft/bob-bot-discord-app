@@ -1,17 +1,20 @@
-import { comfyuiClient } from './comfyuiClient';
-import { ollamaClient } from './ollamaClient';
+import { comfyuiClient, ComfyUIResponse } from './comfyuiClient';
+import { ollamaClient, OllamaResponse } from './ollamaClient';
+
+export type { ComfyUIResponse, OllamaResponse };
 
 class ApiManager {
   async executeRequest(
     api: 'comfyui' | 'ollama',
     requester: string,
     data: string,
-    timeout: number
-  ): Promise<any> {
+    _timeout: number,
+    model?: string
+  ): Promise<ComfyUIResponse | OllamaResponse> {
     if (api === 'comfyui') {
-      return await comfyuiClient.generateImage(data, requester, timeout);
+      return await comfyuiClient.generateImage(data, requester);
     } else {
-      return await ollamaClient.generate(data, requester);
+      return await ollamaClient.generate(data, requester, model || 'llama2');
     }
   }
 

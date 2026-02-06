@@ -4,15 +4,19 @@ import {
   EmbedBuilder,
   SharedSlashCommand,
 } from 'discord.js';
-import { config, KeywordConfig } from '../utils/config';
+import { config } from '../utils/config';
 import { requestQueue } from '../utils/requestQueue';
-import { apiManager } from '../api';
+import { apiManager, ComfyUIResponse, OllamaResponse } from '../api';
 import { logger } from '../utils/logger';
 import { fileHandler } from '../utils/fileHandler';
 
 export abstract class BaseCommand {
   abstract data: SharedSlashCommand;
   abstract execute(interaction: ChatInputCommandInteraction): Promise<void>;
+
+  protected getTimeout(keyword: string): number {
+    return config.getKeywordConfig(keyword)?.timeout ?? config.getDefaultTimeout();
+  }
 }
 
 class GenerateCommand extends BaseCommand {
@@ -33,16 +37,6 @@ class GenerateCommand extends BaseCommand {
     // Defer reply as ephemeral
     await interaction.deferReply({ ephemeral: true });
 
-    // Check if API is available
-    if (!requestQueue.isApiAvailable('comfyui')) {
-      logger.logBusy(requester, 'comfyui');
-
-      await interaction.editReply({
-        content: '🔄 The ComfyUI API is currently busy. Please try again with `/generate` in a moment!',
-      });
-      return;
-    }
-
     // Log the request
     logger.logRequest(requester, `[generate] ${prompt}`);
 
@@ -53,12 +47,13 @@ class GenerateCommand extends BaseCommand {
 
     try {
       // Execute through the queue (handles locking + timeout)
-      const apiResult = await requestQueue.execute(
+      const timeout = this.getTimeout('generate');
+      const apiResult = await requestQueue.execute<ComfyUIResponse>(
         'comfyui',
         requester,
         'generate',
-        300,
-        () => apiManager.executeRequest('comfyui', requester, prompt, 300)
+        timeout,
+        () => apiManager.executeRequest('comfyui', requester, prompt, timeout) as Promise<ComfyUIResponse>
       );
 
       if (!apiResult.success) {
@@ -73,16 +68,22 @@ class GenerateCommand extends BaseCommand {
     } catch (error) {
       const errorMsg =
         error instanceof Error ? error.message : 'Unknown error';
-      logger.logError(requester, errorMsg);
-      await interaction.editReply({
-        content: `❌ Error processing request: ${errorMsg}`,
-      });
+      if (errorMsg.startsWith('API_BUSY:')) {
+        await interaction.editReply({
+          content: '🔄 The ComfyUI API became busy. Please retry with `/generate`.',
+        });
+      } else {
+        logger.logError(requester, errorMsg);
+        await interaction.editReply({
+          content: `❌ Error processing request: ${errorMsg}`,
+        });
+      }
     }
   }
 
   private async handleResponse(
     interaction: ChatInputCommandInteraction,
-    apiResult: any,
+    apiResult: ComfyUIResponse,
     requester: string
   ): Promise<void> {
     if (!apiResult.data?.images || apiResult.data.images.length === 0) {
@@ -98,6 +99,7 @@ class GenerateCommand extends BaseCommand {
       .setTimestamp();
 
     // Process each image
+    let savedCount = 0;
     for (let i = 0; i < apiResult.data.images.length; i++) {
       const imageUrl = apiResult.data.images[i];
 
@@ -109,12 +111,20 @@ class GenerateCommand extends BaseCommand {
       );
 
       if (fileOutput) {
+        savedCount++;
         embed.addFields({
           name: `Image ${i + 1}`,
           value: `[View](${fileOutput.url})`,
           inline: false,
         });
       }
+    }
+
+    if (savedCount === 0) {
+      await interaction.editReply({
+        content: 'Images were generated but could not be saved or displayed.',
+      });
+      return;
     }
 
     await interaction.editReply({
@@ -158,16 +168,6 @@ class AskCommand extends BaseCommand {
     // Defer reply as ephemeral
     await interaction.deferReply({ ephemeral: true });
 
-    // Check if API is available
-    if (!requestQueue.isApiAvailable('ollama')) {
-      logger.logBusy(requester, 'ollama');
-
-      await interaction.editReply({
-        content: '🔄 The Ollama API is currently busy. Please try again with `/ask` in a moment!',
-      });
-      return;
-    }
-
     // Log the request
     logger.logRequest(requester, `[ask] (${model}) ${question}`);
 
@@ -178,12 +178,13 @@ class AskCommand extends BaseCommand {
 
     try {
       // Execute through the queue (handles locking + timeout)
-      const apiResult = await requestQueue.execute(
+      const timeout = this.getTimeout('ask');
+      const apiResult = await requestQueue.execute<OllamaResponse>(
         'ollama',
         requester,
         'ask',
-        300,
-        () => apiManager.executeRequest('ollama', requester, question, 300)
+        timeout,
+        () => apiManager.executeRequest('ollama', requester, question, timeout, model) as Promise<OllamaResponse>
       );
 
       if (!apiResult.success) {
@@ -198,24 +199,34 @@ class AskCommand extends BaseCommand {
     } catch (error) {
       const errorMsg =
         error instanceof Error ? error.message : 'Unknown error';
-      logger.logError(requester, errorMsg);
-      await interaction.editReply({
-        content: `❌ Error processing request: ${errorMsg}`,
-      });
+      if (errorMsg.startsWith('API_BUSY:')) {
+        await interaction.editReply({
+          content: '🔄 The Ollama API became busy. Please retry with `/ask`.',
+        });
+      } else {
+        logger.logError(requester, errorMsg);
+        await interaction.editReply({
+          content: `❌ Error processing request: ${errorMsg}`,
+        });
+      }
     }
   }
 
   private async handleResponse(
     interaction: ChatInputCommandInteraction,
-    apiResult: any,
+    apiResult: OllamaResponse,
     requester: string
   ): Promise<void> {
     const text = apiResult.data?.text || 'No response generated.';
+    const truncated = text.length > 4096;
+    const displayText = truncated
+      ? text.substring(0, 4050) + '\n\n… *(response truncated)*'
+      : text;
 
     const embed = new EmbedBuilder()
       .setColor('#0099FF')
       .setTitle('Ollama Response')
-      .setDescription(text.substring(0, 4096)) // Discord embed description limit
+      .setDescription(displayText)
       .setTimestamp();
 
     await interaction.editReply({

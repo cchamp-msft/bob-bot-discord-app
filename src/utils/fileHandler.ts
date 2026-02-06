@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import axios from 'axios';
 import { config } from './config';
+import { logger } from './logger';
 
 interface FileOutput {
   filePath: string;
@@ -25,12 +27,27 @@ class FileHandler {
     const day = String(now.getDate()).padStart(2, '0');
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
 
-    return `${year}/${month}/${day}T${hours}:${minutes}`;
+    return `${year}/${month}/${day}T${hours}-${minutes}-${seconds}`;
   }
 
   private sanitizeFileName(fileName: string): string {
     return fileName.replace(/[^a-z0-9._-]/gi, '_').toLowerCase();
+  }
+
+  private normalizeDescription(description: string): string {
+    const words = description
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 3);
+
+    while (words.length < 3) {
+      words.push('item');
+    }
+
+    return words.join('_');
   }
 
   saveFile(
@@ -48,9 +65,17 @@ class FileHandler {
 
     // Format: requester-three_word_description.ext
     const safeRequester = this.sanitizeFileName(requester);
-    const safeDescription = this.sanitizeFileName(description);
+    const safeDescription = this.sanitizeFileName(
+      this.normalizeDescription(description)
+    );
     const fileName = `${safeRequester}-${safeDescription}.${extension}`;
     const filePath = path.join(dirPath, fileName);
+
+    // Verify resolved path stays within outputs directory
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(this.outputsDir))) {
+      throw new Error('Path traversal detected — refusing to write outside outputs directory');
+    }
 
     fs.writeFileSync(filePath, fileBuffer);
 
@@ -76,7 +101,6 @@ class FileHandler {
     extension: string
   ): Promise<FileOutput | null> {
     try {
-      const axios = await import('axios').then((m) => m.default);
       const response = await axios.get(fileUrl, {
         responseType: 'arraybuffer',
         timeout: 30000,
@@ -84,7 +108,7 @@ class FileHandler {
 
       return this.saveFile(requester, description, response.data, extension);
     } catch (error) {
-      console.error('Failed to download file from URL:', error);
+      logger.logError('system', `Failed to download file from URL: ${error}`);
       return null;
     }
   }
@@ -97,7 +121,7 @@ class FileHandler {
     try {
       return fs.readFileSync(filePath);
     } catch (error) {
-      console.error('Failed to read file:', error);
+      logger.logError('system', `Failed to read file: ${error}`);
       return null;
     }
   }

@@ -1,6 +1,7 @@
 import { REST, Routes } from 'discord.js';
 import { config } from './utils/config';
 import { commands } from './commands/commands';
+import { logger } from './utils/logger';
 
 const rest = new REST({ version: '10' }).setToken(config.getDiscordToken());
 
@@ -19,7 +20,8 @@ async function registerCommands(): Promise<void> {
       console.log(`  /${cmd.name} - ${cmd.description}`);
     });
   } catch (error) {
-    console.error('Error registering commands:', error);
+    logger.logError('system', `Error registering commands: ${error}`);
+    process.exit(1);
   }
 }
 

@@ -2,11 +2,12 @@ import {
   Message,
   EmbedBuilder,
   AnyThreadChannel,
+  ChannelType,
 } from 'discord.js';
 import { config, KeywordConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 import { requestQueue } from '../utils/requestQueue';
-import { apiManager } from '../api';
+import { apiManager, ComfyUIResponse, OllamaResponse } from '../api';
 import { fileHandler } from '../utils/fileHandler';
 
 class MessageHandler {
@@ -14,12 +15,15 @@ class MessageHandler {
     // Ignore bot messages
     if (message.author.bot) return;
 
+    // Guard: client.user should always exist after 'ready' but be defensive
+    if (!message.client.user) return;
+
     // Check if bot is mentioned
-    if (!message.mentions.has(message.client.user!.id)) return;
+    if (!message.mentions.has(message.client.user.id)) return;
 
     // Extract message content — remove mention patterns like <@123> or <@!123>
     const mentionRegex = new RegExp(
-      `<@!?${message.client.user!.id}>`,
+      `<@!?${message.client.user.id}>`,
       'g'
     );
     const content = message.content.replace(mentionRegex, '').trim();
@@ -45,29 +49,37 @@ class MessageHandler {
       return;
     }
 
-    // Check if API is available (quick check before creating thread)
-    if (!requestQueue.isApiAvailable(keywordConfig.api)) {
-      logger.logBusy(message.author.username, keywordConfig.api);
+    // Create or reuse a thread for the response
+    const threadName = `${keywordConfig.keyword} - ${message.author.username} - ${new Date().toLocaleTimeString()}`;
+    let thread: AnyThreadChannel | null = null;
 
-      await message.reply(
-        `🔄 The **${keywordConfig.api}** API is currently busy. ` +
-          `Please try again in a moment by mentioning me with your request!`
+    try {
+      if (message.channel.isThread()) {
+        thread = message.channel;
+      } else if (message.hasThread && message.thread) {
+        thread = message.thread;
+      } else if (
+        message.channel.type === ChannelType.GuildText ||
+        message.channel.type === ChannelType.GuildAnnouncement
+      ) {
+        thread = await message.startThread({
+          name: threadName.substring(0, 100), // Discord limit
+          autoArchiveDuration: 60,
+        });
+      }
+    } catch (error) {
+      logger.logError(
+        message.author.username,
+        `Failed to create thread: ${error}`
       );
+      await message.reply('❌ Failed to create a response thread.');
       return;
     }
 
-    // Create a thread for the response
-    const threadName = `${keywordConfig.keyword} - ${message.author.username} - ${new Date().toLocaleTimeString()}`;
-    let thread: AnyThreadChannel;
-
-    try {
-      thread = await message.startThread({
-        name: threadName.substring(0, 100), // Discord limit
-        autoArchiveDuration: 60,
-      });
-    } catch (error) {
-      console.error('Failed to create thread:', error);
-      await message.reply('❌ Failed to create a response thread.');
+    if (!thread) {
+      await message.reply(
+        '❌ Unable to create a thread in this channel. Please try in a text channel.'
+      );
       return;
     }
 
@@ -86,32 +98,33 @@ class MessageHandler {
         keywordConfig.api,
         message.author.username,
         keywordConfig.keyword,
-        keywordConfig.timeout,
+        keywordConfig.timeout || config.getDefaultTimeout(),
         () =>
           apiManager.executeRequest(
             keywordConfig.api,
             message.author.username,
             content,
-            keywordConfig.timeout
+            keywordConfig.timeout || config.getDefaultTimeout()
           )
       );
 
       if (!apiResult.success) {
-        await thread.send(`❌ Error: ${apiResult.error}`);
-        logger.logError(message.author.username, apiResult.error);
+        const errorDetail = apiResult.error ?? 'Unknown API error';
+        await thread.send(`❌ Error: ${errorDetail}`);
+        logger.logError(message.author.username, errorDetail);
         return;
       }
 
       // Handle response based on API type
       if (keywordConfig.api === 'comfyui') {
         await this.handleComfyUIResponse(
-          apiResult,
+          apiResult as ComfyUIResponse,
           thread,
           message.author.username
         );
       } else {
         await this.handleOllamaResponse(
-          apiResult,
+          apiResult as OllamaResponse,
           thread,
           message.author.username
         );
@@ -135,13 +148,17 @@ class MessageHandler {
 
   private findKeyword(content: string): KeywordConfig | undefined {
     const lowerContent = content.toLowerCase();
-    return config.getKeywords().find((k) =>
-      lowerContent.includes(k.keyword.toLowerCase())
-    );
+    return config.getKeywords().find((k) => {
+      const keyword = k.keyword.toLowerCase().trim();
+      if (!keyword) return false;
+      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
+      return pattern.test(lowerContent);
+    });
   }
 
   private async handleComfyUIResponse(
-    apiResult: any,
+    apiResult: ComfyUIResponse,
     thread: AnyThreadChannel,
     requester: string
   ): Promise<void> {
@@ -156,6 +173,7 @@ class MessageHandler {
       .setTimestamp();
 
     // Process each image
+    let savedCount = 0;
     for (let i = 0; i < apiResult.data.images.length; i++) {
       const imageUrl = apiResult.data.images[i];
 
@@ -185,7 +203,13 @@ class MessageHandler {
             });
           }
         }
+        savedCount++;
       }
+    }
+
+    if (savedCount === 0) {
+      await thread.send('Images were generated but could not be saved or displayed.');
+      return;
     }
 
     await thread.send({ embeds: [embed] });
@@ -196,7 +220,7 @@ class MessageHandler {
   }
 
   private async handleOllamaResponse(
-    apiResult: any,
+    apiResult: OllamaResponse,
     thread: AnyThreadChannel,
     requester: string
   ): Promise<void> {

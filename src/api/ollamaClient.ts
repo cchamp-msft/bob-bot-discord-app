@@ -16,7 +16,6 @@ class OllamaClient {
   constructor() {
     this.client = axios.create({
       baseURL: config.getOllamaEndpoint(),
-      timeout: 30000,
     });
   }
 
@@ -31,11 +30,14 @@ class OllamaClient {
         `Ollama ${model}: ${prompt.substring(0, 100)}...`
       );
 
-      const response = await this.client.post('/api/generate', {
-        model: model,
-        prompt: prompt,
-        stream: false,
-      });
+      const response = await this.client.post(
+        '/api/generate',
+        {
+          model: model,
+          prompt: prompt,
+          stream: false,
+        }
+      );
 
       if (response.status === 200 && response.data.response) {
         logger.logReply(
