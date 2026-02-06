@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits, Events } from 'discord.js';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
 import { messageHandler } from './messageHandler';
@@ -58,7 +58,7 @@ class DiscordManager {
         ],
       });
 
-      this.client.once('ready', () => {
+      this.client.once(Events.ClientReady, () => {
         this.status = 'running';
         this.username = this.client?.user?.tag || null;
         this.lastError = null;
@@ -160,7 +160,7 @@ class DiscordManager {
         resolve({ success: false, username: null, message: 'Connection timed out (10s)' });
       }, 10000);
 
-      testClient.once('ready', async () => {
+      testClient.once(Events.ClientReady, async () => {
         clearTimeout(timeout);
         const tag = testClient.user?.tag || null;
         await testClient.destroy();
