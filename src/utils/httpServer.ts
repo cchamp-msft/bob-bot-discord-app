@@ -4,6 +4,7 @@ import { config } from './config';
 import { configWriter } from './configWriter';
 import { logger } from './logger';
 import { apiManager } from '../api';
+import { discordManager } from '../bot/discordManager';
 
 /** Status messages for the configurator console panel */
 const statusLog: string[] = [];
@@ -93,6 +94,44 @@ class HttpServer {
       }
     });
 
+    // ── Discord control routes (localhost only) ──────────────────
+
+    // GET Discord bot status
+    this.app.get('/api/discord/status', localhostOnly, (_req, res) => {
+      res.json(discordManager.getStatus());
+    });
+
+    // POST start the Discord bot
+    this.app.post('/api/discord/start', localhostOnly, async (_req, res) => {
+      pushStatus('Discord bot start requested');
+      const result = await discordManager.start();
+      pushStatus(`Discord start: ${result.message}`);
+      res.json(result);
+    });
+
+    // POST stop the Discord bot
+    this.app.post('/api/discord/stop', localhostOnly, async (_req, res) => {
+      pushStatus('Discord bot stop requested');
+      const result = await discordManager.stop();
+      pushStatus(`Discord stop: ${result.message}`);
+      res.json(result);
+    });
+
+    // POST test Discord token (does not persist or affect running bot)
+    this.app.post('/api/discord/test', localhostOnly, async (req, res) => {
+      const { token } = req.body;
+      if (!token || typeof token !== 'string') {
+        res.status(400).json({ success: false, message: 'Token is required' });
+        return;
+      }
+
+      pushStatus('Discord token test requested');
+      const result = await discordManager.testToken(token);
+      // Never log the actual token value
+      pushStatus(`Discord token test: ${result.success ? 'OK' : 'FAILED'} — ${result.message}`);
+      res.json(result);
+    });
+
     // POST save config changes
     this.app.post('/api/config/save', localhostOnly, async (req, res) => {
       try {
@@ -101,9 +140,15 @@ class HttpServer {
 
         // Update .env values if provided
         if (env && typeof env === 'object') {
+          // Build a safe list of key names for logging (never log token values)
+          const sensitiveKeys = ['DISCORD_TOKEN'];
+          const safeKeyNames = Object.keys(env).map(k =>
+            sensitiveKeys.includes(k) ? `${k} (changed)` : k
+          );
+
           await configWriter.updateEnv(env);
-          messages.push(`Updated .env: ${Object.keys(env).join(', ')}`);
-          pushStatus(`Config saved — .env keys: ${Object.keys(env).join(', ')}`);
+          messages.push(`Updated .env: ${safeKeyNames.join(', ')}`);
+          pushStatus(`Config saved — .env keys: ${safeKeyNames.join(', ')}`);
         }
 
         // Update keywords if provided

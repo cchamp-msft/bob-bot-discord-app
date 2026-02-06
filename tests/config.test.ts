@@ -89,17 +89,17 @@ describe('Config', () => {
       expect(config.getApiEndpoint('ollama')).toBe('http://ollama:2222');
     });
 
-    it('getDiscordToken should throw if not set', () => {
+    it('getDiscordToken should return empty string if not set', () => {
       const saved = process.env.DISCORD_TOKEN;
       delete process.env.DISCORD_TOKEN;
-      expect(() => config.getDiscordToken()).toThrow('DISCORD_TOKEN not set');
+      expect(config.getDiscordToken()).toBe('');
       if (saved) process.env.DISCORD_TOKEN = saved;
     });
 
-    it('getClientId should throw if not set', () => {
+    it('getClientId should return empty string if not set', () => {
       const saved = process.env.DISCORD_CLIENT_ID;
       delete process.env.DISCORD_CLIENT_ID;
-      expect(() => config.getClientId()).toThrow('DISCORD_CLIENT_ID not set');
+      expect(config.getClientId()).toBe('');
       if (saved) process.env.DISCORD_CLIENT_ID = saved;
     });
   });

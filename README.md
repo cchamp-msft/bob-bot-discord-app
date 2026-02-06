@@ -12,7 +12,8 @@ A Discord bot that monitors @mentions and keywords, routes requests to ComfyUI o
 - ✅ Configurable per-keyword timeouts (default: 300s)
 - ✅ Smart file handling (attachments for small files, URL links for large)
 - ✅ HTTP server for file serving
-- ✅ **Web-based configurator** — localhost-only SPA for managing settings
+- ✅ **Web-based configurator** — localhost-only SPA for managing all settings
+- ✅ **Discord start/stop controls** — manage bot connection from the configurator
 - ✅ **Hot-reload support** — API endpoints and keywords reload without restart
 - ✅ Comprehensive request logging with date/requester/status tracking
 - ✅ Organized output directory structure with date formatting
@@ -24,6 +25,7 @@ A Discord bot that monitors @mentions and keywords, routes requests to ComfyUI o
 src/
 ├── index.ts              # Main bot entry point
 ├── bot/
+│   ├── discordManager.ts # Discord client lifecycle (start/stop/test)
 │   └── messageHandler.ts # @mention detection and threading
 ├── commands/
 │   ├── index.ts          # Command handler
@@ -62,7 +64,7 @@ outputs/
 ### Prerequisites
 - Node.js 16+
 - npm or yarn
-- Discord Bot Token
+- A Discord Bot Token (can be configured after install via the web configurator)
 - ComfyUI instance (optional, for image generation)
 - Ollama instance (optional, for text generation)
 
@@ -79,58 +81,31 @@ cd bob-bot-discord-app
 npm install
 ```
 
-3. Configure environment variables:
+3. Create a `.env` file (can be empty — everything is configurable via the web UI):
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set at minimum the two **required** values:
-- `DISCORD_TOKEN` **(required)**: Your Discord bot token
-- `DISCORD_CLIENT_ID` **(required)**: Your Discord application client ID
-
-The remaining values have sensible defaults and can be changed later via the web configurator:
-- `COMFYUI_ENDPOINT`: ComfyUI API endpoint (default: `http://localhost:8188`)
-- `OLLAMA_ENDPOINT`: Ollama API endpoint (default: `http://localhost:11434`)
-- `HTTP_PORT`: Port for output file serving (default: `3000`)
-- `OUTPUT_BASE_URL`: Base URL for file serving (default: `http://localhost:3000`)
-- `FILE_SIZE_THRESHOLD`: Max file size for attachment in bytes (default: `10485760` = 10MB)
-- `DEFAULT_TIMEOUT`: Default timeout for requests in seconds (default: `300`)
-
-4. Configure keywords (optional — defaults work out of the box):
-
-The default `config/keywords.json` ships with four keywords. You can edit this file directly or use the web configurator after starting the bot:
-
-```json
-{
-  "keywords": [
-    {
-      "keyword": "generate",
-      "api": "comfyui",
-      "timeout": 300,
-      "description": "Generate image"
-    },
-    {
-      "keyword": "ask",
-      "api": "ollama",
-      "timeout": 60,
-      "description": "Ask AI"
-    }
-  ]
-}
-```
+> All settings can be configured through the web configurator after starting the bot.
+> If you prefer, you can pre-fill `.env` values before starting:
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`
 
 ### Running the Bot
 
-> **Note:** The bot must successfully connect to Discord before the HTTP server (and configurator) starts. Make sure `DISCORD_TOKEN` and `DISCORD_CLIENT_ID` are set in `.env` first.
-
-#### Quick start (minimum steps to reach the configurator):
+#### Quick start:
 ```bash
-cp .env.example .env
-# Edit .env — set DISCORD_TOKEN and DISCORD_CLIENT_ID
 npm install
+cp .env.example .env
 npm run dev
 ```
-Once you see `Bot logged in as ...` in the console, open **http://localhost:3000/configurator** to configure everything else.
+
+The HTTP server starts immediately. Open **http://localhost:3000/configurator** to:
+1. Enter your Discord bot **token** and **client ID**
+2. Click **Test** to verify the token works
+3. Click **Save Changes** to persist to `.env`
+4. Click **▶ Start** to connect the bot to Discord
+
+No restart needed — the bot connects on demand from the configurator.
 
 #### Development mode (with auto-reload on code changes):
 ```bash
@@ -143,10 +118,14 @@ npm run build
 npm start
 ```
 
-#### Register slash commands (first-time setup):
+> If `DISCORD_TOKEN` is set in `.env`, the bot will auto-connect to Discord on startup.
+> If not, it starts in configurator-only mode so you can set it up via the web UI.
+
+#### Register slash commands:
 ```bash
 npm run register
 ```
+> Requires `DISCORD_TOKEN` and `DISCORD_CLIENT_ID` to be set in `.env`.
 
 ## Web Configurator
 
@@ -155,23 +134,22 @@ The bot includes a **localhost-only web configurator** for easy management witho
 ### Accessing the Configurator
 
 1. Start the bot (`npm run dev`, `npm run dev:watch`, or `npm start`)
-2. Wait for `Bot logged in as ...` — the HTTP server starts after Discord connects
-3. Open your browser to: **http://localhost:3000/configurator**
+2. Open your browser to: **http://localhost:3000/configurator**
+   - The HTTP server starts immediately — no Discord connection required
    - ⚠️ Only accessible from localhost for security
    - Port matches your `HTTP_PORT` setting in `.env` (default: 3000)
 
-> The configurator is for **tuning settings once the bot is running**. Initial setup (Discord token and client ID) must be done by editing `.env` directly.
-
 ### Configurator Features
 
-- **Discord Settings**: Edit client ID (token visible only in `.env` for security)
+- **Discord Connection**: Set client ID and bot token, test token validity, start/stop the bot
+- **Bot Token**: Write-only field — token is never displayed or logged, only persisted to `.env`
+- **Start/Stop Controls**: Connect or disconnect the bot from Discord without restarting the process
+- **Connection Status**: Live indicator showing stopped / connecting / running / error
 - **API Endpoints**: Configure ComfyUI/Ollama URLs with live connection testing
 - **HTTP Server**: Adjust port and output base URL
 - **Limits**: Set file size threshold and default timeout
 - **Keywords Management**: Add/edit/remove keyword→API mappings with custom timeouts
-- **Status Console**: Real-time log stream showing config changes, API tests, and reload status
-- **Hot Reload**: Changes to API endpoints and keywords apply immediately (no restart)
-- **Restart Detection**: UI warns when Discord token, client ID, or HTTP port changes require restart
+- **Status Console**: Real-time log stream showing config changes, API tests, and bot status
 
 ### Hot-Reload vs Restart Required
 
@@ -181,10 +159,9 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - File size threshold
 - Default timeout
 - Keywords (entire list)
+- Discord token and client ID (stop and re-start the bot from configurator)
 
 **Restart Required:**
-- Discord token
-- Discord client ID
 - HTTP port
 
 ## Running Tests
@@ -276,11 +253,12 @@ Log format:
 ### Cannot access configurator
 - Verify you're accessing from `http://localhost:{HTTP_PORT}/configurator`
 - Configurator is **localhost-only** — remote access is blocked for security
-- Ensure bot is running and HTTP server started successfully
+- The HTTP server starts immediately on `npm run dev` / `npm start` — no Discord connection needed
 
 ### Config changes not applying
 - **API endpoints & keywords**: Use configurator's "Save Changes" button (hot-reload, no restart)
-- **Discord settings or HTTP port**: Restart the bot after saving
+- **Discord token**: Save, then stop and re-start the bot from the configurator
+- **HTTP port**: Requires full process restart
 - Check the configurator's status console for reload confirmation
 
 ## Contributing

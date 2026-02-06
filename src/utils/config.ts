@@ -63,15 +63,11 @@ class Config {
   }
 
   getDiscordToken(): string {
-    const token = process.env.DISCORD_TOKEN;
-    if (!token) throw new Error('DISCORD_TOKEN not set in .env');
-    return token;
+    return process.env.DISCORD_TOKEN || '';
   }
 
   getClientId(): string {
-    const id = process.env.DISCORD_CLIENT_ID;
-    if (!id) throw new Error('DISCORD_CLIENT_ID not set in .env');
-    return id;
+    return process.env.DISCORD_CLIENT_ID || '';
   }
 
   getComfyUIEndpoint(): string {
@@ -140,14 +136,15 @@ class Config {
       console.error('Failed to reload .env:', envResult.error);
     }
 
-    // Detect restart-required changes (Discord + port)
+    // Detect restart-required changes (only HTTP port)
+    const newPort = this.parseIntEnv('HTTP_PORT', 3000);
+    if (newPort !== prevPort) requiresRestart.push('HTTP_PORT');
+
+    // Track Discord changes (manageable via start/stop, not restart)
     const newToken = process.env.DISCORD_TOKEN || '';
     const newClientId = process.env.DISCORD_CLIENT_ID || '';
-    const newPort = this.parseIntEnv('HTTP_PORT', 3000);
-
-    if (newToken !== prevToken) requiresRestart.push('DISCORD_TOKEN');
-    if (newClientId !== prevClientId) requiresRestart.push('DISCORD_CLIENT_ID');
-    if (newPort !== prevPort) requiresRestart.push('HTTP_PORT');
+    if (newToken !== prevToken) reloaded.push('DISCORD_TOKEN');
+    if (newClientId !== prevClientId) reloaded.push('DISCORD_CLIENT_ID');
 
     // Track hot-reloaded changes
     if (this.getComfyUIEndpoint() !== prevComfyUI) reloaded.push('COMFYUI_ENDPOINT');

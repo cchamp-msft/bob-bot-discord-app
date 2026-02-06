@@ -42,6 +42,7 @@
     display: inline-block;
   }
   header .dot.off { background: var(--err); }
+  header .dot.warn { background: var(--warn); }
   .main {
     display: flex;
     flex: 1;
@@ -200,6 +201,36 @@
     font-size: 0.85em;
   }
   .kw-table .btn-sm { padding: 4px 8px; }
+
+  /* Bot control bar */
+  .bot-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .bot-controls .status-label {
+    font-size: 0.85em;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .bot-controls .status-label .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block;
+  }
+  .bot-controls .status-label .dot.running { background: var(--ok); }
+  .bot-controls .status-label .dot.stopped { background: var(--err); }
+  .bot-controls .status-label .dot.connecting { background: var(--warn); animation: pulse 1s infinite; }
+  .bot-controls .status-label .dot.error { background: var(--err); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .bot-controls .spacer { flex: 1; }
+  .btn-ok { background: var(--ok); color: #fff; }
 </style>
 </head>
 <body>
@@ -214,15 +245,31 @@
 
     <!-- Discord Section -->
     <section>
-      <h2 onclick="toggleSection(this)">Discord Connection <span class="note" style="font-size:0.8em;color:var(--warn);margin-left:auto">restart required</span></h2>
-      <div class="body">
+      <h2 class="open" onclick="toggleSection(this)">Discord Connection</h2>
+      <div class="body open">
         <div class="field">
           <label>Client ID</label>
           <input type="text" id="discord_client_id" data-env="DISCORD_CLIENT_ID" placeholder="Discord Application Client ID">
         </div>
         <div class="field">
-          <label>Bot Token <span class="note">edit directly in .env → DISCORD_TOKEN</span></label>
-          <input type="text" disabled placeholder="••••••••  (hidden for security)" style="opacity:0.5">
+          <label>Bot Token <span class="note">write-only — never displayed</span></label>
+          <div class="field-row">
+            <div class="field">
+              <input type="password" id="discord_token" placeholder="Paste new token to update" autocomplete="off">
+            </div>
+            <div class="field tiny">
+              <button class="btn-test btn-sm" onclick="testDiscord()">Test</button>
+            </div>
+          </div>
+        </div>
+        <div class="bot-controls">
+          <span class="status-label">
+            <span class="dot stopped" id="botDot"></span>
+            <span id="botStatusText">Stopped</span>
+          </span>
+          <span class="spacer"></span>
+          <button class="btn-ok btn-sm" id="btnStart" onclick="startBot()">▶ Start</button>
+          <button class="btn-danger btn-sm" id="btnStop" onclick="stopBot()" disabled>■ Stop</button>
         </div>
       </div>
     </section>
@@ -357,13 +404,60 @@
       consoleEl.innerHTML = '';
       for (const line of data.lines) {
         const cls = line.includes('FAILED') || line.includes('ERROR') ? 'err'
-          : line.includes('OK') || line.includes('started') || line.includes('saved') ? 'ok'
-          : line.includes('restart') ? 'warn'
+          : line.includes('OK') || line.includes('started') || line.includes('saved') || line.includes('Authenticated') ? 'ok'
+          : line.includes('restart') || line.includes('connecting') ? 'warn'
           : '';
         conLog(line, cls);
       }
     } catch (e) {
       // server not reachable
+    }
+  }
+
+  // ── Bot status polling ─────────────────────────────
+  async function pollBotStatus() {
+    try {
+      const res = await fetch('/api/discord/status');
+      const data = await res.json();
+      updateBotUI(data);
+    } catch (e) {
+      updateBotUI({ status: 'stopped', username: null, error: null, tokenConfigured: false });
+    }
+  }
+
+  function updateBotUI(data) {
+    const dot = document.getElementById('botDot');
+    const text = document.getElementById('botStatusText');
+    const headerDot = document.getElementById('statusDot');
+    const btnStart = document.getElementById('btnStart');
+    const btnStop = document.getElementById('btnStop');
+
+    dot.className = 'dot ' + data.status;
+
+    switch (data.status) {
+      case 'running':
+        text.textContent = `Connected as ${data.username || '?'}`;
+        headerDot.className = 'dot';
+        btnStart.disabled = true;
+        btnStop.disabled = false;
+        break;
+      case 'connecting':
+        text.textContent = 'Connecting…';
+        headerDot.className = 'dot warn';
+        btnStart.disabled = true;
+        btnStop.disabled = false;
+        break;
+      case 'error':
+        text.textContent = `Error: ${data.error || 'unknown'}`;
+        headerDot.className = 'dot off';
+        btnStart.disabled = false;
+        btnStop.disabled = true;
+        break;
+      default:
+        text.textContent = data.tokenConfigured ? 'Stopped' : 'Stopped — no token configured';
+        headerDot.className = 'dot off';
+        btnStart.disabled = !data.tokenConfigured;
+        btnStop.disabled = true;
     }
   }
 
@@ -380,13 +474,18 @@
     document.getElementById('saveBtn').disabled = true;
   }
 
-  // Attach to all env inputs
+  // Attach to all env inputs + token field
   function attachDirtyListeners() {
     document.querySelectorAll('[data-env]').forEach(input => {
       input.addEventListener('input', () => {
         input.classList.add('dirty');
         markDirty();
       });
+    });
+    document.getElementById('discord_token').addEventListener('input', () => {
+      if (document.getElementById('discord_token').value.trim()) {
+        markDirty();
+      }
     });
   }
 
@@ -406,6 +505,11 @@
       document.getElementById('output_base_url').value = cfg.http.outputBaseUrl;
       document.getElementById('file_size_threshold').value = cfg.limits.fileSizeThreshold;
       document.getElementById('default_timeout').value = cfg.limits.defaultTimeout;
+
+      // Token field is always empty (write-only) — just show placeholder
+      document.getElementById('discord_token').value = '';
+      document.getElementById('discord_token').placeholder =
+        cfg.discord.tokenConfigured ? 'Token configured ✓ — paste new value to change' : 'Paste Discord bot token here';
 
       // Populate keywords
       renderKeywords(cfg.keywords);
@@ -487,6 +591,13 @@
         if (val) env[key] = val;
       });
 
+      // Include token only if user typed a new value
+      const tokenInput = document.getElementById('discord_token');
+      const tokenVal = tokenInput.value.trim();
+      if (tokenVal) {
+        env['DISCORD_TOKEN'] = tokenVal;
+      }
+
       // Collect keywords
       const keywords = collectKeywords();
 
@@ -501,6 +612,9 @@
       if (result.success) {
         document.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
         markClean();
+        // Clear the token input after successful save
+        tokenInput.value = '';
+        tokenInput.placeholder = 'Token configured ✓ — paste new value to change';
         saveMsg.textContent = result.messages.join(' | ');
         saveMsg.className = 'msg ok';
         conLog(`[${new Date().toISOString()}] Save successful`, 'ok');
@@ -509,6 +623,7 @@
         }
         // Refresh status
         await pollStatus();
+        await pollBotStatus();
       } else {
         saveMsg.textContent = result.error;
         saveMsg.className = 'msg err';
@@ -541,6 +656,66 @@
     }
   }
 
+  // ── Discord controls ──────────────────────────────
+  async function testDiscord() {
+    const token = document.getElementById('discord_token').value.trim();
+    if (!token) {
+      conLog(`[${new Date().toISOString()}] Enter a token to test`, 'warn');
+      return;
+    }
+    conLog(`[${new Date().toISOString()}] Testing Discord token…`);
+    try {
+      const res = await fetch('/api/discord/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        conLog(`  ✓ ${data.message}`, 'ok');
+      } else {
+        conLog(`  ✗ ${data.message}`, 'err');
+      }
+      await pollStatus();
+    } catch (e) {
+      conLog(`  ✗ Test failed: ${e.message}`, 'err');
+    }
+  }
+
+  async function startBot() {
+    conLog(`[${new Date().toISOString()}] Starting Discord bot…`);
+    document.getElementById('btnStart').disabled = true;
+    try {
+      const res = await fetch('/api/discord/start', { method: 'POST' });
+      const data = await res.json();
+      conLog(`  ${data.success ? '✓' : '✗'} ${data.message}`, data.success ? 'ok' : 'err');
+      await pollStatus();
+      // Poll bot status a few times to catch the ready event
+      for (let i = 0; i < 5; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        await pollBotStatus();
+      }
+    } catch (e) {
+      conLog(`  ✗ Start failed: ${e.message}`, 'err');
+      document.getElementById('btnStart').disabled = false;
+    }
+  }
+
+  async function stopBot() {
+    conLog(`[${new Date().toISOString()}] Stopping Discord bot…`);
+    document.getElementById('btnStop').disabled = true;
+    try {
+      const res = await fetch('/api/discord/stop', { method: 'POST' });
+      const data = await res.json();
+      conLog(`  ${data.success ? '✓' : '✗'} ${data.message}`, data.success ? 'ok' : 'err');
+      await pollStatus();
+      await pollBotStatus();
+    } catch (e) {
+      conLog(`  ✗ Stop failed: ${e.message}`, 'err');
+      document.getElementById('btnStop').disabled = false;
+    }
+  }
+
   // ── Helpers ────────────────────────────────────────
   function esc(s) {
     return s.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -550,7 +725,9 @@
   attachDirtyListeners();
   loadConfig();
   pollStatus();
+  pollBotStatus();
   setInterval(pollStatus, 5000);
+  setInterval(pollBotStatus, 3000);
 </script>
 </body>
 </html>
