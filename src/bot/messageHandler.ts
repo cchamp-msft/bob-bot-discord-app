@@ -11,6 +11,23 @@ import { apiManager, ComfyUIResponse, OllamaResponse } from '../api';
 import { fileHandler } from '../utils/fileHandler';
 
 class MessageHandler {
+  /** Timestamp of the last error message sent to Discord (for rate limiting) */
+  private lastErrorMessageTime: number = 0;
+
+  /**
+   * Check whether enough time has passed to send another error message to Discord.
+   * Uses configurable ERROR_RATE_LIMIT_MINUTES from .env (default: 60 minutes).
+   */
+  private canSendErrorMessage(): boolean {
+    const rateLimitMs = config.getErrorRateLimitMinutes() * 60 * 1000;
+    const now = Date.now();
+    if (now - this.lastErrorMessageTime >= rateLimitMs) {
+      this.lastErrorMessageTime = now;
+      return true;
+    }
+    return false;
+  }
+
   async handleMessage(message: Message): Promise<void> {
     // Ignore bot messages
     if (message.author.bot) return;
@@ -110,8 +127,12 @@ class MessageHandler {
 
       if (!apiResult.success) {
         const errorDetail = apiResult.error ?? 'Unknown API error';
-        await thread.send(`❌ Error: ${errorDetail}`);
         logger.logError(message.author.username, errorDetail);
+
+        // Only send error message to Discord if rate limit allows
+        if (this.canSendErrorMessage()) {
+          await thread.send(`⚠️ ${config.getErrorMessage()}`);
+        }
         return;
       }
 
@@ -139,10 +160,14 @@ class MessageHandler {
             `Please try again by mentioning me with your request!`
         );
       } else {
-        await thread.send(`❌ Error processing request: ${errorMsg}`);
-      }
+        // Log full error to console always
+        logger.logError(message.author.username, errorMsg);
 
-      logger.logError(message.author.username, errorMsg);
+        // Only send error message to Discord if rate limit allows
+        if (this.canSendErrorMessage()) {
+          await thread.send(`⚠️ ${config.getErrorMessage()}`);
+        }
+      }
     }
   }
 

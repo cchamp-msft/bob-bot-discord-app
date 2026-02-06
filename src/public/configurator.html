@@ -278,6 +278,7 @@
     <section>
       <h2 class="open" onclick="toggleSection(this)">API Endpoints</h2>
       <div class="body open">
+        <!-- ComfyUI -->
         <div class="field-row">
           <div class="field">
             <label>ComfyUI Endpoint</label>
@@ -287,6 +288,22 @@
             <button class="btn-test btn-sm" onclick="testConnection('comfyui')">Test</button>
           </div>
         </div>
+        <div class="field">
+          <label>ComfyUI Workflow</label>
+          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
+            Upload a ComfyUI workflow JSON file. The workflow must contain at least one <code>%prompt%</code> placeholder (case-sensitive) which will be replaced with the Discord message prompt. All occurrences of <code>%prompt%</code> will be substituted.
+          </p>
+          <div class="field-row">
+            <div class="field">
+              <input type="file" id="workflow_file" accept=".json" style="font-size:0.82em" onchange="handleWorkflowUpload(this)">
+            </div>
+          </div>
+          <div id="workflowStatus" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
+        </div>
+
+        <hr style="border-color:var(--border);margin:16px 0">
+
+        <!-- Ollama -->
         <div class="field-row">
           <div class="field">
             <label>Ollama Endpoint</label>
@@ -295,6 +312,30 @@
           <div class="field tiny">
             <button class="btn-test btn-sm" onclick="testConnection('ollama')">Test</button>
           </div>
+        </div>
+        <div class="field">
+          <label>Ollama Model</label>
+          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
+            Select a model from the Ollama instance. Click <strong>Test</strong> above to refresh the model list.
+          </p>
+          <select id="ollama_model" data-env="OLLAMA_MODEL" onchange="markDirty()">
+            <option value="">— click Test to load models —</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- Error Handling Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">Error Handling</h2>
+      <div class="body">
+        <div class="field">
+          <label>Error Message <span class="note">sent to Discord users when an error occurs</span></label>
+          <input type="text" id="error_message" data-env="ERROR_MESSAGE" placeholder="I'm experiencing technical difficulties. Please try again later.">
+        </div>
+        <div class="field narrow">
+          <label>Error Rate Limit (minutes) <span class="note">minimum time between error messages</span></label>
+          <input type="number" id="error_rate_limit" data-env="ERROR_RATE_LIMIT_MINUTES" placeholder="60" min="1">
         </div>
       </div>
     </section>
@@ -506,6 +547,32 @@
       document.getElementById('file_size_threshold').value = cfg.limits.fileSizeThreshold;
       document.getElementById('default_timeout').value = cfg.limits.defaultTimeout;
 
+      // Populate Ollama model (saved selection)
+      const modelSelect = document.getElementById('ollama_model');
+      if (cfg.apis.ollamaModel) {
+        // Ensure the saved model is in the dropdown
+        const exists = Array.from(modelSelect.options).some(o => o.value === cfg.apis.ollamaModel);
+        if (!exists) {
+          const opt = document.createElement('option');
+          opt.value = cfg.apis.ollamaModel;
+          opt.textContent = cfg.apis.ollamaModel + ' (saved)';
+          modelSelect.appendChild(opt);
+        }
+        modelSelect.value = cfg.apis.ollamaModel;
+      }
+
+      // Populate ComfyUI workflow status
+      const workflowStatus = document.getElementById('workflowStatus');
+      if (cfg.apis.comfyuiWorkflowConfigured) {
+        workflowStatus.innerHTML = '<span style="color:var(--ok)">✓ Workflow configured</span>';
+      } else {
+        workflowStatus.innerHTML = '<span style="color:var(--text-dim)">No workflow uploaded</span>';
+      }
+
+      // Populate error handling fields
+      document.getElementById('error_message').value = cfg.errorHandling?.errorMessage || '';
+      document.getElementById('error_rate_limit').value = cfg.errorHandling?.errorRateLimitMinutes || 60;
+
       // Token field is always empty (write-only) — just show placeholder
       document.getElementById('discord_token').value = '';
       document.getElementById('discord_token').placeholder =
@@ -646,6 +713,40 @@
       const data = await res.json();
       if (data.healthy) {
         conLog(`  ✓ ${api} at ${data.endpoint} is reachable`, 'ok');
+
+        // For Ollama, populate model dropdown from returned models
+        if (api === 'ollama' && data.models && data.models.length > 0) {
+          const modelSelect = document.getElementById('ollama_model');
+          const currentValue = modelSelect.value;
+          modelSelect.innerHTML = '';
+
+          // Add default empty option
+          const defaultOpt = document.createElement('option');
+          defaultOpt.value = '';
+          defaultOpt.textContent = '— select a model —';
+          modelSelect.appendChild(defaultOpt);
+
+          // Add each model
+          for (const model of data.models) {
+            const opt = document.createElement('option');
+            opt.value = model.name;
+            opt.textContent = `${model.name} (${model.parameterSize}, ${model.family}, ${model.quantization})`;
+            modelSelect.appendChild(opt);
+          }
+
+          // Restore previous selection if it still exists
+          if (currentValue) {
+            const exists = Array.from(modelSelect.options).some(o => o.value === currentValue);
+            if (exists) {
+              modelSelect.value = currentValue;
+            }
+          }
+
+          conLog(`  ✓ Found ${data.models.length} model(s)`, 'ok');
+          for (const m of data.models) {
+            conLog(`    • ${m.name} (${m.parameterSize}, ${m.family})`);
+          }
+        }
       } else {
         conLog(`  ✗ ${api} at ${data.endpoint} is not reachable`, 'err');
         if (data.error) conLog(`    ${data.error}`, 'err');
@@ -714,6 +815,44 @@
       conLog(`  ✗ Stop failed: ${e.message}`, 'err');
       document.getElementById('btnStop').disabled = false;
     }
+  }
+
+  // ── Workflow upload ─────────────────────────────────
+  async function handleWorkflowUpload(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const statusEl = document.getElementById('workflowStatus');
+    statusEl.innerHTML = '<span style="color:var(--warn)">Uploading…</span>';
+    conLog(`[${new Date().toISOString()}] Uploading workflow: ${file.name}…`);
+
+    try {
+      const text = await file.text();
+
+      const res = await fetch('/api/config/upload-workflow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflow: text, filename: file.name }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        statusEl.innerHTML = `<span style="color:var(--ok)">✓ ${esc(file.name)} — validation passed</span>`;
+        conLog(`  ✓ Workflow "${file.name}" uploaded and validated`, 'ok');
+      } else {
+        statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(file.name)} — ${esc(data.error)}</span>`;
+        conLog(`  ✗ Workflow validation failed: ${data.error}`, 'err');
+      }
+
+      await pollStatus();
+    } catch (e) {
+      statusEl.innerHTML = `<span style="color:var(--err)">✗ Upload failed: ${esc(e.message)}</span>`;
+      conLog(`  ✗ Workflow upload failed: ${e.message}`, 'err');
+    }
+
+    // Reset the file input so the same file can be re-uploaded
+    input.value = '';
   }
 
   // ── Helpers ────────────────────────────────────────

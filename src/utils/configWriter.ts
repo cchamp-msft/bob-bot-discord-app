@@ -9,6 +9,53 @@ interface EnvUpdate {
 class ConfigWriter {
   private envPath = path.join(__dirname, '../../.env');
   private keywordsPath = path.join(__dirname, '../../config/keywords.json');
+  private configDir = path.join(__dirname, '../../.config');
+  private workflowPath = path.join(__dirname, '../../.config/comfyui-workflow.json');
+
+  /**
+   * Ensure the .config directory exists.
+   */
+  private ensureConfigDir(): void {
+    if (!fs.existsSync(this.configDir)) {
+      fs.mkdirSync(this.configDir, { recursive: true });
+    }
+  }
+
+  /**
+   * Save and validate a ComfyUI workflow JSON file.
+   * Validates that the content is valid JSON and contains at least one %prompt% placeholder (case-sensitive).
+   * Returns the result of validation and save.
+   */
+  async saveWorkflow(workflowJson: string, filename: string): Promise<{ success: boolean; error?: string }> {
+    // Validate JSON structure
+    try {
+      JSON.parse(workflowJson);
+    } catch (e) {
+      return {
+        success: false,
+        error: `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
+
+    // Validate %prompt% placeholder presence (case-sensitive)
+    if (!workflowJson.includes('%prompt%')) {
+      return {
+        success: false,
+        error: 'Workflow must contain at least one %prompt% placeholder (case-sensitive). See documentation for details.',
+      };
+    }
+
+    try {
+      this.ensureConfigDir();
+      fs.writeFileSync(this.workflowPath, workflowJson, 'utf-8');
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to save workflow: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
 
   /**
    * Update .env file with new values while preserving formatting and comments

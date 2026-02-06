@@ -94,6 +94,42 @@ class Config {
     return this.parseIntEnv('DEFAULT_TIMEOUT', 300);
   }
 
+  getOllamaModel(): string {
+    return process.env.OLLAMA_MODEL || '';
+  }
+
+  getErrorMessage(): string {
+    return process.env.ERROR_MESSAGE || "I'm experiencing technical difficulties. Please try again later.";
+  }
+
+  getErrorRateLimitMinutes(): number {
+    return this.parseIntEnv('ERROR_RATE_LIMIT_MINUTES', 60);
+  }
+
+  /**
+   * Load the ComfyUI workflow JSON from .config/comfyui-workflow.json.
+   * Returns the raw JSON string, or empty string if not found.
+   */
+  getComfyUIWorkflow(): string {
+    const workflowPath = path.join(__dirname, '../../.config/comfyui-workflow.json');
+    try {
+      if (fs.existsSync(workflowPath)) {
+        return fs.readFileSync(workflowPath, 'utf-8');
+      }
+    } catch (error) {
+      console.error('Failed to load ComfyUI workflow:', error);
+    }
+    return '';
+  }
+
+  /**
+   * Check whether a ComfyUI workflow file exists.
+   */
+  hasComfyUIWorkflow(): boolean {
+    const workflowPath = path.join(__dirname, '../../.config/comfyui-workflow.json');
+    return fs.existsSync(workflowPath);
+  }
+
   private parseIntEnv(name: string, defaultValue: number): number {
     const raw = process.env[name];
     if (!raw) return defaultValue;
@@ -128,6 +164,9 @@ class Config {
     const prevBaseUrl = this.getOutputBaseUrl();
     const prevThreshold = this.getFileSizeThreshold();
     const prevTimeout = this.getDefaultTimeout();
+    const prevOllamaModel = this.getOllamaModel();
+    const prevErrorMsg = this.getErrorMessage();
+    const prevErrorRate = this.getErrorRateLimitMinutes();
 
     // Re-parse .env into process.env
     const envPath = path.join(__dirname, '../../.env');
@@ -152,6 +191,9 @@ class Config {
     if (this.getOutputBaseUrl() !== prevBaseUrl) reloaded.push('OUTPUT_BASE_URL');
     if (this.getFileSizeThreshold() !== prevThreshold) reloaded.push('FILE_SIZE_THRESHOLD');
     if (this.getDefaultTimeout() !== prevTimeout) reloaded.push('DEFAULT_TIMEOUT');
+    if (this.getOllamaModel() !== prevOllamaModel) reloaded.push('OLLAMA_MODEL');
+    if (this.getErrorMessage() !== prevErrorMsg) reloaded.push('ERROR_MESSAGE');
+    if (this.getErrorRateLimitMinutes() !== prevErrorRate) reloaded.push('ERROR_RATE_LIMIT_MINUTES');
 
     // Reload keywords
     this.loadKeywords();
@@ -176,6 +218,12 @@ class Config {
       apis: {
         comfyui: this.getComfyUIEndpoint(),
         ollama: this.getOllamaEndpoint(),
+        ollamaModel: this.getOllamaModel(),
+        comfyuiWorkflowConfigured: this.hasComfyUIWorkflow(),
+      },
+      errorHandling: {
+        errorMessage: this.getErrorMessage(),
+        errorRateLimitMinutes: this.getErrorRateLimitMinutes(),
       },
       http: {
         port: this.getHttpPort(),

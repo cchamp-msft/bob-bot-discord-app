@@ -15,6 +15,9 @@ A Discord bot that monitors @mentions and keywords, routes requests to ComfyUI o
 - ✅ **Web-based configurator** — localhost-only SPA for managing all settings
 - ✅ **Discord start/stop controls** — manage bot connection from the configurator
 - ✅ **Hot-reload support** — API endpoints and keywords reload without restart
+- ✅ **Ollama model discovery** — test connection loads available models for selection
+- ✅ **ComfyUI workflow upload** — upload JSON workflow with `%prompt%` placeholder substitution
+- ✅ **Rate-limited error messages** — configurable user-facing error messages with minimum interval
 - ✅ Comprehensive request logging with date/requester/status tracking
 - ✅ Organized output directory structure with date formatting
 - ✅ **Unit test suite** — 71 tests covering core functionality
@@ -46,6 +49,9 @@ src/
 
 config/
 └── keywords.json         # Keyword to API mapping with timeouts
+
+.config/
+└── comfyui-workflow.json  # ComfyUI workflow template (uploaded via configurator)
 
 tests/
 ├── config.test.ts        # Config module unit tests
@@ -88,7 +94,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`
 
 ### Running the Bot
 
@@ -146,6 +152,9 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **Start/Stop Controls**: Connect or disconnect the bot from Discord without restarting the process
 - **Connection Status**: Live indicator showing stopped / connecting / running / error
 - **API Endpoints**: Configure ComfyUI/Ollama URLs with live connection testing
+- **Ollama Model Selection**: Test connection auto-discovers available models; select and save desired model
+- **ComfyUI Workflow Upload**: Upload a workflow JSON file with `%prompt%` placeholder validation
+- **Error Handling**: Configure user-facing error message and rate limit interval
 - **HTTP Server**: Adjust port and output base URL
 - **Limits**: Set file size threshold and default timeout
 - **Keywords Management**: Add/edit/remove keyword→API mappings with custom timeouts
@@ -155,6 +164,8 @@ The bot includes a **localhost-only web configurator** for easy management witho
 
 **Hot-Reload (no restart needed):**
 - ComfyUI/Ollama endpoints
+- Ollama model selection
+- Error message and rate limit
 - Output base URL
 - File size threshold
 - Default timeout
@@ -188,6 +199,29 @@ npm run test:watch
 All tests run without requiring Discord connection or external APIs.
 
 ## Usage
+
+### Ollama Model Configuration
+
+Ollama models are discovered automatically when you click **Test** in the configurator's API Endpoints section. The model list is fetched from the Ollama `/api/tags` endpoint and populates the dropdown. Select a model and click **Save Changes** to persist it to `.env` as `OLLAMA_MODEL`.
+
+If no model is configured or the selected model becomes unavailable, the bot will return an error to the console and send a rate-limited error message to Discord users.
+
+The `/ask` slash command also accepts an optional `model` parameter to override the default on a per-request basis.
+
+### ComfyUI Workflow Configuration
+
+ComfyUI uses workflow JSON files to define generation pipelines. Upload a workflow JSON file through the configurator:
+
+1. Export your workflow from ComfyUI as a JSON file (API format)
+2. Edit the workflow JSON to replace the positive prompt value with the placeholder `%prompt%`
+3. Upload the file via the configurator's **ComfyUI Workflow** upload field
+4. The server validates that the file is valid JSON and contains at least one `%prompt%` placeholder
+
+**Important:** The `%prompt%` placeholder is **case-sensitive**. Use exactly `%prompt%` — variations like `%PROMPT%` or `%Prompt%` will not be recognized.
+
+When a Discord user triggers image generation, all occurrences of `%prompt%` in the workflow are replaced with the user's prompt text, and the resulting workflow is submitted to ComfyUI's `/api/prompt` endpoint.
+
+The workflow is stored in `.config/comfyui-workflow.json`.
 
 ### @mention Usage
 Mention the bot with a keyword and prompt:

@@ -152,17 +152,13 @@ class AskCommand extends BaseCommand {
     .addStringOption((option) =>
       option
         .setName('model')
-        .setDescription('Which model to use (default: llama2)')
+        .setDescription('Which model to use (uses configured default if omitted)')
         .setRequired(false)
-        .addChoices(
-          { name: 'llama2', value: 'llama2' },
-          { name: 'neural-chat', value: 'neural-chat' }
-        )
     );
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const question = interaction.options.getString('question', true);
-    const model = interaction.options.getString('model') || 'llama2';
+    const model = interaction.options.getString('model') || config.getOllamaModel();
     const requester = interaction.user.username;
 
     // Defer reply as ephemeral

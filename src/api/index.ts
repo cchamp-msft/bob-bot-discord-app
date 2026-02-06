@@ -1,7 +1,8 @@
 import { comfyuiClient, ComfyUIResponse } from './comfyuiClient';
-import { ollamaClient, OllamaResponse } from './ollamaClient';
+import { ollamaClient, OllamaResponse, OllamaHealthResult } from './ollamaClient';
+import { config } from '../utils/config';
 
-export type { ComfyUIResponse, OllamaResponse };
+export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult };
 
 class ApiManager {
   async executeRequest(
@@ -14,7 +15,7 @@ class ApiManager {
     if (api === 'comfyui') {
       return await comfyuiClient.generateImage(data, requester);
     } else {
-      return await ollamaClient.generate(data, requester, model || 'llama2');
+      return await ollamaClient.generate(data, requester, model || config.getOllamaModel());
     }
   }
 
@@ -24,6 +25,29 @@ class ApiManager {
     } else {
       return await ollamaClient.isHealthy();
     }
+  }
+
+  /**
+   * Rebuild API client axios instances with current config endpoints.
+   * Call after config.reload() on config save — not on other reload paths.
+   */
+  refreshClients(): void {
+    ollamaClient.refresh();
+    comfyuiClient.refresh();
+  }
+
+  /**
+   * Test Ollama connection and return health status with available models.
+   */
+  async testOllamaConnection() {
+    return await ollamaClient.testConnection();
+  }
+
+  /**
+   * Validate a ComfyUI workflow JSON string.
+   */
+  validateWorkflow(workflowJson: string) {
+    return comfyuiClient.validateWorkflow(workflowJson);
   }
 }
 

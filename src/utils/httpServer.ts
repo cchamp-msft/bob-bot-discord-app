@@ -50,8 +50,8 @@ class HttpServer {
     const outputsDir = path.join(__dirname, '../../outputs');
     const publicDir = path.resolve(__dirname, '../../src/public');
 
-    // Parse JSON bodies for API routes
-    this.app.use(express.json());
+    // Parse JSON bodies for API routes (increased limit for workflow uploads)
+    this.app.use(express.json({ limit: '10mb' }));
 
     // ── Configurator routes (localhost only) ──────────────────────
 
@@ -83,14 +83,55 @@ class HttpServer {
       }
 
       try {
-        const healthy = await apiManager.checkApiHealth(api);
-        const endpoint = config.getApiEndpoint(api);
-        pushStatus(`Connection test: ${api} at ${endpoint} — ${healthy ? 'OK' : 'FAILED'}`);
-        res.json({ api, endpoint, healthy });
+        if (api === 'ollama') {
+          // Enhanced: return model list alongside health status
+          const result = await apiManager.testOllamaConnection();
+          const endpoint = config.getApiEndpoint(api);
+          if (result.healthy) {
+            pushStatus(`Connection test: ollama at ${endpoint} — OK (${result.models.length} model(s) found)`);
+          } else {
+            pushStatus(`Connection test: ollama at ${endpoint} — FAILED${result.error ? ': ' + result.error : ''}`);
+          }
+          res.json({ api, endpoint, healthy: result.healthy, models: result.models, error: result.error });
+        } else {
+          const healthy = await apiManager.checkApiHealth(api);
+          const endpoint = config.getApiEndpoint(api);
+          pushStatus(`Connection test: ${api} at ${endpoint} — ${healthy ? 'OK' : 'FAILED'}`);
+          res.json({ api, endpoint, healthy });
+        }
       } catch (error) {
         const endpoint = config.getApiEndpoint(api);
         pushStatus(`Connection test: ${api} at ${endpoint} — ERROR: ${error}`);
         res.json({ api, endpoint, healthy: false, error: String(error) });
+      }
+    });
+
+    // POST upload ComfyUI workflow JSON
+    this.app.post('/api/config/upload-workflow', localhostOnly, async (req, res) => {
+      try {
+        const { workflow, filename } = req.body;
+
+        if (!workflow || typeof workflow !== 'string') {
+          pushStatus('Workflow upload FAILED: No workflow data provided');
+          res.status(400).json({ success: false, error: 'Workflow JSON string is required' });
+          return;
+        }
+
+        const safeName = filename || 'comfyui-workflow.json';
+
+        const result = await configWriter.saveWorkflow(workflow, safeName);
+
+        if (result.success) {
+          pushStatus(`Workflow uploaded: ${safeName} — validation passed ✓`);
+          res.json({ success: true, filename: safeName });
+        } else {
+          pushStatus(`Workflow upload FAILED: ${result.error}`);
+          res.status(400).json({ success: false, error: result.error });
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        pushStatus(`Workflow upload ERROR: ${errorMsg}`);
+        res.status(500).json({ success: false, error: errorMsg });
       }
     });
 
@@ -160,6 +201,10 @@ class HttpServer {
 
         // Hot-reload config
         const reloadResult = config.reload();
+
+        // Rebuild API client axios instances if endpoints changed
+        apiManager.refreshClients();
+
         pushStatus(`Config reloaded — hot: [${reloadResult.reloaded.join(', ')}], restart needed: [${reloadResult.requiresRestart.join(', ') || 'none'}]`);
 
         if (reloadResult.requiresRestart.length > 0) {
