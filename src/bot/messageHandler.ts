@@ -132,14 +132,15 @@ class MessageHandler {
         message.author.username,
         keywordConfig.keyword,
         keywordConfig.timeout || config.getDefaultTimeout(),
-        () =>
+        (signal) =>
           apiManager.executeRequest(
             keywordConfig.api,
             message.author.username,
             content,
             keywordConfig.timeout || config.getDefaultTimeout(),
             undefined,
-            conversationHistory.length > 0 ? conversationHistory : undefined
+            conversationHistory.length > 0 ? conversationHistory : undefined,
+            signal
           )
       );
 
@@ -226,14 +227,17 @@ class MessageHandler {
         }
 
         if (refContent) {
-          // Check total character budget before adding
-          if (totalChars + refContent.length > maxTotalChars) {
+          const isBot = referenced.author.id === botId;
+
+          // Check total character budget before adding (include potential authorName prefix)
+          const prefixLen = isBot ? 0 : ((referenced.member?.displayName ?? referenced.author.username).length + 2);
+          const entryLen = refContent.length + prefixLen;
+          if (totalChars + entryLen > maxTotalChars) {
             logger.log('success', 'system', `REPLY_CHAIN: Character limit reached (${totalChars}/${maxTotalChars}), stopping at depth ${depth}`);
             break;
           }
-          totalChars += refContent.length;
+          totalChars += entryLen;
 
-          const isBot = referenced.author.id === botId;
           const role = isBot ? 'assistant' as const : 'user' as const;
           const authorName = isBot ? undefined : (referenced.member?.displayName ?? referenced.author.username);
 

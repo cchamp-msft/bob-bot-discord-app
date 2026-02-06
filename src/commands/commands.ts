@@ -54,7 +54,7 @@ class GenerateCommand extends BaseCommand {
         requester,
         'generate',
         timeout,
-        () => apiManager.executeRequest('comfyui', requester, prompt, timeout) as Promise<ComfyUIResponse>
+        (signal) => apiManager.executeRequest('comfyui', requester, prompt, timeout, undefined, undefined, signal) as Promise<ComfyUIResponse>
       );
 
       if (!apiResult.success) {
@@ -177,7 +177,7 @@ class AskCommand extends BaseCommand {
         requester,
         'ask',
         timeout,
-        () => apiManager.executeRequest('ollama', requester, question, timeout, model) as Promise<OllamaResponse>
+        (signal) => apiManager.executeRequest('ollama', requester, question, timeout, model, undefined, signal) as Promise<OllamaResponse>
       );
 
       if (!apiResult.success) {

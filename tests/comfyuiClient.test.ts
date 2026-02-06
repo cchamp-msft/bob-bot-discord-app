@@ -138,6 +138,23 @@ describe('ComfyUIClient', () => {
       expect(sentBody.prompt.title).toBe('Job: cat');
     });
 
+    it('should JSON-escape prompts with quotes and backslashes', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { images: [] },
+      });
+
+      // Prompt with a double-quote and a backslash
+      await comfyuiClient.generateImage('say "hello" with back\\slash', 'user1');
+
+      const sentBody = mockInstance.post.mock.calls[0][1];
+      // After JSON-escape + JSON.parse round-trip, the original value should survive
+      expect(sentBody.prompt.inputs.text).toBe('say "hello" with back\\slash');
+    });
+
     it('should handle API error gracefully', async () => {
       const workflow = '{"inputs": {"text": "%prompt%"}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);

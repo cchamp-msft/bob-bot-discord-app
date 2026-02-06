@@ -214,7 +214,7 @@ describe('OllamaClient', () => {
         model: 'llama2',
         messages: [{ role: 'user', content: 'hello' }],
         stream: false,
-      });
+      }, undefined);
     });
 
     it('should include system prompt in request when configured', async () => {
@@ -241,7 +241,7 @@ describe('OllamaClient', () => {
           { role: 'user', content: 'hello' },
         ],
         stream: false,
-      });
+      }, undefined);
     });
 
     it('should omit system message when system prompt is empty', async () => {
@@ -288,7 +288,7 @@ describe('OllamaClient', () => {
         model: 'codellama',
         messages: [{ role: 'user', content: 'write code' }],
         stream: false,
-      });
+      }, undefined);
     });
 
     it('should handle API error gracefully', async () => {
@@ -339,7 +339,7 @@ describe('OllamaClient', () => {
           { role: 'user', content: 'And 3+3?' },
         ],
         stream: false,
-      });
+      }, undefined);
     });
   });
 

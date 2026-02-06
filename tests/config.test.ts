@@ -171,6 +171,11 @@ describe('Config', () => {
       expect(config.getOllamaSystemPrompt()).toBe('You are a pirate bot.');
     });
 
+    it('should return empty string when env is explicitly set to empty', () => {
+      process.env.OLLAMA_SYSTEM_PROMPT = '';
+      expect(config.getOllamaSystemPrompt()).toBe('');
+    });
+
     it('should be included in getPublicConfig', () => {
       process.env.OLLAMA_SYSTEM_PROMPT = 'Custom prompt';
       const pub = config.getPublicConfig();

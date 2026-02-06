@@ -87,7 +87,7 @@ class ConfigWriter {
         if (match) {
           const key = match[1].trim();
           if (key in updates) {
-            lines[i] = `${key}=${updates[key]}`;
+            lines[i] = `${key}=${this.encodeEnvValue(String(updates[key]))}`;
             updatedKeys.add(key);
           }
         }
@@ -96,7 +96,7 @@ class ConfigWriter {
       // Append new keys that weren't in the file
       for (const [key, value] of Object.entries(updates)) {
         if (!updatedKeys.has(key)) {
-          lines.push(`${key}=${value}`);
+          lines.push(`${key}=${this.encodeEnvValue(String(value))}`);
         }
       }
 
@@ -105,6 +105,24 @@ class ConfigWriter {
     } catch (error) {
       throw new Error(`Failed to update .env: ${error}`);
     }
+  }
+
+  /**
+   * Encode a value for safe storage in a .env file.
+   * Wraps values containing newlines, quotes, or leading/trailing
+   * whitespace in double quotes with proper escaping.
+   */
+  private encodeEnvValue(value: string): string {
+    // If the value contains newlines, quotes, or surrounding whitespace, quote it
+    if (/[\n\r"]/.test(value) || value !== value.trim()) {
+      const escaped = value
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r');
+      return `"${escaped}"`;
+    }
+    return value;
   }
 
   /**

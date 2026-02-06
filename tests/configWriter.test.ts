@@ -107,6 +107,24 @@ describe('ConfigWriter', () => {
       expect(content).not.toContain('OLLAMA_MODEL=llama3');
       expect(content).toContain('OTHER=keep');
     });
+
+    it('should quote values containing newlines', async () => {
+      fs.writeFileSync(envPath, '');
+
+      await configWriter.updateEnv({ OLLAMA_SYSTEM_PROMPT: 'Line one\nLine two' });
+
+      const content = fs.readFileSync(envPath, 'utf-8');
+      expect(content).toContain('OLLAMA_SYSTEM_PROMPT="Line one\\nLine two"');
+    });
+
+    it('should escape double quotes inside values', async () => {
+      fs.writeFileSync(envPath, '');
+
+      await configWriter.updateEnv({ MSG: 'say "hello" world' });
+
+      const content = fs.readFileSync(envPath, 'utf-8');
+      expect(content).toContain('MSG="say \\"hello\\" world"');
+    });
   });
 
   describe('updateKeywords', () => {

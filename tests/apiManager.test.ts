@@ -56,7 +56,7 @@ describe('ApiManager', () => {
 
       const result = await apiManager.executeRequest('comfyui', 'user1', 'test prompt', 300);
 
-      expect(comfyuiClient.generateImage).toHaveBeenCalledWith('test prompt', 'user1');
+      expect(comfyuiClient.generateImage).toHaveBeenCalledWith('test prompt', 'user1', undefined);
       expect(result.success).toBe(true);
     });
 
@@ -68,7 +68,7 @@ describe('ApiManager', () => {
 
       const result = await apiManager.executeRequest('ollama', 'user1', 'hello', 300);
 
-      expect(ollamaClient.generate).toHaveBeenCalledWith('hello', 'user1', 'llama2', undefined);
+      expect(ollamaClient.generate).toHaveBeenCalledWith('hello', 'user1', 'llama2', undefined, undefined);
       expect(result.success).toBe(true);
     });
 
@@ -80,7 +80,7 @@ describe('ApiManager', () => {
 
       await apiManager.executeRequest('ollama', 'user1', 'write code', 300, 'codellama');
 
-      expect(ollamaClient.generate).toHaveBeenCalledWith('write code', 'user1', 'codellama', undefined);
+      expect(ollamaClient.generate).toHaveBeenCalledWith('write code', 'user1', 'codellama', undefined, undefined);
     });
 
     it('should pass conversation history to ollamaClient', async () => {
@@ -96,7 +96,7 @@ describe('ApiManager', () => {
 
       await apiManager.executeRequest('ollama', 'user1', 'follow up', 300, undefined, history);
 
-      expect(ollamaClient.generate).toHaveBeenCalledWith('follow up', 'user1', 'llama2', history);
+      expect(ollamaClient.generate).toHaveBeenCalledWith('follow up', 'user1', 'llama2', history, undefined);
     });
   });
 

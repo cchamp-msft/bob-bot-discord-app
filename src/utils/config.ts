@@ -103,7 +103,12 @@ class Config {
    * Defaults to a friendly, tone-matching Discord bot persona.
    */
   getOllamaSystemPrompt(): string {
-    return process.env.OLLAMA_SYSTEM_PROMPT || 'You are a helpful Discord bot assistant. Be friendly and helpful by default, but match the user\'s tone when appropriate—if someone is being snarky or playful, feel free to respond in kind. Always prioritize being useful and respectful.';
+    // Distinguish "not set" (undefined) from "explicitly cleared" (empty string)
+    const val = process.env.OLLAMA_SYSTEM_PROMPT;
+    if (val === undefined) {
+      return 'You are a helpful Discord bot assistant. Be friendly and helpful by default, but match the user\'s tone when appropriate—if someone is being snarky or playful, feel free to respond in kind. Always prioritize being useful and respectful.';
+    }
+    return val;
   }
 
   getErrorMessage(): string {

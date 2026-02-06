@@ -12,12 +12,13 @@ class ApiManager {
     data: string,
     _timeout: number,
     model?: string,
-    conversationHistory?: ChatMessage[]
+    conversationHistory?: ChatMessage[],
+    signal?: AbortSignal
   ): Promise<ComfyUIResponse | OllamaResponse> {
     if (api === 'comfyui') {
-      return await comfyuiClient.generateImage(data, requester);
+      return await comfyuiClient.generateImage(data, requester, signal);
     } else {
-      return await ollamaClient.generate(data, requester, model || config.getOllamaModel(), conversationHistory);
+      return await ollamaClient.generate(data, requester, model || config.getOllamaModel(), conversationHistory, signal);
     }
   }
 

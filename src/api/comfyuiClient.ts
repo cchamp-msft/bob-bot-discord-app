@@ -64,7 +64,8 @@ class ComfyUIClient {
 
   async generateImage(
     prompt: string,
-    requester: string
+    requester: string,
+    signal?: AbortSignal
   ): Promise<ComfyUIResponse> {
     try {
       const workflowJson = config.getComfyUIWorkflow();
@@ -88,8 +89,11 @@ class ComfyUIClient {
         `ComfyUI generate: ${prompt.substring(0, 100)}...`
       );
 
-      // Replace all occurrences of %prompt% with the actual prompt (case-sensitive)
-      const substitutedWorkflow = workflowJson.split('%prompt%').join(prompt);
+      // JSON-escape the prompt so quotes/backslashes don't break the workflow JSON
+      const escapedPrompt = JSON.stringify(prompt).slice(1, -1);
+
+      // Replace all occurrences of %prompt% with the escaped prompt (case-sensitive)
+      const substitutedWorkflow = workflowJson.split('%prompt%').join(escapedPrompt);
 
       // Parse the substituted workflow to send as the prompt object
       const workflowData = JSON.parse(substitutedWorkflow);
@@ -99,7 +103,8 @@ class ComfyUIClient {
         {
           prompt: workflowData,
           client_id: requester,
-        }
+        },
+        signal ? { signal } : undefined
       );
 
       if (response.status === 200) {

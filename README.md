@@ -184,7 +184,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 
 ## Running Tests
 
-The bot includes a comprehensive unit test suite with 165 tests covering configuration, logging, file handling, request queuing, message handling, API clients, and config persistence.
+The bot includes a comprehensive unit test suite with 169 tests covering configuration, logging, file handling, request queuing, message handling, API clients, and config persistence.
 
 ### Run all tests:
 ```bash
@@ -301,7 +301,7 @@ Use slash commands for ephemeral responses:
 
 - **Serial Processing**: Only 1 request per API endpoint at a time
 - **FIFO Queueing**: Additional requests are queued and processed in order
-- **Timeout Cancellation**: Timed-out requests are aborted so they don't overlap with subsequent work
+- **Timeout + Abort**: When a request times out, its `AbortSignal` is triggered, cancelling the underlying HTTP call so it doesn't overlap with subsequent work. Timeout covers active execution time only (not time waiting in the queue)
 - **Discord Rate Limits**: Respects Discord API rate limits
 
 ## Output Organization

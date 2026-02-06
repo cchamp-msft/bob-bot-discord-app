@@ -93,7 +93,8 @@ class OllamaClient {
     prompt: string,
     requester: string,
     model?: string,
-    conversationHistory?: ChatMessage[]
+    conversationHistory?: ChatMessage[],
+    signal?: AbortSignal
   ): Promise<OllamaResponse> {
     const selectedModel = model || config.getOllamaModel();
 
@@ -141,7 +142,7 @@ class OllamaClient {
         stream: false,
       };
 
-      const response = await this.client.post('/api/chat', requestBody);
+      const response = await this.client.post('/api/chat', requestBody, signal ? { signal } : undefined);
 
       if (response.status === 200 && response.data.message?.content) {
         logger.logReply(
