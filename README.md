@@ -70,7 +70,7 @@ outputs/
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/bob-bot-discord-app.git
+git clone https://github.com/cchamp-msft/bob-bot-discord-app.git
 cd bob-bot-discord-app
 ```
 
@@ -84,19 +84,21 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` and add your values:
-- `DISCORD_TOKEN`: Your Discord bot token
-- `DISCORD_CLIENT_ID`: Your Discord bot client ID
-- `COMFYUI_ENDPOINT`: ComfyUI API endpoint (e.g., `http://localhost:8188`)
-- `OLLAMA_ENDPOINT`: Ollama API endpoint (e.g., `http://localhost:11434`)
-- `HTTP_PORT`: Port for output file serving (default: 3000)
+Edit `.env` and set at minimum the two **required** values:
+- `DISCORD_TOKEN` **(required)**: Your Discord bot token
+- `DISCORD_CLIENT_ID` **(required)**: Your Discord application client ID
+
+The remaining values have sensible defaults and can be changed later via the web configurator:
+- `COMFYUI_ENDPOINT`: ComfyUI API endpoint (default: `http://localhost:8188`)
+- `OLLAMA_ENDPOINT`: Ollama API endpoint (default: `http://localhost:11434`)
+- `HTTP_PORT`: Port for output file serving (default: `3000`)
 - `OUTPUT_BASE_URL`: Base URL for file serving (default: `http://localhost:3000`)
-- `FILE_SIZE_THRESHOLD`: Max file size for attachment (bytes, default: 10485760 = 10MB)
-- `DEFAULT_TIMEOUT`: Default timeout for requests (seconds, default: 300)
+- `FILE_SIZE_THRESHOLD`: Max file size for attachment in bytes (default: `10485760` = 10MB)
+- `DEFAULT_TIMEOUT`: Default timeout for requests in seconds (default: `300`)
 
-4. Configure keywords:
+4. Configure keywords (optional — defaults work out of the box):
 
-Edit `config/keywords.json` to map keywords to APIs and set timeout overrides:
+The default `config/keywords.json` ships with four keywords. You can edit this file directly or use the web configurator after starting the bot:
 
 ```json
 {
@@ -119,7 +121,18 @@ Edit `config/keywords.json` to map keywords to APIs and set timeout overrides:
 
 ### Running the Bot
 
-#### Development mode (with auto-reload):
+> **Note:** The bot must successfully connect to Discord before the HTTP server (and configurator) starts. Make sure `DISCORD_TOKEN` and `DISCORD_CLIENT_ID` are set in `.env` first.
+
+#### Quick start (minimum steps to reach the configurator):
+```bash
+cp .env.example .env
+# Edit .env — set DISCORD_TOKEN and DISCORD_CLIENT_ID
+npm install
+npm run dev
+```
+Once you see `Bot logged in as ...` in the console, open **http://localhost:3000/configurator** to configure everything else.
+
+#### Development mode (with auto-reload on code changes):
 ```bash
 npm run dev:watch
 ```
@@ -141,10 +154,13 @@ The bot includes a **localhost-only web configurator** for easy management witho
 
 ### Accessing the Configurator
 
-1. Start the bot (dev or production mode)
-2. Open your browser to: **http://localhost:3000/configurator**
+1. Start the bot (`npm run dev`, `npm run dev:watch`, or `npm start`)
+2. Wait for `Bot logged in as ...` — the HTTP server starts after Discord connects
+3. Open your browser to: **http://localhost:3000/configurator**
    - ⚠️ Only accessible from localhost for security
-   - Port matches your `HTTP_PORT` setting in `.env`
+   - Port matches your `HTTP_PORT` setting in `.env` (default: 3000)
+
+> The configurator is for **tuning settings once the bot is running**. Initial setup (Discord token and client ID) must be done by editing `.env` directly.
 
 ### Configurator Features
 
