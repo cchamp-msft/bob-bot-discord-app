@@ -113,6 +113,84 @@ class Config {
       ? this.getComfyUIEndpoint()
       : this.getOllamaEndpoint();
   }
+
+  /**
+   * Reload hot-reloadable config from .env and keywords.json.
+   * API endpoints and keywords reload in-place.
+   * Discord token, client ID, and HTTP port require restart.
+   */
+  reload(): { reloaded: string[]; requiresRestart: string[] } {
+    const requiresRestart: string[] = [];
+    const reloaded: string[] = [];
+
+    // Capture current values BEFORE reloading .env
+    const prevToken = process.env.DISCORD_TOKEN || '';
+    const prevClientId = process.env.DISCORD_CLIENT_ID || '';
+    const prevPort = this.port;
+    const prevComfyUI = this.getComfyUIEndpoint();
+    const prevOllama = this.getOllamaEndpoint();
+    const prevBaseUrl = this.getOutputBaseUrl();
+    const prevThreshold = this.getFileSizeThreshold();
+    const prevTimeout = this.getDefaultTimeout();
+
+    // Re-parse .env into process.env
+    const envPath = path.join(__dirname, '../../.env');
+    const envResult = dotenv.config({ path: envPath, override: true });
+    if (envResult.error) {
+      console.error('Failed to reload .env:', envResult.error);
+    }
+
+    // Detect restart-required changes (Discord + port)
+    const newToken = process.env.DISCORD_TOKEN || '';
+    const newClientId = process.env.DISCORD_CLIENT_ID || '';
+    const newPort = this.parseIntEnv('HTTP_PORT', 3000);
+
+    if (newToken !== prevToken) requiresRestart.push('DISCORD_TOKEN');
+    if (newClientId !== prevClientId) requiresRestart.push('DISCORD_CLIENT_ID');
+    if (newPort !== prevPort) requiresRestart.push('HTTP_PORT');
+
+    // Track hot-reloaded changes
+    if (this.getComfyUIEndpoint() !== prevComfyUI) reloaded.push('COMFYUI_ENDPOINT');
+    if (this.getOllamaEndpoint() !== prevOllama) reloaded.push('OLLAMA_ENDPOINT');
+    if (this.getOutputBaseUrl() !== prevBaseUrl) reloaded.push('OUTPUT_BASE_URL');
+    if (this.getFileSizeThreshold() !== prevThreshold) reloaded.push('FILE_SIZE_THRESHOLD');
+    if (this.getDefaultTimeout() !== prevTimeout) reloaded.push('DEFAULT_TIMEOUT');
+
+    // Reload keywords
+    this.loadKeywords();
+    reloaded.push('keywords');
+
+    return { reloaded, requiresRestart };
+  }
+
+  /** Port captured at construction time — changes require restart */
+  private port = this.parseIntEnv('HTTP_PORT', 3000);
+
+  /**
+   * Get a safe view of config for the configurator UI.
+   * Never exposes Discord token or API keys.
+   */
+  getPublicConfig(): Record<string, unknown> {
+    return {
+      discord: {
+        clientId: process.env.DISCORD_CLIENT_ID || '',
+        tokenConfigured: !!process.env.DISCORD_TOKEN,
+      },
+      apis: {
+        comfyui: this.getComfyUIEndpoint(),
+        ollama: this.getOllamaEndpoint(),
+      },
+      http: {
+        port: this.getHttpPort(),
+        outputBaseUrl: this.getOutputBaseUrl(),
+      },
+      limits: {
+        fileSizeThreshold: this.getFileSizeThreshold(),
+        defaultTimeout: this.getDefaultTimeout(),
+      },
+      keywords: this.getKeywords(),
+    };
+  }
 }
 
 export const config = new Config();

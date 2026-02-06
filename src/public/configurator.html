@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bot Configurator</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --accent2: #533483;
+    --text: #eee;
+    --text-dim: #999;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
+    --border: #2a2a4a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header {
+    background: var(--surface);
+    padding: 12px 24px;
+    border-bottom: 2px solid var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  header h1 { font-size: 1.2em; font-weight: 600; }
+  header .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--ok);
+    display: inline-block;
+  }
+  header .dot.off { background: var(--err); }
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+  .config-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  }
+  .console-panel {
+    width: 360px;
+    background: #0d0d1a;
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+  }
+  .console-panel h3 {
+    padding: 10px 14px;
+    background: var(--surface);
+    font-size: 0.85em;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  #console {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.78em;
+    line-height: 1.6;
+    color: var(--text-dim);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  #console .line { margin-bottom: 2px; }
+  #console .line.err { color: var(--err); }
+  #console .line.ok { color: var(--ok); }
+  #console .line.warn { color: var(--warn); }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  section h2 {
+    font-size: 0.9em;
+    padding: 10px 16px;
+    background: var(--surface2);
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  section h2::before {
+    content: '▸';
+    transition: transform 0.2s;
+    display: inline-block;
+  }
+  section h2.open::before { transform: rotate(90deg); }
+  section .body { padding: 16px; display: none; }
+  section .body.open { display: block; }
+
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block;
+    font-size: 0.8em;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .field label .note {
+    font-style: italic;
+    color: var(--accent);
+    font-size: 0.9em;
+  }
+  .field input, .field select {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 0.9em;
+    font-family: inherit;
+  }
+  .field input:focus, .field select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .field input.dirty {
+    border-color: var(--warn);
+  }
+  .field-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  .field-row .field { flex: 1; }
+  .field-row .field.narrow { flex: 0 0 120px; }
+  .field-row .field.tiny { flex: 0 0 90px; }
+
+  button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
+    font-family: inherit;
+    transition: opacity 0.2s;
+  }
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary { background: var(--accent2); color: #fff; }
+  .btn-sm { padding: 5px 10px; font-size: 0.8em; }
+  .btn-test { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-danger { background: var(--err); color: #fff; }
+
+  .actions-bar {
+    padding: 16px 20px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .actions-bar .spacer { flex: 1; }
+  .actions-bar .msg {
+    font-size: 0.82em;
+    color: var(--text-dim);
+  }
+  .actions-bar .msg.warn { color: var(--warn); }
+  .actions-bar .msg.ok { color: var(--ok); }
+  .actions-bar .msg.err { color: var(--err); }
+
+  /* Keywords table */
+  .kw-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .kw-table th {
+    text-align: left;
+    font-size: 0.75em;
+    color: var(--text-dim);
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .kw-table td { padding: 4px 8px; }
+  .kw-table input, .kw-table select {
+    width: 100%;
+    padding: 6px 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    font-size: 0.85em;
+  }
+  .kw-table .btn-sm { padding: 4px 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="dot" id="statusDot"></span>
+  <h1>Bot Configurator</h1>
+</header>
+
+<div class="main">
+  <div class="config-panel">
+
+    <!-- Discord Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">Discord Connection <span class="note" style="font-size:0.8em;color:var(--warn);margin-left:auto">restart required</span></h2>
+      <div class="body">
+        <div class="field">
+          <label>Client ID</label>
+          <input type="text" id="discord_client_id" data-env="DISCORD_CLIENT_ID" placeholder="Discord Application Client ID">
+        </div>
+        <div class="field">
+          <label>Bot Token <span class="note">edit directly in .env → DISCORD_TOKEN</span></label>
+          <input type="text" disabled placeholder="••••••••  (hidden for security)" style="opacity:0.5">
+        </div>
+      </div>
+    </section>
+
+    <!-- API Endpoints Section -->
+    <section>
+      <h2 class="open" onclick="toggleSection(this)">API Endpoints</h2>
+      <div class="body open">
+        <div class="field-row">
+          <div class="field">
+            <label>ComfyUI Endpoint</label>
+            <input type="text" id="comfyui_endpoint" data-env="COMFYUI_ENDPOINT" placeholder="http://localhost:8188">
+          </div>
+          <div class="field tiny">
+            <button class="btn-test btn-sm" onclick="testConnection('comfyui')">Test</button>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Ollama Endpoint</label>
+            <input type="text" id="ollama_endpoint" data-env="OLLAMA_ENDPOINT" placeholder="http://localhost:11434">
+          </div>
+          <div class="field tiny">
+            <button class="btn-test btn-sm" onclick="testConnection('ollama')">Test</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HTTP Server Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">HTTP Server</h2>
+      <div class="body">
+        <div class="field-row">
+          <div class="field narrow">
+            <label>Port <span class="note">restart</span></label>
+            <input type="number" id="http_port" data-env="HTTP_PORT" placeholder="3000">
+          </div>
+          <div class="field">
+            <label>Output Base URL</label>
+            <input type="text" id="output_base_url" data-env="OUTPUT_BASE_URL" placeholder="http://localhost:3000">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Limits Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">Limits</h2>
+      <div class="body">
+        <div class="field-row">
+          <div class="field">
+            <label>File Size Threshold (bytes)</label>
+            <input type="number" id="file_size_threshold" data-env="FILE_SIZE_THRESHOLD" placeholder="10485760">
+          </div>
+          <div class="field narrow">
+            <label>Default Timeout (sec)</label>
+            <input type="number" id="default_timeout" data-env="DEFAULT_TIMEOUT" placeholder="300">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Keywords Section -->
+    <section>
+      <h2 class="open" onclick="toggleSection(this)">Keywords → API Routing</h2>
+      <div class="body open">
+        <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
+          Map @mention keywords to APIs. Slash commands <code>/generate</code> and <code>/ask</code> are hardcoded in bot code.
+        </p>
+        <table class="kw-table">
+          <thead>
+            <tr>
+              <th>Keyword</th>
+              <th>API</th>
+              <th>Timeout (s)</th>
+              <th>Description</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="kwBody"></tbody>
+        </table>
+        <div style="margin-top:10px">
+          <button class="btn-secondary btn-sm" onclick="addKeywordRow()">+ Add Keyword</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Console Panel -->
+  <div class="console-panel">
+    <h3>Status Console</h3>
+    <div id="console"></div>
+  </div>
+</div>
+
+<!-- Bottom action bar -->
+<div class="actions-bar">
+  <button class="btn-secondary btn-sm" onclick="loadConfig()">↻ Reload</button>
+  <span class="spacer"></span>
+  <span class="msg" id="saveMsg"></span>
+  <button class="btn-primary" id="saveBtn" disabled onclick="saveConfig()">Save Changes</button>
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────
+  let originalConfig = null;
+  let dirty = false;
+
+  // ── Section toggle ─────────────────────────────────
+  function toggleSection(h2) {
+    h2.classList.toggle('open');
+    h2.nextElementSibling.classList.toggle('open');
+  }
+
+  // ── Console ────────────────────────────────────────
+  const consoleEl = document.getElementById('console');
+
+  function conLog(text, cls = '') {
+    const d = document.createElement('div');
+    d.className = 'line' + (cls ? ' ' + cls : '');
+    d.textContent = text;
+    consoleEl.appendChild(d);
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+  }
+
+  async function pollStatus() {
+    try {
+      const res = await fetch('/api/config/status');
+      const data = await res.json();
+      consoleEl.innerHTML = '';
+      for (const line of data.lines) {
+        const cls = line.includes('FAILED') || line.includes('ERROR') ? 'err'
+          : line.includes('OK') || line.includes('started') || line.includes('saved') ? 'ok'
+          : line.includes('restart') ? 'warn'
+          : '';
+        conLog(line, cls);
+      }
+    } catch (e) {
+      // server not reachable
+    }
+  }
+
+  // ── Dirty tracking ─────────────────────────────────
+  function markDirty() {
+    dirty = true;
+    document.getElementById('saveBtn').disabled = false;
+    document.getElementById('saveMsg').textContent = 'Unsaved changes';
+    document.getElementById('saveMsg').className = 'msg warn';
+  }
+
+  function markClean() {
+    dirty = false;
+    document.getElementById('saveBtn').disabled = true;
+  }
+
+  // Attach to all env inputs
+  function attachDirtyListeners() {
+    document.querySelectorAll('[data-env]').forEach(input => {
+      input.addEventListener('input', () => {
+        input.classList.add('dirty');
+        markDirty();
+      });
+    });
+  }
+
+  // ── Load config ────────────────────────────────────
+  async function loadConfig() {
+    try {
+      const res = await fetch('/api/config');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const cfg = await res.json();
+      originalConfig = cfg;
+
+      // Populate env fields
+      document.getElementById('discord_client_id').value = cfg.discord.clientId;
+      document.getElementById('comfyui_endpoint').value = cfg.apis.comfyui;
+      document.getElementById('ollama_endpoint').value = cfg.apis.ollama;
+      document.getElementById('http_port').value = cfg.http.port;
+      document.getElementById('output_base_url').value = cfg.http.outputBaseUrl;
+      document.getElementById('file_size_threshold').value = cfg.limits.fileSizeThreshold;
+      document.getElementById('default_timeout').value = cfg.limits.defaultTimeout;
+
+      // Populate keywords
+      renderKeywords(cfg.keywords);
+
+      // Clear dirty state
+      document.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+      markClean();
+      document.getElementById('saveMsg').textContent = 'Config loaded';
+      document.getElementById('saveMsg').className = 'msg ok';
+      document.getElementById('statusDot').className = 'dot';
+
+      conLog(`[${new Date().toISOString()}] Config loaded from server`, 'ok');
+    } catch (e) {
+      document.getElementById('statusDot').className = 'dot off';
+      conLog(`[${new Date().toISOString()}] Failed to load config: ${e.message}`, 'err');
+    }
+  }
+
+  // ── Keywords table ─────────────────────────────────
+  function renderKeywords(keywords) {
+    const tbody = document.getElementById('kwBody');
+    tbody.innerHTML = '';
+    for (const kw of keywords) {
+      addKeywordRow(kw);
+    }
+  }
+
+  function addKeywordRow(kw = null) {
+    const tbody = document.getElementById('kwBody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" class="kw-keyword" value="${esc(kw?.keyword || '')}" placeholder="keyword"></td>
+      <td><select class="kw-api">
+        <option value="comfyui" ${kw?.api === 'comfyui' ? 'selected' : ''}>comfyui</option>
+        <option value="ollama" ${kw?.api === 'ollama' ? 'selected' : ''}>ollama</option>
+      </select></td>
+      <td><input type="number" class="kw-timeout" value="${kw?.timeout || 300}" style="width:70px"></td>
+      <td><input type="text" class="kw-desc" value="${esc(kw?.description || '')}" placeholder="description"></td>
+      <td><button class="btn-danger btn-sm" onclick="this.closest('tr').remove();markDirty()">✕</button></td>
+    `;
+    // Attach dirty listeners to new row inputs
+    tr.querySelectorAll('input, select').forEach(el => {
+      el.addEventListener('input', markDirty);
+      el.addEventListener('change', markDirty);
+    });
+    tbody.appendChild(tr);
+  }
+
+  function collectKeywords() {
+    const rows = document.querySelectorAll('#kwBody tr');
+    const keywords = [];
+    for (const row of rows) {
+      const keyword = row.querySelector('.kw-keyword').value.trim();
+      if (!keyword) continue;
+      keywords.push({
+        keyword,
+        api: row.querySelector('.kw-api').value,
+        timeout: parseInt(row.querySelector('.kw-timeout').value, 10) || 300,
+        description: row.querySelector('.kw-desc').value.trim() || keyword,
+      });
+    }
+    return keywords;
+  }
+
+  // ── Save ───────────────────────────────────────────
+  async function saveConfig() {
+    const saveBtn = document.getElementById('saveBtn');
+    const saveMsg = document.getElementById('saveMsg');
+    saveBtn.disabled = true;
+    saveMsg.textContent = 'Saving…';
+    saveMsg.className = 'msg';
+
+    try {
+      // Collect env changes
+      const env = {};
+      document.querySelectorAll('[data-env]').forEach(input => {
+        const key = input.dataset.env;
+        const val = input.value.trim();
+        if (val) env[key] = val;
+      });
+
+      // Collect keywords
+      const keywords = collectKeywords();
+
+      const res = await fetch('/api/config/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ env, keywords }),
+      });
+
+      const result = await res.json();
+
+      if (result.success) {
+        document.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+        markClean();
+        saveMsg.textContent = result.messages.join(' | ');
+        saveMsg.className = 'msg ok';
+        conLog(`[${new Date().toISOString()}] Save successful`, 'ok');
+        for (const m of result.messages) {
+          conLog(`  ${m}`, m.includes('⚠') ? 'warn' : 'ok');
+        }
+        // Refresh status
+        await pollStatus();
+      } else {
+        saveMsg.textContent = result.error;
+        saveMsg.className = 'msg err';
+        saveBtn.disabled = false;
+        conLog(`[${new Date().toISOString()}] Save failed: ${result.error}`, 'err');
+      }
+    } catch (e) {
+      saveMsg.textContent = `Error: ${e.message}`;
+      saveMsg.className = 'msg err';
+      saveBtn.disabled = false;
+      conLog(`[${new Date().toISOString()}] Save error: ${e.message}`, 'err');
+    }
+  }
+
+  // ── Test connection ────────────────────────────────
+  async function testConnection(api) {
+    conLog(`[${new Date().toISOString()}] Testing ${api} connection…`);
+    try {
+      const res = await fetch(`/api/config/test-connection/${api}`);
+      const data = await res.json();
+      if (data.healthy) {
+        conLog(`  ✓ ${api} at ${data.endpoint} is reachable`, 'ok');
+      } else {
+        conLog(`  ✗ ${api} at ${data.endpoint} is not reachable`, 'err');
+        if (data.error) conLog(`    ${data.error}`, 'err');
+      }
+      await pollStatus();
+    } catch (e) {
+      conLog(`  ✗ Test failed: ${e.message}`, 'err');
+    }
+  }
+
+  // ── Helpers ────────────────────────────────────────
+  function esc(s) {
+    return s.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ── Init ───────────────────────────────────────────
+  attachDirtyListeners();
+  loadConfig();
+  pollStatus();
+  setInterval(pollStatus, 5000);
+</script>
+</body>
+</html>
