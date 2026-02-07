@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { readEnvVar } from '../src/utils/dotenvCodec';
 
 // The configWriter module imports from './config' which triggers dotenv + keywords loading.
 // We need .env and keywords.json to exist before importing.
@@ -124,6 +125,40 @@ describe('ConfigWriter', () => {
 
       const content = fs.readFileSync(envPath, 'utf-8');
       expect(content).toContain('MSG="say \\"hello\\" world"');
+    });
+
+    it('should not grow backslashes on repeated save (round-trip idempotency)', async () => {
+      const prompt = 'Talk about "oeb" and use a backslash \\ here';
+      fs.writeFileSync(envPath, '');
+
+      // First save
+      await configWriter.updateEnv({ OLLAMA_SYSTEM_PROMPT: prompt });
+      const afterFirst = fs.readFileSync(envPath, 'utf-8');
+
+      // Simulate reload: read back via codec (same path config.ts uses)
+      const decoded = readEnvVar(envPath, 'OLLAMA_SYSTEM_PROMPT');
+      expect(decoded).toBe(prompt);
+
+      // Second save with the decoded value (what the UI would send back)
+      await configWriter.updateEnv({ OLLAMA_SYSTEM_PROMPT: decoded! });
+      const afterSecond = fs.readFileSync(envPath, 'utf-8');
+
+      // .env content must be identical — no escape growth
+      expect(afterSecond).toBe(afterFirst);
+    });
+
+    it('should round-trip a prompt with newlines and quotes', async () => {
+      const prompt = 'Line one\nSay "hi"\nLine three';
+      fs.writeFileSync(envPath, '');
+
+      await configWriter.updateEnv({ OLLAMA_SYSTEM_PROMPT: prompt });
+      const decoded = readEnvVar(envPath, 'OLLAMA_SYSTEM_PROMPT');
+      expect(decoded).toBe(prompt);
+
+      // Save again and verify stability
+      await configWriter.updateEnv({ OLLAMA_SYSTEM_PROMPT: decoded! });
+      const decoded2 = readEnvVar(envPath, 'OLLAMA_SYSTEM_PROMPT');
+      expect(decoded2).toBe(prompt);
     });
   });
 

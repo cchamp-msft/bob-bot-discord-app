@@ -2,9 +2,30 @@ import dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from './logger';
+import { readEnvVar } from './dotenvCodec';
 import type { PublicConfig } from '../types';
 
 dotenv.config();
+
+/**
+ * Keys whose .env values may contain backslash escapes that dotenv
+ * doesn't decode.  After every dotenv.config() call we re-read
+ * these from the raw file and replace process.env with the decoded
+ * value so the rest of the app sees human-readable text.
+ */
+const ESCAPED_ENV_KEYS = ['OLLAMA_SYSTEM_PROMPT', 'ERROR_MESSAGE'];
+
+function normalizeEscapedEnvVars(): void {
+  const envPath = path.join(__dirname, '../../.env');
+  for (const key of ESCAPED_ENV_KEYS) {
+    const decoded = readEnvVar(envPath, key);
+    if (decoded !== undefined) {
+      process.env[key] = decoded;
+    }
+  }
+}
+
+normalizeEscapedEnvVars();
 
 export interface KeywordConfig {
   keyword: string;
@@ -293,6 +314,9 @@ class Config {
     if (envResult.error) {
       logger.logError('config', `Failed to reload .env: ${envResult.error}`);
     }
+
+    // Decode backslash escapes that dotenv leaves as-is
+    normalizeEscapedEnvVars();
 
     // Detect restart-required changes (only HTTP port)
     const newPort = this.parseIntEnv('HTTP_PORT', 3000);
