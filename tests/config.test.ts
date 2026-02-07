@@ -209,6 +209,7 @@ describe('Config', () => {
       expect(pub).toHaveProperty('limits');
       expect(pub).toHaveProperty('keywords');
       expect(pub).toHaveProperty('replyChain');
+      expect(pub).toHaveProperty('imageResponse');
     });
 
     it('should include replyChain enabled, maxDepth, and maxTokens', () => {
@@ -286,6 +287,42 @@ describe('Config', () => {
       expect(config.getReplyChainMaxTokens()).toBe(16000);
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('not a valid number'));
       warnSpy.mockRestore();
+    });
+  });
+
+  describe('image response config', () => {
+    const { config } = require('../src/utils/config');
+
+    it('getImageResponseIncludeEmbed should default to false when env not set', () => {
+      delete process.env.IMAGE_RESPONSE_INCLUDE_EMBED;
+      expect(config.getImageResponseIncludeEmbed()).toBe(false);
+    });
+
+    it('getImageResponseIncludeEmbed should return true when env is "true"', () => {
+      process.env.IMAGE_RESPONSE_INCLUDE_EMBED = 'true';
+      expect(config.getImageResponseIncludeEmbed()).toBe(true);
+    });
+
+    it('getImageResponseIncludeEmbed should return false for any value other than "true"', () => {
+      process.env.IMAGE_RESPONSE_INCLUDE_EMBED = 'false';
+      expect(config.getImageResponseIncludeEmbed()).toBe(false);
+      process.env.IMAGE_RESPONSE_INCLUDE_EMBED = '1';
+      expect(config.getImageResponseIncludeEmbed()).toBe(false);
+      process.env.IMAGE_RESPONSE_INCLUDE_EMBED = 'yes';
+      expect(config.getImageResponseIncludeEmbed()).toBe(false);
+    });
+
+    it('should be included in getPublicConfig', () => {
+      delete process.env.IMAGE_RESPONSE_INCLUDE_EMBED;
+      const pub = config.getPublicConfig();
+      expect(pub.imageResponse).toBeDefined();
+      expect(pub.imageResponse.includeEmbed).toBe(false);
+    });
+
+    it('getPublicConfig should reflect env change for imageResponse', () => {
+      process.env.IMAGE_RESPONSE_INCLUDE_EMBED = 'true';
+      const pub = config.getPublicConfig();
+      expect(pub.imageResponse.includeEmbed).toBe(true);
     });
   });
 

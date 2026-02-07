@@ -171,6 +171,14 @@ class Config {
   }
 
   /**
+   * Whether to include the embed block (with internal View link) in image
+   * generation responses.  Default: false — only the image attachment is sent.
+   */
+  getImageResponseIncludeEmbed(): boolean {
+    return process.env.IMAGE_RESPONSE_INCLUDE_EMBED === 'true';
+  }
+
+  /**
    * Maximum number of file attachments per Discord message.
    * Clamped to 1–10 (Discord's hard limit is 10).
    */
@@ -299,6 +307,7 @@ class Config {
     const prevReplyChainEnabled = this.getReplyChainEnabled();
     const prevReplyChainMaxDepth = this.getReplyChainMaxDepth();
     const prevReplyChainMaxTokens = this.getReplyChainMaxTokens();
+    const prevImageResponseIncludeEmbed = this.getImageResponseIncludeEmbed();
     const prevDefaultModel = this.getComfyUIDefaultModel();
     const prevDefaultWidth = this.getComfyUIDefaultWidth();
     const prevDefaultHeight = this.getComfyUIDefaultHeight();
@@ -342,6 +351,7 @@ class Config {
     if (this.getReplyChainEnabled() !== prevReplyChainEnabled) reloaded.push('REPLY_CHAIN_ENABLED');
     if (this.getReplyChainMaxDepth() !== prevReplyChainMaxDepth) reloaded.push('REPLY_CHAIN_MAX_DEPTH');
     if (this.getReplyChainMaxTokens() !== prevReplyChainMaxTokens) reloaded.push('REPLY_CHAIN_MAX_TOKENS');
+    if (this.getImageResponseIncludeEmbed() !== prevImageResponseIncludeEmbed) reloaded.push('IMAGE_RESPONSE_INCLUDE_EMBED');
     if (this.getComfyUIDefaultModel() !== prevDefaultModel) reloaded.push('COMFYUI_DEFAULT_MODEL');
     if (this.getComfyUIDefaultWidth() !== prevDefaultWidth) reloaded.push('COMFYUI_DEFAULT_WIDTH');
     if (this.getComfyUIDefaultHeight() !== prevDefaultHeight) reloaded.push('COMFYUI_DEFAULT_HEIGHT');
@@ -406,6 +416,9 @@ class Config {
         enabled: this.getReplyChainEnabled(),
         maxDepth: this.getReplyChainMaxDepth(),
         maxTokens: this.getReplyChainMaxTokens(),
+      },
+      imageResponse: {
+        includeEmbed: this.getImageResponseIncludeEmbed(),
       },
     };
   }

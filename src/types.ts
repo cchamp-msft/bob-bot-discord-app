@@ -46,4 +46,7 @@ export interface PublicConfig {
     maxDepth: number;
     maxTokens: number;
   };
+  imageResponse: {
+    includeEmbed: boolean;
+  };
 }

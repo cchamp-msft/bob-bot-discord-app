@@ -481,6 +481,13 @@
           <label>Max Attachments per Message <span class="note">1–10, Discord limit is 10</span></label>
           <input type="number" id="max_attachments" data-env="MAX_ATTACHMENTS" placeholder="10" min="1" max="10">
         </div>
+        <div class="field narrow">
+          <label>Include Embed in Image Responses <span class="note">Shows internal View link; off by default</span></label>
+          <select id="image_response_include_embed" data-env="IMAGE_RESPONSE_INCLUDE_EMBED" onchange="markDirty()">
+            <option value="false">No</option>
+            <option value="true">Yes</option>
+          </select>
+        </div>
       </div>
     </section>
     <!-- Reply Chain Section -->
@@ -778,6 +785,10 @@
       rcEnabled.value = cfg.replyChain?.enabled === false ? 'false' : 'true';
       document.getElementById('reply_chain_max_depth').value = cfg.replyChain?.maxDepth || 10;
       document.getElementById('reply_chain_max_tokens').value = cfg.replyChain?.maxTokens || 16000;
+
+      // Populate image response setting
+      const irEmbed = document.getElementById('image_response_include_embed');
+      irEmbed.value = cfg.imageResponse?.includeEmbed ? 'true' : 'false';
 
       // Token field is always empty (write-only) — just show placeholder
       document.getElementById('discord_token').value = '';
