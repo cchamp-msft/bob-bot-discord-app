@@ -175,14 +175,23 @@ class OllamaClient {
 
   /**
    * Test connection to Ollama and return health status with available models.
+   * Unlike listModels(), this method intentionally does NOT swallow network
+   * errors so that a connection failure is reported as healthy: false.
    */
   async testConnection(): Promise<OllamaHealthResult> {
     try {
-      const models = await this.listModels();
-      return {
-        healthy: true,
-        models,
-      };
+      const response = await this.client.get('/api/tags');
+      if (response.status === 200 && Array.isArray(response.data?.models)) {
+        const models: OllamaModelInfo[] = response.data.models.map((m: Record<string, unknown>) => ({
+          name: String(m.name ?? ''),
+          size: Number(m.size ?? 0),
+          parameterSize: String((m.details as Record<string, unknown>)?.parameter_size ?? ''),
+          family: String((m.details as Record<string, unknown>)?.family ?? ''),
+          quantization: String((m.details as Record<string, unknown>)?.quantization_level ?? ''),
+        }));
+        return { healthy: true, models };
+      }
+      return { healthy: true, models: [] };
     } catch (error) {
       return {
         healthy: false,

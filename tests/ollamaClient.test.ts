@@ -359,15 +359,42 @@ describe('OllamaClient', () => {
       expect(result.models[0].name).toBe('llama2');
     });
 
-    it('should return unhealthy on listModels exception', async () => {
-      // listModels itself catches errors and returns [].
-      // testConnection wraps listModels in its own try/catch.
-      // If listModels returns [], healthy is true with 0 models.
+    it('should return healthy true with empty models when server returns none', async () => {
       mockInstance.get.mockResolvedValue({ status: 200, data: { models: [] } });
 
       const result = await ollamaClient.testConnection();
       expect(result.healthy).toBe(true);
       expect(result.models).toEqual([]);
+    });
+
+    it('should return unhealthy on network error (ECONNREFUSED)', async () => {
+      mockInstance.get.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:11434'));
+
+      const result = await ollamaClient.testConnection();
+
+      expect(result.healthy).toBe(false);
+      expect(result.models).toEqual([]);
+      expect(result.error).toContain('ECONNREFUSED');
+    });
+
+    it('should return unhealthy on timeout', async () => {
+      mockInstance.get.mockRejectedValue(new Error('timeout of 5000ms exceeded'));
+
+      const result = await ollamaClient.testConnection();
+
+      expect(result.healthy).toBe(false);
+      expect(result.models).toEqual([]);
+      expect(result.error).toContain('timeout');
+    });
+
+    it('should return unhealthy on generic network error', async () => {
+      mockInstance.get.mockRejectedValue(new Error('Network Error'));
+
+      const result = await ollamaClient.testConnection();
+
+      expect(result.healthy).toBe(false);
+      expect(result.models).toEqual([]);
+      expect(result.error).toBe('Network Error');
     });
   });
 
