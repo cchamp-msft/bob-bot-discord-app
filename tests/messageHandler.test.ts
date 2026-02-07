@@ -392,3 +392,61 @@ describe('MessageHandler shouldRespond — guild reply to bot', () => {
     expect(msg.reply).not.toHaveBeenCalled();
   });
 });
+
+describe('MessageHandler Discord mention stripping', () => {
+  function createMentionedMessage(content: string): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username: 'testuser' },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: 0, // GuildText
+        messages: { cache: new Map() },
+        send: jest.fn(),
+      },
+      guild: { name: 'TestGuild' },
+      mentions: { has: jest.fn(() => true) },
+      reference: null,
+      content,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  it('should strip role mentions from message content', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValue({ success: true, data: { text: 'ok' } });
+
+    const msg = createMentionedMessage('<@bot-123> <@&1469385947643777211> generate a cat');
+    await messageHandler.handleMessage(msg);
+
+    // The execute callback receives the cleaned content — check the logger
+    const { logger } = require('../src/utils/logger');
+    const requestCalls = logger.logRequest.mock.calls;
+    const lastCall = requestCalls[requestCalls.length - 1];
+    // Content should have both bot mention and role mention stripped
+    expect(lastCall[1]).toContain('generate a cat');
+    expect(lastCall[1]).not.toContain('<@&');
+    expect(lastCall[1]).not.toContain('<@bot-123>');
+  });
+
+  it('should strip all types of Discord markup', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValue({ success: true, data: { text: 'ok' } });
+
+    const msg = createMentionedMessage(
+      '<@bot-123> <@999> <@!888> <@&777> <#666> <:smile:555> <a:wave:444> draw something'
+    );
+    await messageHandler.handleMessage(msg);
+
+    const { logger } = require('../src/utils/logger');
+    const requestCalls = logger.logRequest.mock.calls;
+    const lastCall = requestCalls[requestCalls.length - 1];
+    expect(lastCall[1]).toContain('draw something');
+    expect(lastCall[1]).not.toMatch(/<[@#][^>]*>/);
+    expect(lastCall[1]).not.toMatch(/<a?:\w+:\d+>/);
+  });
+});

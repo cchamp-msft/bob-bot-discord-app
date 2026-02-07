@@ -73,12 +73,22 @@ class MessageHandler {
       message.content
     );
 
-    // Extract message content — remove mention patterns like <@123> or <@!123>
+    // Extract message content — remove the bot's own mention first
     const mentionRegex = new RegExp(
       `<@!?${message.client.user.id}>`,
       'g'
     );
-    const content = message.content.replace(mentionRegex, '').trim();
+    let content = message.content.replace(mentionRegex, '').trim();
+
+    // Strip remaining Discord mentions and emoji markup that shouldn't reach
+    // API backends (e.g. ComfyUI workflows break on angle-bracket tokens).
+    //   <@123>       — user mention
+    //   <@!123>      — user mention (nick form)
+    //   <@&123>      — role mention
+    //   <#123>       — channel mention
+    //   <:name:123>  — custom emoji
+    //   <a:name:123> — animated emoji
+    content = content.replace(/<@[!&]?\d+>|<#\d+>|<a?:\w+:\d+>/g, '').trim();
 
     if (!content) {
       logger.logIgnored(message.author.username, 'Empty message after mention removal');
