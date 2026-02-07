@@ -84,8 +84,9 @@ class HttpServer {
         } else {
           const healthy = await apiManager.checkApiHealth(api);
           const endpoint = config.getApiEndpoint(api);
+          const error = healthy ? undefined : 'ComfyUI did not respond with a healthy status';
           logger.log(healthy ? 'success' : 'error', 'configurator', `Connection test: ${api} at ${endpoint} — ${healthy ? 'OK' : 'FAILED'}`);
-          res.json({ api, endpoint, healthy });
+          res.json({ api, endpoint, healthy, error });
         }
       } catch (error) {
         const endpoint = config.getApiEndpoint(api);
