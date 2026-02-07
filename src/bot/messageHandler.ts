@@ -114,17 +114,19 @@ class MessageHandler {
     // Strip the matched routing keyword from the prompt (first occurrence only)
     content = this.stripKeyword(content, keywordConfig.keyword);
 
+    // For image generation replies, combine quoted message content with the user's reply text.
+    // Done before the empty-prompt check so that reply-only-keyword messages (e.g. replying
+    // "generate" to a message) still work — the quoted content fills the prompt.
+    if (keywordConfig.api === 'comfyui' && message.reference) {
+      content = await this.buildImagePromptFromReply(message, content);
+    }
+
     if (!content) {
       logger.logIgnored(message.author.username, 'Empty message after keyword removal');
       await message.reply(
         'Please include a prompt or question after the keyword!'
       );
       return;
-    }
-
-    // For image generation replies, combine quoted message content with the user's reply text
-    if (keywordConfig.api === 'comfyui' && message.reference) {
-      content = await this.buildImagePromptFromReply(message, content);
     }
 
     // Collect reply chain context for Ollama requests
@@ -348,7 +350,7 @@ class MessageHandler {
       quotedContent = quotedContent.replace(/<@[!&]?\d+>|<#\d+>|<a?:\w+:\d+>/g, '').trim();
 
       if (quotedContent) {
-        return `${quotedContent}, ${replyText}`;
+        return replyText ? `${quotedContent}, ${replyText}` : quotedContent;
       }
     } catch {
       // Referenced message deleted or inaccessible — use reply text only
@@ -421,9 +423,13 @@ class MessageHandler {
     const maxPerMessage = config.getMaxAttachments();
     const firstBatch = attachments.slice(0, maxPerMessage);
 
+    // Provide fallback text when embed is off and no files could be attached
+    const hasVisualContent = !!embed || firstBatch.length > 0;
+    const fallbackContent = hasVisualContent ? '' : `✅ ${savedCount} image(s) generated and saved.`;
+
     // Edit the processing message with optional embed and first batch of attachments
     await processingMessage.edit({
-      content: '',
+      content: fallbackContent,
       embeds: embed ? [embed] : [],
       ...(firstBatch.length > 0 ? { files: firstBatch } : {}),
     });

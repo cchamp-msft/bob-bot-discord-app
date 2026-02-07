@@ -141,11 +141,25 @@ class GenerateCommand extends BaseCommand {
       return;
     }
 
+    // Chunk attachments to respect Discord's per-message limit
+    const maxPerMessage = config.getMaxAttachments();
+    const firstBatch = attachments.slice(0, maxPerMessage);
+
+    // Provide fallback text when embed is off and no files could be attached
+    const hasVisualContent = !!embed || firstBatch.length > 0;
+    const content = hasVisualContent ? '' : `✅ ${savedCount} image(s) generated and saved.`;
+
     await interaction.editReply({
-      content: '',
+      content,
       embeds: embed ? [embed] : [],
-      ...(attachments.length > 0 ? { files: attachments } : {}),
+      ...(firstBatch.length > 0 ? { files: firstBatch } : {}),
     });
+
+    // Send remaining attachments as follow-up messages in batches
+    for (let i = maxPerMessage; i < attachments.length; i += maxPerMessage) {
+      const batch = attachments.slice(i, i + maxPerMessage);
+      await interaction.followUp({ content: '📎 Additional images', files: batch, ephemeral: true });
+    }
 
     logger.logReply(
       requester,

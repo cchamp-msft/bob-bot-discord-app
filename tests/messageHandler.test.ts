@@ -560,4 +560,156 @@ describe('MessageHandler buildImagePromptFromReply', () => {
     const result = await (messageHandler as any).buildImagePromptFromReply(msg, 'a cat');
     expect(result).toBe('a cat');
   });
+
+  it('should return only quoted content when replyText is empty', async () => {
+    const msg = createReplyMessage('', 'beautiful landscape');
+    const result = await (messageHandler as any).buildImagePromptFromReply(msg, '');
+    expect(result).toBe('beautiful landscape');
+  });
+});
+
+describe('MessageHandler handleComfyUIResponse fallback content', () => {
+  const { fileHandler } = require('../src/utils/fileHandler');
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  function createProcessingMessage() {
+    return {
+      edit: jest.fn().mockResolvedValue(undefined),
+      channel: { send: jest.fn().mockResolvedValue(undefined) },
+    };
+  }
+
+  it('should show fallback text when embed is off and no files are attachable', async () => {
+    (config.getImageResponseIncludeEmbed as jest.Mock).mockReturnValue(false);
+    fileHandler.saveFromUrl.mockResolvedValue({
+      url: 'http://localhost/img.png',
+      filePath: '/tmp/img.png',
+      fileName: 'img.png',
+      size: 999999999,
+    });
+    fileHandler.shouldAttachFile.mockReturnValue(false); // too large
+
+    const processing = createProcessingMessage();
+    const apiResult = {
+      success: true,
+      data: { images: ['http://comfyui/img.png'] },
+    };
+
+    await (messageHandler as any).handleComfyUIResponse(apiResult, processing, 'testuser');
+
+    expect(processing.edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('1 image(s) generated and saved'),
+      })
+    );
+  });
+
+  it('should show empty content when embed is on', async () => {
+    (config.getImageResponseIncludeEmbed as jest.Mock).mockReturnValue(true);
+    fileHandler.saveFromUrl.mockResolvedValue({
+      url: 'http://localhost/img.png',
+      filePath: '/tmp/img.png',
+      fileName: 'img.png',
+      size: 999999999,
+    });
+    fileHandler.shouldAttachFile.mockReturnValue(false);
+
+    const processing = createProcessingMessage();
+    const apiResult = {
+      success: true,
+      data: { images: ['http://comfyui/img.png'] },
+    };
+
+    await (messageHandler as any).handleComfyUIResponse(apiResult, processing, 'testuser');
+
+    expect(processing.edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: '',
+      })
+    );
+  });
+
+  it('should show empty content when files are attachable (embed off)', async () => {
+    (config.getImageResponseIncludeEmbed as jest.Mock).mockReturnValue(false);
+    (config.getMaxAttachments as jest.Mock).mockReturnValue(10);
+    fileHandler.saveFromUrl.mockResolvedValue({
+      url: 'http://localhost/img.png',
+      filePath: '/tmp/img.png',
+      fileName: 'img.png',
+      size: 1000,
+    });
+    fileHandler.shouldAttachFile.mockReturnValue(true);
+    fileHandler.readFile.mockReturnValue(Buffer.from('fake'));
+
+    const processing = createProcessingMessage();
+    const apiResult = {
+      success: true,
+      data: { images: ['http://comfyui/img.png'] },
+    };
+
+    await (messageHandler as any).handleComfyUIResponse(apiResult, processing, 'testuser');
+
+    expect(processing.edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: '',
+      })
+    );
+  });
+});
+
+describe('MessageHandler reply-only-keyword for comfyui', () => {
+  function createComfyUIReplyMessage(content: string, referencedContent: string): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username: 'testuser' },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: 0, // GuildText
+        messages: { cache: new Map() },
+        send: jest.fn(),
+      },
+      guild: { name: 'TestGuild' },
+      mentions: { has: jest.fn(() => true) },
+      reference: { messageId: 'ref-msg-1' },
+      content,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn().mockResolvedValue({
+        content: referencedContent,
+        author: { id: 'user-2', username: 'OtherUser' },
+      }),
+    };
+  }
+
+  it('should use quoted content when user replies with only the keyword', async () => {
+    (config.getKeywords as jest.Mock).mockReturnValue([
+      { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Image gen' },
+    ]);
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValue({
+      success: true,
+      data: { images: [] },
+    });
+
+    const msg = createComfyUIReplyMessage(
+      '<@bot-123> generate',
+      'a beautiful sunset'
+    );
+
+    await messageHandler.handleMessage(msg);
+
+    // Should have proceeded (reply was called for processing message)
+    expect(msg.reply).toHaveBeenCalled();
+
+    // The logger should show the quoted content was used
+    const { logger } = require('../src/utils/logger');
+    const requestCalls = logger.logRequest.mock.calls;
+    const lastCall = requestCalls[requestCalls.length - 1];
+    expect(lastCall[1]).toContain('a beautiful sunset');
+  });
 });
