@@ -291,7 +291,10 @@
         <div class="field">
           <label>ComfyUI Workflow</label>
           <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
-            Upload a ComfyUI workflow JSON file. The workflow must contain at least one <code>%prompt%</code> placeholder (case-sensitive) which will be replaced with the Discord message prompt. All occurrences of <code>%prompt%</code> will be substituted.
+            Upload a ComfyUI workflow JSON file exported using <strong>"Save (API Format)"</strong> in ComfyUI.
+            The workflow must contain at least one <code>%prompt%</code> placeholder (case-sensitive) which will be replaced with the Discord message prompt.
+            All occurrences of <code>%prompt%</code> will be substituted.
+            <br><em>Note: UI-format workflows (standard "Save") will be auto-converted, but API format is recommended for reliability.</em>
           </p>
           <div class="field-row">
             <div class="field">
@@ -920,8 +923,12 @@
       const data = await res.json();
 
       if (data.success) {
-        statusEl.innerHTML = `<span style="color:var(--ok)">✓ ${esc(file.name)} — validation passed</span>`;
-        conLog(`  ✓ Workflow "${file.name}" uploaded and validated`, 'ok');
+        const convertedNote = data.converted ? ' [auto-converted from UI format]' : '';
+        statusEl.innerHTML = `<span style="color:var(--ok)">✓ ${esc(file.name)} — validation passed${convertedNote}</span>`;
+        conLog(`  ✓ Workflow "${file.name}" uploaded and validated${convertedNote}`, 'ok');
+        if (data.converted) {
+          conLog('  ℹ Workflow was in ComfyUI UI format and auto-converted to API format. For best results, export using "Save (API Format)" in ComfyUI.', 'warn');
+        }
       } else {
         statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(file.name)} — ${esc(data.error)}</span>`;
         conLog(`  ✗ Workflow validation failed: ${data.error}`, 'err');

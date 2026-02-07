@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { KeywordConfig, ConfigData } from './config';
+import { isUIFormat, convertUIToAPIFormat } from '../api/comfyuiClient';
 
 interface EnvUpdate {
   [key: string]: string | number;
@@ -24,12 +25,14 @@ class ConfigWriter {
   /**
    * Save and validate a ComfyUI workflow JSON file.
    * Validates that the content is valid JSON and contains at least one %prompt% placeholder (case-sensitive).
-   * Returns the result of validation and save.
+   * If the workflow is in UI format, it is auto-converted to API format before saving.
+   * Returns the result of validation and save, including whether conversion occurred.
    */
-  async saveWorkflow(workflowJson: string, filename: string): Promise<{ success: boolean; error?: string }> {
+  async saveWorkflow(workflowJson: string, filename: string): Promise<{ success: boolean; error?: string; converted?: boolean }> {
     // Validate JSON structure
+    let parsed: Record<string, unknown>;
     try {
-      JSON.parse(workflowJson);
+      parsed = JSON.parse(workflowJson);
     } catch (e) {
       return {
         success: false,
@@ -37,18 +40,38 @@ class ConfigWriter {
       };
     }
 
+    // Detect UI format and auto-convert
+    let finalJson = workflowJson;
+    let wasConverted = false;
+
+    if (isUIFormat(parsed)) {
+      try {
+        const converted = convertUIToAPIFormat(parsed);
+        finalJson = JSON.stringify(converted, null, 2);
+        wasConverted = true;
+      } catch (e) {
+        return {
+          success: false,
+          error: `Workflow is in ComfyUI UI format but conversion failed: ${e instanceof Error ? e.message : String(e)}. Please export using "Save (API Format)" in ComfyUI.`,
+        };
+      }
+    }
+
     // Validate %prompt% placeholder presence (case-sensitive)
-    if (!workflowJson.includes('%prompt%')) {
+    if (!finalJson.includes('%prompt%')) {
+      const hint = wasConverted
+        ? ' The workflow was auto-converted from UI format — the %prompt% placeholder may not have survived conversion. Ensure %prompt% is set as a widget value in your ComfyUI workflow, then re-export.'
+        : '';
       return {
         success: false,
-        error: 'Workflow must contain at least one %prompt% placeholder (case-sensitive). See documentation for details.',
+        error: `Workflow must contain at least one %prompt% placeholder (case-sensitive).${hint} See documentation for details.`,
       };
     }
 
     try {
       this.ensureConfigDir();
-      fs.writeFileSync(this.workflowPath, workflowJson, 'utf-8');
-      return { success: true };
+      fs.writeFileSync(this.workflowPath, finalJson, 'utf-8');
+      return { success: true, converted: wasConverted };
     } catch (error) {
       return {
         success: false,

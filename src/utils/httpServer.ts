@@ -113,8 +113,9 @@ class HttpServer {
         const result = await configWriter.saveWorkflow(workflow, safeName);
 
         if (result.success) {
-          logger.log('success', 'configurator', `Workflow uploaded: ${safeName} — validation passed`);
-          res.json({ success: true, filename: safeName });
+          const convertedNote = result.converted ? ' (auto-converted from UI format to API format)' : '';
+          logger.log('success', 'configurator', `Workflow uploaded: ${safeName} — validation passed${convertedNote}`);
+          res.json({ success: true, filename: safeName, converted: result.converted || false });
         } else {
           logger.logError('configurator', `Workflow upload FAILED: ${result.error}`);
           res.status(400).json({ success: false, error: result.error });
