@@ -28,9 +28,11 @@ class MockWebSocket extends EventEmitter {
     this.readyState = 3; // CLOSED
   }
   
-  // Helper to simulate receiving a message
-  simulateMessage(data: string | Buffer | Buffer[]) {
-    this.emit('message', data);
+  // Helper to simulate receiving a message.
+  // In ws v8+, the 'message' event emits (data, isBinary).
+  // Text frames: isBinary=false, binary frames: isBinary=true.
+  simulateMessage(data: string | Buffer | Buffer[], isBinary = false) {
+    this.emit('message', data, isBinary);
   }
   
   // Helper to simulate an error
@@ -148,21 +150,25 @@ describe('ComfyUIWebSocketManager', () => {
       const messages: ComfyUIWebSocketMessage[] = [];
       manager.addMessageListener((msg) => messages.push(msg));
       
-      mockInstances[0].simulateMessage(Buffer.from([0x00, 0x01, 0x02]));
+      // ws v8 sends binary frames with isBinary=true
+      mockInstances[0].simulateMessage(Buffer.from([0x00, 0x01, 0x02]), true);
       
       expect(messages.length).toBe(0);
     });
 
-    it('should ignore Buffer array messages', async () => {
+    it('should parse text frames received as Buffer (ws v8 default)', async () => {
       await manager.connect();
       
       const messages: ComfyUIWebSocketMessage[] = [];
       manager.addMessageListener((msg) => messages.push(msg));
       
-      // Simulate a Buffer[] (which ws can produce with certain options)
-      mockInstances[0].simulateMessage([Buffer.from([0x00]), Buffer.from([0x01])]);
+      // ws v8 delivers text frames as Buffer with isBinary=false
+      const jsonBuffer = Buffer.from(JSON.stringify({ type: 'status', data: { queue_remaining: 1 } }));
+      mockInstances[0].simulateMessage(jsonBuffer, false);
       
-      expect(messages.length).toBe(0);
+      expect(messages.length).toBe(1);
+      expect(messages[0].type).toBe('status');
+      expect(messages[0].data.queue_remaining).toBe(1);
     });
 
     it('should allow removing message listeners', async () => {

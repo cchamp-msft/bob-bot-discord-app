@@ -147,8 +147,8 @@ export class ComfyUIWebSocketManager {
         resolve();
       });
 
-      this.ws.on('message', (data: WebSocket.Data) => {
-        this.handleMessage(data);
+      this.ws.on('message', (data: WebSocket.Data, isBinary: boolean) => {
+        this.handleMessage(data, isBinary);
       });
 
       this.ws.on('error', (err) => {
@@ -178,10 +178,13 @@ export class ComfyUIWebSocketManager {
 
   /**
    * Handle incoming WebSocket messages.
+   * In ws v8+, `isBinary` reliably indicates whether the frame is binary.
+   * All data arrives as Buffer — we must NOT filter on Buffer.isBuffer()
+   * because that would drop text (JSON) messages too.
    */
-  private handleMessage(data: WebSocket.Data): void {
-    // Binary data = preview images, skip for now
-    if (Buffer.isBuffer(data) || data instanceof ArrayBuffer || Array.isArray(data)) {
+  private handleMessage(data: WebSocket.Data, isBinary: boolean): void {
+    // Binary frames = preview images, skip
+    if (isBinary) {
       return;
     }
 
@@ -328,6 +331,11 @@ export class ComfyUIWebSocketManager {
       removeMessageListener = this.addMessageListener((msg) => {
         const msgPromptId = msg.data.prompt_id as string | undefined;
 
+        // Debug: log all messages for our prompt
+        if (msgPromptId === promptId || !msgPromptId) {
+          logger.log('success', 'comfyui-ws', `Message received: type=${msg.type}, promptId=${msgPromptId || 'none'}, data keys=[${Object.keys(msg.data).join(', ')}]`);
+        }
+
         // Only process messages for our prompt — strict matching
         // Skip messages from other prompts
         if (msgPromptId && msgPromptId !== promptId) {
@@ -394,6 +402,26 @@ export class ComfyUIWebSocketManager {
           case 'execution_start': {
             if (msgPromptId === promptId) {
               logger.log('success', 'comfyui-ws', `Execution started for prompt ${promptId}`);
+            }
+            break;
+          }
+
+          case 'executed': {
+            // Node execution completed with output data
+            // This is sent when a node finishes executing (not the same as 'executing' with null node)
+            if (msgPromptId === promptId) {
+              const nodeId = msg.data.node as string | undefined;
+              const output = msg.data.output as Record<string, unknown> | undefined;
+              logger.log('success', 'comfyui-ws', `Node executed: ${nodeId}, output keys=[${output ? Object.keys(output).join(', ') : 'none'}]`);
+            }
+            break;
+          }
+
+          case 'execution_cached': {
+            // Node execution was cached (skipped)
+            if (msgPromptId === promptId) {
+              const nodes = msg.data.nodes as string[] | undefined;
+              logger.log('success', 'comfyui-ws', `Execution cached for nodes: [${nodes?.join(', ') || 'none'}]`);
             }
             break;
           }
