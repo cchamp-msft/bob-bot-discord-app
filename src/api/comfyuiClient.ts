@@ -109,14 +109,29 @@ class ComfyUIClient {
       const workflowData = JSON.parse(substitutedWorkflow);
 
       // Step 1: Submit the prompt — response contains { prompt_id }
-      const submitResponse = await this.client.post(
-        '/api/prompt',
-        {
-          prompt: workflowData,
-          client_id: requester,
-        },
-        signal ? { signal } : undefined
-      );
+      let submitResponse;
+      try {
+        submitResponse = await this.client.post(
+          '/api/prompt',
+          {
+            prompt: workflowData,
+            client_id: requester,
+          },
+          signal ? { signal } : undefined
+        );
+      } catch (submitError) {
+        // Axios throws on non-2xx — extract the response body for diagnostics
+        const axiosErr = submitError as { response?: { status?: number; data?: unknown } };
+        if (axiosErr.response) {
+          const detail = typeof axiosErr.response.data === 'object'
+            ? JSON.stringify(axiosErr.response.data)
+            : String(axiosErr.response.data ?? '');
+          const errorMsg = `ComfyUI prompt rejected (HTTP ${axiosErr.response.status}): ${detail}`;
+          logger.logError(requester, errorMsg);
+          return { success: false, error: errorMsg };
+        }
+        throw submitError; // re-throw non-HTTP errors (network, abort, etc.)
+      }
 
       if (submitResponse.status !== 200 || !submitResponse.data?.prompt_id) {
         const nodeErrors = submitResponse.data?.node_errors;

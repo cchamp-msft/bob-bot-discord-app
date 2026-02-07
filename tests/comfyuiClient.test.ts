@@ -190,16 +190,23 @@ describe('ComfyUIClient', () => {
       expect(result.error).toContain('workflow errors');
     });
 
-    it('should return failure on non-200 prompt submit', async () => {
+    it('should extract error details from ComfyUI HTTP 500 response', async () => {
       const workflow = '{"inputs": {"text": "%prompt%"}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
-      mockInstance.post.mockResolvedValue({ status: 500, data: {} });
+      // Axios throws on non-2xx with a response property
+      const axiosError = new Error('Request failed with status code 500') as any;
+      axiosError.response = {
+        status: 500,
+        data: { error: 'Prompt outputs failed validation', node_errors: { '3': 'bad value' } },
+      };
+      mockInstance.post.mockRejectedValue(axiosError);
 
       const result = await comfyuiClient.generateImage('test', 'user1');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Failed to submit prompt');
+      expect(result.error).toContain('HTTP 500');
+      expect(result.error).toContain('Prompt outputs failed validation');
     });
 
     it('should handle network error on prompt submit gracefully', async () => {
