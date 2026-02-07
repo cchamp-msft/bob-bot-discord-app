@@ -43,9 +43,11 @@ import { config } from '../src/utils/config';
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 describe('ComfyUIClient', () => {
+  // Mock baseURL so extractImageUrls can build full /view URLs
   beforeEach(() => {
     mockInstance.get.mockReset();
     mockInstance.post.mockReset();
+    mockInstance.defaults.baseURL = 'http://localhost:8188';
     (config.getComfyUIWorkflow as jest.Mock).mockReturnValue('');
     (config.getComfyUIEndpoint as jest.Mock).mockReturnValue('http://localhost:8188');
   });
@@ -84,6 +86,31 @@ describe('ComfyUIClient', () => {
   });
 
   describe('generateImage', () => {
+    /** Helper: mock a successful prompt submit + history poll cycle. */
+    function mockSuccessfulGeneration(outputImages: Array<Record<string, string>> = [{ filename: 'img_001.png', subfolder: '', type: 'output' }]) {
+      const promptId = 'test-prompt-id-123';
+
+      // POST /api/prompt → prompt_id
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId, number: 1, node_errors: {} },
+      });
+
+      // GET /history/{promptId} → completed result
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          [promptId]: {
+            outputs: {
+              '9': { images: outputImages },
+            },
+          },
+        },
+      });
+
+      return promptId;
+    }
+
     it('should return error when no workflow is configured', async () => {
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue('');
 
@@ -102,21 +129,19 @@ describe('ComfyUIClient', () => {
       expect(result.error).toContain('validation failed');
     });
 
-    it('should substitute %prompt% and send to /api/prompt', async () => {
+    it('should substitute %prompt%, submit, poll history, and return image URLs', async () => {
       const workflow = '{"3": {"inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
-      mockInstance.post.mockResolvedValue({
-        status: 200,
-        data: { images: ['http://localhost:8188/output/img_001.png'] },
-      });
+      mockSuccessfulGeneration([{ filename: 'sunset_001.png', subfolder: '', type: 'output' }]);
 
       const result = await comfyuiClient.generateImage('a beautiful sunset', 'user1');
 
       expect(result.success).toBe(true);
-      expect(result.data?.images).toEqual(['http://localhost:8188/output/img_001.png']);
+      expect(result.data?.images).toHaveLength(1);
+      expect(result.data?.images?.[0]).toContain('/view?filename=sunset_001.png');
 
-      // Verify substitution happened
+      // Verify substitution in POST body
       const sentBody = mockInstance.post.mock.calls[0][1];
       expect(sentBody.prompt).toEqual({ '3': { inputs: { text: 'a beautiful sunset' } } });
       expect(sentBody.client_id).toBe('user1');
@@ -126,10 +151,7 @@ describe('ComfyUIClient', () => {
       const workflow = '{"pos": "%prompt%", "title": "Job: %prompt%"}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
-      mockInstance.post.mockResolvedValue({
-        status: 200,
-        data: { images: [] },
-      });
+      mockSuccessfulGeneration();
 
       await comfyuiClient.generateImage('cat', 'user1');
 
@@ -142,20 +164,45 @@ describe('ComfyUIClient', () => {
       const workflow = '{"inputs": {"text": "%prompt%"}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
-      mockInstance.post.mockResolvedValue({
-        status: 200,
-        data: { images: [] },
-      });
+      mockSuccessfulGeneration();
 
-      // Prompt with a double-quote and a backslash
       await comfyuiClient.generateImage('say "hello" with back\\slash', 'user1');
 
       const sentBody = mockInstance.post.mock.calls[0][1];
-      // After JSON-escape + JSON.parse round-trip, the original value should survive
       expect(sentBody.prompt.inputs.text).toBe('say "hello" with back\\slash');
     });
 
-    it('should handle API error gracefully', async () => {
+    it('should return failure when prompt submit returns node_errors', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: {
+          prompt_id: undefined,
+          node_errors: { '3': { class_type: 'KSampler', errors: ['Invalid seed'] } },
+        },
+      });
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('workflow errors');
+    });
+
+    it('should return failure on non-200 prompt submit', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      mockInstance.post.mockResolvedValue({ status: 500, data: {} });
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to submit prompt');
+    });
+
+    it('should handle network error on prompt submit gracefully', async () => {
       const workflow = '{"inputs": {"text": "%prompt%"}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
@@ -167,16 +214,119 @@ describe('ComfyUIClient', () => {
       expect(result.error).toBe('Connection refused');
     });
 
-    it('should return failure on non-200 response', async () => {
+    it('should collect images from multiple output nodes', async () => {
       const workflow = '{"inputs": {"text": "%prompt%"}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
-      mockInstance.post.mockResolvedValue({ status: 500, data: {} });
+      const promptId = 'multi-node-id';
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId },
+      });
+
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          [promptId]: {
+            outputs: {
+              '9': { images: [{ filename: 'img_a.png', subfolder: '', type: 'output' }] },
+              '12': { images: [{ filename: 'img_b.png', subfolder: 'previews', type: 'temp' }] },
+            },
+          },
+        },
+      });
 
       const result = await comfyuiClient.generateImage('test', 'user1');
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('Failed to generate image');
+      expect(result.success).toBe(true);
+      expect(result.data?.images).toHaveLength(2);
+      expect(result.data?.images?.[0]).toContain('filename=img_a.png');
+      expect(result.data?.images?.[1]).toContain('filename=img_b.png');
+      expect(result.data?.images?.[1]).toContain('subfolder=previews');
+      expect(result.data?.images?.[1]).toContain('type=temp');
+    });
+  });
+
+  describe('pollForCompletion', () => {
+    it('should return history data when prompt completes on first poll', async () => {
+      const promptId = 'quick-id';
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          [promptId]: { outputs: { '9': { images: [] } } },
+        },
+      });
+
+      const result = await comfyuiClient.pollForCompletion(promptId);
+
+      expect(result).not.toBeNull();
+      expect(result?.outputs).toBeDefined();
+      expect(mockInstance.get).toHaveBeenCalledWith(`/history/${promptId}`);
+    });
+
+    it('should return null when aborted', async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      const result = await comfyuiClient.pollForCompletion('any-id', controller.signal);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('extractImageUrls', () => {
+    it('should build /view URLs from output images', () => {
+      const historyData = {
+        outputs: {
+          '9': {
+            images: [
+              { filename: 'img_001.png', subfolder: '', type: 'output' },
+            ],
+          },
+        },
+      };
+
+      const urls = comfyuiClient.extractImageUrls(historyData);
+
+      expect(urls).toHaveLength(1);
+      expect(urls[0]).toBe('http://localhost:8188/view?filename=img_001.png&type=output');
+    });
+
+    it('should include subfolder when present', () => {
+      const historyData = {
+        outputs: {
+          '9': {
+            images: [
+              { filename: 'preview.png', subfolder: '2026-02-07', type: 'temp' },
+            ],
+          },
+        },
+      };
+
+      const urls = comfyuiClient.extractImageUrls(historyData);
+
+      expect(urls).toHaveLength(1);
+      expect(urls[0]).toContain('subfolder=2026-02-07');
+      expect(urls[0]).toContain('type=temp');
+    });
+
+    it('should return empty array when no outputs exist', () => {
+      const urls = comfyuiClient.extractImageUrls({});
+      expect(urls).toEqual([]);
+    });
+
+    it('should skip nodes without images array', () => {
+      const historyData = {
+        outputs: {
+          '5': { text: ['some text output'] },
+          '9': { images: [{ filename: 'real.png', subfolder: '', type: 'output' }] },
+        },
+      };
+
+      const urls = comfyuiClient.extractImageUrls(historyData);
+
+      expect(urls).toHaveLength(1);
+      expect(urls[0]).toContain('filename=real.png');
     });
   });
 
