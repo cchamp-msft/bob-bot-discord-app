@@ -138,7 +138,7 @@ class ComfyUIClient {
 
   async isHealthy(): Promise<boolean> {
     try {
-      const response = await this.client.get('/api/system/status');
+      const response = await this.client.get('/queue');
       return response.status === 200;
     } catch {
       return false;

@@ -181,13 +181,23 @@ describe('ComfyUIClient', () => {
   });
 
   describe('isHealthy', () => {
-    it('should return true on 200', async () => {
-      mockInstance.get.mockResolvedValue({ status: 200 });
+    it('should return true on 200 from /queue', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: { queue_running: [], queue_pending: [] },
+      });
+
       expect(await comfyuiClient.isHealthy()).toBe(true);
+      expect(mockInstance.get).toHaveBeenCalledWith('/queue');
     });
 
-    it('should return false on error', async () => {
-      mockInstance.get.mockRejectedValue(new Error('down'));
+    it('should return false on connection error', async () => {
+      mockInstance.get.mockRejectedValue(new Error('connect ECONNREFUSED'));
+      expect(await comfyuiClient.isHealthy()).toBe(false);
+    });
+
+    it('should return false on non-200 response', async () => {
+      mockInstance.get.mockResolvedValue({ status: 500 });
       expect(await comfyuiClient.isHealthy()).toBe(false);
     });
   });
