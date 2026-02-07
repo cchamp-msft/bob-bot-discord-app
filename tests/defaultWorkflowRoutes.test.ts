@@ -45,10 +45,10 @@ const mockDeleteWorkflow = jest.fn();
 jest.mock('../src/utils/config', () => ({
   config: {
     getHttpPort: jest.fn(() => 0),
-    getComfyUIEndpoint: jest.fn(() => 'http://localhost:8188'),
+    getComfyUIEndpoint: jest.fn(() => 'http://localhost:8190'),
     getComfyUIWorkflow: jest.fn(() => ''),
     hasComfyUIWorkflow: jest.fn(() => false),
-    getApiEndpoint: jest.fn(() => 'http://localhost:8188'),
+    getApiEndpoint: jest.fn(() => 'http://localhost:8190'),
     getOutputBaseUrl: jest.fn(() => 'http://localhost:3000'),
     getFileSizeThreshold: jest.fn(() => 10485760),
     getMaxAttachments: jest.fn(() => 10),

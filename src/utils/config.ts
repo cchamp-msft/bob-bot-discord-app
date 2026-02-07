@@ -94,7 +94,7 @@ class Config {
   }
 
   getComfyUIEndpoint(): string {
-    return process.env.COMFYUI_ENDPOINT || 'http://localhost:8188';
+    return process.env.COMFYUI_ENDPOINT || 'http://localhost:8190';
   }
 
   getOllamaEndpoint(): string {

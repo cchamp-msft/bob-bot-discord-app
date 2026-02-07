@@ -37,10 +37,10 @@ jest.mock('../src/utils/fileHandler', () => ({
 jest.mock('../src/utils/config', () => ({
   config: {
     getHttpPort: jest.fn(() => 0), // port 0 = OS picks a free port
-    getComfyUIEndpoint: jest.fn(() => 'http://localhost:8188'),
+    getComfyUIEndpoint: jest.fn(() => 'http://localhost:8190'),
     getComfyUIWorkflow: jest.fn(() => '{"text": "%prompt%"}'),
     hasComfyUIWorkflow: jest.fn(() => true),
-    getApiEndpoint: jest.fn(() => 'http://localhost:8188'),
+    getApiEndpoint: jest.fn(() => 'http://localhost:8190'),
     getOutputBaseUrl: jest.fn(() => 'http://localhost:3000'),
     getFileSizeThreshold: jest.fn(() => 10485760),
     getMaxAttachments: jest.fn(() => 10),
@@ -153,7 +153,7 @@ describe('POST /api/test/generate-image', () => {
   });
 
   it('should generate an image with the default banana prompt', async () => {
-    const imageUrl = 'http://localhost:8188/view?filename=banana_001.png&type=output';
+    const imageUrl = 'http://localhost:8190/view?filename=banana_001.png&type=output';
 
     mockGenerateImage.mockResolvedValue({
       success: true,
@@ -188,8 +188,8 @@ describe('POST /api/test/generate-image', () => {
 
   it('should return multiple images when ComfyUI outputs several', async () => {
     const imageUrls = [
-      'http://localhost:8188/view?filename=img_001.png&type=output',
-      'http://localhost:8188/view?filename=img_002.png&type=output',
+      'http://localhost:8190/view?filename=img_001.png&type=output',
+      'http://localhost:8190/view?filename=img_002.png&type=output',
     ];
 
     mockGenerateImage.mockResolvedValue({
@@ -280,8 +280,8 @@ describe('POST /api/test/generate-image', () => {
       success: true,
       data: {
         images: [
-          'http://localhost:8188/view?filename=img_001.png&type=output',
-          'http://localhost:8188/view?filename=img_002.png&type=output',
+          'http://localhost:8190/view?filename=img_001.png&type=output',
+          'http://localhost:8190/view?filename=img_002.png&type=output',
         ],
       },
     });

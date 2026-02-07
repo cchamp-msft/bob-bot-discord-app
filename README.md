@@ -384,9 +384,12 @@ Log levels (`info`, `warn`, `error`) are derived from the status tag and control
 - The bot uses WebSockets (`ws://`) for real-time progress tracking with ComfyUI
 - If WebSocket connection fails, the bot automatically falls back to HTTP polling
 - If you see "WebSocket connection failed" errors, verify ComfyUI is accessible at the configured endpoint
-- The WebSocket URL is derived from the HTTP endpoint (e.g., `http://localhost:8188` → `ws://localhost:8188/ws`)
+- The WebSocket URL is derived from the HTTP endpoint (e.g., `http://localhost:8190` → `ws://localhost:8190/ws`)
 - Ensure ComfyUI is not behind a proxy that blocks WebSocket connections
 - The bot will automatically reconnect with retry logic if the connection drops
+
+### ComfyUI logging error causing workflow failures
+If no output is being returned and upon checking ComfyUI logs you see an exceptions referencing `tqdm`, then use port 8190 instead 8188 so the progress meter does not result in an exception while running the sampler node.
 
 ### Cannot access configurator
 - Verify you're accessing from `http://localhost:{HTTP_PORT}/configurator`

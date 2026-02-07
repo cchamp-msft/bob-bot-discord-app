@@ -41,7 +41,7 @@ jest.mock('../src/api/comfyuiWebSocket', () => ({
 
 jest.mock('../src/utils/config', () => ({
   config: {
-    getComfyUIEndpoint: jest.fn(() => 'http://localhost:8188'),
+    getComfyUIEndpoint: jest.fn(() => 'http://localhost:8190'),
     getComfyUIWorkflow: jest.fn(() => ''),
     getComfyUIDefaultModel: jest.fn(() => ''),
     getComfyUIDefaultWidth: jest.fn(() => 512),
@@ -75,7 +75,7 @@ describe('ComfyUIClient', () => {
   beforeEach(() => {
     mockInstance.get.mockReset();
     mockInstance.post.mockReset();
-    mockInstance.defaults.baseURL = 'http://localhost:8188';
+    mockInstance.defaults.baseURL = 'http://localhost:8190';
     
     // Reset WebSocket mock
     mockWsManager.connectWithRetry.mockReset().mockResolvedValue(undefined);
@@ -90,7 +90,7 @@ describe('ComfyUIClient', () => {
     mockWsManager.updateClientId.mockReset();
     
     (config.getComfyUIWorkflow as jest.Mock).mockReturnValue('');
-    (config.getComfyUIEndpoint as jest.Mock).mockReturnValue('http://localhost:8188');
+    (config.getComfyUIEndpoint as jest.Mock).mockReturnValue('http://localhost:8190');
     (config.getComfyUIDefaultModel as jest.Mock).mockReturnValue('');
     (config.getComfyUIDefaultWidth as jest.Mock).mockReturnValue(512);
     (config.getComfyUIDefaultHeight as jest.Mock).mockReturnValue(512);
@@ -1062,7 +1062,7 @@ describe('ComfyUIClient', () => {
       const urls = comfyuiClient.extractImageUrls(historyData);
 
       expect(urls).toHaveLength(1);
-      expect(urls[0]).toBe('http://localhost:8188/view?filename=img_001.png&type=output');
+      expect(urls[0]).toBe('http://localhost:8190/view?filename=img_001.png&type=output');
     });
 
     it('should include subfolder when present', () => {

@@ -73,7 +73,7 @@ describe('ComfyUIWebSocketManager', () => {
   
   beforeEach(() => {
     mockInstances.length = 0;
-    manager = new ComfyUIWebSocketManager('http://localhost:8188', 'test-client-id');
+    manager = new ComfyUIWebSocketManager('http://localhost:8190', 'test-client-id');
   });
   
   afterEach(() => {
@@ -117,7 +117,7 @@ describe('ComfyUIWebSocketManager', () => {
       await manager.connect();
       expect(manager.isConnected()).toBe(true);
       
-      manager.updateBaseUrl('http://newhost:8188');
+      manager.updateBaseUrl('http://newhost:8190');
       
       expect(manager.isConnected()).toBe(false);
     });

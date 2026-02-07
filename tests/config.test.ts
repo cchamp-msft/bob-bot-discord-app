@@ -59,7 +59,7 @@ describe('Config', () => {
 
     it('getComfyUIEndpoint should return env value or default', () => {
       delete process.env.COMFYUI_ENDPOINT;
-      expect(config.getComfyUIEndpoint()).toBe('http://localhost:8188');
+      expect(config.getComfyUIEndpoint()).toBe('http://localhost:8190');
 
       process.env.COMFYUI_ENDPOINT = 'http://custom:9999';
       expect(config.getComfyUIEndpoint()).toBe('http://custom:9999');
