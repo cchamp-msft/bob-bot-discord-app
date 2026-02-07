@@ -127,6 +127,105 @@ class HttpServer {
       }
     });
 
+    // DELETE remove custom ComfyUI workflow (fall back to default)
+    this.app.delete('/api/config/workflow', localhostOnly, (_req, res) => {
+      try {
+        const deleted = configWriter.deleteWorkflow();
+        if (deleted) {
+          logger.log('success', 'configurator', 'Custom workflow removed — will use default workflow');
+          apiManager.refreshClients();
+          res.json({ success: true, message: 'Custom workflow removed. Default workflow will be used.' });
+        } else {
+          res.json({ success: true, message: 'No custom workflow was configured.' });
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.logError('configurator', `Workflow delete ERROR: ${errorMsg}`);
+        res.status(500).json({ success: false, error: errorMsg });
+      }
+    });
+
+    // GET available ComfyUI samplers
+    this.app.get('/api/config/comfyui/samplers', localhostOnly, async (_req, res) => {
+      try {
+        const samplers = await comfyuiClient.getSamplers();
+        res.json(samplers);
+      } catch (error) {
+        res.status(500).json({ error: String(error) });
+      }
+    });
+
+    // GET available ComfyUI schedulers
+    this.app.get('/api/config/comfyui/schedulers', localhostOnly, async (_req, res) => {
+      try {
+        const schedulers = await comfyuiClient.getSchedulers();
+        res.json(schedulers);
+      } catch (error) {
+        res.status(500).json({ error: String(error) });
+      }
+    });
+
+    // GET available ComfyUI checkpoints
+    this.app.get('/api/config/comfyui/checkpoints', localhostOnly, async (_req, res) => {
+      try {
+        const checkpoints = await comfyuiClient.getCheckpoints();
+        res.json(checkpoints);
+      } catch (error) {
+        res.status(500).json({ error: String(error) });
+      }
+    });
+
+    // POST save default workflow parameters
+    this.app.post('/api/config/default-workflow', localhostOnly, async (req, res) => {
+      try {
+        const body = req.body;
+        const errors: string[] = [];
+
+        // Coerce fields that may arrive as strings (e.g. from non-UI callers)
+        const model = typeof body.model === 'string' ? body.model.trim() : '';
+        const width = Number(body.width);
+        const height = Number(body.height);
+        const steps = Number(body.steps);
+        const cfg = Number(body.cfg);
+        const sampler = typeof body.sampler === 'string' ? body.sampler.trim() : '';
+        const scheduler = typeof body.scheduler === 'string' ? body.scheduler.trim() : '';
+        const denoise = Number(body.denoise);
+
+        if (!model) errors.push('model is required');
+        if (isNaN(width) || width <= 0 || width % 8 !== 0) errors.push('width must be a positive multiple of 8');
+        if (isNaN(height) || height <= 0 || height % 8 !== 0) errors.push('height must be a positive multiple of 8');
+        if (isNaN(steps) || steps <= 0) errors.push('steps must be positive');
+        if (isNaN(cfg) || cfg <= 0) errors.push('cfg must be positive');
+        if (isNaN(denoise) || denoise < 0 || denoise > 1) errors.push('denoise must be between 0 and 1');
+
+        if (errors.length > 0) {
+          res.status(400).json({ success: false, errors });
+          return;
+        }
+
+        const envUpdates: Record<string, string | number> = {};
+        envUpdates.COMFYUI_DEFAULT_MODEL = model;
+        envUpdates.COMFYUI_DEFAULT_WIDTH = width;
+        envUpdates.COMFYUI_DEFAULT_HEIGHT = height;
+        envUpdates.COMFYUI_DEFAULT_STEPS = steps;
+        envUpdates.COMFYUI_DEFAULT_CFG = cfg;
+        if (sampler) envUpdates.COMFYUI_DEFAULT_SAMPLER = sampler;
+        if (scheduler) envUpdates.COMFYUI_DEFAULT_SCHEDULER = scheduler;
+        envUpdates.COMFYUI_DEFAULT_DENOISE = denoise;
+
+        await configWriter.updateEnv(envUpdates);
+        config.reload();
+        apiManager.refreshClients();
+
+        logger.log('success', 'configurator', `Default workflow params saved: model=${model}, ${width}x${height}, steps=${steps}, cfg=${cfg}, sampler=${sampler}, scheduler=${scheduler}, denoise=${denoise}`);
+        res.json({ success: true });
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.logError('configurator', `Default workflow save ERROR: ${errorMsg}`);
+        res.status(500).json({ success: false, error: errorMsg });
+      }
+    });
+
     // ── Discord control routes (localhost only) ──────────────────
 
     // GET Discord bot status

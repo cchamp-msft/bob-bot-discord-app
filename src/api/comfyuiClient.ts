@@ -153,6 +153,109 @@ const WIDGET_NAME_MAP: Record<string, string[]> = {
   ConditioningSetArea: ['width', 'height', 'x', 'y', 'strength'],
 };
 
+/**
+ * Parameters for the default workflow builder.
+ */
+export interface DefaultWorkflowParams {
+  /** Checkpoint model file path (relative to ComfyUI models dir) */
+  ckpt_name: string;
+  /** Latent image width (must be divisible by 8) */
+  width: number;
+  /** Latent image height (must be divisible by 8) */
+  height: number;
+  /** Number of sampling steps */
+  steps: number;
+  /** CFG scale */
+  cfg: number;
+  /** Sampler name (e.g. euler, dpmpp_2m) */
+  sampler_name: string;
+  /** Scheduler (e.g. normal, karras) */
+  scheduler: string;
+  /** Denoise strength (0–1) */
+  denoise: number;
+}
+
+/**
+ * Build a default text-to-image workflow in ComfyUI API format.
+ *
+ * Node layout:
+ *   1: CheckpointLoaderSimple (provides MODEL, CLIP, VAE)
+ *   2: CLIPTextEncode (positive prompt — uses %prompt%)
+ *   3: CLIPTextEncode (negative prompt — empty)
+ *   4: EmptyLatentImage
+ *   5: KSampler
+ *   6: VAEDecode
+ *   7: SaveImage
+ */
+export function buildDefaultWorkflow(params: DefaultWorkflowParams): Record<string, unknown> {
+  return {
+    '1': {
+      class_type: 'CheckpointLoaderSimple',
+      inputs: {
+        ckpt_name: params.ckpt_name,
+      },
+      _meta: { title: 'Load Checkpoint' },
+    },
+    '2': {
+      class_type: 'CLIPTextEncode',
+      inputs: {
+        text: '%prompt%',
+        clip: ['1', 1], // CheckpointLoaderSimple output slot 1 = CLIP
+      },
+      _meta: { title: 'Positive Prompt' },
+    },
+    '3': {
+      class_type: 'CLIPTextEncode',
+      inputs: {
+        text: '',
+        clip: ['1', 1], // CheckpointLoaderSimple output slot 1 = CLIP
+      },
+      _meta: { title: 'Negative Prompt' },
+    },
+    '4': {
+      class_type: 'EmptyLatentImage',
+      inputs: {
+        width: params.width,
+        height: params.height,
+        batch_size: 1,
+      },
+      _meta: { title: 'Empty Latent Image' },
+    },
+    '5': {
+      class_type: 'KSampler',
+      inputs: {
+        seed: Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
+        steps: params.steps,
+        cfg: params.cfg,
+        sampler_name: params.sampler_name,
+        scheduler: params.scheduler,
+        denoise: params.denoise,
+        model: ['1', 0],    // CheckpointLoaderSimple output slot 0 = MODEL
+        positive: ['2', 0], // Positive CLIPTextEncode output slot 0
+        negative: ['3', 0], // Negative CLIPTextEncode output slot 0
+        latent_image: ['4', 0], // EmptyLatentImage output slot 0
+      },
+      _meta: { title: 'KSampler' },
+    },
+    '6': {
+      class_type: 'VAEDecode',
+      inputs: {
+        samples: ['5', 0], // KSampler output slot 0 = LATENT
+        vae: ['1', 2],     // CheckpointLoaderSimple output slot 2 = VAE
+      },
+      _meta: { title: 'VAE Decode' },
+    },
+    '7': {
+      class_type: 'SaveImage',
+      inputs: {
+        filename_prefix: 'BobBot',
+        images: ['6', 0], // VAEDecode output slot 0 = IMAGE
+      },
+      _meta: { title: 'Save Image' },
+    },
+  };
+}
+
 /** Delay helper for polling loops. */
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -161,10 +264,17 @@ function delay(ms: number): Promise<void> {
 class ComfyUIClient {
   private client: AxiosInstance;
 
+  /** Cached default workflow JSON, invalidated on refresh() */
+  private cachedDefaultWorkflow: string | null = null;
+
   /** Maximum time (ms) to wait for a ComfyUI prompt to complete. */
   private static POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   /** Interval (ms) between history polls. */
   private static POLL_INTERVAL_MS = 3_000; // 3 seconds
+
+  /** Cached object_info response with TTL */
+  private objectInfoCache: { data: Record<string, unknown>; expiry: number } | null = null;
+  private static OBJECT_INFO_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor() {
     this.client = axios.create({
@@ -180,6 +290,97 @@ class ComfyUIClient {
     this.client = axios.create({
       baseURL: config.getComfyUIEndpoint(),
     });
+    this.cachedDefaultWorkflow = null;
+    this.objectInfoCache = null;
+  }
+
+  // ── Discovery methods ──────────────────────────────────────────
+
+  /**
+   * Fetch the full /object_info response from ComfyUI.
+   * Cached for 5 minutes to reduce API calls.
+   */
+  private async getObjectInfo(): Promise<Record<string, unknown>> {
+    if (this.objectInfoCache && Date.now() < this.objectInfoCache.expiry) {
+      return this.objectInfoCache.data;
+    }
+    try {
+      const response = await this.client.get('/object_info/KSampler');
+      if (response.status === 200 && response.data) {
+        this.objectInfoCache = {
+          data: response.data as Record<string, unknown>,
+          expiry: Date.now() + ComfyUIClient.OBJECT_INFO_CACHE_TTL_MS,
+        };
+        return this.objectInfoCache.data;
+      }
+    } catch {
+      // ComfyUI unreachable — return empty
+    }
+    return {};
+  }
+
+  /**
+   * Get available sampler names from ComfyUI.
+   * Queries /object_info/KSampler and extracts the sampler_name options.
+   * Tolerates both `{ KSampler: { input: … } }` and direct `{ input: … }` shapes.
+   */
+  async getSamplers(): Promise<string[]> {
+    try {
+      const info = await this.getObjectInfo();
+      const ksampler = (info.KSampler ?? info) as Record<string, unknown> | undefined;
+      if (!ksampler) return [];
+      const input = ksampler.input as Record<string, Record<string, unknown>> | undefined;
+      const required = input?.required;
+      const samplerEntry = required?.sampler_name as unknown[] | undefined;
+      if (Array.isArray(samplerEntry)) {
+        // Handle [["euler",…]] (nested) or ["euler",…] (flat)
+        const list = Array.isArray(samplerEntry[0]) ? samplerEntry[0] : samplerEntry;
+        return list.filter((v): v is string => typeof v === 'string');
+      }
+    } catch {
+      // Fall through
+    }
+    return [];
+  }
+
+  /**
+   * Get available scheduler names from ComfyUI.
+   * Queries /object_info/KSampler and extracts the scheduler options.
+   * Tolerates both `{ KSampler: { input: … } }` and direct `{ input: … }` shapes.
+   */
+  async getSchedulers(): Promise<string[]> {
+    try {
+      const info = await this.getObjectInfo();
+      const ksampler = (info.KSampler ?? info) as Record<string, unknown> | undefined;
+      if (!ksampler) return [];
+      const input = ksampler.input as Record<string, Record<string, unknown>> | undefined;
+      const required = input?.required;
+      const schedulerEntry = required?.scheduler as unknown[] | undefined;
+      if (Array.isArray(schedulerEntry)) {
+        // Handle [["normal",…]] (nested) or ["normal",…] (flat)
+        const list = Array.isArray(schedulerEntry[0]) ? schedulerEntry[0] : schedulerEntry;
+        return list.filter((v): v is string => typeof v === 'string');
+      }
+    } catch {
+      // Fall through
+    }
+    return [];
+  }
+
+  /**
+   * Get available checkpoint model files from ComfyUI.
+   * Queries GET /models/checkpoints.
+   */
+  async getCheckpoints(): Promise<string[]> {
+    try {
+      const response = await this.client.get('/models/checkpoints');
+      if (response.status === 200 && Array.isArray(response.data)) {
+        return response.data as string[];
+      }
+    } catch {
+      // ComfyUI unreachable
+    }
+    return [];
   }
 
   /**
@@ -234,30 +435,70 @@ class ComfyUIClient {
     };
   }
 
+  /**
+   * Build and cache the default workflow JSON string from config parameters.
+   * Returns null if no default model is configured.
+   */
+  private getDefaultWorkflowJson(): string | null {
+    if (this.cachedDefaultWorkflow) return this.cachedDefaultWorkflow;
+
+    const model = config.getComfyUIDefaultModel();
+    if (!model) return null;
+
+    const workflow = buildDefaultWorkflow({
+      ckpt_name: model,
+      width: config.getComfyUIDefaultWidth(),
+      height: config.getComfyUIDefaultHeight(),
+      steps: config.getComfyUIDefaultSteps(),
+      cfg: config.getComfyUIDefaultCfg(),
+      sampler_name: config.getComfyUIDefaultSampler(),
+      scheduler: config.getComfyUIDefaultScheduler(),
+      denoise: config.getComfyUIDefaultDenoise(),
+    });
+
+    this.cachedDefaultWorkflow = JSON.stringify(workflow);
+    return this.cachedDefaultWorkflow;
+  }
+
   async generateImage(
     prompt: string,
     requester: string,
     signal?: AbortSignal
   ): Promise<ComfyUIResponse> {
     try {
-      const workflowJson = config.getComfyUIWorkflow();
+      // Priority: custom uploaded workflow > default generated workflow
+      let workflowJson = config.getComfyUIWorkflow();
+      let usingDefault = false;
 
       if (!workflowJson) {
-        const errorMsg = 'No ComfyUI workflow configured. Please upload a workflow JSON in the configurator.';
+        workflowJson = this.getDefaultWorkflowJson() ?? '';
+        usingDefault = true;
+      }
+
+      if (!workflowJson) {
+        const errorMsg = 'No ComfyUI workflow configured. Upload a workflow JSON or configure default workflow settings in the configurator.';
         logger.logError(requester, errorMsg);
         return { success: false, error: errorMsg };
       }
 
-      // Validate workflow before use (also auto-converts UI format if needed)
-      const validation = this.validateWorkflow(workflowJson);
-      if (!validation.valid) {
-        const errorMsg = `ComfyUI workflow validation failed: ${validation.error}`;
-        logger.logError(requester, errorMsg);
-        return { success: false, error: errorMsg };
-      }
+      let effectiveWorkflow: string;
 
-      // Use converted workflow if auto-conversion happened
-      const effectiveWorkflow = validation.convertedWorkflow ?? workflowJson;
+      if (usingDefault) {
+        // Default workflow is already in API format with %prompt% — skip validation
+        effectiveWorkflow = workflowJson;
+        logger.log('success', requester, 'Using default generated workflow');
+      } else {
+        // Validate custom workflow before use (also auto-converts UI format if needed)
+        const validation = this.validateWorkflow(workflowJson);
+        if (!validation.valid) {
+          const errorMsg = `ComfyUI workflow validation failed: ${validation.error}`;
+          logger.logError(requester, errorMsg);
+          return { success: false, error: errorMsg };
+        }
+
+        // Use converted workflow if auto-conversion happened
+        effectiveWorkflow = validation.convertedWorkflow ?? workflowJson;
+      }
 
       logger.logRequest(
         requester,

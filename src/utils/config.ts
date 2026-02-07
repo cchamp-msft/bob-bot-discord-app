@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from './logger';
+import type { PublicConfig } from '../types';
 
 dotenv.config();
 
@@ -157,6 +158,48 @@ class Config {
     return Math.max(1, Math.min(raw, 10));
   }
 
+  // ── Default ComfyUI workflow parameters ───────────────────────
+
+  /** Checkpoint model path for the default workflow. Empty = no default workflow. */
+  getComfyUIDefaultModel(): string {
+    return process.env.COMFYUI_DEFAULT_MODEL || '';
+  }
+
+  /** Latent image width for the default workflow. Default: 512 */
+  getComfyUIDefaultWidth(): number {
+    return this.parseIntEnv('COMFYUI_DEFAULT_WIDTH', 512);
+  }
+
+  /** Latent image height for the default workflow. Default: 512 */
+  getComfyUIDefaultHeight(): number {
+    return this.parseIntEnv('COMFYUI_DEFAULT_HEIGHT', 512);
+  }
+
+  /** Sampling steps for the default workflow. Default: 20 */
+  getComfyUIDefaultSteps(): number {
+    return this.parseIntEnv('COMFYUI_DEFAULT_STEPS', 20);
+  }
+
+  /** CFG scale for the default workflow. Default: 7.0 */
+  getComfyUIDefaultCfg(): number {
+    return this.parseFloatEnv('COMFYUI_DEFAULT_CFG', 7.0);
+  }
+
+  /** Sampler name for the default workflow. Default: euler */
+  getComfyUIDefaultSampler(): string {
+    return process.env.COMFYUI_DEFAULT_SAMPLER || 'euler';
+  }
+
+  /** Scheduler for the default workflow. Default: normal */
+  getComfyUIDefaultScheduler(): string {
+    return process.env.COMFYUI_DEFAULT_SCHEDULER || 'normal';
+  }
+
+  /** Denoise strength for the default workflow. Default: 1.0 */
+  getComfyUIDefaultDenoise(): number {
+    return this.parseFloatEnv('COMFYUI_DEFAULT_DENOISE', 1.0);
+  }
+
   /**
    * Load the ComfyUI workflow JSON from .config/comfyui-workflow.json.
    * Returns the raw JSON string, or empty string if not found.
@@ -185,6 +228,17 @@ class Config {
     const raw = process.env[name];
     if (!raw) return defaultValue;
     const parsed = parseInt(raw, 10);
+    if (isNaN(parsed)) {
+      logger.logWarn('config', `Environment variable ${name} is not a valid number: "${raw}" — using default ${defaultValue}`);
+      return defaultValue;
+    }
+    return parsed;
+  }
+
+  private parseFloatEnv(name: string, defaultValue: number): number {
+    const raw = process.env[name];
+    if (!raw) return defaultValue;
+    const parsed = parseFloat(raw);
     if (isNaN(parsed)) {
       logger.logWarn('config', `Environment variable ${name} is not a valid number: "${raw}" — using default ${defaultValue}`);
       return defaultValue;
@@ -224,6 +278,14 @@ class Config {
     const prevReplyChainEnabled = this.getReplyChainEnabled();
     const prevReplyChainMaxDepth = this.getReplyChainMaxDepth();
     const prevReplyChainMaxTokens = this.getReplyChainMaxTokens();
+    const prevDefaultModel = this.getComfyUIDefaultModel();
+    const prevDefaultWidth = this.getComfyUIDefaultWidth();
+    const prevDefaultHeight = this.getComfyUIDefaultHeight();
+    const prevDefaultSteps = this.getComfyUIDefaultSteps();
+    const prevDefaultCfg = this.getComfyUIDefaultCfg();
+    const prevDefaultSampler = this.getComfyUIDefaultSampler();
+    const prevDefaultScheduler = this.getComfyUIDefaultScheduler();
+    const prevDefaultDenoise = this.getComfyUIDefaultDenoise();
 
     // Re-parse .env into process.env
     const envPath = path.join(__dirname, '../../.env');
@@ -256,6 +318,14 @@ class Config {
     if (this.getReplyChainEnabled() !== prevReplyChainEnabled) reloaded.push('REPLY_CHAIN_ENABLED');
     if (this.getReplyChainMaxDepth() !== prevReplyChainMaxDepth) reloaded.push('REPLY_CHAIN_MAX_DEPTH');
     if (this.getReplyChainMaxTokens() !== prevReplyChainMaxTokens) reloaded.push('REPLY_CHAIN_MAX_TOKENS');
+    if (this.getComfyUIDefaultModel() !== prevDefaultModel) reloaded.push('COMFYUI_DEFAULT_MODEL');
+    if (this.getComfyUIDefaultWidth() !== prevDefaultWidth) reloaded.push('COMFYUI_DEFAULT_WIDTH');
+    if (this.getComfyUIDefaultHeight() !== prevDefaultHeight) reloaded.push('COMFYUI_DEFAULT_HEIGHT');
+    if (this.getComfyUIDefaultSteps() !== prevDefaultSteps) reloaded.push('COMFYUI_DEFAULT_STEPS');
+    if (this.getComfyUIDefaultCfg() !== prevDefaultCfg) reloaded.push('COMFYUI_DEFAULT_CFG');
+    if (this.getComfyUIDefaultSampler() !== prevDefaultSampler) reloaded.push('COMFYUI_DEFAULT_SAMPLER');
+    if (this.getComfyUIDefaultScheduler() !== prevDefaultScheduler) reloaded.push('COMFYUI_DEFAULT_SCHEDULER');
+    if (this.getComfyUIDefaultDenoise() !== prevDefaultDenoise) reloaded.push('COMFYUI_DEFAULT_DENOISE');
 
     // Reload keywords
     this.loadKeywords();
@@ -271,7 +341,7 @@ class Config {
    * Get a safe view of config for the configurator UI.
    * Never exposes Discord token or API keys.
    */
-  getPublicConfig(): Record<string, unknown> {
+  getPublicConfig(): PublicConfig {
     return {
       discord: {
         clientId: process.env.DISCORD_CLIENT_ID || '',
@@ -283,6 +353,16 @@ class Config {
         ollamaModel: this.getOllamaModel(),
         ollamaSystemPrompt: this.getOllamaSystemPrompt(),
         comfyuiWorkflowConfigured: this.hasComfyUIWorkflow(),
+      },
+      defaultWorkflow: {
+        model: this.getComfyUIDefaultModel(),
+        width: this.getComfyUIDefaultWidth(),
+        height: this.getComfyUIDefaultHeight(),
+        steps: this.getComfyUIDefaultSteps(),
+        cfg: this.getComfyUIDefaultCfg(),
+        sampler: this.getComfyUIDefaultSampler(),
+        scheduler: this.getComfyUIDefaultScheduler(),
+        denoise: this.getComfyUIDefaultDenoise(),
       },
       errorHandling: {
         errorMessage: this.getErrorMessage(),

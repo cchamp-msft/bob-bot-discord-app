@@ -149,6 +149,19 @@ class ConfigWriter {
   }
 
   /**
+   * Delete the custom ComfyUI workflow file, causing the app
+   * to fall back to the default generated workflow.
+   * Returns true if deleted, false if it didn't exist.
+   */
+  deleteWorkflow(): boolean {
+    if (fs.existsSync(this.workflowPath)) {
+      fs.unlinkSync(this.workflowPath);
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Validate and update keywords.json
    */
   async updateKeywords(keywords: KeywordConfig[]): Promise<void> {

@@ -302,6 +302,81 @@
             </div>
           </div>
           <div id="workflowStatus" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
+          <div id="customWorkflowActions" style="margin-top:6px;display:none">
+            <button class="btn-sm" style="font-size:0.78em;color:#e57373;border-color:#e57373" onclick="deleteCustomWorkflow()">Remove Custom Workflow</button>
+            <span style="font-size:0.75em;color:var(--text-dim);margin-left:8px">Removes uploaded workflow so the default workflow is used instead</span>
+          </div>
+        </div>
+
+        <!-- Default Workflow Settings -->
+        <div style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <label style="display:block;font-size:0.9em;font-weight:600;margin:0">Default Workflow Settings</label>
+            <button class="btn-sm" style="font-size:0.78em" onclick="discoverComfyUIOptions()">Discover Options</button>
+          </div>
+          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
+            Configure a basic text-to-image workflow that will be used when no custom workflow is uploaded.
+            Click <strong>Discover Options</strong> after testing the ComfyUI connection to populate dropdowns with available models, samplers, and schedulers.
+          </p>
+          <div id="defaultWorkflowInfo" style="font-size:0.78em;padding:6px 10px;border-radius:4px;margin-bottom:10px;display:none"></div>
+
+          <div class="field">
+            <label>Checkpoint Model</label>
+            <select id="dw_model" style="width:100%">
+              <option value="">— click Discover Options to load models —</option>
+            </select>
+          </div>
+
+          <div class="field-row">
+            <div class="field narrow">
+              <label>Width</label>
+              <input type="number" id="dw_width" value="512" min="64" max="4096" step="8">
+            </div>
+            <div class="field narrow">
+              <label>Height</label>
+              <input type="number" id="dw_height" value="512" min="64" max="4096" step="8">
+            </div>
+            <div class="field narrow">
+              <label>Steps</label>
+              <input type="number" id="dw_steps" value="20" min="1" max="150" step="1">
+            </div>
+            <div class="field narrow">
+              <label>CFG</label>
+              <input type="number" id="dw_cfg" value="7.0" min="0.1" max="30" step="0.5">
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label>Sampler</label>
+              <select id="dw_sampler" style="width:100%">
+                <option value="euler" selected>euler</option>
+                <option value="euler_ancestral">euler_ancestral</option>
+                <option value="heun">heun</option>
+                <option value="dpmpp_2m">dpmpp_2m</option>
+                <option value="dpmpp_2m_sde">dpmpp_2m_sde</option>
+                <option value="lms">lms</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Scheduler</label>
+              <select id="dw_scheduler" style="width:100%">
+                <option value="normal" selected>normal</option>
+                <option value="karras">karras</option>
+                <option value="exponential">exponential</option>
+                <option value="simple">simple</option>
+              </select>
+            </div>
+            <div class="field narrow">
+              <label>Denoise</label>
+              <input type="number" id="dw_denoise" value="1.0" min="0" max="1" step="0.01">
+            </div>
+          </div>
+
+          <div style="margin-top:8px;display:flex;align-items:center;gap:10px">
+            <button class="btn-sm" onclick="saveDefaultWorkflow()">Save Default Workflow</button>
+            <span id="dwSaveStatus" style="font-size:0.8em;color:var(--text-dim)"></span>
+          </div>
         </div>
 
         <!-- Test Image Generation -->
@@ -635,11 +710,58 @@
 
       // Populate ComfyUI workflow status
       const workflowStatus = document.getElementById('workflowStatus');
-      if (cfg.apis.comfyuiWorkflowConfigured) {
+      _hasCustomWorkflow = !!cfg.apis.comfyuiWorkflowConfigured;
+      if (_hasCustomWorkflow) {
         workflowStatus.innerHTML = '<span style="color:var(--ok)">✓ Workflow configured</span>';
+        document.getElementById('customWorkflowActions').style.display = '';
       } else {
         workflowStatus.innerHTML = '<span style="color:var(--text-dim)">No workflow uploaded</span>';
+        document.getElementById('customWorkflowActions').style.display = 'none';
       }
+
+      // Populate default workflow settings
+      if (cfg.defaultWorkflow) {
+        const dw = cfg.defaultWorkflow;
+        if (dw.model) {
+          const modelSelect = document.getElementById('dw_model');
+          const exists = Array.from(modelSelect.options).some(o => o.value === dw.model);
+          if (!exists) {
+            const opt = document.createElement('option');
+            opt.value = dw.model;
+            opt.textContent = dw.model + ' (saved)';
+            modelSelect.appendChild(opt);
+          }
+          modelSelect.value = dw.model;
+        }
+        document.getElementById('dw_width').value = dw.width || 512;
+        document.getElementById('dw_height').value = dw.height || 512;
+        document.getElementById('dw_steps').value = dw.steps || 20;
+        document.getElementById('dw_cfg').value = dw.cfg || 7.0;
+        if (dw.sampler) {
+          const samplerSelect = document.getElementById('dw_sampler');
+          const exists = Array.from(samplerSelect.options).some(o => o.value === dw.sampler);
+          if (!exists) {
+            const opt = document.createElement('option');
+            opt.value = dw.sampler;
+            opt.textContent = dw.sampler;
+            samplerSelect.appendChild(opt);
+          }
+          samplerSelect.value = dw.sampler;
+        }
+        if (dw.scheduler) {
+          const schedulerSelect = document.getElementById('dw_scheduler');
+          const exists = Array.from(schedulerSelect.options).some(o => o.value === dw.scheduler);
+          if (!exists) {
+            const opt = document.createElement('option');
+            opt.value = dw.scheduler;
+            opt.textContent = dw.scheduler;
+            schedulerSelect.appendChild(opt);
+          }
+          schedulerSelect.value = dw.scheduler;
+        }
+        document.getElementById('dw_denoise').value = typeof dw.denoise === 'number' ? dw.denoise : 1.0;
+      }
+      updateDefaultWorkflowInfo();
 
       // Populate Ollama system prompt
       const systemPromptEl = document.getElementById('ollama_system_prompt');
@@ -929,6 +1051,9 @@
         if (data.converted) {
           conLog('  ℹ Workflow was in ComfyUI UI format and auto-converted to API format. For best results, export using "Save (API Format)" in ComfyUI.', 'warn');
         }
+        _hasCustomWorkflow = true;
+        document.getElementById('customWorkflowActions').style.display = '';
+        updateDefaultWorkflowInfo();
       } else {
         statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(file.name)} — ${esc(data.error)}</span>`;
         conLog(`  ✗ Workflow validation failed: ${data.error}`, 'err');
@@ -942,6 +1067,178 @@
 
     // Reset the file input so the same file can be re-uploaded
     input.value = '';
+  }
+
+  // ── Default workflow management ─────────────────────
+  async function discoverComfyUIOptions() {
+    conLog(`[${new Date().toISOString()}] Discovering ComfyUI options…`);
+    try {
+      const [samplersRes, schedulersRes, checkpointsRes] = await Promise.all([
+        fetch('/api/config/comfyui/samplers'),
+        fetch('/api/config/comfyui/schedulers'),
+        fetch('/api/config/comfyui/checkpoints'),
+      ]);
+
+      const samplers = await samplersRes.json();
+      const schedulers = await schedulersRes.json();
+      const checkpoints = await checkpointsRes.json();
+
+      // Populate sampler dropdown
+      if (Array.isArray(samplers) && samplers.length > 0) {
+        const samplerSelect = document.getElementById('dw_sampler');
+        const currentSampler = samplerSelect.value;
+        samplerSelect.innerHTML = '';
+        for (const s of samplers) {
+          const opt = document.createElement('option');
+          opt.value = s;
+          opt.textContent = s;
+          samplerSelect.appendChild(opt);
+        }
+        if (samplers.includes(currentSampler)) samplerSelect.value = currentSampler;
+        conLog(`  ✓ Found ${samplers.length} sampler(s)`, 'ok');
+      } else {
+        conLog('  ⚠ No samplers returned — using defaults', 'warn');
+      }
+
+      // Populate scheduler dropdown
+      if (Array.isArray(schedulers) && schedulers.length > 0) {
+        const schedulerSelect = document.getElementById('dw_scheduler');
+        const currentScheduler = schedulerSelect.value;
+        schedulerSelect.innerHTML = '';
+        for (const s of schedulers) {
+          const opt = document.createElement('option');
+          opt.value = s;
+          opt.textContent = s;
+          schedulerSelect.appendChild(opt);
+        }
+        if (schedulers.includes(currentScheduler)) schedulerSelect.value = currentScheduler;
+        conLog(`  ✓ Found ${schedulers.length} scheduler(s)`, 'ok');
+      } else {
+        conLog('  ⚠ No schedulers returned — using defaults', 'warn');
+      }
+
+      // Populate checkpoint dropdown
+      if (Array.isArray(checkpoints) && checkpoints.length > 0) {
+        const modelSelect = document.getElementById('dw_model');
+        const currentModel = modelSelect.value;
+        modelSelect.innerHTML = '';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = '— select a checkpoint —';
+        modelSelect.appendChild(defaultOpt);
+        for (const c of checkpoints) {
+          const opt = document.createElement('option');
+          opt.value = c;
+          opt.textContent = c;
+          modelSelect.appendChild(opt);
+        }
+        if (currentModel && checkpoints.includes(currentModel)) modelSelect.value = currentModel;
+        conLog(`  ✓ Found ${checkpoints.length} checkpoint(s)`, 'ok');
+      } else {
+        conLog('  ⚠ No checkpoints returned — ensure ComfyUI is connected', 'warn');
+      }
+    } catch (e) {
+      conLog(`  ✗ Discovery failed: ${e.message}. Test ComfyUI connection first.`, 'err');
+    }
+  }
+
+  async function saveDefaultWorkflow() {
+    const statusEl = document.getElementById('dwSaveStatus');
+    const model = document.getElementById('dw_model').value;
+    if (!model) {
+      statusEl.textContent = 'Select a checkpoint model first';
+      statusEl.style.color = 'var(--err)';
+      return;
+    }
+
+    const params = {
+      model,
+      width: parseInt(document.getElementById('dw_width').value) || 512,
+      height: parseInt(document.getElementById('dw_height').value) || 512,
+      steps: parseInt(document.getElementById('dw_steps').value) || 20,
+      cfg: parseFloat(document.getElementById('dw_cfg').value) || 7.0,
+      sampler: document.getElementById('dw_sampler').value || 'euler',
+      scheduler: document.getElementById('dw_scheduler').value || 'normal',
+      denoise: parseFloat(document.getElementById('dw_denoise').value),
+    };
+
+    if (isNaN(params.denoise)) params.denoise = 1.0;
+
+    statusEl.textContent = 'Saving…';
+    statusEl.style.color = 'var(--text-dim)';
+    conLog(`[${new Date().toISOString()}] Saving default workflow settings…`);
+
+    try {
+      const res = await fetch('/api/config/default-workflow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      const data = await res.json();
+      if (data.success) {
+        statusEl.textContent = 'Saved ✓';
+        statusEl.style.color = 'var(--ok)';
+        conLog('  ✓ Default workflow settings saved', 'ok');
+        updateDefaultWorkflowInfo();
+      } else {
+        const errMsg = data.errors ? data.errors.join(', ') : (data.error || 'Unknown error');
+        statusEl.textContent = 'Error: ' + errMsg;
+        statusEl.style.color = 'var(--err)';
+        conLog(`  ✗ Save failed: ${errMsg}`, 'err');
+      }
+    } catch (e) {
+      statusEl.textContent = 'Error: ' + e.message;
+      statusEl.style.color = 'var(--err)';
+      conLog(`  ✗ Save failed: ${e.message}`, 'err');
+    }
+  }
+
+  async function deleteCustomWorkflow() {
+    if (!confirm('Remove the custom workflow? The default workflow settings will be used instead.')) return;
+    conLog(`[${new Date().toISOString()}] Removing custom workflow…`);
+    try {
+      const res = await fetch('/api/config/workflow', { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        conLog('  ✓ ' + data.message, 'ok');
+        _hasCustomWorkflow = false;
+        document.getElementById('workflowStatus').innerHTML = '<span style="color:var(--text-dim)">No workflow uploaded</span>';
+        document.getElementById('customWorkflowActions').style.display = 'none';
+        updateDefaultWorkflowInfo();
+      } else {
+        conLog('  ✗ ' + (data.error || 'Failed'), 'err');
+      }
+    } catch (e) {
+      conLog(`  ✗ Delete failed: ${e.message}`, 'err');
+    }
+  }
+
+  // Tracks whether a custom workflow is currently uploaded (set from config API, not DOM text)
+  let _hasCustomWorkflow = false;
+
+  function updateDefaultWorkflowInfo() {
+    const infoEl = document.getElementById('defaultWorkflowInfo');
+    const hasCustom = _hasCustomWorkflow;
+    const hasModel = document.getElementById('dw_model').value;
+
+    document.getElementById('customWorkflowActions').style.display = hasCustom ? '' : 'none';
+
+    if (hasCustom) {
+      infoEl.style.display = '';
+      infoEl.style.background = 'rgba(255,183,77,0.08)';
+      infoEl.style.border = '1px solid rgba(255,183,77,0.3)';
+      infoEl.innerHTML = '⚠ A custom workflow is uploaded and takes precedence. Default workflow settings are saved but inactive.';
+    } else if (hasModel) {
+      infoEl.style.display = '';
+      infoEl.style.background = 'rgba(129,199,132,0.08)';
+      infoEl.style.border = '1px solid rgba(129,199,132,0.3)';
+      infoEl.innerHTML = '✓ Default workflow is active with the settings below.';
+    } else {
+      infoEl.style.display = '';
+      infoEl.style.background = 'rgba(144,164,174,0.08)';
+      infoEl.style.border = '1px solid rgba(144,164,174,0.3)';
+      infoEl.innerHTML = 'No workflow configured. Select a checkpoint model and save to enable the default workflow.';
+    }
   }
 
   // ── Test image generation ───────────────────────────
