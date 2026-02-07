@@ -273,6 +273,14 @@ class ComfyUIClient {
       // Parse the substituted workflow to send as the prompt object
       const workflowData = JSON.parse(substitutedWorkflow);
 
+      // Log node summary for debugging workflow issues
+      const nodeIds = Object.keys(workflowData);
+      const nodeSummary = nodeIds.map(id => {
+        const node = workflowData[id] as Record<string, unknown>;
+        return `${id}:${node.class_type ?? 'unknown'}`;
+      }).join(', ');
+      logger.log('success', requester, `ComfyUI workflow nodes: [${nodeSummary}]`);
+
       // Step 1: Submit the prompt — response contains { prompt_id }
       let submitResponse;
       try {
@@ -323,8 +331,39 @@ class ComfyUIClient {
         return { success: false, error: errorMsg };
       }
 
+      // Log history structure for debugging
+      const historyStatus = historyData.status as Record<string, unknown> | undefined;
+      const historyOutputs = historyData.outputs as Record<string, unknown> | undefined;
+      logger.log(
+        'success',
+        requester,
+        `ComfyUI history for ${promptId}: status=${historyStatus?.status_str ?? 'n/a'}, ` +
+        `output_nodes=[${historyOutputs ? Object.keys(historyOutputs).join(', ') : 'none'}]`
+      );
+
+      // Check for execution errors in the history entry
+      const executionError = this.extractExecutionError(historyData);
+      if (executionError) {
+        logger.logError(requester, `ComfyUI execution failed: ${executionError}`);
+        return { success: false, error: executionError };
+      }
+
       // Step 3: Extract image URLs from output nodes
       const images = this.extractImageUrls(historyData);
+
+      if (images.length === 0) {
+        const outputs = historyData.outputs as Record<string, unknown> | undefined;
+        const outputKeys = outputs ? Object.keys(outputs) : [];
+        logger.logError(
+          requester,
+          `ComfyUI workflow produced no images. Output nodes: [${outputKeys.join(', ')}]. ` +
+          'Check ComfyUI server logs for execution errors — the workflow may reference missing models or custom nodes.'
+        );
+        return {
+          success: false,
+          error: 'ComfyUI workflow produced no images. Check ComfyUI server logs for execution errors.',
+        };
+      }
 
       logger.logReply(
         requester,
@@ -363,13 +402,56 @@ class ComfyUIClient {
       try {
         const response = await this.client.get(`/history/${promptId}`);
         if (response.status === 200 && response.data?.[promptId]) {
-          return response.data[promptId] as Record<string, unknown>;
+          const entry = response.data[promptId] as Record<string, unknown>;
+
+          // ComfyUI sets status.completed = true when done (success or failure)
+          const status = entry.status as Record<string, unknown> | undefined;
+          if (status?.completed === false) {
+            // Still executing — keep polling
+            await delay(ComfyUIClient.POLL_INTERVAL_MS);
+            continue;
+          }
+
+          return entry;
         }
       } catch {
         // History not ready yet — continue polling
       }
 
       await delay(ComfyUIClient.POLL_INTERVAL_MS);
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract an error message from a ComfyUI history entry, if the execution failed.
+   * ComfyUI stores execution status in `status.status_str` and error details in
+   * `status.messages` when a workflow encounters a runtime error.
+   * Returns null if no error is detected.
+   */
+  extractExecutionError(historyData: Record<string, unknown>): string | null {
+    const status = historyData.status as Record<string, unknown> | undefined;
+    if (!status) return null;
+
+    const statusStr = status.status_str as string | undefined;
+
+    // "error" status indicates a runtime failure
+    if (statusStr === 'error') {
+      const messages = status.messages as Array<[string, Record<string, unknown>]> | undefined;
+      if (Array.isArray(messages)) {
+        // Look for execution_error message tuples: ["execution_error", { ... }]
+        for (const msg of messages) {
+          if (Array.isArray(msg) && msg[0] === 'execution_error' && msg[1]) {
+            const detail = msg[1];
+            const exception = detail.exception_message || detail.exception_type || '';
+            const nodeType = detail.node_type ? ` (node: ${detail.node_type})` : '';
+            const nodeId = detail.node_id ? ` [node ${detail.node_id}]` : '';
+            return `ComfyUI execution error${nodeId}${nodeType}: ${exception}`;
+          }
+        }
+      }
+      return 'ComfyUI execution failed (status: error). Check ComfyUI server logs for details.';
     }
 
     return null;

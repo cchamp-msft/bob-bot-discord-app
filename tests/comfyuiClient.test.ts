@@ -509,6 +509,72 @@ describe('ComfyUIClient', () => {
       expect(result.data?.images?.[1]).toContain('subfolder=previews');
       expect(result.data?.images?.[1]).toContain('type=temp');
     });
+
+    it('should return error when workflow produces empty outputs', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      const promptId = 'empty-output-id';
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId },
+      });
+
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          [promptId]: {
+            status: { status_str: 'success', completed: true },
+            outputs: {},
+          },
+        },
+      });
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('no images');
+    });
+
+    it('should return error when ComfyUI execution status is error', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      const promptId = 'exec-error-id';
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId },
+      });
+
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          [promptId]: {
+            status: {
+              status_str: 'error',
+              completed: true,
+              messages: [
+                ['execution_started', { prompt_id: promptId }],
+                ['execution_error', {
+                  node_id: '81',
+                  node_type: 'easy positive',
+                  exception_message: 'Module not found',
+                  exception_type: 'ModuleNotFoundError',
+                }],
+              ],
+            },
+            outputs: {},
+          },
+        },
+      });
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('execution error');
+      expect(result.error).toContain('easy positive');
+      expect(result.error).toContain('Module not found');
+    });
   });
 
   describe('pollForCompletion', () => {
@@ -535,6 +601,84 @@ describe('ComfyUIClient', () => {
       const result = await comfyuiClient.pollForCompletion('any-id', controller.signal);
 
       expect(result).toBeNull();
+    });
+
+    it('should keep polling when status.completed is false', async () => {
+      const promptId = 'pending-id';
+
+      // First call: not completed yet
+      mockInstance.get
+        .mockResolvedValueOnce({
+          status: 200,
+          data: {
+            [promptId]: {
+              status: { status_str: 'running', completed: false },
+              outputs: {},
+            },
+          },
+        })
+        // Second call: completed
+        .mockResolvedValueOnce({
+          status: 200,
+          data: {
+            [promptId]: {
+              status: { status_str: 'success', completed: true },
+              outputs: { '9': { images: [{ filename: 'done.png', subfolder: '', type: 'output' }] } },
+            },
+          },
+        });
+
+      const result = await comfyuiClient.pollForCompletion(promptId);
+
+      expect(result).not.toBeNull();
+      expect(result?.status).toEqual({ status_str: 'success', completed: true });
+      expect(mockInstance.get).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('extractExecutionError', () => {
+    it('should return null when no status is present', () => {
+      const result = comfyuiClient.extractExecutionError({});
+      expect(result).toBeNull();
+    });
+
+    it('should return null when status_str is success', () => {
+      const result = comfyuiClient.extractExecutionError({
+        status: { status_str: 'success', completed: true },
+      });
+      expect(result).toBeNull();
+    });
+
+    it('should return error message when status_str is error with execution_error message', () => {
+      const result = comfyuiClient.extractExecutionError({
+        status: {
+          status_str: 'error',
+          completed: true,
+          messages: [
+            ['execution_started', { prompt_id: 'abc' }],
+            ['execution_error', {
+              node_id: '13',
+              node_type: 'easy seed',
+              exception_message: 'Cannot find module',
+              exception_type: 'ImportError',
+            }],
+          ],
+        },
+      });
+
+      expect(result).toContain('execution error');
+      expect(result).toContain('node 13');
+      expect(result).toContain('easy seed');
+      expect(result).toContain('Cannot find module');
+    });
+
+    it('should return generic error when status is error but no messages', () => {
+      const result = comfyuiClient.extractExecutionError({
+        status: { status_str: 'error', completed: true },
+      });
+
+      expect(result).toContain('execution failed');
+      expect(result).toContain('Check ComfyUI server logs');
     });
   });
 
