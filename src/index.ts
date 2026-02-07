@@ -2,6 +2,7 @@ import { config } from './utils/config';
 import { httpServer } from './utils/httpServer';
 import { logger } from './utils/logger';
 import { discordManager } from './bot/discordManager';
+import { comfyuiClient } from './api/comfyuiClient';
 
 // Start HTTP server immediately (configurator available without Discord)
 httpServer.start();
@@ -20,18 +21,37 @@ if (token) {
   logger.log('success', 'system', `Open the configurator to get started: http://localhost:${config.getHttpPort()}/configurator`);
 }
 
+// ── Shutdown & crash handling ─────────────────────────────────────
+
+let shutdownInProgress = false;
+
+async function shutdown(reason: string, exitCode = 0): Promise<void> {
+  if (shutdownInProgress) return;
+  shutdownInProgress = true;
+  logger.log('success', 'system', `Shutting down (${reason})...`);
+
+  try { comfyuiClient.close(); } catch (e) {
+    logger.logError('system', `Error closing ComfyUI client: ${e}`);
+  }
+  try { await discordManager.destroy(); } catch (e) {
+    logger.logError('system', `Error destroying Discord client: ${e}`);
+  }
+  try { await httpServer.stop(); } catch (e) {
+    logger.logError('system', `Error stopping HTTP server: ${e}`);
+  }
+
+  process.exit(exitCode);
+}
+
 process.on('unhandledRejection', (reason) => {
   logger.logError('system', `Unhandled rejection: ${reason}`);
+  shutdown('unhandledRejection', 1);
 });
 
-process.on('SIGINT', async () => {
-  logger.log('success', 'system', 'Shutting down (SIGINT)...');
-  await discordManager.destroy();
-  process.exit(0);
+process.on('uncaughtException', (err) => {
+  logger.logError('system', `Uncaught exception: ${err?.stack ?? err}`);
+  shutdown('uncaughtException', 1);
 });
 
-process.on('SIGTERM', async () => {
-  logger.log('success', 'system', 'Shutting down (SIGTERM)...');
-  await discordManager.destroy();
-  process.exit(0);
-});
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

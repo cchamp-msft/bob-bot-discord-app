@@ -1,6 +1,8 @@
 import axios, { AxiosInstance } from 'axios';
+import { randomUUID } from 'crypto';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
+import { ComfyUIWebSocketManager } from './comfyuiWebSocket';
 
 export interface ComfyUIResponse {
   success: boolean;
@@ -268,18 +270,30 @@ class ComfyUIClient {
   private cachedDefaultWorkflow: string | null = null;
 
   /** Maximum time (ms) to wait for a ComfyUI prompt to complete. */
-  private static POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-  /** Interval (ms) between history polls. */
+  private static EXECUTION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+  /** Interval (ms) between history polls (for fallback polling). */
   private static POLL_INTERVAL_MS = 3_000; // 3 seconds
 
   /** Cached object_info response with TTL */
   private objectInfoCache: { data: Record<string, unknown>; expiry: number } | null = null;
   private static OBJECT_INFO_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+  /** WebSocket manager for real-time execution tracking */
+  private wsManager: ComfyUIWebSocketManager;
+
+  /** Unique client ID for WebSocket identification */
+  private clientId: string;
+
   constructor() {
+    this.clientId = randomUUID();
     this.client = axios.create({
       baseURL: config.getComfyUIEndpoint(),
     });
+    this.wsManager = new ComfyUIWebSocketManager(
+      config.getComfyUIEndpoint(),
+      this.clientId
+    );
   }
 
   /**
@@ -287,9 +301,11 @@ class ComfyUIClient {
    * Called after config.reload() on config save.
    */
   refresh(): void {
+    const newEndpoint = config.getComfyUIEndpoint();
     this.client = axios.create({
-      baseURL: config.getComfyUIEndpoint(),
+      baseURL: newEndpoint,
     });
+    this.wsManager.updateBaseUrl(newEndpoint);
     this.cachedDefaultWorkflow = null;
     this.objectInfoCache = null;
   }
@@ -463,7 +479,8 @@ class ComfyUIClient {
   async generateImage(
     prompt: string,
     requester: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    timeoutSeconds?: number
   ): Promise<ComfyUIResponse> {
     try {
       // Priority: custom uploaded workflow > default generated workflow
@@ -522,14 +539,26 @@ class ComfyUIClient {
       }).join(', ');
       logger.log('success', requester, `ComfyUI workflow nodes: [${nodeSummary}]`);
 
+      // Ensure WebSocket is connected before submitting prompt
+      // This provides a proper client context to prevent tqdm stderr issues
+      let wsConnected = false;
+      try {
+        await this.wsManager.connectWithRetry();
+        wsConnected = true;
+      } catch (wsError) {
+        const wsErrorMsg = wsError instanceof Error ? wsError.message : String(wsError);
+        logger.logError(requester, `WebSocket connection failed, will fall back to polling: ${wsErrorMsg}`);
+      }
+
       // Step 1: Submit the prompt — response contains { prompt_id }
+      // Use our WebSocket clientId to associate execution with our connection
       let submitResponse;
       try {
         submitResponse = await this.client.post(
           '/api/prompt',
           {
             prompt: workflowData,
-            client_id: requester,
+            client_id: this.clientId,
           },
           signal ? { signal } : undefined
         );
@@ -563,11 +592,78 @@ class ComfyUIClient {
       const promptId: string = submitResponse.data.prompt_id;
       logger.logReply(requester, `ComfyUI prompt submitted: ${promptId}`);
 
-      // Step 2: Poll /history/{prompt_id} until the job completes
-      const historyData = await this.pollForCompletion(promptId, signal);
+      // Step 2: Wait for execution via WebSocket (real-time updates)
+      // Falls back to HTTP polling if WebSocket is unavailable or fails
+      const executionTimeoutMs = timeoutSeconds
+        ? timeoutSeconds * 1000
+        : ComfyUIClient.EXECUTION_TIMEOUT_MS;
 
+      let historyData: Record<string, unknown> | null = null;
+
+      if (wsConnected) {
+        let lastLoggedPercent = -1;
+        const executionResult = await this.wsManager.waitForExecution({
+          promptId,
+          timeoutMs: executionTimeoutMs,
+          signal,
+          onProgress: (value, max, nodeId) => {
+            // Throttle progress logging: only log at 0%, every 25%, and 100%
+            const percent = max > 0 ? Math.floor((value / max) * 100) : 0;
+            const bucket = Math.floor(percent / 25) * 25;
+            if (bucket !== lastLoggedPercent || value === max) {
+              lastLoggedPercent = bucket;
+              logger.log('success', requester, `ComfyUI progress: ${value}/${max} [${percent}%] (node ${nodeId})`);
+            }
+          },
+          onExecuting: (nodeId) => {
+            if (nodeId) {
+              logger.log('success', requester, `ComfyUI executing node: ${nodeId}`);
+            }
+          },
+        });
+
+        if (executionResult.success && executionResult.completed) {
+          // WebSocket confirmed completion — fetch history
+          historyData = await this.fetchHistory(promptId, signal);
+          if (!historyData) {
+            // History may not be available yet (race between WS completion and /history);
+            // fall back to polling with the remaining budget.
+            const remainingMs = Math.max(0, executionTimeoutMs - (executionResult.elapsedMs ?? 0));
+            if (remainingMs > 0) {
+              logger.log('success', requester, `History not yet available after WS completion, polling (${Math.round(remainingMs / 1000)}s remaining)`);
+              historyData = await this.pollForCompletion(promptId, signal, remainingMs);
+            }
+          }
+        } else if (executionResult.completed && executionResult.error) {
+          // ComfyUI reported an execution error (e.g. missing model) — terminal, no fallback
+          logger.logError(requester, executionResult.error);
+          return { success: false, error: executionResult.error };
+        } else if (executionResult.error === 'Execution aborted') {
+          // User/system abort — terminal, no fallback
+          logger.logError(requester, 'ComfyUI generation aborted');
+          return { success: false, error: 'ComfyUI generation aborted' };
+        } else {
+          // WS transport failure or WS timeout — fall back to polling with remaining time
+          const remainingMs = Math.max(0, executionTimeoutMs - (executionResult.elapsedMs ?? 0));
+          if (remainingMs <= 0) {
+            const errorMsg = 'ComfyUI generation timed out waiting for results';
+            logger.logError(requester, errorMsg);
+            return { success: false, error: errorMsg };
+          }
+          logger.logError(requester, `WebSocket wait failed (${executionResult.error}), falling back to polling (${Math.round(remainingMs / 1000)}s remaining)`);
+          historyData = await this.pollForCompletion(promptId, signal, remainingMs);
+        }
+      } else {
+        // No WebSocket available — use polling
+        logger.log('success', requester, 'Using HTTP polling for ComfyUI execution tracking');
+        historyData = await this.pollForCompletion(promptId, signal, executionTimeoutMs);
+      }
+
+      // Step 3: Process history results
       if (!historyData) {
-        const errorMsg = 'ComfyUI generation timed out waiting for results';
+        const errorMsg = signal?.aborted
+          ? 'ComfyUI generation aborted'
+          : 'ComfyUI generation timed out waiting for results';
         logger.logError(requester, errorMsg);
         return { success: false, error: errorMsg };
       }
@@ -589,7 +685,7 @@ class ComfyUIClient {
         return { success: false, error: executionError };
       }
 
-      // Step 3: Extract image URLs from output nodes
+      // Step 4: Extract image URLs from output nodes
       const images = this.extractImageUrls(historyData);
 
       if (images.length === 0) {
@@ -627,21 +723,47 @@ class ComfyUIClient {
   }
 
   /**
+   * Fetch the history entry for a specific prompt.
+   * Returns the history entry or null if not found.
+   */
+  async fetchHistory(promptId: string, signal?: AbortSignal): Promise<Record<string, unknown> | null> {
+    try {
+      const response = await this.client.get(
+        `/history/${promptId}`,
+        signal ? { signal } : undefined
+      );
+      if (response.status === 200 && response.data?.[promptId]) {
+        return response.data[promptId] as Record<string, unknown>;
+      }
+    } catch {
+      // History not available
+    }
+    return null;
+  }
+
+  /**
    * Poll GET /history/{promptId} until the prompt appears in the response,
    * indicating the workflow has finished executing.
    * Returns the history entry for the prompt, or null on timeout/abort.
+   * Used as a fallback when WebSocket connection is unavailable.
+   *
+   * @param timeoutMs — Maximum time to poll. Defaults to EXECUTION_TIMEOUT_MS.
    */
   async pollForCompletion(
     promptId: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    timeoutMs?: number
   ): Promise<Record<string, unknown> | null> {
-    const deadline = Date.now() + ComfyUIClient.POLL_TIMEOUT_MS;
+    const deadline = Date.now() + (timeoutMs ?? ComfyUIClient.EXECUTION_TIMEOUT_MS);
 
     while (Date.now() < deadline) {
       if (signal?.aborted) return null;
 
       try {
-        const response = await this.client.get(`/history/${promptId}`);
+        const response = await this.client.get(
+          `/history/${promptId}`,
+          signal ? { signal } : undefined
+        );
         if (response.status === 200 && response.data?.[promptId]) {
           const entry = response.data[promptId] as Record<string, unknown>;
 
@@ -735,6 +857,14 @@ class ComfyUIClient {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Close the ComfyUI client and disconnect WebSocket.
+   * Call during graceful shutdown.
+   */
+  close(): void {
+    this.wsManager.disconnect();
   }
 }
 

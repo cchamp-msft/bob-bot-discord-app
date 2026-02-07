@@ -16,7 +16,7 @@ class ApiManager {
     signal?: AbortSignal
   ): Promise<ComfyUIResponse | OllamaResponse> {
     if (api === 'comfyui') {
-      return await comfyuiClient.generateImage(data, requester, signal);
+      return await comfyuiClient.generateImage(data, requester, signal, _timeout);
     } else {
       return await ollamaClient.generate(data, requester, model || config.getOllamaModel(), conversationHistory, signal);
     }

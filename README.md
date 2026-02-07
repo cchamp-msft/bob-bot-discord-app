@@ -6,7 +6,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 
 - ✅ @mention and DM detection with inline replies
 - ✅ Slash commands with ephemeral responses (shareable by user)
-- ✅ ComfyUI integration for image generation
+- ✅ ComfyUI integration for image generation (WebSocket-based with HTTP polling fallback)
 - ✅ Ollama integration for AI text generation
 - ✅ Serial request processing with max 1 concurrent per API
 - ✅ Configurable per-keyword timeouts (default: 300s)
@@ -15,6 +15,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **Web-based configurator** — localhost-only SPA for managing all settings
 - ✅ **Discord start/stop controls** — manage bot connection from the configurator
 - ✅ **Hot-reload support** — API endpoints and keywords reload without restart
+- ✅ **Graceful shutdown** — cleans up Discord, HTTP server, and WebSocket connections on SIGINT/SIGTERM
 - ✅ **Ollama model discovery** — test connection loads available models for selection
 - ✅ **Ollama system prompt** — configurable personality/context sent with every request
 - ✅ **ComfyUI workflow upload** — upload JSON workflow with `%prompt%` placeholder substitution
@@ -38,7 +39,8 @@ src/
 │   └── commands.ts       # Slash command definitions
 ├── api/
 │   ├── index.ts          # API manager
-│   ├── comfyuiClient.ts  # ComfyUI API client
+│   ├── comfyuiClient.ts  # ComfyUI API client (workflow execution)
+│   ├── comfyuiWebSocket.ts # ComfyUI WebSocket manager (real-time execution tracking)
 │   └── ollamaClient.ts   # Ollama API client
 ├── public/
 │   └── configurator.html # Web-based configurator SPA
@@ -378,10 +380,24 @@ Log levels (`info`, `warn`, `error`) are derived from the status tag and control
 - Ensure HTTP server is running on configured port
 - Check firewall/network settings
 
+### ComfyUI WebSocket connection issues
+- The bot uses WebSockets (`ws://`) for real-time progress tracking with ComfyUI
+- If WebSocket connection fails, the bot automatically falls back to HTTP polling
+- If you see "WebSocket connection failed" errors, verify ComfyUI is accessible at the configured endpoint
+- The WebSocket URL is derived from the HTTP endpoint (e.g., `http://localhost:8188` → `ws://localhost:8188/ws`)
+- Ensure ComfyUI is not behind a proxy that blocks WebSocket connections
+- The bot will automatically reconnect with retry logic if the connection drops
+
 ### Cannot access configurator
 - Verify you're accessing from `http://localhost:{HTTP_PORT}/configurator`
 - Configurator is **localhost-only** — remote access is blocked for security
 - The HTTP server starts immediately on `npm run dev` / `npm start` — no Discord connection needed
+- **Not supported behind a reverse proxy** — the configurator checks `req.ip` directly and does not support `X-Forwarded-For` or `trust proxy` headers. If your staging environment uses a reverse proxy, ensure it does *not* forward `/configurator` or `/api/config*` routes from remote clients
+
+### Staging / deployment notes
+- The HTTP server binds on all interfaces by default (`0.0.0.0`) — restrict access via firewall rules or network policy if the host is reachable externally
+- Configurator and config API routes are localhost-only at the application level; output files under `/` are served publicly to anyone who can reach the port
+- Future work: HTTPS / signed-URL support for sharing large output files
 
 ### Config changes not applying
 - **API endpoints & keywords**: Use configurator's "Save Changes" button (hot-reload, no restart)

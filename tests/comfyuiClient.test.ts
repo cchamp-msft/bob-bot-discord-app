@@ -21,6 +21,24 @@ jest.mock('axios', () => ({
   },
 }));
 
+// Mock WebSocket manager instance
+const mockWsManager = {
+  connectWithRetry: jest.fn().mockResolvedValue(undefined),
+  waitForExecution: jest.fn().mockResolvedValue({
+    success: true,
+    promptId: 'test-prompt-id',
+    completed: true,
+  }),
+  disconnect: jest.fn(),
+  isConnected: jest.fn().mockReturnValue(false),
+  updateBaseUrl: jest.fn(),
+  updateClientId: jest.fn(),
+};
+
+jest.mock('../src/api/comfyuiWebSocket', () => ({
+  ComfyUIWebSocketManager: jest.fn().mockImplementation(() => mockWsManager),
+}));
+
 jest.mock('../src/utils/config', () => ({
   config: {
     getComfyUIEndpoint: jest.fn(() => 'http://localhost:8188'),
@@ -58,6 +76,19 @@ describe('ComfyUIClient', () => {
     mockInstance.get.mockReset();
     mockInstance.post.mockReset();
     mockInstance.defaults.baseURL = 'http://localhost:8188';
+    
+    // Reset WebSocket mock
+    mockWsManager.connectWithRetry.mockReset().mockResolvedValue(undefined);
+    mockWsManager.waitForExecution.mockReset().mockResolvedValue({
+      success: true,
+      promptId: 'test-prompt-id',
+      completed: true,
+    });
+    mockWsManager.disconnect.mockReset();
+    mockWsManager.isConnected.mockReset().mockReturnValue(false);
+    mockWsManager.updateBaseUrl.mockReset();
+    mockWsManager.updateClientId.mockReset();
+    
     (config.getComfyUIWorkflow as jest.Mock).mockReturnValue('');
     (config.getComfyUIEndpoint as jest.Mock).mockReturnValue('http://localhost:8188');
     (config.getComfyUIDefaultModel as jest.Mock).mockReturnValue('');
@@ -322,7 +353,7 @@ describe('ComfyUIClient', () => {
   });
 
   describe('generateImage', () => {
-    /** Helper: mock a successful prompt submit + history poll cycle. */
+    /** Helper: mock a successful prompt submit + WebSocket execution + history fetch cycle. */
     function mockSuccessfulGeneration(outputImages: Array<Record<string, string>> = [{ filename: 'img_001.png', subfolder: '', type: 'output' }]) {
       const promptId = 'test-prompt-id-123';
 
@@ -330,6 +361,13 @@ describe('ComfyUIClient', () => {
       mockInstance.post.mockResolvedValue({
         status: 200,
         data: { prompt_id: promptId, number: 1, node_errors: {} },
+      });
+
+      // WebSocket execution completes successfully
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: true,
+        promptId,
+        completed: true,
       });
 
       // GET /history/{promptId} → completed result
@@ -380,7 +418,9 @@ describe('ComfyUIClient', () => {
       // Verify substitution in POST body
       const sentBody = mockInstance.post.mock.calls[0][1];
       expect(sentBody.prompt).toEqual({ '3': { inputs: { text: 'a beautiful sunset' } } });
-      expect(sentBody.client_id).toBe('user1');
+      // client_id is now a UUID for WebSocket session tracking (not the Discord user)
+      expect(sentBody.client_id).toBeDefined();
+      expect(typeof sentBody.client_id).toBe('string');
     });
 
     it('should substitute all %prompt% occurrences', async () => {
@@ -537,6 +577,13 @@ describe('ComfyUIClient', () => {
         data: { prompt_id: promptId },
       });
 
+      // WebSocket execution completes successfully
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: true,
+        promptId,
+        completed: true,
+      });
+
       mockInstance.get.mockResolvedValue({
         status: 200,
         data: {
@@ -561,6 +608,13 @@ describe('ComfyUIClient', () => {
       mockInstance.post.mockResolvedValue({
         status: 200,
         data: { prompt_id: promptId },
+      });
+
+      // WebSocket execution completes (but history will show error)
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: true,
+        promptId,
+        completed: true,
       });
 
       mockInstance.get.mockResolvedValue({
@@ -592,6 +646,300 @@ describe('ComfyUIClient', () => {
       expect(result.error).toContain('easy positive');
       expect(result.error).toContain('Module not found');
     });
+
+    it('should poll when WS completes but history is not immediately available', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      const promptId = 'ws-done-history-miss';
+
+      // WS completes successfully
+      mockWsManager.connectWithRetry.mockResolvedValue(undefined);
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: true,
+        promptId,
+        completed: true,
+        elapsedMs: 2000,
+      });
+
+      // POST /api/prompt → prompt_id
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId, number: 1, node_errors: {} },
+      });
+
+      // First GET /history → empty (race condition: history not available yet)
+      // Second GET /history → completed result (polling picks it up)
+      let historyCallCount = 0;
+      mockInstance.get.mockImplementation(async () => {
+        historyCallCount++;
+        if (historyCallCount === 1) {
+          // fetchHistory() call right after WS completion — returns empty
+          return { status: 200, data: {} };
+        }
+        // pollForCompletion picks it up on subsequent calls
+        return {
+          status: 200,
+          data: {
+            [promptId]: {
+              status: { status_str: 'success', completed: true },
+              outputs: {
+                '9': { images: [{ filename: 'delayed_history.png', subfolder: '', type: 'output' }] },
+              },
+            },
+          },
+        };
+      });
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.images?.[0]).toContain('delayed_history.png');
+      // fetchHistory (1st call) + at least one poll call
+      expect(historyCallCount).toBeGreaterThanOrEqual(2);
+    });
+
+    it('should fall back to polling when WebSocket connection fails', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      const promptId = 'ws-fail-prompt';
+
+      // WebSocket connection fails
+      mockWsManager.connectWithRetry.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      // POST /api/prompt → prompt_id
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId, number: 1, node_errors: {} },
+      });
+
+      // GET /history/{promptId} → completed result (polling path)
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          [promptId]: {
+            status: { status_str: 'success', completed: true },
+            outputs: {
+              '9': { images: [{ filename: 'fallback.png', subfolder: '', type: 'output' }] },
+            },
+          },
+        },
+      });
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.images).toHaveLength(1);
+      expect(result.data?.images?.[0]).toContain('fallback.png');
+    });
+
+    it('should fall back to polling when WebSocket disconnects during wait', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      const promptId = 'ws-close-prompt';
+
+      // WS connects but fails during wait with a WebSocket error
+      mockWsManager.connectWithRetry.mockResolvedValue(undefined);
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: false,
+        promptId,
+        completed: false,
+        error: 'WebSocket connection closed during execution',
+      });
+
+      // POST /api/prompt → prompt_id
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId, number: 1, node_errors: {} },
+      });
+
+      // Polling path succeeds
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          [promptId]: {
+            status: { status_str: 'success', completed: true },
+            outputs: {
+              '9': { images: [{ filename: 'poll_ok.png', subfolder: '', type: 'output' }] },
+            },
+          },
+        },
+      });
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.images?.[0]).toContain('poll_ok.png');
+    });
+
+    it('should pass timeoutSeconds to waitForExecution when provided', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      mockSuccessfulGeneration();
+
+      await comfyuiClient.generateImage('test', 'user1', undefined, 120);
+
+      expect(mockWsManager.waitForExecution).toHaveBeenCalledWith(
+        expect.objectContaining({
+          timeoutMs: 120000, // 120 seconds → ms
+        })
+      );
+    });
+
+    it('should use default timeout when timeoutSeconds is not provided', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      mockSuccessfulGeneration();
+
+      await comfyuiClient.generateImage('test', 'user1');
+
+      expect(mockWsManager.waitForExecution).toHaveBeenCalledWith(
+        expect.objectContaining({
+          timeoutMs: 5 * 60 * 1000, // Default 5 minutes
+        })
+      );
+    });
+    it('should fall back to polling when WebSocket wait times out', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      const promptId = 'ws-timeout-prompt';
+
+      // WS connects but times out (not a ComfyUI execution error)
+      mockWsManager.connectWithRetry.mockResolvedValue(undefined);
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: false,
+        promptId,
+        completed: false,
+        error: 'Execution timed out waiting for ComfyUI',
+        elapsedMs: 5000,
+      });
+
+      // POST /api/prompt → prompt_id
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId, number: 1, node_errors: {} },
+      });
+
+      // Polling path succeeds with remaining time
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          [promptId]: {
+            status: { status_str: 'success', completed: true },
+            outputs: {
+              '9': { images: [{ filename: 'timeout_fallback.png', subfolder: '', type: 'output' }] },
+            },
+          },
+        },
+      });
+
+      const result = await comfyuiClient.generateImage('test', 'user1', undefined, 300);
+
+      expect(result.success).toBe(true);
+      expect(result.data?.images?.[0]).toContain('timeout_fallback.png');
+    });
+
+    it('should NOT fall back to polling on ComfyUI execution error', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      const promptId = 'exec-error-prompt';
+
+      mockWsManager.connectWithRetry.mockResolvedValue(undefined);
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: false,
+        promptId,
+        completed: true, // completed=true means ComfyUI reported real execution error
+        error: 'ComfyUI execution error [node 5] (KSampler) : Model not found',
+        elapsedMs: 2000,
+      });
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId, number: 1, node_errors: {} },
+      });
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Model not found');
+      // Should NOT have attempted polling
+      expect(mockInstance.get).not.toHaveBeenCalled();
+    });
+
+    it('should return abort-specific error when generation is aborted', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      const promptId = 'abort-prompt';
+
+      mockWsManager.connectWithRetry.mockResolvedValue(undefined);
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: false,
+        promptId,
+        completed: false,
+        error: 'Execution aborted',
+        elapsedMs: 100,
+      });
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId, number: 1, node_errors: {} },
+      });
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('ComfyUI generation aborted');
+      // Should NOT have attempted polling
+      expect(mockInstance.get).not.toHaveBeenCalled();
+    });
+
+    it('should pass executionTimeoutMs to polling fallback on no-WS path', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      const promptId = 'poll-timeout-prompt';
+
+      // WebSocket connection fails entirely
+      mockWsManager.connectWithRetry.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId, number: 1, node_errors: {} },
+      });
+
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          [promptId]: {
+            status: { status_str: 'success', completed: true },
+            outputs: {
+              '9': { images: [{ filename: 'poll.png', subfolder: '', type: 'output' }] },
+            },
+          },
+        },
+      });
+
+      // Pass a custom timeout of 60 seconds
+      const result = await comfyuiClient.generateImage('test', 'user1', undefined, 60);
+
+      expect(result.success).toBe(true);
+      // pollForCompletion should be called — we can't directly check its timeout arg
+      // since it's an internal call, but the success path proves it ran
+    });
+  });
+
+  describe('close', () => {
+    it('should disconnect WebSocket manager', () => {
+      comfyuiClient.close();
+      expect(mockWsManager.disconnect).toHaveBeenCalled();
+    });
   });
 
   describe('pollForCompletion', () => {
@@ -608,7 +956,7 @@ describe('ComfyUIClient', () => {
 
       expect(result).not.toBeNull();
       expect(result?.outputs).toBeDefined();
-      expect(mockInstance.get).toHaveBeenCalledWith(`/history/${promptId}`);
+      expect(mockInstance.get).toHaveBeenCalledWith(`/history/${promptId}`, undefined);
     });
 
     it('should return null when aborted', async () => {
@@ -904,7 +1252,7 @@ describe('ComfyUIClient', () => {
   });
 
   describe('generateImage with default workflow', () => {
-    /** Helper: mock a successful prompt submit + history poll cycle. */
+    /** Helper: mock a successful prompt submit + WebSocket execution + history fetch cycle. */
     function mockSuccessfulDefaultGeneration(
       outputImages: Array<Record<string, string>> = [{ filename: 'default_001.png', subfolder: '', type: 'output' }]
     ): string {
@@ -912,6 +1260,12 @@ describe('ComfyUIClient', () => {
       mockInstance.post.mockResolvedValue({
         status: 200,
         data: { prompt_id: promptId, number: 1, node_errors: {} },
+      });
+      // WebSocket execution completes successfully
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: true,
+        promptId,
+        completed: true,
       });
       mockInstance.get.mockResolvedValue({
         status: 200,

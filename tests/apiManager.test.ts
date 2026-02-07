@@ -56,7 +56,7 @@ describe('ApiManager', () => {
 
       const result = await apiManager.executeRequest('comfyui', 'user1', 'test prompt', 300);
 
-      expect(comfyuiClient.generateImage).toHaveBeenCalledWith('test prompt', 'user1', undefined);
+      expect(comfyuiClient.generateImage).toHaveBeenCalledWith('test prompt', 'user1', undefined, 300);
       expect(result.success).toBe(true);
     });
 

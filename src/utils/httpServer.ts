@@ -1,4 +1,5 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
+import * as http from 'http';
 import * as path from 'path';
 import { config } from './config';
 import { configWriter } from './configWriter';
@@ -29,6 +30,7 @@ function localhostOnly(req: Request, res: Response, next: NextFunction): void {
 class HttpServer {
   private app: Express;
   private port: number;
+  private server: http.Server | null = null;
 
   constructor() {
     this.app = express();
@@ -380,9 +382,31 @@ class HttpServer {
   }
 
   start(): void {
-    this.app.listen(this.port, () => {
+    this.server = this.app.listen(this.port, () => {
       logger.log('success', 'system', `HTTP server listening on http://localhost:${this.port}`);
       logger.log('success', 'system', `Configurator: http://localhost:${this.port}/configurator`);
+    });
+  }
+
+  /**
+   * Stop the HTTP server gracefully.
+   * Returns a promise that resolves when all connections are closed.
+   */
+  async stop(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.server) {
+        resolve();
+        return;
+      }
+      this.server.close((err) => {
+        this.server = null;
+        if (err) {
+          reject(err);
+        } else {
+          logger.log('success', 'system', 'HTTP server stopped');
+          resolve();
+        }
+      });
     });
   }
 

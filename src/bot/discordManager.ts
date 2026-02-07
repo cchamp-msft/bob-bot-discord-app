@@ -104,10 +104,29 @@ class DiscordManager {
         this.lastError = String(error);
       });
 
-      this.client.on('disconnect', () => {
+      // discord.js v14 shard lifecycle events
+      this.client.on(Events.ShardDisconnect, (event, shardId) => {
+        logger.log('success', 'system', `Discord shard ${shardId} disconnected (code ${event.code})`);
         this.status = 'stopped';
         this.username = null;
-        logger.log('success', 'system', 'Discord client disconnected');
+      });
+
+      this.client.on(Events.ShardError, (error, shardId) => {
+        logger.logError('system', `Discord shard ${shardId} error: ${error.message}`);
+        this.lastError = error.message;
+        this.status = 'error';
+      });
+
+      this.client.on(Events.ShardReconnecting, (shardId) => {
+        logger.log('success', 'system', `Discord shard ${shardId} reconnecting...`);
+        this.status = 'connecting';
+      });
+
+      this.client.on(Events.ShardResume, (shardId, replayedEvents) => {
+        logger.log('success', 'system', `Discord shard ${shardId} resumed (replayed ${replayedEvents} events)`);
+        this.status = 'running';
+        this.username = this.client?.user?.tag || null;
+        this.lastError = null;
       });
 
       await this.client.login(token);
