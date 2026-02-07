@@ -28,6 +28,8 @@ jest.mock('../src/utils/config', () => ({
     getReplyChainEnabled: jest.fn(() => true),
     getReplyChainMaxDepth: jest.fn(() => 10),
     getReplyChainMaxTokens: jest.fn(() => 16000),
+    getMaxAttachments: jest.fn(() => 10),
+    getImageResponseIncludeEmbed: jest.fn(() => false),
   },
 }));
 
@@ -448,5 +450,114 @@ describe('MessageHandler Discord mention stripping', () => {
     expect(lastCall[1]).toContain('draw something');
     expect(lastCall[1]).not.toMatch(/<[@#][^>]*>/);
     expect(lastCall[1]).not.toMatch(/<a?:\w+:\d+>/);
+  });
+});
+
+describe('MessageHandler stripKeyword', () => {
+  it('should strip the first occurrence of the keyword (case-insensitive)', () => {
+    const result = (messageHandler as any).stripKeyword('generate a beautiful sunset', 'generate');
+    expect(result).toBe('a beautiful sunset');
+  });
+
+  it('should strip only the first occurrence when keyword appears multiple times', () => {
+    const result = (messageHandler as any).stripKeyword('generate the word generate in a sentence', 'generate');
+    expect(result).toBe('the word generate in a sentence');
+  });
+
+  it('should be case-insensitive', () => {
+    const result = (messageHandler as any).stripKeyword('GENERATE a cat picture', 'generate');
+    expect(result).toBe('a cat picture');
+  });
+
+  it('should handle keyword at end of string', () => {
+    const result = (messageHandler as any).stripKeyword('please generate', 'generate');
+    expect(result).toBe('please');
+  });
+
+  it('should handle keyword in the middle of string', () => {
+    const result = (messageHandler as any).stripKeyword('please imagine a dog', 'imagine');
+    expect(result).toBe('please a dog');
+  });
+
+  it('should return empty string when content is only the keyword', () => {
+    const result = (messageHandler as any).stripKeyword('generate', 'generate');
+    expect(result).toBe('');
+  });
+
+  it('should not strip partial word matches', () => {
+    const result = (messageHandler as any).stripKeyword('regenerate the image', 'generate');
+    expect(result).toBe('regenerate the image');
+  });
+
+  it('should handle special regex characters in keyword', () => {
+    const result = (messageHandler as any).stripKeyword('use draw.io to generate', 'draw.io');
+    expect(result).toBe('use to generate');
+  });
+
+  it('should collapse multiple spaces after stripping', () => {
+    const result = (messageHandler as any).stripKeyword('please  generate  a cat', 'generate');
+    expect(result).toBe('please a cat');
+  });
+});
+
+describe('MessageHandler buildImagePromptFromReply', () => {
+  function createReplyMessage(
+    content: string,
+    referencedContent: string,
+    referencedAuthorId: string = 'user-2',
+    fetchError: boolean = false
+  ): any {
+    return {
+      content,
+      reference: { messageId: 'ref-msg-1' },
+      client: { user: { id: 'bot-id' } },
+      fetchReference: fetchError
+        ? jest.fn().mockRejectedValue(new Error('Not found'))
+        : jest.fn().mockResolvedValue({
+          content: referencedContent,
+          author: { id: referencedAuthorId, username: 'OtherUser' },
+        }),
+    };
+  }
+
+  it('should prepend quoted message content to user reply text', async () => {
+    const msg = createReplyMessage('a sunset', 'beautiful landscape');
+    const result = await (messageHandler as any).buildImagePromptFromReply(msg, 'a sunset');
+    expect(result).toBe('beautiful landscape, a sunset');
+  });
+
+  it('should strip bot mentions from quoted message', async () => {
+    const msg = createReplyMessage('a cat', '<@bot-id> hello world');
+    const result = await (messageHandler as any).buildImagePromptFromReply(msg, 'a cat');
+    expect(result).toBe('hello world, a cat');
+  });
+
+  it('should strip Discord markup from quoted message', async () => {
+    const msg = createReplyMessage('a dog', '<@999> <@&777> nice photo');
+    const result = await (messageHandler as any).buildImagePromptFromReply(msg, 'a dog');
+    expect(result).toBe('nice photo, a dog');
+  });
+
+  it('should fall back to reply text only when referenced message is empty', async () => {
+    const msg = createReplyMessage('a cat', '');
+    const result = await (messageHandler as any).buildImagePromptFromReply(msg, 'a cat');
+    expect(result).toBe('a cat');
+  });
+
+  it('should fall back to reply text only when fetch fails', async () => {
+    const msg = createReplyMessage('a cat', '', 'user-2', true);
+    const result = await (messageHandler as any).buildImagePromptFromReply(msg, 'a cat');
+    expect(result).toBe('a cat');
+  });
+
+  it('should fall back to reply text when no reference messageId', async () => {
+    const msg = {
+      content: 'a cat',
+      reference: {},
+      client: { user: { id: 'bot-id' } },
+      fetchReference: jest.fn(),
+    };
+    const result = await (messageHandler as any).buildImagePromptFromReply(msg, 'a cat');
+    expect(result).toBe('a cat');
   });
 });

@@ -90,13 +90,20 @@ class GenerateCommand extends BaseCommand {
       return;
     }
 
-    const embed = new EmbedBuilder()
-      .setColor('#00AA00')
-      .setTitle('ComfyUI Generation Complete')
-      .setTimestamp();
+    const includeEmbed = config.getImageResponseIncludeEmbed();
+
+    let embed: EmbedBuilder | undefined;
+    if (includeEmbed) {
+      embed = new EmbedBuilder()
+        .setColor('#00AA00')
+        .setTitle('ComfyUI Generation Complete')
+        .setTimestamp();
+    }
 
     // Process each image
     let savedCount = 0;
+    const attachments: { attachment: Buffer; name: string }[] = [];
+
     for (let i = 0; i < apiResult.data.images.length; i++) {
       const imageUrl = apiResult.data.images[i];
 
@@ -109,11 +116,21 @@ class GenerateCommand extends BaseCommand {
 
       if (fileOutput) {
         savedCount++;
-        embed.addFields({
-          name: `Image ${i + 1}`,
-          value: `[View](${fileOutput.url})`,
-          inline: false,
-        });
+        if (embed) {
+          embed.addFields({
+            name: `Image ${i + 1}`,
+            value: `[View](${fileOutput.url})`,
+            inline: false,
+          });
+        }
+
+        // Collect file for attachment if small enough
+        if (fileHandler.shouldAttachFile(fileOutput.size)) {
+          const fileBuffer = fileHandler.readFile(fileOutput.filePath);
+          if (fileBuffer) {
+            attachments.push({ attachment: fileBuffer, name: fileOutput.fileName });
+          }
+        }
       }
     }
 
@@ -126,7 +143,8 @@ class GenerateCommand extends BaseCommand {
 
     await interaction.editReply({
       content: '',
-      embeds: [embed],
+      embeds: embed ? [embed] : [],
+      ...(attachments.length > 0 ? { files: attachments } : {}),
     });
 
     logger.logReply(

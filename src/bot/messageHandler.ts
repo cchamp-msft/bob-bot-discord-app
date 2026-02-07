@@ -111,6 +111,22 @@ class MessageHandler {
       logger.logDefault(message.author.username, content);
     }
 
+    // Strip the matched routing keyword from the prompt (first occurrence only)
+    content = this.stripKeyword(content, keywordConfig.keyword);
+
+    if (!content) {
+      logger.logIgnored(message.author.username, 'Empty message after keyword removal');
+      await message.reply(
+        'Please include a prompt or question after the keyword!'
+      );
+      return;
+    }
+
+    // For image generation replies, combine quoted message content with the user's reply text
+    if (keywordConfig.api === 'comfyui' && message.reference) {
+      content = await this.buildImagePromptFromReply(message, content);
+    }
+
     // Collect reply chain context for Ollama requests
     let conversationHistory: ChatMessage[] = [];
     if (keywordConfig.api === 'ollama' && config.getReplyChainEnabled() && message.reference) {
@@ -295,6 +311,52 @@ class MessageHandler {
     });
   }
 
+  /**
+   * Remove the first occurrence of the routing keyword from the content.
+   * Preserves surrounding whitespace and trims the result.
+   */
+  stripKeyword(content: string, keyword: string): string {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
+    return content.replace(pattern, '').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Build a composite image prompt from a reply message.
+   * Fetches the replied-to message content and prepends it to the user's
+   * reply text so the image model receives full context.
+   * Returns "quoted content, user reply text" with usernames stripped.
+   */
+  private async buildImagePromptFromReply(
+    message: Message,
+    replyText: string
+  ): Promise<string> {
+    if (!message.reference?.messageId) return replyText;
+
+    try {
+      const referenced = await message.fetchReference();
+      let quotedContent = referenced.content || '';
+
+      // Strip bot mentions from the quoted message
+      const botId = message.client.user?.id;
+      if (botId) {
+        const mentionRegex = new RegExp(`<@!?${botId}>`, 'g');
+        quotedContent = quotedContent.replace(mentionRegex, '').trim();
+      }
+
+      // Strip Discord markup (mentions, emoji)
+      quotedContent = quotedContent.replace(/<@[!&]?\d+>|<#\d+>|<a?:\w+:\d+>/g, '').trim();
+
+      if (quotedContent) {
+        return `${quotedContent}, ${replyText}`;
+      }
+    } catch {
+      // Referenced message deleted or inaccessible — use reply text only
+    }
+
+    return replyText;
+  }
+
   private async handleComfyUIResponse(
     apiResult: ComfyUIResponse,
     processingMessage: Message,
@@ -305,10 +367,15 @@ class MessageHandler {
       return;
     }
 
-    const embed = new EmbedBuilder()
-      .setColor('#00AA00')
-      .setTitle('ComfyUI Generation Complete')
-      .setTimestamp();
+    const includeEmbed = config.getImageResponseIncludeEmbed();
+
+    let embed: EmbedBuilder | undefined;
+    if (includeEmbed) {
+      embed = new EmbedBuilder()
+        .setColor('#00AA00')
+        .setTitle('ComfyUI Generation Complete')
+        .setTimestamp();
+    }
 
     // Process each image — collect attachable files
     let savedCount = 0;
@@ -326,11 +393,13 @@ class MessageHandler {
       );
 
       if (fileOutput) {
-        embed.addFields({
-          name: `Image ${i + 1}`,
-          value: `[View](${fileOutput.url})`,
-          inline: false,
-        });
+        if (embed) {
+          embed.addFields({
+            name: `Image ${i + 1}`,
+            value: `[View](${fileOutput.url})`,
+            inline: false,
+          });
+        }
 
         // Collect file for attachment if small enough
         if (fileHandler.shouldAttachFile(fileOutput.size)) {
@@ -352,10 +421,10 @@ class MessageHandler {
     const maxPerMessage = config.getMaxAttachments();
     const firstBatch = attachments.slice(0, maxPerMessage);
 
-    // Edit the processing message with embed and first batch of attachments
+    // Edit the processing message with optional embed and first batch of attachments
     await processingMessage.edit({
       content: '',
-      embeds: [embed],
+      embeds: embed ? [embed] : [],
       ...(firstBatch.length > 0 ? { files: firstBatch } : {}),
     });
 

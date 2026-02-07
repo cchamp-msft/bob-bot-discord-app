@@ -21,6 +21,9 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **ComfyUI workflow upload** — upload JSON workflow with `%prompt%` placeholder substitution
 - ✅ **Rate-limited error messages** — configurable user-facing error messages with minimum interval
 - ✅ **Reply chain context** — traverses Discord reply threads to provide conversation history to Ollama
+- ✅ **Image prompt cleanup** — routing keywords are stripped from prompts before submission to ComfyUI
+- ✅ **Reply-based image generation** — replying to a message with an image keyword combines the quoted content with the user's prompt
+- ✅ **Configurable image response format** — embed block with internal link is optional (disabled by default)
 - ✅ **Conversational responses** — Ollama replies use plain text instead of embed blocks for a natural feel
 - ✅ Comprehensive request logging with date/requester/status tracking
 - ✅ Organized output directory structure with date formatting
@@ -99,7 +102,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`
 
 ### Running the Bot
 
@@ -165,6 +168,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **Error Handling**: Configure user-facing error message and rate limit interval
 - **HTTP Server**: Adjust port and output base URL
 - **Limits**: Set file size threshold, default timeout, and max attachments per message
+- **Image Response**: Toggle whether image responses include the embed block with internal View link (off by default)
 - **Keywords Management**: Add/edit/remove keyword→API mappings with custom timeouts
 - **Status Console**: Real-time log view tailing today's log file, showing all events (startup, requests, errors, config changes) with color-coded levels
 
@@ -177,6 +181,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - Default workflow parameters (model, size, steps, sampler, scheduler, denoise)
 - Error message and rate limit
 - Reply chain settings (enabled, max depth, max tokens)
+- Image response embed toggle
 - Output base URL
 - File size threshold
 - Default timeout
@@ -255,7 +260,9 @@ When a user replies to a previous message (theirs or the bot's), the bot automat
 
 ### Behavior Notes
 
-- Only applies to **Ollama** text generation (not ComfyUI image generation)
+- Reply chain traversal for **Ollama** builds multi-turn conversation history
+- **ComfyUI** image generation uses single-level reply context — the replied-to message content is prepended to the prompt
+- Routing keywords (e.g., "generate", "imagine") are stripped from the prompt before submission to the image model
 - Deleted or inaccessible messages in the chain are skipped gracefully
 - Circular references are detected and traversal stops
 - Single messages (not replies) work exactly as before — no context overhead
