@@ -45,7 +45,7 @@ src/
 └── utils/
     ├── config.ts         # Configuration loader (with hot-reload)
     ├── configWriter.ts   # Configuration persistence layer
-    ├── logger.ts         # Request logging system
+    ├── logger.ts         # Unified logging system (console + file + configurator tail)
     ├── fileHandler.ts    # File output management
     ├── requestQueue.ts   # Request queue with API availability tracking
     └── httpServer.ts     # Express HTTP server for file serving + configurator
@@ -162,7 +162,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **HTTP Server**: Adjust port and output base URL
 - **Limits**: Set file size threshold, default timeout, and max attachments per message
 - **Keywords Management**: Add/edit/remove keyword→API mappings with custom timeouts
-- **Status Console**: Real-time log stream showing config changes, API tests, and bot status
+- **Status Console**: Real-time log view tailing today's log file, showing all events (startup, requests, errors, config changes) with color-coded levels
 
 ### Hot-Reload vs Restart Required
 
@@ -200,7 +200,7 @@ npm run test:watch
 - **config.test.ts** — Environment parsing, public config, keyword routing
 - **configWriter.test.ts** — .env persistence, keywords.json validation
 - **fileHandler.test.ts** — File saving, sanitization, path generation
-- **logger.test.ts** — Log formatting, convenience methods
+- **logger.test.ts** — Log formatting, level mapping, console output, file tail
 - **requestQueue.test.ts** — API locking, timeouts, concurrency
 
 All tests run without requiring Discord connection or external APIs.
@@ -319,9 +319,17 @@ outputs/
 
 Log format:
 ```
-[2024-02-05T14:30:45.123Z] [success] [username] REQUEST: [generate] create an image
-[2024-02-05T14:30:52.456Z] [success] [username] REPLY: ComfyUI response sent: 1 images
+[2024-02-05T14:30:45.123Z] [info] [success] [username] REQUEST: [generate] create an image
+[2024-02-05T14:30:52.456Z] [info] [success] [username] REPLY: ComfyUI response sent: 1 images
+[2024-02-05T14:30:55.789Z] [error] [error] [system] ERROR: Connection refused
 ```
+
+Every log line is written identically to:
+1. **Console** (`stdout`/`stderr`) — visible when running `npm start` or `npm run dev`
+2. **Log file** — daily files in `outputs/logs/YYYY-MM-DD.log`
+3. **Configurator status console** — tails today's log file in real time
+
+Log levels (`info`, `warn`, `error`) are derived from the status tag and control console output method (`console.log`, `console.warn`, `console.error`) as well as color coding in the configurator.
 
 ## Troubleshooting
 

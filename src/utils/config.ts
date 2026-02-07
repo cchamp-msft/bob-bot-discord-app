@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
+import { logger } from './logger';
 
 dotenv.config();
 
@@ -45,9 +46,9 @@ class Config {
       }
 
       this.keywords = config.keywords;
-      console.log(`Loaded ${this.keywords.length} keywords from config`);
+      logger.log('success', 'config', `Loaded ${this.keywords.length} keywords from config`);
     } catch (error) {
-      console.error('Failed to load keywords.json:', error);
+      logger.logError('config', `Failed to load keywords.json: ${error}`);
       this.keywords = [];
     }
   }
@@ -167,7 +168,7 @@ class Config {
         return fs.readFileSync(workflowPath, 'utf-8');
       }
     } catch (error) {
-      console.error('Failed to load ComfyUI workflow:', error);
+      logger.logError('config', `Failed to load ComfyUI workflow: ${error}`);
     }
     return '';
   }
@@ -185,7 +186,7 @@ class Config {
     if (!raw) return defaultValue;
     const parsed = parseInt(raw, 10);
     if (isNaN(parsed)) {
-      console.warn(`Environment variable ${name} is not a valid number: "${raw}" — using default ${defaultValue}`);
+      logger.logWarn('config', `Environment variable ${name} is not a valid number: "${raw}" — using default ${defaultValue}`);
       return defaultValue;
     }
     return parsed;
@@ -228,7 +229,7 @@ class Config {
     const envPath = path.join(__dirname, '../../.env');
     const envResult = dotenv.config({ path: envPath, override: true });
     if (envResult.error) {
-      console.error('Failed to reload .env:', envResult.error);
+      logger.logError('config', `Failed to reload .env: ${envResult.error}`);
     }
 
     // Detect restart-required changes (only HTTP port)

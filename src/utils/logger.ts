@@ -1,9 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+export type LogLevel = 'info' | 'warn' | 'error';
+export type LogStatus = 'success' | 'error' | 'warn' | 'busy' | 'timeout';
+
 interface LogEntry {
   timestamp: string;
-  status: 'success' | 'error' | 'busy' | 'timeout';
+  level: LogLevel;
+  status: LogStatus;
   requester: string;
   data: string;
 }
@@ -28,23 +32,48 @@ class Logger {
     return now.toISOString(); // ISO format with timestamp
   }
 
+  private statusToLevel(status: LogStatus): LogLevel {
+    switch (status) {
+      case 'success': return 'info';
+      case 'error': return 'error';
+      case 'warn': return 'warn';
+      case 'busy': return 'warn';
+      case 'timeout': return 'warn';
+    }
+  }
+
   log(
-    status: 'success' | 'error' | 'busy' | 'timeout',
+    status: LogStatus,
     requester: string,
     data: string
   ): void {
+    const level = this.statusToLevel(status);
     const entry: LogEntry = {
       timestamp: this.formatTimestamp(),
+      level,
       status,
       requester,
       data,
     };
 
-    const logLine = `[${entry.timestamp}] [${entry.status}] [${entry.requester}] ${entry.data}\n`;
+    const logLine = `[${entry.timestamp}] [${entry.level}] [${entry.status}] [${entry.requester}] ${entry.data}`;
 
+    // Write to console (same line as file)
+    switch (level) {
+      case 'error':
+        console.error(logLine);
+        break;
+      case 'warn':
+        console.warn(logLine);
+        break;
+      default:
+        console.log(logLine);
+    }
+
+    // Write to file
     const logFile = this.getLogFilePath();
     try {
-      fs.appendFileSync(logFile, logLine, 'utf-8');
+      fs.appendFileSync(logFile, logLine + '\n', 'utf-8');
     } catch (error) {
       console.error('Failed to write to log file:', error);
     }
@@ -63,21 +92,16 @@ class Logger {
   ): void {
     const location = guildName ? `Guild: ${guildName}` : 'DM';
     const preview = content.length > 100 ? content.substring(0, 100) + '...' : content;
-    const logMsg = `INCOMING: (${location}) [${channelType}] "${preview}"`;
-    this.log('success', username, logMsg);
-    console.log(`[INCOMING] @${username} (${userId}) | ${location} | "${preview}"`);
+    this.log('success', username, `INCOMING: (${userId}) (${location}) [${channelType}] "${preview}"`);
   }
 
   logIgnored(username: string, reason: string): void {
-    const logMsg = `IGNORED: ${reason}`;
-    this.log('success', username, logMsg);
-    console.log(`[IGNORED] @${username} | ${reason}`);
+    this.log('success', username, `IGNORED: ${reason}`);
   }
 
   logDefault(username: string, content: string): void {
-    const logMsg = `USING_DEFAULT: No keyword found, defaulting to Ollama`;
-    this.log('success', username, logMsg);
-    console.log(`[DEFAULT] @${username} | No keyword matched, using Ollama for: "${content.substring(0, 80)}"`);
+    const preview = content.length > 80 ? content.substring(0, 80) + '...' : content;
+    this.log('success', username, `USING_DEFAULT: No keyword found, defaulting to Ollama for: "${preview}"`);
   }
 
   logReply(requester: string, messageContent: string): void {
@@ -88,12 +112,65 @@ class Logger {
     this.log('error', requester, `ERROR: ${error}`);
   }
 
+  logWarn(requester: string, warning: string): void {
+    this.log('warn', requester, `WARN: ${warning}`);
+  }
+
   logBusy(requester: string, api: string): void {
     this.log('busy', requester, `API_BUSY: ${api}`);
   }
 
   logTimeout(requester: string, keyword: string): void {
     this.log('timeout', requester, `TIMEOUT: ${keyword}`);
+  }
+
+  /**
+   * Read the last N lines from today's log file.
+   * Used by the configurator status console to tail the log.
+   */
+  getRecentLines(count: number = 200): string[] {
+    const logFile = this.getLogFilePath();
+    try {
+      if (!fs.existsSync(logFile)) return [];
+      const stat = fs.statSync(logFile);
+      if (stat.size === 0) return [];
+
+      // Tail-read strategy: start with a chunk from the end and expand if
+      // we haven't found enough lines, up to a hard cap of 512 KB.
+      const MAX_BYTES = 512 * 1024;
+      const fd = fs.openSync(logFile, 'r');
+      try {
+        let chunkSize = Math.min(count * 256, MAX_BYTES, stat.size);
+        let lines: string[] = [];
+
+        while (true) {
+          const start = Math.max(0, stat.size - chunkSize);
+          const buf = Buffer.alloc(chunkSize);
+          fs.readSync(fd, buf, 0, chunkSize, start);
+          const text = buf.toString('utf-8');
+          lines = text.split('\n').filter(Boolean);
+
+          // Enough lines, or we've already read from the start of the file
+          if (lines.length >= count || start === 0) break;
+
+          // Double the chunk and retry
+          chunkSize = Math.min(chunkSize * 2, MAX_BYTES, stat.size);
+          if (chunkSize >= stat.size) {
+            // Read the whole file — final attempt
+            const fullBuf = Buffer.alloc(stat.size);
+            fs.readSync(fd, fullBuf, 0, stat.size, 0);
+            lines = fullBuf.toString('utf-8').split('\n').filter(Boolean);
+            break;
+          }
+        }
+
+        return lines.slice(-count);
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      return [];
+    }
   }
 }
 

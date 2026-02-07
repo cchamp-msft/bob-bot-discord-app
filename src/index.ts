@@ -12,13 +12,12 @@ if (token) {
   discordManager.start().then((result) => {
     if (!result.success) {
       logger.logError('system', `Auto-start failed: ${result.message}`);
-      console.error(`Discord auto-start failed: ${result.message}`);
-      console.log(`Configurator available at http://localhost:${config.getHttpPort()}/configurator`);
+      logger.log('success', 'system', `Configurator available at http://localhost:${config.getHttpPort()}/configurator`);
     }
   });
 } else {
-  console.log('DISCORD_TOKEN not set — bot will not connect to Discord.');
-  console.log(`Open the configurator to get started: http://localhost:${config.getHttpPort()}/configurator`);
+  logger.log('success', 'system', 'DISCORD_TOKEN not set — bot will not connect to Discord.');
+  logger.log('success', 'system', `Open the configurator to get started: http://localhost:${config.getHttpPort()}/configurator`);
 }
 
 process.on('unhandledRejection', (reason) => {

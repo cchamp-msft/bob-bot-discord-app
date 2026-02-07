@@ -6,18 +6,6 @@ import { logger } from './logger';
 import { apiManager } from '../api';
 import { discordManager } from '../bot/discordManager';
 
-/** Status messages for the configurator console panel */
-const statusLog: string[] = [];
-const MAX_STATUS_LINES = 200;
-
-function pushStatus(message: string): void {
-  const line = `[${new Date().toISOString()}] ${message}`;
-  statusLog.push(line);
-  if (statusLog.length > MAX_STATUS_LINES) {
-    statusLog.splice(0, statusLog.length - MAX_STATUS_LINES);
-  }
-}
-
 /**
  * Middleware that restricts access to localhost only.
  * Blocks any request not originating from 127.0.0.1 or ::1.
@@ -69,9 +57,9 @@ class HttpServer {
       }
     });
 
-    // GET status log for the console panel
+    // GET status log for the console panel (tails today's log file)
     this.app.get('/api/config/status', localhostOnly, (_req, res) => {
-      res.json({ lines: statusLog });
+      res.json({ lines: logger.getRecentLines() });
     });
 
     // GET test API connectivity
@@ -88,20 +76,20 @@ class HttpServer {
           const result = await apiManager.testOllamaConnection();
           const endpoint = config.getApiEndpoint(api);
           if (result.healthy) {
-            pushStatus(`Connection test: ollama at ${endpoint} — OK (${result.models.length} model(s) found)`);
+            logger.log('success', 'configurator', `Connection test: ollama at ${endpoint} — OK (${result.models.length} model(s) found)`);
           } else {
-            pushStatus(`Connection test: ollama at ${endpoint} — FAILED${result.error ? ': ' + result.error : ''}`);
+            logger.logError('configurator', `Connection test: ollama at ${endpoint} — FAILED${result.error ? ': ' + result.error : ''}`);
           }
           res.json({ api, endpoint, healthy: result.healthy, models: result.models, error: result.error });
         } else {
           const healthy = await apiManager.checkApiHealth(api);
           const endpoint = config.getApiEndpoint(api);
-          pushStatus(`Connection test: ${api} at ${endpoint} — ${healthy ? 'OK' : 'FAILED'}`);
+          logger.log(healthy ? 'success' : 'error', 'configurator', `Connection test: ${api} at ${endpoint} — ${healthy ? 'OK' : 'FAILED'}`);
           res.json({ api, endpoint, healthy });
         }
       } catch (error) {
         const endpoint = config.getApiEndpoint(api);
-        pushStatus(`Connection test: ${api} at ${endpoint} — ERROR: ${error}`);
+        logger.logError('configurator', `Connection test: ${api} at ${endpoint} — ERROR: ${error}`);
         res.json({ api, endpoint, healthy: false, error: String(error) });
       }
     });
@@ -112,7 +100,7 @@ class HttpServer {
         const { workflow, filename } = req.body;
 
         if (!workflow || typeof workflow !== 'string') {
-          pushStatus('Workflow upload FAILED: No workflow data provided');
+          logger.logError('configurator', 'Workflow upload FAILED: No workflow data provided');
           res.status(400).json({ success: false, error: 'Workflow JSON string is required' });
           return;
         }
@@ -122,15 +110,15 @@ class HttpServer {
         const result = await configWriter.saveWorkflow(workflow, safeName);
 
         if (result.success) {
-          pushStatus(`Workflow uploaded: ${safeName} — validation passed ✓`);
+          logger.log('success', 'configurator', `Workflow uploaded: ${safeName} — validation passed`);
           res.json({ success: true, filename: safeName });
         } else {
-          pushStatus(`Workflow upload FAILED: ${result.error}`);
+          logger.logError('configurator', `Workflow upload FAILED: ${result.error}`);
           res.status(400).json({ success: false, error: result.error });
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        pushStatus(`Workflow upload ERROR: ${errorMsg}`);
+        logger.logError('configurator', `Workflow upload ERROR: ${errorMsg}`);
         res.status(500).json({ success: false, error: errorMsg });
       }
     });
@@ -144,17 +132,17 @@ class HttpServer {
 
     // POST start the Discord bot
     this.app.post('/api/discord/start', localhostOnly, async (_req, res) => {
-      pushStatus('Discord bot start requested');
+      logger.log('success', 'configurator', 'Discord bot start requested');
       const result = await discordManager.start();
-      pushStatus(`Discord start: ${result.message}`);
+      logger.log(result.success ? 'success' : 'error', 'configurator', `Discord start: ${result.message}`);
       res.json(result);
     });
 
     // POST stop the Discord bot
     this.app.post('/api/discord/stop', localhostOnly, async (_req, res) => {
-      pushStatus('Discord bot stop requested');
+      logger.log('success', 'configurator', 'Discord bot stop requested');
       const result = await discordManager.stop();
-      pushStatus(`Discord stop: ${result.message}`);
+      logger.log(result.success ? 'success' : 'error', 'configurator', `Discord stop: ${result.message}`);
       res.json(result);
     });
 
@@ -166,10 +154,10 @@ class HttpServer {
         return;
       }
 
-      pushStatus('Discord token test requested');
+      logger.log('success', 'configurator', 'Discord token test requested');
       const result = await discordManager.testToken(token);
       // Never log the actual token value
-      pushStatus(`Discord token test: ${result.success ? 'OK' : 'FAILED'} — ${result.message}`);
+      logger.log(result.success ? 'success' : 'error', 'configurator', `Discord token test: ${result.success ? 'OK' : 'FAILED'} — ${result.message}`);
       res.json(result);
     });
 
@@ -189,14 +177,14 @@ class HttpServer {
 
           await configWriter.updateEnv(env);
           messages.push(`Updated .env: ${safeKeyNames.join(', ')}`);
-          pushStatus(`Config saved — .env keys: ${safeKeyNames.join(', ')}`);
+          logger.log('success', 'configurator', `Config saved — .env keys: ${safeKeyNames.join(', ')}`);
         }
 
         // Update keywords if provided
         if (keywords && Array.isArray(keywords)) {
           await configWriter.updateKeywords(keywords);
           messages.push(`Updated keywords.json: ${keywords.length} keyword(s)`);
-          pushStatus(`Config saved — ${keywords.length} keyword(s) written to keywords.json`);
+          logger.log('success', 'configurator', `Config saved — ${keywords.length} keyword(s) written to keywords.json`);
         }
 
         // Hot-reload config
@@ -205,7 +193,7 @@ class HttpServer {
         // Rebuild API client axios instances if endpoints changed
         apiManager.refreshClients();
 
-        pushStatus(`Config reloaded — hot: [${reloadResult.reloaded.join(', ')}], restart needed: [${reloadResult.requiresRestart.join(', ') || 'none'}]`);
+        logger.log('success', 'configurator', `Config reloaded — hot: [${reloadResult.reloaded.join(', ')}], restart needed: [${reloadResult.requiresRestart.join(', ') || 'none'}]`);
 
         if (reloadResult.requiresRestart.length > 0) {
           messages.push(`⚠ Restart required for: ${reloadResult.requiresRestart.join(', ')}`);
@@ -215,7 +203,6 @@ class HttpServer {
         res.json({ success: true, messages, reloadResult });
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        pushStatus(`Config save FAILED: ${errorMsg}`);
         logger.logError('configurator', `Config save failed: ${errorMsg}`);
         res.status(400).json({ success: false, error: errorMsg });
       }
@@ -246,8 +233,6 @@ class HttpServer {
     this.app.listen(this.port, () => {
       logger.log('success', 'system', `HTTP server listening on http://localhost:${this.port}`);
       logger.log('success', 'system', `Configurator: http://localhost:${this.port}/configurator`);
-      pushStatus('HTTP server started');
-      pushStatus(`Configurator available at http://localhost:${this.port}/configurator`);
     });
   }
 

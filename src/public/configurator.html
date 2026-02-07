@@ -484,9 +484,10 @@
       const data = await res.json();
       consoleEl.innerHTML = '';
       for (const line of data.lines) {
-        const cls = line.includes('FAILED') || line.includes('ERROR') ? 'err'
-          : line.includes('OK') || line.includes('started') || line.includes('saved') || line.includes('Authenticated') ? 'ok'
-          : line.includes('restart') || line.includes('connecting') ? 'warn'
+        // Classify by structured log level tags, with keyword highlights for info
+        const cls = line.includes('[error]') ? 'err'
+          : line.includes('[warn]') ? 'warn'
+          : (line.includes(' OK') || line.includes('started') || line.includes('logged in') || line.includes('saved') || line.includes('Authenticated') || line.includes('Loaded ')) ? 'ok'
           : '';
         conLog(line, cls);
       }

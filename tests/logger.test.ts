@@ -1,6 +1,6 @@
 /**
- * Logger tests — exercises log formatting, file creation, and
- * convenience methods without any Discord dependencies.
+ * Logger tests — exercises log formatting, file creation, console output,
+ * and convenience methods without any Discord dependencies.
  */
 
 import * as fs from 'fs';
@@ -16,16 +16,25 @@ import { logger } from '../src/utils/logger';
 describe('Logger', () => {
   let tempDir: string;
   let originalLogsDir: string;
+  let consoleSpy: jest.SpyInstance;
+  let consoleErrorSpy: jest.SpyInstance;
+  let consoleWarnSpy: jest.SpyInstance;
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'logger-test-'));
     originalLogsDir = (logger as any).logsDir;
     (logger as any).logsDir = tempDir;
+    consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
     (logger as any).logsDir = originalLogsDir;
     fs.rmSync(tempDir, { recursive: true, force: true });
+    consoleSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
   });
 
   function readLatestLog(): string {
@@ -35,11 +44,11 @@ describe('Logger', () => {
   }
 
   describe('log', () => {
-    it('should write a formatted log line to a date-named file', () => {
+    it('should write a formatted log line with level and status to a date-named file', () => {
       logger.log('success', 'testuser', 'hello world');
 
       const content = readLatestLog();
-      expect(content).toMatch(/\[.*\] \[success\] \[testuser\] hello world/);
+      expect(content).toMatch(/\[.*\] \[info\] \[success\] \[testuser\] hello world/);
     });
 
     it('should use ISO timestamp format', () => {
@@ -67,6 +76,44 @@ describe('Logger', () => {
       const lines = content.trim().split('\n');
       expect(lines).toHaveLength(3);
     });
+
+    it('should write the same line to both console and file', () => {
+      logger.log('success', 'testuser', 'hello world');
+
+      const fileContent = readLatestLog().trim();
+      expect(consoleSpy).toHaveBeenCalledTimes(1);
+      expect(consoleSpy.mock.calls[0][0]).toBe(fileContent);
+    });
+
+    it('should use console.error for error-level logs', () => {
+      logger.log('error', 'user', 'bad thing');
+
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy.mock.calls[0][0]).toContain('[error]');
+    });
+
+    it('should use console.warn for warn-level logs', () => {
+      logger.log('busy', 'user', 'busy thing');
+
+      expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+      expect(consoleWarnSpy.mock.calls[0][0]).toContain('[warn]');
+    });
+
+    it('should map status to correct level', () => {
+      logger.log('success', 'u', 'a');
+      logger.log('error', 'u', 'b');
+      logger.log('warn', 'u', 'c');
+      logger.log('busy', 'u', 'd');
+      logger.log('timeout', 'u', 'e');
+
+      const content = readLatestLog();
+      const lines = content.trim().split('\n');
+      expect(lines[0]).toContain('[info] [success]');
+      expect(lines[1]).toContain('[error] [error]');
+      expect(lines[2]).toContain('[warn] [warn]');
+      expect(lines[3]).toContain('[warn] [busy]');
+      expect(lines[4]).toContain('[warn] [timeout]');
+    });
   });
 
   describe('convenience methods', () => {
@@ -74,6 +121,7 @@ describe('Logger', () => {
       logger.logRequest('alice', 'generate a cat');
 
       const content = readLatestLog();
+      expect(content).toContain('[info]');
       expect(content).toContain('[success]');
       expect(content).toContain('[alice]');
       expect(content).toContain('REQUEST: generate a cat');
@@ -83,22 +131,32 @@ describe('Logger', () => {
       logger.logReply('bob', 'image sent');
 
       const content = readLatestLog();
+      expect(content).toContain('[info]');
       expect(content).toContain('[success]');
       expect(content).toContain('REPLY: image sent');
     });
 
-    it('logError should use error status and prefix with ERROR:', () => {
+    it('logError should use error status and level, prefix with ERROR:', () => {
       logger.logError('system', 'something broke');
 
       const content = readLatestLog();
-      expect(content).toContain('[error]');
+      expect(content).toContain('[error] [error]');
       expect(content).toContain('ERROR: something broke');
+    });
+
+    it('logWarn should use warn level and warn status, prefix with WARN:', () => {
+      logger.logWarn('config', 'invalid value');
+
+      const content = readLatestLog();
+      expect(content).toContain('[warn] [warn]');
+      expect(content).toContain('WARN: invalid value');
     });
 
     it('logBusy should use busy status and prefix with API_BUSY:', () => {
       logger.logBusy('carol', 'comfyui');
 
       const content = readLatestLog();
+      expect(content).toContain('[warn]');
       expect(content).toContain('[busy]');
       expect(content).toContain('API_BUSY: comfyui');
     });
@@ -107,6 +165,7 @@ describe('Logger', () => {
       logger.logTimeout('dave', 'generate');
 
       const content = readLatestLog();
+      expect(content).toContain('[warn]');
       expect(content).toContain('[timeout]');
       expect(content).toContain('TIMEOUT: generate');
     });
@@ -115,9 +174,11 @@ describe('Logger', () => {
       logger.logIncoming('alice', '12345', 'DM', null, 'hello bot');
 
       const content = readLatestLog();
+      expect(content).toContain('[info]');
       expect(content).toContain('[success]');
       expect(content).toContain('[alice]');
       expect(content).toContain('INCOMING:');
+      expect(content).toContain('(12345)');
       expect(content).toContain('DM');
       expect(content).toContain('"hello bot"');
     });
@@ -141,6 +202,7 @@ describe('Logger', () => {
       logger.logIgnored('dave', 'Empty message after mention removal');
 
       const content = readLatestLog();
+      expect(content).toContain('[info]');
       expect(content).toContain('[success]');
       expect(content).toContain('IGNORED: Empty message after mention removal');
     });
@@ -149,8 +211,47 @@ describe('Logger', () => {
       logger.logDefault('eve', 'what is the weather?');
 
       const content = readLatestLog();
+      expect(content).toContain('[info]');
       expect(content).toContain('[success]');
-      expect(content).toContain('USING_DEFAULT: No keyword found, defaulting to Ollama');
+      expect(content).toContain('USING_DEFAULT: No keyword found, defaulting to Ollama for: "what is the weather?"');
+    });
+  });
+
+  describe('getRecentLines', () => {
+    it('should return empty array when no log file exists', () => {
+      const lines = logger.getRecentLines();
+      expect(lines).toEqual([]);
+    });
+
+    it('should return all lines when fewer than count', () => {
+      logger.log('success', 'user', 'line 1');
+      logger.log('success', 'user', 'line 2');
+
+      const lines = logger.getRecentLines(10);
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toContain('line 1');
+      expect(lines[1]).toContain('line 2');
+    });
+
+    it('should return only the last N lines when more exist', () => {
+      for (let i = 0; i < 10; i++) {
+        logger.log('success', 'user', `line ${i}`);
+      }
+
+      const lines = logger.getRecentLines(3);
+      expect(lines).toHaveLength(3);
+      expect(lines[0]).toContain('line 7');
+      expect(lines[1]).toContain('line 8');
+      expect(lines[2]).toContain('line 9');
+    });
+
+    it('should default to 200 lines', () => {
+      for (let i = 0; i < 5; i++) {
+        logger.log('success', 'user', `line ${i}`);
+      }
+
+      const lines = logger.getRecentLines();
+      expect(lines).toHaveLength(5);
     });
   });
 });
