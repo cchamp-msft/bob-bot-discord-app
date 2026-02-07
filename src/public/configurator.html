@@ -1005,17 +1005,19 @@
           conLog(`    • ${url}`);
         }
       } else {
-        statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(data.error || 'Unknown error')}</span>`;
-        conLog(`  ✗ Test generation failed: ${data.error || 'Unknown error'}`, 'err');
+        const errMsg = data.error || 'Generation failed — no images returned';
+        statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(errMsg)}</span>`;
+        resultsEl.style.display = 'none';
+        conLog(`  ✗ Test generation failed: ${errMsg}`, 'err');
       }
-
-      await pollStatus();
     } catch (e) {
       statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(e.message)}</span>`;
+      resultsEl.style.display = 'none';
       conLog(`  ✗ Test generation error: ${e.message}`, 'err');
     } finally {
       btn.disabled = false;
       btn.textContent = 'Generate';
+      await pollStatus();
     }
   }
 
