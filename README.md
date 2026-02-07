@@ -97,7 +97,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`
 
 ### Running the Bot
 
@@ -158,6 +158,8 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **Ollama Model Selection**: Test connection auto-discovers available models; select and save desired model
 - **Ollama System Prompt**: Configurable system prompt sets the bot's personality; reset-to-default button included
 - **ComfyUI Workflow Upload**: Upload a workflow JSON file with `%prompt%` placeholder validation
+- **Default Workflow Builder**: Configure a basic text-to-image workflow with checkpoint model, image size, steps, sampler, scheduler, and denoise — no manual JSON editing required
+- **ComfyUI Discovery**: Auto-detect available checkpoints, samplers, and schedulers from the connected ComfyUI instance
 - **Error Handling**: Configure user-facing error message and rate limit interval
 - **HTTP Server**: Adjust port and output base URL
 - **Limits**: Set file size threshold, default timeout, and max attachments per message
@@ -170,6 +172,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - ComfyUI/Ollama endpoints
 - Ollama model selection
 - Ollama system prompt
+- Default workflow parameters (model, size, steps, sampler, scheduler, denoise)
 - Error message and rate limit
 - Reply chain settings (enabled, max depth, max tokens)
 - Output base URL
@@ -268,7 +271,30 @@ The `/ask` slash command also accepts an optional `model` parameter to override 
 
 ### ComfyUI Workflow Configuration
 
-ComfyUI uses workflow JSON files to define generation pipelines. Upload a workflow JSON file through the configurator:
+ComfyUI uses workflow JSON files to define generation pipelines. There are two ways to configure a workflow:
+
+#### Option 1: Default Workflow (Recommended for Getting Started)
+
+The configurator includes a **Default Workflow Settings** section that generates a basic text-to-image workflow from configurable parameters:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `COMFYUI_DEFAULT_MODEL` | *(none)* | Checkpoint model file (e.g. `sd_xl_base_1.0.safetensors`) |
+| `COMFYUI_DEFAULT_WIDTH` | `512` | Latent image width (must be divisible by 8) |
+| `COMFYUI_DEFAULT_HEIGHT` | `512` | Latent image height (must be divisible by 8) |
+| `COMFYUI_DEFAULT_STEPS` | `20` | Number of sampling steps |
+| `COMFYUI_DEFAULT_CFG` | `7.0` | Classifier-free guidance scale |
+| `COMFYUI_DEFAULT_SAMPLER` | `euler` | Sampler algorithm |
+| `COMFYUI_DEFAULT_SCHEDULER` | `normal` | Noise scheduler |
+| `COMFYUI_DEFAULT_DENOISE` | `1.0` | Denoise strength (0–1.0; use 0.88 for partial denoising) |
+
+Click **Discover Options** in the configurator to populate dropdowns with available checkpoints, samplers, and schedulers from your connected ComfyUI instance.
+
+The generated workflow uses `CheckpointLoaderSimple` (providing MODEL, CLIP, and VAE), two `CLIPTextEncode` nodes (positive/negative), `EmptyLatentImage`, `KSampler`, `VAEDecode`, and `SaveImage`.
+
+#### Option 2: Custom Workflow Upload (Advanced)
+
+Upload a workflow JSON file through the configurator for full control:
 
 1. Export your workflow from ComfyUI as a JSON file (API format)
 2. Edit the workflow JSON to replace the positive prompt value with the placeholder `%prompt%`
@@ -280,6 +306,8 @@ ComfyUI uses workflow JSON files to define generation pipelines. Upload a workfl
 When a Discord user triggers image generation, all occurrences of `%prompt%` in the workflow are replaced with the user's prompt text, and the resulting workflow is submitted to ComfyUI's `/api/prompt` endpoint.
 
 The workflow is stored in `.config/comfyui-workflow.json`.
+
+**Workflow Precedence:** If a custom workflow is uploaded, it always takes priority over the default workflow. Remove the custom workflow via the configurator to revert to default workflow settings.
 
 ### @mention Usage
 Mention the bot with a keyword and prompt:
