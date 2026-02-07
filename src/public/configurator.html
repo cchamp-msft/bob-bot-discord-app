@@ -301,6 +301,23 @@
           <div id="workflowStatus" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
         </div>
 
+        <!-- Test Image Generation -->
+        <div style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
+          <label style="display:block;font-size:0.8em;color:var(--text-dim);margin-bottom:6px">Test Image Generation <span class="note">submit a prompt directly to ComfyUI</span></label>
+          <div class="field-row" style="margin-bottom:8px">
+            <div class="field">
+              <input type="text" id="testPrompt" value="a picture of a banana" placeholder="Enter a test prompt…">
+            </div>
+            <div class="field tiny">
+              <button class="btn-test btn-sm" id="btnTestGenerate" onclick="testGenerateImage()">Generate</button>
+            </div>
+          </div>
+          <div id="testGenStatus" style="font-size:0.8em;color:var(--text-dim);display:none"></div>
+          <div id="testGenResults" style="margin-top:8px;display:none">
+            <div id="testGenImages" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+          </div>
+        </div>
+
         <hr style="border-color:var(--border);margin:16px 0">
 
         <!-- Ollama -->
@@ -918,6 +935,81 @@
 
     // Reset the file input so the same file can be re-uploaded
     input.value = '';
+  }
+
+  // ── Test image generation ───────────────────────────
+  async function testGenerateImage() {
+    const prompt = document.getElementById('testPrompt').value.trim();
+    if (!prompt) {
+      conLog(`[${new Date().toISOString()}] Enter a prompt to test image generation`, 'warn');
+      return;
+    }
+
+    const btn = document.getElementById('btnTestGenerate');
+    const statusEl = document.getElementById('testGenStatus');
+    const resultsEl = document.getElementById('testGenResults');
+    const imagesEl = document.getElementById('testGenImages');
+
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    statusEl.style.display = 'block';
+    statusEl.innerHTML = '<span style="color:var(--warn)">⏳ Generating… this may take a few minutes</span>';
+    resultsEl.style.display = 'none';
+    imagesEl.innerHTML = '';
+
+    conLog(`[${new Date().toISOString()}] Test image generation started — "${prompt.substring(0, 80)}"…`);
+
+    try {
+      const res = await fetch('/api/test/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+
+      const data = await res.json();
+
+      if (data.success && data.images && data.images.length > 0) {
+        statusEl.innerHTML = `<span style="color:var(--ok)">✓ Generated ${data.images.length} image(s)</span>`;
+        resultsEl.style.display = 'block';
+
+        for (const url of data.images) {
+          const wrapper = document.createElement('div');
+          wrapper.style.cssText = 'border:1px solid var(--border);border-radius:4px;overflow:hidden;background:var(--surface)';
+
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = 'Generated image';
+          img.style.cssText = 'max-width:256px;max-height:256px;display:block';
+          img.onerror = function() { this.alt = 'Failed to load image'; this.style.padding = '20px'; };
+
+          const link = document.createElement('a');
+          link.href = url;
+          link.target = '_blank';
+          link.style.cssText = 'display:block;font-size:0.75em;padding:4px 8px;color:var(--text-dim);word-break:break-all';
+          link.textContent = url;
+
+          wrapper.appendChild(img);
+          wrapper.appendChild(link);
+          imagesEl.appendChild(wrapper);
+        }
+
+        conLog(`  ✓ Test generation complete — ${data.images.length} image(s)`, 'ok');
+        for (const url of data.images) {
+          conLog(`    • ${url}`);
+        }
+      } else {
+        statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(data.error || 'Unknown error')}</span>`;
+        conLog(`  ✗ Test generation failed: ${data.error || 'Unknown error'}`, 'err');
+      }
+
+      await pollStatus();
+    } catch (e) {
+      statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(e.message)}</span>`;
+      conLog(`  ✗ Test generation error: ${e.message}`, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Generate';
+    }
   }
 
   // ── Helpers ────────────────────────────────────────

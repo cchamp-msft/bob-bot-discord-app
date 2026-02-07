@@ -3,7 +3,9 @@ import * as path from 'path';
 import { config } from './config';
 import { configWriter } from './configWriter';
 import { logger } from './logger';
+import { fileHandler } from './fileHandler';
 import { apiManager } from '../api';
+import { comfyuiClient } from '../api/comfyuiClient';
 import { discordManager } from '../bot/discordManager';
 
 /**
@@ -206,6 +208,53 @@ class HttpServer {
         const errorMsg = error instanceof Error ? error.message : String(error);
         logger.logError('configurator', `Config save failed: ${errorMsg}`);
         res.status(400).json({ success: false, error: errorMsg });
+      }
+    });
+
+    // ── Test routes (localhost only) ─────────────────────────────
+
+    // POST test image generation — submit a prompt to ComfyUI and return results
+    this.app.post('/api/test/generate-image', localhostOnly, async (req, res) => {
+      const { prompt } = req.body;
+
+      if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+        res.status(400).json({ success: false, error: 'A non-empty prompt string is required' });
+        return;
+      }
+
+      logger.log('success', 'configurator', `Test image generation started — prompt: "${prompt.substring(0, 80)}"`);
+
+      try {
+        const controller = new AbortController();
+        const result = await comfyuiClient.generateImage(prompt.trim(), 'test', controller.signal);
+
+        if (!result.success) {
+          logger.logError('configurator', `Test image generation failed: ${result.error}`);
+          res.json({ success: false, error: result.error });
+          return;
+        }
+
+        // Download and save images to outputs/ with 'test' as requester
+        const savedImages: Array<{ url: string; localUrl: string }> = [];
+        const images = result.data?.images || [];
+
+        for (const imageUrl of images) {
+          const saved = await fileHandler.saveFromUrl('test', prompt, imageUrl, 'png');
+          if (saved) {
+            savedImages.push({ url: imageUrl, localUrl: saved.url });
+          }
+        }
+
+        logger.log('success', 'configurator', `Test image generation completed — ${savedImages.length} image(s) saved`);
+        res.json({
+          success: true,
+          images: savedImages.map(img => img.localUrl),
+          comfyuiImages: images,
+        });
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.logError('configurator', `Test image generation error: ${errorMsg}`);
+        res.status(500).json({ success: false, error: errorMsg });
       }
     });
 
