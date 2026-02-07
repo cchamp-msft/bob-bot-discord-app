@@ -30,6 +30,7 @@ jest.mock('../src/utils/config', () => ({
 
 jest.mock('../src/utils/logger', () => ({
   logger: {
+    log: jest.fn(),
     logRequest: jest.fn(),
     logReply: jest.fn(),
     logError: jest.fn(),
@@ -38,6 +39,7 @@ jest.mock('../src/utils/logger', () => ({
 
 // Import after mocks — singleton captures mockInstance
 import { comfyuiClient } from '../src/api/comfyuiClient';
+import { isUIFormat, convertUIToAPIFormat } from '../src/api/comfyuiClient';
 import { config } from '../src/utils/config';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -82,6 +84,223 @@ describe('ComfyUIClient', () => {
       const workflow = '{"pos": "%prompt%", "neg": "not %prompt%"}';
       const result = comfyuiClient.validateWorkflow(workflow);
       expect(result.valid).toBe(true);
+    });
+
+    it('should detect UI-format workflow and return converted version', () => {
+      const uiWorkflow = JSON.stringify({
+        nodes: [
+          {
+            id: 3,
+            type: 'CLIPTextEncode',
+            inputs: [{ name: 'clip', link: 1 }],
+            widgets_values: ['%prompt%'],
+          },
+          {
+            id: 5,
+            type: 'KSampler',
+            inputs: [{ name: 'model', link: 2 }],
+            widgets_values: [42, 20, 8, 'euler', 'normal', 1],
+          },
+        ],
+        links: [
+          [1, 10, 0, 3, 0, 'CLIP'],
+          [2, 11, 0, 5, 0, 'MODEL'],
+        ],
+      });
+
+      const result = comfyuiClient.validateWorkflow(uiWorkflow);
+
+      expect(result.valid).toBe(true);
+      expect(result.wasConverted).toBe(true);
+      expect(result.convertedWorkflow).toBeDefined();
+
+      // The converted workflow should still contain %prompt%
+      expect(result.convertedWorkflow).toContain('%prompt%');
+
+      // The converted workflow should be valid JSON in API format
+      const parsed = JSON.parse(result.convertedWorkflow!);
+      expect(parsed['3']).toBeDefined();
+      expect(parsed['3'].class_type).toBe('CLIPTextEncode');
+      expect(parsed['5']).toBeDefined();
+      expect(parsed['5'].class_type).toBe('KSampler');
+    });
+
+    it('should pass through API-format workflow without conversion', () => {
+      const apiWorkflow = '{"3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
+
+      const result = comfyuiClient.validateWorkflow(apiWorkflow);
+
+      expect(result.valid).toBe(true);
+      expect(result.wasConverted).toBeUndefined();
+      expect(result.convertedWorkflow).toBeUndefined();
+    });
+
+    it('should reject UI-format workflow without %prompt% after conversion', () => {
+      const uiWorkflow = JSON.stringify({
+        nodes: [
+          {
+            id: 3,
+            type: 'CLIPTextEncode',
+            inputs: [{ name: 'clip', link: 1 }],
+            widgets_values: ['a static prompt without placeholder'],
+          },
+        ],
+        links: [[1, 10, 0, 3, 0, 'CLIP']],
+      });
+
+      const result = comfyuiClient.validateWorkflow(uiWorkflow);
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('%prompt%');
+      expect(result.error).toContain('auto-converted from UI format');
+    });
+  });
+
+  describe('isUIFormat', () => {
+    it('should return true for UI-format workflow with nodes and links arrays', () => {
+      expect(isUIFormat({ nodes: [], links: [] })).toBe(true);
+      expect(isUIFormat({ nodes: [{ id: 1 }], links: [[1, 2, 0, 3, 0]] })).toBe(true);
+    });
+
+    it('should return false for API-format workflow', () => {
+      expect(isUIFormat({ '3': { class_type: 'KSampler', inputs: {} } })).toBe(false);
+    });
+
+    it('should return false when only nodes or only links present', () => {
+      expect(isUIFormat({ nodes: [] })).toBe(false);
+      expect(isUIFormat({ links: [] })).toBe(false);
+    });
+  });
+
+  describe('convertUIToAPIFormat', () => {
+    it('should convert nodes array to flat object keyed by node ID', () => {
+      const uiWorkflow = {
+        nodes: [
+          { id: 3, type: 'CLIPTextEncode', inputs: [], widgets_values: ['%prompt%'] },
+          { id: 7, type: 'EmptyLatentImage', inputs: [], widgets_values: [512, 512, 1] },
+        ],
+        links: [],
+      };
+
+      const result = convertUIToAPIFormat(uiWorkflow);
+
+      expect(result['3']).toBeDefined();
+      expect((result['3'] as Record<string, unknown>).class_type).toBe('CLIPTextEncode');
+      expect(result['7']).toBeDefined();
+      expect((result['7'] as Record<string, unknown>).class_type).toBe('EmptyLatentImage');
+    });
+
+    it('should resolve link connections into [sourceNodeId, sourceSlotIndex] references', () => {
+      const uiWorkflow = {
+        nodes: [
+          {
+            id: 3,
+            type: 'CLIPTextEncode',
+            inputs: [{ name: 'clip', link: 5 }],
+            widgets_values: ['test'],
+          },
+          { id: 10, type: 'CheckpointLoaderSimple', inputs: [], widgets_values: ['model.safetensors'] },
+        ],
+        links: [
+          [5, 10, 1, 3, 0, 'CLIP'],
+        ],
+      };
+
+      const result = convertUIToAPIFormat(uiWorkflow);
+
+      const node3 = result['3'] as Record<string, Record<string, unknown>>;
+      expect(node3.inputs.clip).toEqual(['10', 1]);
+    });
+
+    it('should preserve node titles in _meta', () => {
+      const uiWorkflow = {
+        nodes: [
+          { id: 4, type: 'KSampler', title: 'My Sampler', inputs: [], widgets_values: [] },
+        ],
+        links: [],
+      };
+
+      const result = convertUIToAPIFormat(uiWorkflow);
+
+      const node4 = result['4'] as Record<string, unknown>;
+      expect(node4._meta).toEqual({ title: 'My Sampler' });
+    });
+
+    it('should skip nodes without type', () => {
+      const uiWorkflow = {
+        nodes: [
+          { id: 1 },
+          { id: 2, type: 'KSampler', inputs: [] },
+        ],
+        links: [],
+      };
+
+      const result = convertUIToAPIFormat(uiWorkflow);
+
+      expect(result['1']).toBeUndefined();
+      expect(result['2']).toBeDefined();
+    });
+
+    it('should produce workflow where %prompt% in widgets_values is preserved in JSON output', () => {
+      const uiWorkflow = {
+        nodes: [
+          { id: 6, type: 'CLIPTextEncode', inputs: [], widgets_values: ['%prompt%'] },
+        ],
+        links: [],
+      };
+
+      const result = convertUIToAPIFormat(uiWorkflow);
+      const jsonStr = JSON.stringify(result);
+
+      expect(jsonStr).toContain('%prompt%');
+    });
+
+    it('should map CLIPTextEncode widgets_values to named "text" input', () => {
+      const uiWorkflow = {
+        nodes: [
+          { id: 6, type: 'CLIPTextEncode', inputs: [], widgets_values: ['%prompt%'] },
+        ],
+        links: [],
+      };
+
+      const result = convertUIToAPIFormat(uiWorkflow);
+      const node6 = result['6'] as Record<string, Record<string, unknown>>;
+
+      expect(node6.inputs.text).toBe('%prompt%');
+    });
+
+    it('should map KSampler widgets_values to named inputs', () => {
+      const uiWorkflow = {
+        nodes: [
+          { id: 3, type: 'KSampler', inputs: [], widgets_values: [42, 'fixed', 20, 8, 'euler', 'normal', 1] },
+        ],
+        links: [],
+      };
+
+      const result = convertUIToAPIFormat(uiWorkflow);
+      const node3 = result['3'] as Record<string, Record<string, unknown>>;
+
+      expect(node3.inputs.seed).toBe(42);
+      expect(node3.inputs.steps).toBe(20);
+      expect(node3.inputs.cfg).toBe(8);
+      expect(node3.inputs.sampler_name).toBe('euler');
+      expect(node3.inputs.scheduler).toBe('normal');
+      expect(node3.inputs.denoise).toBe(1);
+    });
+
+    it('should use generic names for unknown node types', () => {
+      const uiWorkflow = {
+        nodes: [
+          { id: 9, type: 'CustomNodeXYZ', inputs: [], widgets_values: ['%prompt%', 42] },
+        ],
+        links: [],
+      };
+
+      const result = convertUIToAPIFormat(uiWorkflow);
+      const node9 = result['9'] as Record<string, Record<string, unknown>>;
+
+      expect(node9.inputs.widget_value_0).toBe('%prompt%');
+      expect(node9.inputs.widget_value_1).toBe(42);
     });
   });
 
@@ -207,6 +426,44 @@ describe('ComfyUIClient', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('HTTP 500');
       expect(result.error).toContain('Prompt outputs failed validation');
+    });
+
+    it('should include remediation hint in HTTP 500 error message', async () => {
+      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      const axiosError = new Error('Request failed with status code 500') as any;
+      axiosError.response = { status: 500, data: 'Server got itself in trouble' };
+      mockInstance.post.mockRejectedValue(axiosError);
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Save (API Format)');
+    });
+
+    it('should auto-convert UI-format workflow and generate successfully', async () => {
+      const uiWorkflow = JSON.stringify({
+        nodes: [
+          { id: 6, type: 'CLIPTextEncode', inputs: [{ name: 'clip', link: 1 }], widgets_values: ['%prompt%'] },
+          { id: 10, type: 'CheckpointLoaderSimple', inputs: [], widgets_values: ['model.safetensors'] },
+        ],
+        links: [[1, 10, 1, 6, 0, 'CLIP']],
+      });
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(uiWorkflow);
+
+      mockSuccessfulGeneration([{ filename: 'converted.png', subfolder: '', type: 'output' }]);
+
+      const result = await comfyuiClient.generateImage('a test prompt', 'user1');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.images).toHaveLength(1);
+
+      // Verify the submitted prompt uses converted API format with substituted text
+      const sentBody = mockInstance.post.mock.calls[0][1];
+      expect(sentBody.prompt['6'].class_type).toBe('CLIPTextEncode');
+      expect(sentBody.prompt['6'].inputs.text).toBe('a test prompt');
+      expect(sentBody.prompt['6'].inputs.clip).toEqual(['10', 1]);
     });
 
     it('should handle network error on prompt submit gracefully', async () => {
