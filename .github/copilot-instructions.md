@@ -21,4 +21,4 @@
   - chore: Changes to the build process or auxiliary tools and libraries such as documentation generation
   - ci: Changes to our CI configuration files and scripts
   - build: Changes that affect the build system or external dependencies
-- When keyword "commitpls" is used in the prompt, use it as short hand to review pending changes and generate a commit message based on the above guidelines. If the prompt includes "commitpls: <type>(<scope>): <description>", use the provided type, scope, and description in the generated commit message. Otherwise, analyze the changes and determine the appropriate type, scope, and description for the commit message. Offer to run "git -A -v && git commit -m '<generated commit message>'" to commit the changes.
+- When keyword "commitpls" is used in the prompt, expand it to mean "Please provide a commit message following the Conventional Commits format, including a short description and bullet points summarizing the changes made in this commit. If multiple logical changes were made, consider breaking them into separate commits for clarity."
