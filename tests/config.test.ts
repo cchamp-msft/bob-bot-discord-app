@@ -306,4 +306,77 @@ describe('Config', () => {
       expect(kw).toBeUndefined();
     });
   });
+
+  describe('default workflow getters', () => {
+    const { config } = require('../src/utils/config');
+
+    it('getComfyUIDefaultModel should return empty string if not set', () => {
+      delete process.env.COMFYUI_DEFAULT_MODEL;
+      expect(config.getComfyUIDefaultModel()).toBe('');
+    });
+
+    it('getComfyUIDefaultModel should return env value', () => {
+      process.env.COMFYUI_DEFAULT_MODEL = 'sd15.safetensors';
+      expect(config.getComfyUIDefaultModel()).toBe('sd15.safetensors');
+    });
+
+    it('getComfyUIDefaultWidth should return 512 by default', () => {
+      delete process.env.COMFYUI_DEFAULT_WIDTH;
+      expect(config.getComfyUIDefaultWidth()).toBe(512);
+    });
+
+    it('getComfyUIDefaultWidth should parse env value', () => {
+      process.env.COMFYUI_DEFAULT_WIDTH = '1024';
+      expect(config.getComfyUIDefaultWidth()).toBe(1024);
+    });
+
+    it('getComfyUIDefaultHeight should return 512 by default', () => {
+      delete process.env.COMFYUI_DEFAULT_HEIGHT;
+      expect(config.getComfyUIDefaultHeight()).toBe(512);
+    });
+
+    it('getComfyUIDefaultSteps should return 20 by default', () => {
+      delete process.env.COMFYUI_DEFAULT_STEPS;
+      expect(config.getComfyUIDefaultSteps()).toBe(20);
+    });
+
+    it('getComfyUIDefaultCfg should return 7.0 by default', () => {
+      delete process.env.COMFYUI_DEFAULT_CFG;
+      expect(config.getComfyUIDefaultCfg()).toBe(7.0);
+    });
+
+    it('getComfyUIDefaultCfg should parse float env value', () => {
+      process.env.COMFYUI_DEFAULT_CFG = '5.5';
+      expect(config.getComfyUIDefaultCfg()).toBe(5.5);
+    });
+
+    it('getComfyUIDefaultSampler should return euler by default', () => {
+      delete process.env.COMFYUI_DEFAULT_SAMPLER;
+      expect(config.getComfyUIDefaultSampler()).toBe('euler');
+    });
+
+    it('getComfyUIDefaultScheduler should return normal by default', () => {
+      delete process.env.COMFYUI_DEFAULT_SCHEDULER;
+      expect(config.getComfyUIDefaultScheduler()).toBe('normal');
+    });
+
+    it('getComfyUIDefaultDenoise should return 1.0 by default', () => {
+      delete process.env.COMFYUI_DEFAULT_DENOISE;
+      expect(config.getComfyUIDefaultDenoise()).toBe(1.0);
+    });
+
+    it('getComfyUIDefaultDenoise should parse float env value', () => {
+      process.env.COMFYUI_DEFAULT_DENOISE = '0.88';
+      expect(config.getComfyUIDefaultDenoise()).toBe(0.88);
+    });
+
+    it('should include default workflow in getPublicConfig', () => {
+      process.env.COMFYUI_DEFAULT_MODEL = 'test.safetensors';
+      process.env.COMFYUI_DEFAULT_STEPS = '30';
+      const pub = config.getPublicConfig();
+      expect(pub.defaultWorkflow).toBeDefined();
+      expect(pub.defaultWorkflow.model).toBe('test.safetensors');
+      expect(pub.defaultWorkflow.steps).toBe(30);
+    });
+  });
 });

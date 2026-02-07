@@ -25,6 +25,14 @@ jest.mock('../src/utils/config', () => ({
   config: {
     getComfyUIEndpoint: jest.fn(() => 'http://localhost:8188'),
     getComfyUIWorkflow: jest.fn(() => ''),
+    getComfyUIDefaultModel: jest.fn(() => ''),
+    getComfyUIDefaultWidth: jest.fn(() => 512),
+    getComfyUIDefaultHeight: jest.fn(() => 512),
+    getComfyUIDefaultSteps: jest.fn(() => 20),
+    getComfyUIDefaultCfg: jest.fn(() => 7.0),
+    getComfyUIDefaultSampler: jest.fn(() => 'euler'),
+    getComfyUIDefaultScheduler: jest.fn(() => 'normal'),
+    getComfyUIDefaultDenoise: jest.fn(() => 1.0),
   },
 }));
 
@@ -39,7 +47,7 @@ jest.mock('../src/utils/logger', () => ({
 
 // Import after mocks — singleton captures mockInstance
 import { comfyuiClient } from '../src/api/comfyuiClient';
-import { isUIFormat, convertUIToAPIFormat } from '../src/api/comfyuiClient';
+import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow } from '../src/api/comfyuiClient';
 import { config } from '../src/utils/config';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -52,6 +60,15 @@ describe('ComfyUIClient', () => {
     mockInstance.defaults.baseURL = 'http://localhost:8188';
     (config.getComfyUIWorkflow as jest.Mock).mockReturnValue('');
     (config.getComfyUIEndpoint as jest.Mock).mockReturnValue('http://localhost:8188');
+    (config.getComfyUIDefaultModel as jest.Mock).mockReturnValue('');
+    (config.getComfyUIDefaultWidth as jest.Mock).mockReturnValue(512);
+    (config.getComfyUIDefaultHeight as jest.Mock).mockReturnValue(512);
+    (config.getComfyUIDefaultSteps as jest.Mock).mockReturnValue(20);
+    (config.getComfyUIDefaultCfg as jest.Mock).mockReturnValue(7.0);
+    (config.getComfyUIDefaultSampler as jest.Mock).mockReturnValue('euler');
+    (config.getComfyUIDefaultScheduler as jest.Mock).mockReturnValue('normal');
+    (config.getComfyUIDefaultDenoise as jest.Mock).mockReturnValue(1.0);
+    comfyuiClient.refresh();
   });
 
   describe('validateWorkflow', () => {
@@ -772,6 +789,332 @@ describe('ComfyUIClient', () => {
       expect(mockedAxios.create).toHaveBeenLastCalledWith({
         baseURL: 'http://new-comfy:7777',
       });
+    });
+  });
+
+  describe('buildDefaultWorkflow', () => {
+    const defaultParams = {
+      ckpt_name: 'model.safetensors',
+      width: 512,
+      height: 768,
+      steps: 20,
+      cfg: 7.0,
+      sampler_name: 'euler',
+      scheduler: 'normal',
+      denoise: 0.88,
+    };
+
+    it('should create a workflow with all required node types', () => {
+      const workflow = buildDefaultWorkflow(defaultParams);
+      const classTypes = Object.values(workflow).map(
+        (n: any) => n.class_type
+      );
+
+      expect(classTypes).toContain('CheckpointLoaderSimple');
+      expect(classTypes).toContain('CLIPTextEncode');
+      expect(classTypes).toContain('EmptyLatentImage');
+      expect(classTypes).toContain('KSampler');
+      expect(classTypes).toContain('VAEDecode');
+      expect(classTypes).toContain('SaveImage');
+    });
+
+    it('should have 7 nodes', () => {
+      const workflow = buildDefaultWorkflow(defaultParams);
+      expect(Object.keys(workflow)).toHaveLength(7);
+    });
+
+    it('should set checkpoint name correctly', () => {
+      const workflow = buildDefaultWorkflow(defaultParams);
+      const checkpoint = workflow['1'] as any;
+      expect(checkpoint.class_type).toBe('CheckpointLoaderSimple');
+      expect(checkpoint.inputs.ckpt_name).toBe('model.safetensors');
+    });
+
+    it('should contain %prompt% placeholder in positive prompt', () => {
+      const workflow = buildDefaultWorkflow(defaultParams);
+      const json = JSON.stringify(workflow);
+      expect(json).toContain('%prompt%');
+
+      const posPrompt = workflow['2'] as any;
+      expect(posPrompt.class_type).toBe('CLIPTextEncode');
+      expect(posPrompt.inputs.text).toBe('%prompt%');
+    });
+
+    it('should have empty negative prompt', () => {
+      const workflow = buildDefaultWorkflow(defaultParams);
+      const negPrompt = workflow['3'] as any;
+      expect(negPrompt.class_type).toBe('CLIPTextEncode');
+      expect(negPrompt.inputs.text).toBe('');
+    });
+
+    it('should set latent image dimensions correctly', () => {
+      const workflow = buildDefaultWorkflow(defaultParams);
+      const latent = workflow['4'] as any;
+      expect(latent.inputs.width).toBe(512);
+      expect(latent.inputs.height).toBe(768);
+      expect(latent.inputs.batch_size).toBe(1);
+    });
+
+    it('should set KSampler parameters correctly', () => {
+      const workflow = buildDefaultWorkflow(defaultParams);
+      const sampler = workflow['5'] as any;
+      expect(sampler.inputs.steps).toBe(20);
+      expect(sampler.inputs.cfg).toBe(7.0);
+      expect(sampler.inputs.sampler_name).toBe('euler');
+      expect(sampler.inputs.scheduler).toBe('normal');
+      expect(sampler.inputs.denoise).toBe(0.88);
+    });
+
+    it('should wire checkpoint MODEL to KSampler', () => {
+      const workflow = buildDefaultWorkflow(defaultParams);
+      const sampler = workflow['5'] as any;
+      expect(sampler.inputs.model).toEqual(['1', 0]);
+    });
+
+    it('should wire checkpoint CLIP to both text encoders', () => {
+      const workflow = buildDefaultWorkflow(defaultParams);
+      const pos = workflow['2'] as any;
+      const neg = workflow['3'] as any;
+      expect(pos.inputs.clip).toEqual(['1', 1]);
+      expect(neg.inputs.clip).toEqual(['1', 1]);
+    });
+
+    it('should wire checkpoint VAE to VAEDecode', () => {
+      const workflow = buildDefaultWorkflow(defaultParams);
+      const decode = workflow['6'] as any;
+      expect(decode.inputs.vae).toEqual(['1', 2]);
+    });
+
+    it('should wire VAEDecode output to SaveImage', () => {
+      const workflow = buildDefaultWorkflow(defaultParams);
+      const save = workflow['7'] as any;
+      expect(save.inputs.images).toEqual(['6', 0]);
+    });
+
+    it('should generate a random seed', () => {
+      const w1 = buildDefaultWorkflow(defaultParams);
+      const w2 = buildDefaultWorkflow(defaultParams);
+      const seed1 = (w1['5'] as any).inputs.seed;
+      const seed2 = (w2['5'] as any).inputs.seed;
+      expect(typeof seed1).toBe('number');
+      expect(typeof seed2).toBe('number');
+      // Seeds should be different (extremely unlikely to collide)
+      expect(seed1).not.toBe(seed2);
+    });
+  });
+
+  describe('generateImage with default workflow', () => {
+    /** Helper: mock a successful prompt submit + history poll cycle. */
+    function mockSuccessfulDefaultGeneration(
+      outputImages: Array<Record<string, string>> = [{ filename: 'default_001.png', subfolder: '', type: 'output' }]
+    ): string {
+      const promptId = 'default-prompt-id';
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId, number: 1, node_errors: {} },
+      });
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          [promptId]: {
+            outputs: { '7': { images: outputImages } },
+          },
+        },
+      });
+      return promptId;
+    }
+
+    it('should use default workflow when no custom workflow is configured', async () => {
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue('');
+      (config.getComfyUIDefaultModel as jest.Mock).mockReturnValue('test_model.safetensors');
+
+      mockSuccessfulDefaultGeneration();
+
+      const result = await comfyuiClient.generateImage('a sunset', 'user1');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.images).toHaveLength(1);
+
+      // Verify the submitted workflow has the correct structure
+      const sentBody = mockInstance.post.mock.calls[0][1];
+      expect(sentBody.prompt['1'].class_type).toBe('CheckpointLoaderSimple');
+      expect(sentBody.prompt['1'].inputs.ckpt_name).toBe('test_model.safetensors');
+      expect(sentBody.prompt['2'].inputs.text).toBe('a sunset');
+    });
+
+    it('should prefer custom workflow over default', async () => {
+      const customWorkflow = '{"3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(customWorkflow);
+      (config.getComfyUIDefaultModel as jest.Mock).mockReturnValue('test_model.safetensors');
+
+      mockSuccessfulDefaultGeneration();
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(true);
+      // Should use the custom workflow, not the default
+      const sentBody = mockInstance.post.mock.calls[0][1];
+      expect(sentBody.prompt['3']).toBeDefined();
+      expect(sentBody.prompt['1']).toBeUndefined(); // No default checkpoint node
+    });
+
+    it('should return error when neither custom nor default workflow is available', async () => {
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue('');
+      (config.getComfyUIDefaultModel as jest.Mock).mockReturnValue('');
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('No ComfyUI workflow configured');
+    });
+
+    it('should apply default workflow parameters from config', async () => {
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue('');
+      (config.getComfyUIDefaultModel as jest.Mock).mockReturnValue('custom_model.safetensors');
+      (config.getComfyUIDefaultWidth as jest.Mock).mockReturnValue(1024);
+      (config.getComfyUIDefaultHeight as jest.Mock).mockReturnValue(768);
+      (config.getComfyUIDefaultSteps as jest.Mock).mockReturnValue(30);
+      (config.getComfyUIDefaultCfg as jest.Mock).mockReturnValue(5.5);
+      (config.getComfyUIDefaultSampler as jest.Mock).mockReturnValue('dpmpp_2m');
+      (config.getComfyUIDefaultScheduler as jest.Mock).mockReturnValue('karras');
+      (config.getComfyUIDefaultDenoise as jest.Mock).mockReturnValue(0.88);
+      comfyuiClient.refresh(); // Clear cached default workflow
+
+      mockSuccessfulDefaultGeneration();
+
+      await comfyuiClient.generateImage('test', 'user1');
+
+      const sentBody = mockInstance.post.mock.calls[0][1];
+      expect(sentBody.prompt['1'].inputs.ckpt_name).toBe('custom_model.safetensors');
+      expect(sentBody.prompt['4'].inputs.width).toBe(1024);
+      expect(sentBody.prompt['4'].inputs.height).toBe(768);
+      expect(sentBody.prompt['5'].inputs.steps).toBe(30);
+      expect(sentBody.prompt['5'].inputs.cfg).toBe(5.5);
+      expect(sentBody.prompt['5'].inputs.sampler_name).toBe('dpmpp_2m');
+      expect(sentBody.prompt['5'].inputs.scheduler).toBe('karras');
+      expect(sentBody.prompt['5'].inputs.denoise).toBe(0.88);
+    });
+  });
+
+  describe('getSamplers', () => {
+    it('should extract sampler names from /object_info/KSampler response', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          KSampler: {
+            input: {
+              required: {
+                sampler_name: [['euler', 'euler_ancestral', 'heun', 'dpmpp_2m']],
+              },
+            },
+          },
+        },
+      });
+
+      const samplers = await comfyuiClient.getSamplers();
+      expect(samplers).toEqual(['euler', 'euler_ancestral', 'heun', 'dpmpp_2m']);
+    });
+
+    it('should return empty array when ComfyUI is unreachable', async () => {
+      mockInstance.get.mockRejectedValue(new Error('ECONNREFUSED'));
+      const samplers = await comfyuiClient.getSamplers();
+      expect(samplers).toEqual([]);
+    });
+
+    it('should handle flat list format (no nested array)', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          KSampler: {
+            input: {
+              required: {
+                sampler_name: ['euler', 'heun', 'dpmpp_2m'],
+              },
+            },
+          },
+        },
+      });
+
+      const samplers = await comfyuiClient.getSamplers();
+      expect(samplers).toEqual(['euler', 'heun', 'dpmpp_2m']);
+    });
+
+    it('should handle direct KSampler response (no wrapper key)', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          input: {
+            required: {
+              sampler_name: [['euler', 'lms']],
+            },
+          },
+        },
+      });
+
+      const samplers = await comfyuiClient.getSamplers();
+      expect(samplers).toEqual(['euler', 'lms']);
+    });
+  });
+
+  describe('getSchedulers', () => {
+    it('should extract scheduler names from /object_info/KSampler response', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          KSampler: {
+            input: {
+              required: {
+                scheduler: [['normal', 'karras', 'exponential', 'simple']],
+              },
+            },
+          },
+        },
+      });
+
+      const schedulers = await comfyuiClient.getSchedulers();
+      expect(schedulers).toEqual(['normal', 'karras', 'exponential', 'simple']);
+    });
+
+    it('should return empty array when ComfyUI is unreachable', async () => {
+      mockInstance.get.mockRejectedValue(new Error('ECONNREFUSED'));
+      const schedulers = await comfyuiClient.getSchedulers();
+      expect(schedulers).toEqual([]);
+    });
+
+    it('should handle flat list format (no nested array)', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          KSampler: {
+            input: {
+              required: {
+                scheduler: ['normal', 'karras'],
+              },
+            },
+          },
+        },
+      });
+
+      const schedulers = await comfyuiClient.getSchedulers();
+      expect(schedulers).toEqual(['normal', 'karras']);
+    });
+  });
+
+  describe('getCheckpoints', () => {
+    it('should return checkpoint list from /models/checkpoints', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: ['model_a.safetensors', 'model_b.safetensors'],
+      });
+
+      const checkpoints = await comfyuiClient.getCheckpoints();
+      expect(checkpoints).toEqual(['model_a.safetensors', 'model_b.safetensors']);
+    });
+
+    it('should return empty array when ComfyUI is unreachable', async () => {
+      mockInstance.get.mockRejectedValue(new Error('ECONNREFUSED'));
+      const checkpoints = await comfyuiClient.getCheckpoints();
+      expect(checkpoints).toEqual([]);
     });
   });
 });
