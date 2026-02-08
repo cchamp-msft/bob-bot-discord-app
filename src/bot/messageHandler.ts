@@ -100,22 +100,18 @@ class MessageHandler {
       return;
     }
 
-    // Find matching keyword — fall back to AI classification, then default chat
+    // Find matching keyword at message start — fall back to two-stage Ollama evaluation
     let keywordConfig = this.findKeyword(content);
-    let wasAIClassified = false;
+    const keywordMatched = keywordConfig !== undefined;
 
-    if (!keywordConfig) {
-      // Attempt AI-based classification as fallback
-      const classification = await classifyIntent(content, message.author.username);
-      if (classification.keywordConfig) {
-        keywordConfig = classification.keywordConfig;
-        wasAIClassified = true;
-        logger.log('success', 'system', `AI classified "${content.substring(0, 50)}..." as keyword "${keywordConfig.keyword}"`);
-      }
+    if (keywordConfig) {
+      logger.log('success', 'system', `KEYWORD: Matched "${keywordConfig.keyword}" at message start`);
+    } else {
+      logger.log('success', 'system', `KEYWORD: No first-word match, deferring to two-stage evaluation`);
     }
 
     // Track whether a non-Ollama API keyword was matched (determines execution path)
-    const apiKeywordMatched = keywordConfig !== undefined && keywordConfig.api !== 'ollama';
+    const apiKeywordMatched = keywordMatched && keywordConfig!.api !== 'ollama';
 
     if (!keywordConfig) {
       keywordConfig = {
@@ -127,9 +123,9 @@ class MessageHandler {
       logger.logDefault(message.author.username, content);
     }
 
-    // Strip the matched routing keyword from the prompt (first occurrence only)
-    // Skip stripping if the keyword was identified by AI (it may not appear literally)
-    if (!wasAIClassified) {
+    // Strip the routing keyword only when it was explicitly matched at the start.
+    // The default "chat" fallback should NOT strip — it would mutate free-form content.
+    if (keywordMatched) {
       content = this.stripKeyword(content, keywordConfig.keyword);
     }
 
@@ -370,13 +366,23 @@ class MessageHandler {
     }
   }
 
+  /**
+   * Match a keyword only at the very start of the message.
+   * Keywords are sorted longest-first so multi-word keywords like
+   * "weather report" take priority over shorter ones like "weather".
+   */
   private findKeyword(content: string): KeywordConfig | undefined {
     const lowerContent = content.toLowerCase();
-    return config.getKeywords().find((k) => {
+    // Sort longest keyword first so "weather report" wins over "weather"
+    const sorted = [...config.getKeywords()].sort(
+      (a, b) => b.keyword.length - a.keyword.length
+    );
+    return sorted.find((k) => {
       const keyword = k.keyword.toLowerCase().trim();
       if (!keyword) return false;
       const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
+      // Anchor to START of message + word boundary after keyword
+      const pattern = new RegExp(`^${escaped}\\b`, 'i');
       return pattern.test(lowerContent);
     });
   }

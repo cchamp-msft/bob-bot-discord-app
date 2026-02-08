@@ -328,14 +328,14 @@ describe('KeywordClassifier', () => {
       expect(context).toBe('');
     });
 
-    it('should include instruction to mention keyword', () => {
+    it('should include instruction to state keyword on its own line', () => {
       (config.getKeywords as jest.Mock).mockReturnValueOnce([
         { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Weather', abilityText: 'check weather' },
       ]);
 
       const context = buildAbilitiesContext();
 
-      expect(context).toContain('mention the relevant keyword');
+      expect(context).toContain('include ONLY the keyword on its own line');
       expect(context).toContain('Do not fabricate data');
     });
   });

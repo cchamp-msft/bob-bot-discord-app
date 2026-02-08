@@ -147,7 +147,7 @@ export function buildAbilitiesContext(): string {
     'You have access to the following abilities through external APIs:',
     ...abilities,
     '',
-    'If the user\'s request relates to one of these abilities, mention the relevant keyword in your response so it can be routed to the appropriate API.',
-    'Do not fabricate data for these abilities — let the API handle the request.',
+    'If the user\'s request requires one of these abilities, include ONLY the keyword on its own line (e.g. "weather") so the request can be routed to the correct API.',
+    'Do not fabricate data for these abilities — if an ability is needed, state the keyword and let the API handle it.',
   ].join('\n');
 }

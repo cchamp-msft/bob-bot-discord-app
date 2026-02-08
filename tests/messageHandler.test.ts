@@ -512,6 +512,79 @@ describe('MessageHandler stripKeyword', () => {
   });
 });
 
+describe('MessageHandler findKeyword (start-anchored)', () => {
+  function setKeywords(keywords: any[]) {
+    (config.getKeywords as jest.Mock).mockReturnValue(keywords);
+  }
+
+  const weatherKw = { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Weather' };
+  const weatherReportKw = { keyword: 'weather report', api: 'accuweather', timeout: 360, description: 'Weather report', finalOllamaPass: true };
+  const generateKw = { keyword: 'generate', api: 'comfyui', timeout: 600, description: 'Generate image' };
+  const chatKw = { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat' };
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('should match keyword at the start of message', () => {
+    setKeywords([weatherKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('weather 45403');
+    expect(result).toBe(weatherKw);
+  });
+
+  it('should NOT match keyword in the middle of message', () => {
+    setKeywords([weatherKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('what is the weather like');
+    expect(result).toBeUndefined();
+  });
+
+  it('should NOT match keyword that appears only inside the message', () => {
+    setKeywords([generateKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('can you generate a cat');
+    expect(result).toBeUndefined();
+  });
+
+  it('should match "weather report" over "weather" due to length priority', () => {
+    setKeywords([weatherKw, weatherReportKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('weather report 28465');
+    expect(result).toBe(weatherReportKw);
+  });
+
+  it('should match "weather" when message starts with weather but not weather report', () => {
+    setKeywords([weatherKw, weatherReportKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('weather 45403');
+    expect(result).toBe(weatherKw);
+  });
+
+  it('should match "generate" at message start', () => {
+    setKeywords([weatherKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('generate a cat picture');
+    expect(result).toBe(generateKw);
+  });
+
+  it('should be case-insensitive', () => {
+    setKeywords([weatherKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('WEATHER 45403');
+    expect(result).toBe(weatherKw);
+  });
+
+  it('should not match partial words at start', () => {
+    setKeywords([generateKw]);
+    const result = (messageHandler as any).findKeyword('generates many images');
+    expect(result).toBeUndefined();
+  });
+
+  it('should return undefined when no keywords configured', () => {
+    setKeywords([]);
+    const result = (messageHandler as any).findKeyword('weather 45403');
+    expect(result).toBeUndefined();
+  });
+
+  it('should return undefined for conversational phrasing', () => {
+    setKeywords([weatherKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('can you tell me the weather for dayton');
+    expect(result).toBeUndefined();
+  });
+});
+
 describe('MessageHandler buildImagePromptFromReply', () => {
   function createReplyMessage(
     content: string,
@@ -726,8 +799,7 @@ describe('MessageHandler reply-only-keyword for comfyui', () => {
   });
 });
 
-describe('MessageHandler AI-classified routing path', () => {
-  const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
+describe('MessageHandler first-word keyword routing', () => {
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
 
   function createMentionedMessage(content: string): any {
@@ -752,146 +824,73 @@ describe('MessageHandler AI-classified routing path', () => {
     };
   }
 
+  const weatherKw = { keyword: 'weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
+  const weatherReportKw = { keyword: 'weather report', api: 'accuweather' as const, timeout: 360, description: 'AI weather report', finalOllamaPass: true };
+  const generateKw = { keyword: 'generate', api: 'comfyui' as const, timeout: 300, description: 'Image gen' };
+
   beforeEach(() => {
     jest.clearAllMocks();
-    // No regex-matched keywords so AI classification kicks in
-    (config.getKeywords as jest.Mock).mockReturnValue([]);
+    (config.getKeywords as jest.Mock).mockReturnValue([weatherKw, weatherReportKw, generateKw]);
   });
 
-  afterEach(() => {
-    // Reset default
-    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-  });
-
-  it('should use routed pipeline when AI-classified keyword has non-ollama api', async () => {
-    const apiKeyword = {
-      keyword: 'generate',
-      api: 'comfyui' as const,
-      timeout: 300,
-      description: 'Image gen',
-    };
-
-    mockClassifyIntent.mockResolvedValueOnce({
-      keywordConfig: apiKeyword,
-      wasClassified: true,
-    });
-
+  it('should route to API when keyword is at message start', async () => {
     mockExecuteRoutedRequest.mockResolvedValueOnce({
-      finalResponse: { success: true, data: { images: ['http://example.com/img.png'] } },
-      finalApi: 'comfyui',
+      finalResponse: { success: true, data: { text: 'Sunny' } },
+      finalApi: 'accuweather',
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> draw me a sunset');
+    const msg = createMentionedMessage('<@bot-123> weather 45403');
     await messageHandler.handleMessage(msg);
 
-    // Should have called the routed pipeline
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      apiKeyword,
-      expect.stringContaining('draw me a sunset'),
+      weatherKw,
+      '45403',
       'testuser',
       undefined
     );
   });
 
-  it('should use routed pipeline when AI-classified keyword has finalOllamaPass', async () => {
-    const weatherKeyword = {
-      keyword: 'weather report',
-      api: 'accuweather' as const,
-      timeout: 120,
-      description: 'AI weather report',
-      finalOllamaPass: true,
-    };
-
-    mockClassifyIntent.mockResolvedValueOnce({
-      keywordConfig: weatherKeyword,
-      wasClassified: true,
-    });
-
+  it('should prefer longer keyword when both match at start', async () => {
     mockExecuteRoutedRequest.mockResolvedValueOnce({
       finalResponse: { success: true, data: { text: 'Weather report' } },
       finalApi: 'ollama',
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> what is the weather like in Seattle');
+    const msg = createMentionedMessage('<@bot-123> weather report 28465');
     await messageHandler.handleMessage(msg);
 
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      weatherKeyword,
-      expect.stringContaining('what is the weather like in Seattle'),
+      weatherReportKw,
+      '28465',
       'testuser',
       undefined
     );
   });
 
-  it('should not strip keyword from content when AI-classified', async () => {
-    const apiKeyword = {
-      keyword: 'generate',
-      api: 'comfyui' as const,
-      timeout: 300,
-      description: 'Image gen',
-    };
-
-    mockClassifyIntent.mockResolvedValueOnce({
-      keywordConfig: apiKeyword,
-      wasClassified: true,
-    });
-
-    mockExecuteRoutedRequest.mockResolvedValueOnce({
-      finalResponse: { success: true, data: { images: [] } },
-      finalApi: 'comfyui',
-      stages: [],
-    });
-
-    // Content doesn't literally have "generate" — AI inferred it
-    const msg = createMentionedMessage('<@bot-123> make me a picture of a cat');
-    await messageHandler.handleMessage(msg);
-
-    // Content should be passed unmodified (no keyword stripping)
-    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      apiKeyword,
-      'make me a picture of a cat',
-      'testuser',
-      undefined
-    );
-  });
-
-  it('should fall back to two-stage evaluation when AI classification returns no match', async () => {
-    mockClassifyIntent.mockResolvedValue({
-      keywordConfig: null,
-      wasClassified: true,
-    });
-
+  it('should NOT match keyword in middle of message — goes to two-stage', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValue({
       success: true,
       data: { text: 'chat response' },
     });
 
-    const msg = createMentionedMessage('<@bot-123> random unclassified message');
+    // classifyIntent returns no match so no API routing
+    const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
+    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: true });
+
+    const msg = createMentionedMessage('<@bot-123> what is the weather like');
     await messageHandler.handleMessage(msg);
 
-    // Should NOT have used the routed pipeline
+    // Should NOT have used the routed pipeline directly
     expect(mockExecuteRoutedRequest).not.toHaveBeenCalled();
 
-    // Should have used the Ollama path (via requestQueue)
+    // Should have gone to two-stage path (Ollama call via requestQueue)
     expect(requestQueue.execute).toHaveBeenCalled();
   });
 
   it('should handle routed pipeline error gracefully', async () => {
-    const apiKeyword = {
-      keyword: 'generate',
-      api: 'comfyui' as const,
-      timeout: 300,
-      description: 'Image gen',
-    };
-
-    mockClassifyIntent.mockResolvedValueOnce({
-      keywordConfig: apiKeyword,
-      wasClassified: true,
-    });
-
     mockExecuteRoutedRequest.mockResolvedValueOnce({
       finalResponse: { success: false, error: 'Pipeline failed' },
       finalApi: 'comfyui',
@@ -901,11 +900,42 @@ describe('MessageHandler AI-classified routing path', () => {
     const msg = createMentionedMessage('<@bot-123> generate something');
     await messageHandler.handleMessage(msg);
 
-    // Should have sent an error response to the user
     const processingMessage = await msg.reply.mock.results[0].value;
     expect(processingMessage.edit).toHaveBeenCalledWith(
       expect.stringContaining('⚠️')
     );
+  });
+
+  it('should preserve "chat" in non-keyword messages (no stripping on default fallback)', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValue({
+      success: true,
+      data: { text: 'response' },
+    });
+
+    const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
+    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: true });
+
+    const msg = createMentionedMessage('<@bot-123> let\'s chat about dogs');
+    await messageHandler.handleMessage(msg);
+
+    // Content passed to Ollama should still contain "chat" — it was not a keyword match
+    expect(requestQueue.execute).toHaveBeenCalledWith(
+      'ollama',
+      'testuser',
+      expect.any(String),
+      expect.any(Number),
+      expect.any(Function)
+    );
+
+    // Verify the executor function receives the unmodified content
+    const executorFn = requestQueue.execute.mock.calls[0][4];
+    const { apiManager } = require('../src/api');
+    apiManager.executeRequest.mockResolvedValue({ success: true, data: { text: 'ok' } });
+    await executorFn(new AbortController().signal);
+    // Verify the content passed to Ollama still contains "chat"
+    const callArgs = apiManager.executeRequest.mock.calls[0];
+    expect(callArgs[2]).toContain('chat about dogs');
   });
 });
 
@@ -946,19 +976,13 @@ describe('MessageHandler two-stage evaluation', () => {
   it('should call Ollama then classify response, routing to API on match', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
-    // First classifyIntent call (on user content) returns no match
-    mockClassifyIntent.mockResolvedValueOnce({
-      keywordConfig: null,
-      wasClassified: true,
-    });
-
     // Ollama response
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
       data: { text: 'I can check the weather for you!' },
     });
 
-    // Second classifyIntent call (on Ollama response) matches weather
+    // classifyIntent call (on Ollama response) matches weather
     const weatherKeyword = {
       keyword: 'weather',
       api: 'accuweather' as const,
@@ -980,8 +1004,8 @@ describe('MessageHandler two-stage evaluation', () => {
     const msg = createMentionedMessage('<@bot-123> is it going to rain in Seattle');
     await messageHandler.handleMessage(msg);
 
-    // Should have called classifyIntent twice (user content + Ollama response)
-    expect(mockClassifyIntent).toHaveBeenCalledTimes(2);
+    // classifyIntent called once — on Ollama's response only (not on user content)
+    expect(mockClassifyIntent).toHaveBeenCalledTimes(1);
 
     // Should have called executeRoutedRequest with the weather keyword
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
@@ -995,19 +1019,13 @@ describe('MessageHandler two-stage evaluation', () => {
   it('should return Ollama response when second classification finds no API keyword', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
-    // First classifyIntent: no match
-    mockClassifyIntent.mockResolvedValueOnce({
-      keywordConfig: null,
-      wasClassified: true,
-    });
-
     // Ollama response (generic chat, no API suggestion)
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
       data: { text: 'The meaning of life is 42.' },
     });
 
-    // Second classifyIntent: still no match
+    // classifyIntent (on Ollama response): no match
     mockClassifyIntent.mockResolvedValueOnce({
       keywordConfig: null,
       wasClassified: true,
@@ -1029,17 +1047,12 @@ describe('MessageHandler two-stage evaluation', () => {
   it('should skip second classification when second classify finds ollama keyword', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
-    mockClassifyIntent.mockResolvedValueOnce({
-      keywordConfig: null,
-      wasClassified: true,
-    });
-
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
       data: { text: 'Let me think about that...' },
     });
 
-    // Second classify returns an ollama keyword (should be treated as no API match)
+    // classifyIntent (on Ollama response) returns an ollama keyword (should be treated as no API match)
     mockClassifyIntent.mockResolvedValueOnce({
       keywordConfig: { keyword: 'chat', api: 'ollama' as const, timeout: 300, description: 'Chat' },
       wasClassified: true,
@@ -1055,11 +1068,6 @@ describe('MessageHandler two-stage evaluation', () => {
   it('should include abilities context in Ollama call', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const { apiManager } = require('../src/api');
-
-    mockClassifyIntent.mockResolvedValue({
-      keywordConfig: null,
-      wasClassified: true,
-    });
 
     mockBuildAbilitiesContext.mockReturnValue('You have access to: check weather');
 
