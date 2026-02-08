@@ -226,7 +226,7 @@ export function buildDefaultWorkflow(params: DefaultWorkflowParams): Record<stri
     '5': {
       class_type: 'KSampler',
       inputs: {
-        seed: Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
+        seed: Math.floor(Math.random() * 0xFFFFFFFF),
         steps: params.steps,
         cfg: params.cfg,
         sampler_name: params.sampler_name,
@@ -452,16 +452,64 @@ class ComfyUIClient {
   }
 
   /**
+   * Validate default workflow KSampler parameters against ComfyUI's
+   * advertised options.  Falls back to safe defaults when the configured
+   * sampler or scheduler is not supported by the connected instance.
+   *
+   * Returns the (possibly corrected) params and logs warnings for any
+   * value that was overridden.
+   */
+  async validateDefaultWorkflowParams(
+    params: DefaultWorkflowParams
+  ): Promise<DefaultWorkflowParams> {
+    const corrected = { ...params };
+
+    // Clamp numeric inputs
+    corrected.denoise = Math.max(0, Math.min(corrected.denoise, 1));
+    corrected.steps = Math.max(1, Math.round(corrected.steps));
+    corrected.width = Math.max(8, Math.round(corrected.width / 8) * 8);
+    corrected.height = Math.max(8, Math.round(corrected.height / 8) * 8);
+    corrected.cfg = Math.max(0.1, corrected.cfg);
+
+    // Query ComfyUI for supported samplers & schedulers
+    const [samplers, schedulers] = await Promise.all([
+      this.getSamplers(),
+      this.getSchedulers(),
+    ]);
+
+    if (samplers.length > 0 && !samplers.includes(corrected.sampler_name)) {
+      const fallback = samplers.includes('euler') ? 'euler' : samplers[0];
+      logger.logWarn(
+        'comfyui',
+        `Configured sampler "${corrected.sampler_name}" is not supported by this ComfyUI instance (available: ${samplers.join(', ')}). Falling back to "${fallback}".`
+      );
+      corrected.sampler_name = fallback;
+    }
+
+    if (schedulers.length > 0 && !schedulers.includes(corrected.scheduler)) {
+      const fallback = schedulers.includes('normal') ? 'normal' : schedulers[0];
+      logger.logWarn(
+        'comfyui',
+        `Configured scheduler "${corrected.scheduler}" is not supported by this ComfyUI instance (available: ${schedulers.join(', ')}). Falling back to "${fallback}".`
+      );
+      corrected.scheduler = fallback;
+    }
+
+    return corrected;
+  }
+
+  /**
    * Build and cache the default workflow JSON string from config parameters.
    * Returns null if no default model is configured.
+   * Validates sampler/scheduler against ComfyUI when possible.
    */
-  private getDefaultWorkflowJson(): string | null {
+  async getDefaultWorkflowJson(): Promise<string | null> {
     if (this.cachedDefaultWorkflow) return this.cachedDefaultWorkflow;
 
     const model = config.getComfyUIDefaultModel();
     if (!model) return null;
 
-    const workflow = buildDefaultWorkflow({
+    const rawParams: DefaultWorkflowParams = {
       ckpt_name: model,
       width: config.getComfyUIDefaultWidth(),
       height: config.getComfyUIDefaultHeight(),
@@ -470,7 +518,17 @@ class ComfyUIClient {
       sampler_name: config.getComfyUIDefaultSampler(),
       scheduler: config.getComfyUIDefaultScheduler(),
       denoise: config.getComfyUIDefaultDenoise(),
-    });
+    };
+
+    const validatedParams = await this.validateDefaultWorkflowParams(rawParams);
+
+    logger.log(
+      'success',
+      'comfyui',
+      `Default workflow KSampler inputs: sampler=${validatedParams.sampler_name}, scheduler=${validatedParams.scheduler}, steps=${validatedParams.steps}, cfg=${validatedParams.cfg}, denoise=${validatedParams.denoise}`
+    );
+
+    const workflow = buildDefaultWorkflow(validatedParams);
 
     this.cachedDefaultWorkflow = JSON.stringify(workflow);
     return this.cachedDefaultWorkflow;
@@ -488,7 +546,7 @@ class ComfyUIClient {
       let usingDefault = false;
 
       if (!workflowJson) {
-        workflowJson = this.getDefaultWorkflowJson() ?? '';
+        workflowJson = (await this.getDefaultWorkflowJson()) ?? '';
         usingDefault = true;
       }
 

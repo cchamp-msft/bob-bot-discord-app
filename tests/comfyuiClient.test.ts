@@ -60,6 +60,7 @@ jest.mock('../src/utils/logger', () => ({
     logRequest: jest.fn(),
     logReply: jest.fn(),
     logError: jest.fn(),
+    logWarn: jest.fn(),
   },
 }));
 
@@ -96,9 +97,9 @@ describe('ComfyUIClient', () => {
     (config.getComfyUIDefaultHeight as jest.Mock).mockReturnValue(512);
     (config.getComfyUIDefaultSteps as jest.Mock).mockReturnValue(20);
     (config.getComfyUIDefaultCfg as jest.Mock).mockReturnValue(7.0);
-    (config.getComfyUIDefaultSampler as jest.Mock).mockReturnValue('euler');
-    (config.getComfyUIDefaultScheduler as jest.Mock).mockReturnValue('normal');
-    (config.getComfyUIDefaultDenoise as jest.Mock).mockReturnValue(1.0);
+    (config.getComfyUIDefaultSampler as jest.Mock).mockReturnValue('euler_ancestral');
+    (config.getComfyUIDefaultScheduler as jest.Mock).mockReturnValue('beta');
+    (config.getComfyUIDefaultDenoise as jest.Mock).mockReturnValue(0.88);
     comfyuiClient.refresh();
   });
 
@@ -1147,8 +1148,8 @@ describe('ComfyUIClient', () => {
       height: 768,
       steps: 20,
       cfg: 7.0,
-      sampler_name: 'euler',
-      scheduler: 'normal',
+      sampler_name: 'euler_ancestral',
+      scheduler: 'beta',
       denoise: 0.88,
     };
 
@@ -1208,8 +1209,8 @@ describe('ComfyUIClient', () => {
       const sampler = workflow['5'] as any;
       expect(sampler.inputs.steps).toBe(20);
       expect(sampler.inputs.cfg).toBe(7.0);
-      expect(sampler.inputs.sampler_name).toBe('euler');
-      expect(sampler.inputs.scheduler).toBe('normal');
+      expect(sampler.inputs.sampler_name).toBe('euler_ancestral');
+      expect(sampler.inputs.scheduler).toBe('beta');
       expect(sampler.inputs.denoise).toBe(0.88);
     });
 
@@ -1246,12 +1247,45 @@ describe('ComfyUIClient', () => {
       const seed2 = (w2['5'] as any).inputs.seed;
       expect(typeof seed1).toBe('number');
       expect(typeof seed2).toBe('number');
+      // Seeds must be within 32-bit unsigned range (0 to 0xFFFFFFFF)
+      expect(seed1).toBeGreaterThanOrEqual(0);
+      expect(seed1).toBeLessThan(0xFFFFFFFF);
+      expect(seed2).toBeGreaterThanOrEqual(0);
+      expect(seed2).toBeLessThan(0xFFFFFFFF);
       // Seeds should be different (extremely unlikely to collide)
       expect(seed1).not.toBe(seed2);
     });
   });
 
   describe('generateImage with default workflow', () => {
+    /** Mock /object_info/KSampler to return supported samplers & schedulers. */
+    function mockObjectInfo(
+      samplers = ['euler', 'euler_ancestral', 'heun', 'dpmpp_2m'],
+      schedulers = ['normal', 'karras', 'exponential', 'simple', 'beta']
+    ): void {
+      // The first get call will be /object_info/KSampler (for validation)
+      // Subsequent get calls are the history fetch after execution
+      mockInstance.get.mockImplementation((url: string) => {
+        if (url === '/object_info/KSampler') {
+          return Promise.resolve({
+            status: 200,
+            data: {
+              KSampler: {
+                input: {
+                  required: {
+                    sampler_name: [samplers],
+                    scheduler: [schedulers],
+                  },
+                },
+              },
+            },
+          });
+        }
+        // Default: history response (will be overridden per-test where needed)
+        return Promise.resolve({ status: 200, data: {} });
+      });
+    }
+
     /** Helper: mock a successful prompt submit + WebSocket execution + history fetch cycle. */
     function mockSuccessfulDefaultGeneration(
       outputImages: Array<Record<string, string>> = [{ filename: 'default_001.png', subfolder: '', type: 'output' }]
@@ -1267,13 +1301,31 @@ describe('ComfyUIClient', () => {
         promptId,
         completed: true,
       });
-      mockInstance.get.mockResolvedValue({
-        status: 200,
-        data: {
-          [promptId]: {
-            outputs: { '7': { images: outputImages } },
+      // Override get to service both /object_info and /history
+      mockInstance.get.mockImplementation((url: string) => {
+        if (url === '/object_info/KSampler') {
+          return Promise.resolve({
+            status: 200,
+            data: {
+              KSampler: {
+                input: {
+                  required: {
+                    sampler_name: [['euler', 'euler_ancestral', 'heun', 'dpmpp_2m']],
+                    scheduler: [['normal', 'karras', 'exponential', 'simple', 'beta']],
+                  },
+                },
+              },
+            },
+          });
+        }
+        return Promise.resolve({
+          status: 200,
+          data: {
+            [promptId]: {
+              outputs: { '7': { images: outputImages } },
+            },
           },
-        },
+        });
       });
       return promptId;
     }
@@ -1301,7 +1353,24 @@ describe('ComfyUIClient', () => {
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(customWorkflow);
       (config.getComfyUIDefaultModel as jest.Mock).mockReturnValue('test_model.safetensors');
 
-      mockSuccessfulDefaultGeneration();
+      // Custom workflow path does not call getDefaultWorkflowJson, no need for object_info mock
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: 'custom-prompt-id', number: 1, node_errors: {} },
+      });
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: true,
+        promptId: 'custom-prompt-id',
+        completed: true,
+      });
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          'custom-prompt-id': {
+            outputs: { '3': { images: [{ filename: 'custom.png', subfolder: '', type: 'output' }] } },
+          },
+        },
+      });
 
       const result = await comfyuiClient.generateImage('test', 'user1');
 
@@ -1469,6 +1538,114 @@ describe('ComfyUIClient', () => {
       mockInstance.get.mockRejectedValue(new Error('ECONNREFUSED'));
       const checkpoints = await comfyuiClient.getCheckpoints();
       expect(checkpoints).toEqual([]);
+    });
+  });
+
+  describe('validateDefaultWorkflowParams', () => {
+    const baseParams = {
+      ckpt_name: 'model.safetensors',
+      width: 512,
+      height: 768,
+      steps: 20,
+      cfg: 7.0,
+      sampler_name: 'euler_ancestral',
+      scheduler: 'beta',
+      denoise: 0.88,
+    };
+
+    function mockObjectInfoForValidation(
+      samplers: string[] = ['euler', 'euler_ancestral', 'heun', 'dpmpp_2m'],
+      schedulers: string[] = ['normal', 'karras', 'exponential', 'simple', 'beta']
+    ): void {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          KSampler: {
+            input: {
+              required: {
+                sampler_name: [samplers],
+                scheduler: [schedulers],
+              },
+            },
+          },
+        },
+      });
+    }
+
+    it('should pass through valid params unchanged', async () => {
+      mockObjectInfoForValidation();
+      const result = await comfyuiClient.validateDefaultWorkflowParams(baseParams);
+      expect(result.sampler_name).toBe('euler_ancestral');
+      expect(result.scheduler).toBe('beta');
+      expect(result.denoise).toBe(0.88);
+      expect(result.steps).toBe(20);
+    });
+
+    it('should fallback sampler when configured value is unsupported', async () => {
+      mockObjectInfoForValidation(['euler', 'heun', 'dpmpp_2m'], ['normal', 'beta']);
+      const params = { ...baseParams, sampler_name: 'nonexistent_sampler' };
+      const result = await comfyuiClient.validateDefaultWorkflowParams(params);
+      expect(result.sampler_name).toBe('euler'); // fallback to euler
+    });
+
+    it('should fallback scheduler when configured value is unsupported', async () => {
+      mockObjectInfoForValidation(['euler', 'euler_ancestral'], ['normal', 'karras']);
+      const params = { ...baseParams, scheduler: 'beta' };
+      const result = await comfyuiClient.validateDefaultWorkflowParams(params);
+      expect(result.scheduler).toBe('normal'); // fallback to normal
+    });
+
+    it('should fallback to first available when euler/normal are not in list', async () => {
+      mockObjectInfoForValidation(['heun', 'dpmpp_2m'], ['karras', 'exponential']);
+      const params = { ...baseParams, sampler_name: 'nonexistent', scheduler: 'nonexistent' };
+      const result = await comfyuiClient.validateDefaultWorkflowParams(params);
+      expect(result.sampler_name).toBe('heun'); // first in list
+      expect(result.scheduler).toBe('karras'); // first in list
+    });
+
+    it('should skip validation when ComfyUI is unreachable (empty lists)', async () => {
+      mockInstance.get.mockRejectedValue(new Error('ECONNREFUSED'));
+      const params = { ...baseParams, sampler_name: 'anything', scheduler: 'anything' };
+      const result = await comfyuiClient.validateDefaultWorkflowParams(params);
+      // When discovery returns empty, params pass through unchecked
+      expect(result.sampler_name).toBe('anything');
+      expect(result.scheduler).toBe('anything');
+    });
+
+    it('should clamp denoise to 0–1 range', async () => {
+      mockObjectInfoForValidation();
+      const over = await comfyuiClient.validateDefaultWorkflowParams({ ...baseParams, denoise: 1.5 });
+      expect(over.denoise).toBe(1);
+      const under = await comfyuiClient.validateDefaultWorkflowParams({ ...baseParams, denoise: -0.5 });
+      expect(under.denoise).toBe(0);
+    });
+
+    it('should enforce minimum steps of 1', async () => {
+      mockObjectInfoForValidation();
+      const result = await comfyuiClient.validateDefaultWorkflowParams({ ...baseParams, steps: 0 });
+      expect(result.steps).toBe(1);
+    });
+
+    it('should round width and height to nearest multiple of 8', async () => {
+      mockObjectInfoForValidation();
+      const result = await comfyuiClient.validateDefaultWorkflowParams({ ...baseParams, width: 510, height: 771 });
+      expect(result.width % 8).toBe(0);
+      expect(result.height % 8).toBe(0);
+      expect(result.width).toBe(512);
+      expect(result.height).toBe(768);
+    });
+
+    it('should enforce minimum width/height of 8', async () => {
+      mockObjectInfoForValidation();
+      const result = await comfyuiClient.validateDefaultWorkflowParams({ ...baseParams, width: 0, height: 2 });
+      expect(result.width).toBe(8);
+      expect(result.height).toBe(8);
+    });
+
+    it('should enforce minimum cfg of 0.1', async () => {
+      mockObjectInfoForValidation();
+      const result = await comfyuiClient.validateDefaultWorkflowParams({ ...baseParams, cfg: 0 });
+      expect(result.cfg).toBe(0.1);
     });
   });
 });

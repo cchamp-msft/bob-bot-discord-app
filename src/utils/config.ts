@@ -312,19 +312,19 @@ class Config {
     return this.parseFloatEnv('COMFYUI_DEFAULT_CFG', 7.0);
   }
 
-  /** Sampler name for the default workflow. Default: euler */
+  /** Sampler name for the default workflow. Default: euler_ancestral */
   getComfyUIDefaultSampler(): string {
-    return process.env.COMFYUI_DEFAULT_SAMPLER || 'euler';
+    return process.env.COMFYUI_DEFAULT_SAMPLER || 'euler_ancestral';
   }
 
-  /** Scheduler for the default workflow. Default: normal */
+  /** Scheduler for the default workflow. Default: beta */
   getComfyUIDefaultScheduler(): string {
-    return process.env.COMFYUI_DEFAULT_SCHEDULER || 'normal';
+    return process.env.COMFYUI_DEFAULT_SCHEDULER || 'beta';
   }
 
-  /** Denoise strength for the default workflow. Default: 1.0 */
+  /** Denoise strength for the default workflow. Default: 0.88 */
   getComfyUIDefaultDenoise(): number {
-    return this.parseFloatEnv('COMFYUI_DEFAULT_DENOISE', 1.0);
+    return this.parseFloatEnv('COMFYUI_DEFAULT_DENOISE', 0.88);
   }
 
   /**

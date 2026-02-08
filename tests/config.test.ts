@@ -414,19 +414,19 @@ describe('Config', () => {
       expect(config.getComfyUIDefaultCfg()).toBe(5.5);
     });
 
-    it('getComfyUIDefaultSampler should return euler by default', () => {
+    it('getComfyUIDefaultSampler should return euler_ancestral by default', () => {
       delete process.env.COMFYUI_DEFAULT_SAMPLER;
-      expect(config.getComfyUIDefaultSampler()).toBe('euler');
+      expect(config.getComfyUIDefaultSampler()).toBe('euler_ancestral');
     });
 
-    it('getComfyUIDefaultScheduler should return normal by default', () => {
+    it('getComfyUIDefaultScheduler should return beta by default', () => {
       delete process.env.COMFYUI_DEFAULT_SCHEDULER;
-      expect(config.getComfyUIDefaultScheduler()).toBe('normal');
+      expect(config.getComfyUIDefaultScheduler()).toBe('beta');
     });
 
-    it('getComfyUIDefaultDenoise should return 1.0 by default', () => {
+    it('getComfyUIDefaultDenoise should return 0.88 by default', () => {
       delete process.env.COMFYUI_DEFAULT_DENOISE;
-      expect(config.getComfyUIDefaultDenoise()).toBe(1.0);
+      expect(config.getComfyUIDefaultDenoise()).toBe(0.88);
     });
 
     it('getComfyUIDefaultDenoise should parse float env value', () => {

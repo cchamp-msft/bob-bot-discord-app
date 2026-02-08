@@ -361,8 +361,8 @@
             <div class="field">
               <label>Sampler</label>
               <select id="dw_sampler" style="width:100%">
-                <option value="euler" selected>euler</option>
-                <option value="euler_ancestral">euler_ancestral</option>
+                <option value="euler">euler</option>
+                <option value="euler_ancestral" selected>euler_ancestral</option>
                 <option value="heun">heun</option>
                 <option value="dpmpp_2m">dpmpp_2m</option>
                 <option value="dpmpp_2m_sde">dpmpp_2m_sde</option>
@@ -372,15 +372,16 @@
             <div class="field">
               <label>Scheduler</label>
               <select id="dw_scheduler" style="width:100%">
-                <option value="normal" selected>normal</option>
+                <option value="normal">normal</option>
                 <option value="karras">karras</option>
                 <option value="exponential">exponential</option>
                 <option value="simple">simple</option>
+                <option value="beta" selected>beta</option>
               </select>
             </div>
             <div class="field narrow">
               <label>Denoise</label>
-              <input type="number" id="dw_denoise" value="1.0" min="0" max="1" step="0.01">
+              <input type="number" id="dw_denoise" value="0.88" min="0" max="1" step="0.01">
             </div>
           </div>
 
@@ -1384,12 +1385,12 @@
       height: parseInt(document.getElementById('dw_height').value) || 512,
       steps: parseInt(document.getElementById('dw_steps').value) || 20,
       cfg: parseFloat(document.getElementById('dw_cfg').value) || 7.0,
-      sampler: document.getElementById('dw_sampler').value || 'euler',
-      scheduler: document.getElementById('dw_scheduler').value || 'normal',
+      sampler: document.getElementById('dw_sampler').value || 'euler_ancestral',
+      scheduler: document.getElementById('dw_scheduler').value || 'beta',
       denoise: parseFloat(document.getElementById('dw_denoise').value),
     };
 
-    if (isNaN(params.denoise)) params.denoise = 1.0;
+    if (isNaN(params.denoise)) params.denoise = 0.88;
 
     statusEl.textContent = 'Saving…';
     statusEl.style.color = 'var(--text-dim)';

@@ -405,9 +405,9 @@ The configurator includes a **Default Workflow Settings** section that generates
 | `COMFYUI_DEFAULT_HEIGHT` | `512` | Latent image height (must be divisible by 8) |
 | `COMFYUI_DEFAULT_STEPS` | `20` | Number of sampling steps |
 | `COMFYUI_DEFAULT_CFG` | `7.0` | Classifier-free guidance scale |
-| `COMFYUI_DEFAULT_SAMPLER` | `euler` | Sampler algorithm |
-| `COMFYUI_DEFAULT_SCHEDULER` | `normal` | Noise scheduler |
-| `COMFYUI_DEFAULT_DENOISE` | `1.0` | Denoise strength (0–1.0; use 0.88 for partial denoising) |
+| `COMFYUI_DEFAULT_SAMPLER` | `euler_ancestral` | Sampler algorithm |
+| `COMFYUI_DEFAULT_SCHEDULER` | `beta` | Noise scheduler |
+| `COMFYUI_DEFAULT_DENOISE` | `0.88` | Denoise strength (0–1.0) |
 
 Click **Discover Options** in the configurator to populate dropdowns with available checkpoints, samplers, and schedulers from your connected ComfyUI instance.
 
