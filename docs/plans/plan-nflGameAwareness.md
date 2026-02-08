@@ -241,13 +241,20 @@ Return Ollama response
 # NFL / SportsData.io Configuration
 NFL_API_KEY=your_sportsdata_api_key_here
 NFL_BASE_URL=https://api.sportsdata.io/v3/nfl/scores
-NFL_CURRENT_SEASON=2026
 NFL_ENABLED=true
 
-# Cache duration (in seconds)
-NFL_CACHE_DURATION=120  # 2 minutes during live games
-NFL_SCHEDULE_CACHE_DURATION=86400  # 24 hours for schedule
+# Note: NFL_CURRENT_SEASON, NFL_CACHE_DURATION, and NFL_SCHEDULE_CACHE_DURATION
+# were originally planned but are NOT implemented. The client determines the
+# current season/week dynamically via the API and uses hardcoded cache TTLs
+# (60s for live games, 300s for final, 3600s for currentWeek, 86400s for currentSeason).
 ```
+
+> **Data Quality (Feb 2026):** Trial/sandbox API keys from SportsData.io may return
+> sample/placeholder data that does not match real game results. The client now validates
+> returned Season/Week fields and logs warnings when mismatches are detected. Use a
+> production API key for accurate data. The client also supports explicit season/week
+> queries (e.g., `nfl scores week 4 2025`) using the `ScoresByWeek` endpoint for
+> historical accuracy.
 
 ## Implementation Phases
 

@@ -236,7 +236,7 @@ npm run test:watch
 - **apiRouter.test.ts** — Multi-stage routing, partial failures, final pass logic, NFL routing
 - **responseTransformer.test.ts** — Result extraction, context prompt building
 - **accuweatherClient.test.ts** — Location resolution, weather data fetching, formatting, health checks
-- **nflClient.test.ts** — Team resolution, game formatting, API fetching, health checks, request dispatching
+- **nflClient.test.ts** — Team resolution, game formatting, API fetching, health checks, request dispatching, season/week parsing, endpoint selection, data validation
 
 All tests run without requiring Discord connection or external APIs.
 
@@ -481,6 +481,8 @@ The `/weather` command supports two optional parameters:
 
 The bot integrates with [SportsData.io](https://sportsdata.io) for NFL game scores, schedules, and Super Bowl data. A free-tier API key provides access to basic score data.
 
+> **Important:** Trial/sandbox API keys may return sample/placeholder data instead of real scores. If you see scores that don't match known results, verify your API key has production access at [sportsdata.io](https://sportsdata.io). The bot will log warnings when it detects data mismatches.
+
 #### Environment Variables
 
 | Variable | Required | Description |
@@ -496,9 +498,26 @@ Four default NFL keywords are configured in `config/keywords.json`:
 | Keyword | Behavior |
 |---------|----------|
 | `superbowl` | Shows current/last Super Bowl game with detailed info |
-| `nfl scores` | Lists all games for the current week |
-| `nfl score` | Shows score for a specific team (e.g., `nfl score chiefs`) |
-| `nfl` | Fetches current week data and passes through Ollama for AI-enhanced responses |
+| `nfl scores` | Lists all games for the current week, or a specific week if specified (e.g., `nfl scores week 4 2025`) |
+| `nfl score` | Shows score for a specific team (e.g., `nfl score chiefs`), supports historical lookups (e.g., `nfl score chiefs week 4 2025`) |
+| `nfl` | Fetches current week data and passes through Ollama for AI-enhanced responses; supports historical week queries |
+
+#### Historical Week Queries
+
+All NFL keywords support explicit season/week lookups:
+- `nfl scores week 4 2025` — scores for 2025 Week 4
+- `nfl scores 2025 week 4` — same, alternate order
+- `nfl score chiefs week 4 2025` — Chiefs game from 2025 Week 4
+- `nfl who won week 10` — Week 10 of the current season (AI-enhanced)
+
+When an explicit week is requested, the bot uses the full `ScoresByWeek` endpoint for data accuracy. Current-week queries use the lighter `ScoresBasic` endpoint.
+
+#### Endpoint Selection
+
+| Query type | Endpoint used | Cache TTL |
+|-----------|---------------|----------|
+| Current week (no explicit week) | `/json/ScoresBasic/{season}/{week}` | 60s live, 300s final |
+| Explicit week/season | `/json/ScoresByWeek/{season}/{week}` | 60s live, 300s final |
 
 #### Team Resolution
 

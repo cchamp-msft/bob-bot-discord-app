@@ -37,7 +37,7 @@ jest.mock('../src/utils/logger', () => ({
   },
 }));
 
-import { nflClient, NFLClient } from '../src/api/nflClient';
+import { nflClient, NFLClient, parseSeasonWeek } from '../src/api/nflClient';
 import { config } from '../src/utils/config';
 import { NFLGameScore } from '../src/types';
 
@@ -553,15 +553,26 @@ describe('NFLClient', () => {
       expect(result.data?.text).toContain('No NFL games');
     });
 
-    it('should append scope note when generic "nfl" query mentions playoffs', async () => {
+    it('should append scope note when generic "nfl" query mentions playoffs without explicit season', async () => {
       mockInstance.get.mockResolvedValueOnce({ data: 2025 });
       mockInstance.get.mockResolvedValueOnce({ data: 1 });
       mockInstance.get.mockResolvedValueOnce({ data: [finalGame] });
 
-      const result = await nflClient.handleRequest('results of 2025 playoffs final games', 'nfl');
+      const result = await nflClient.handleRequest('results of playoffs final games', 'nfl');
       expect(result.success).toBe(true);
       expect(result.data?.text).toContain('current week');
       expect(result.data?.text).toContain('not available');
+    });
+
+    it('should use explicit season for generic "nfl" query that includes a year', async () => {
+      // "2025" is parsed as explicit season, getCurrentWeek provides the week
+      mockInstance.get.mockResolvedValueOnce({ data: 1 }); // getCurrentWeek
+      mockInstance.get.mockResolvedValueOnce({ data: [finalGame] }); // ScoresByWeek
+
+      const result = await nflClient.handleRequest('results of 2025 playoffs final games', 'nfl');
+      expect(result.success).toBe(true);
+      // Explicit queries fetch the requested data, no "not available" note
+      expect(result.data?.text).not.toContain('not available through this data source');
     });
 
     it('should NOT append scope note for generic "nfl" query without historical terms', async () => {
@@ -640,6 +651,284 @@ describe('NFLClient', () => {
       const logCalls = (logger.log as jest.Mock).mock.calls
         .filter((c: string[]) => c[2]?.includes('cache HIT'));
       expect(logCalls.length).toBe(1);
+    });
+  });
+
+  // ── parseSeasonWeek ────────────────────────────────────────
+
+  describe('parseSeasonWeek', () => {
+    it('should parse "week 4 2025"', () => {
+      const result = parseSeasonWeek('week 4 2025');
+      expect(result).toEqual({ season: 2025, week: 4 });
+    });
+
+    it('should parse "2025 week 4"', () => {
+      const result = parseSeasonWeek('2025 week 4');
+      expect(result).toEqual({ season: 2025, week: 4 });
+    });
+
+    it('should parse "wk4 2025"', () => {
+      const result = parseSeasonWeek('wk4 2025');
+      expect(result).toEqual({ season: 2025, week: 4 });
+    });
+
+    it('should parse "wk 10 2025"', () => {
+      const result = parseSeasonWeek('wk 10 2025');
+      expect(result).toEqual({ season: 2025, week: 10 });
+    });
+
+    it('should parse "2025/4" slash shorthand', () => {
+      const result = parseSeasonWeek('2025/4');
+      expect(result).toEqual({ season: 2025, week: 4 });
+    });
+
+    it('should parse "2025-4" dash shorthand', () => {
+      const result = parseSeasonWeek('2025-4');
+      expect(result).toEqual({ season: 2025, week: 4 });
+    });
+
+    it('should parse standalone "week 4" without season', () => {
+      const result = parseSeasonWeek('week 4');
+      expect(result).toEqual({ week: 4 });
+    });
+
+    it('should parse standalone year "2025" without week', () => {
+      const result = parseSeasonWeek('results 2025');
+      expect(result).toEqual({ season: 2025 });
+    });
+
+    it('should return empty object for content with no season/week', () => {
+      const result = parseSeasonWeek('nfl scores');
+      expect(result).toEqual({});
+    });
+
+    it('should return empty object for empty string', () => {
+      const result = parseSeasonWeek('');
+      expect(result).toEqual({});
+    });
+
+    it('should handle mixed content like "chiefs week 4 2025"', () => {
+      const result = parseSeasonWeek('chiefs week 4 2025');
+      expect(result).toEqual({ season: 2025, week: 4 });
+    });
+
+    it('should parse case-insensitively', () => {
+      const result = parseSeasonWeek('Week 4 2025');
+      expect(result).toEqual({ season: 2025, week: 4 });
+    });
+
+    it('should parse "w4" shorthand', () => {
+      const result = parseSeasonWeek('scores w4');
+      expect(result).toEqual({ week: 4 });
+    });
+  });
+
+  // ── getScoresByWeek ────────────────────────────────────────
+
+  describe('getScoresByWeek', () => {
+    it('should use ScoresByWeek endpoint', async () => {
+      mockInstance.get.mockResolvedValueOnce({ data: [finalGame] });
+
+      const scores = await nflClient.getScoresByWeek(2025, 4);
+      expect(scores).toHaveLength(1);
+      expect(mockInstance.get).toHaveBeenCalledWith('/json/ScoresByWeek/2025/4', {
+        params: { key: 'test-nfl-key' },
+      });
+    });
+
+    it('should cache separately from ScoresBasic', async () => {
+      // Fetch via ScoresByWeek
+      mockInstance.get.mockResolvedValueOnce({ data: [finalGame] });
+      await nflClient.getScoresByWeek(2025, 1);
+
+      // Fetch via ScoresBasic — should NOT hit the ScoresByWeek cache
+      mockInstance.get.mockResolvedValueOnce({ data: [liveGame] });
+      const scores = await nflClient.getScores(2025, 1);
+      expect(scores).toHaveLength(1);
+      expect(scores[0].GameKey).toBe(liveGame.GameKey);
+      expect(mockInstance.get).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // ── Data validation ────────────────────────────────────────
+
+  describe('data validation', () => {
+    it('should log warning when returned data mismatches requested season/week', async () => {
+      const { logger } = require('../src/utils/logger');
+
+      const mismatchedGame = makeGame({
+        Season: 2024,
+        Week: 1,
+        Status: 'Final',
+        AwayScore: 14,
+        HomeScore: 16,
+      });
+
+      mockInstance.get.mockResolvedValueOnce({ data: [mismatchedGame] });
+      await nflClient.getScores(2025, 4);
+
+      const errorCalls = (logger.logError as jest.Mock).mock.calls
+        .filter((c: string[]) => c[1]?.includes('DATA VALIDATION WARNING'));
+      expect(errorCalls.length).toBe(1);
+      expect(errorCalls[0][1]).toContain('sandbox');
+      expect(errorCalls[0][1]).toContain('Season=2024');
+    });
+
+    it('should NOT log warning when data matches requested season/week', async () => {
+      const { logger } = require('../src/utils/logger');
+
+      const matchedGame = makeGame({
+        Season: 2025,
+        Week: 4,
+        Status: 'Final',
+        AwayScore: 28,
+        HomeScore: 21,
+      });
+
+      mockInstance.get.mockResolvedValueOnce({ data: [matchedGame] });
+      await nflClient.getScores(2025, 4);
+
+      const errorCalls = (logger.logError as jest.Mock).mock.calls
+        .filter((c: string[]) => c[1]?.includes('DATA VALIDATION WARNING'));
+      expect(errorCalls.length).toBe(0);
+    });
+
+    it('should include data quality notice in user response when mismatched', async () => {
+      const mismatchedGame = makeGame({
+        Season: 2024,
+        Week: 1,
+        Status: 'Final',
+        AwayScore: 14,
+        HomeScore: 16,
+      });
+
+      // getCurrentSeason not needed (explicit season)
+      // getCurrentWeek not needed (explicit week)
+      // getScoresByWeek(2025, 4)
+      mockInstance.get.mockResolvedValueOnce({ data: [mismatchedGame] });
+
+      const result = await nflClient.handleRequest('week 4 2025', 'nfl scores');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('Data quality notice');
+      expect(result.data?.text).toContain('trial/sandbox');
+    });
+  });
+
+  // ── Historical week queries ────────────────────────────────
+
+  describe('historical week queries', () => {
+    it('should use ScoresByWeek for explicit "nfl scores week 4 2025"', async () => {
+      const week4Game = makeGame({
+        Season: 2025,
+        Week: 4,
+        Status: 'Final',
+        AwayScore: 23,
+        HomeScore: 20,
+      });
+
+      mockInstance.get.mockResolvedValueOnce({ data: [week4Game] });
+
+      const result = await nflClient.handleRequest('week 4 2025', 'nfl scores');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('2025 Week 4');
+      expect(mockInstance.get).toHaveBeenCalledWith('/json/ScoresByWeek/2025/4', {
+        params: { key: 'test-nfl-key' },
+      });
+    });
+
+    it('should use current season when only week is specified', async () => {
+      const week4Game = makeGame({
+        Season: 2025,
+        Week: 4,
+        Status: 'Final',
+        AwayScore: 23,
+        HomeScore: 20,
+      });
+
+      // getCurrentSeason for missing season
+      mockInstance.get.mockResolvedValueOnce({ data: 2025 });
+      // getScoresByWeek(2025, 4)
+      mockInstance.get.mockResolvedValueOnce({ data: [week4Game] });
+
+      const result = await nflClient.handleRequest('week 4', 'nfl scores');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('2025 Week 4');
+    });
+
+    it('should fall back to current week for "nfl scores" with no week specified', async () => {
+      mockInstance.get.mockResolvedValueOnce({ data: 2025 });
+      mockInstance.get.mockResolvedValueOnce({ data: 10 });
+      mockInstance.get.mockResolvedValueOnce({ data: [finalGame] });
+
+      const result = await nflClient.handleRequest('', 'nfl scores');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('NFL Scores');
+      // Should use ScoresBasic (current week path)
+      expect(mockInstance.get).toHaveBeenCalledWith('/json/ScoresBasic/2025/10', expect.anything());
+    });
+
+    it('should support explicit week in "nfl score" team queries', async () => {
+      const teamGame = makeGame({
+        Season: 2025,
+        Week: 4,
+        Status: 'Final',
+        AwayTeam: 'KC',
+        HomeTeam: 'BAL',
+        AwayScore: 24,
+        HomeScore: 21,
+      });
+
+      // getScoresByWeek(2025, 4)
+      mockInstance.get.mockResolvedValueOnce({ data: [teamGame] });
+
+      const result = await nflClient.handleRequest('chiefs week 4 2025', 'nfl score');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('Kansas City Chiefs');
+      expect(mockInstance.get).toHaveBeenCalledWith('/json/ScoresByWeek/2025/4', expect.anything());
+    });
+
+    it('should report no game found for team in explicit week', async () => {
+      // getScoresByWeek(2025, 4) returns games without SEA
+      mockInstance.get.mockResolvedValueOnce({ data: [finalGame] }); // PHI vs DAL
+
+      const result = await nflClient.handleRequest('seahawks week 4 2025', 'nfl score');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('Seattle Seahawks');
+      expect(result.data?.text).toContain('2025 Week 4');
+    });
+
+    it('should use ScoresByWeek for generic "nfl" with explicit week', async () => {
+      const week4Game = makeGame({
+        Season: 2025,
+        Week: 4,
+        Status: 'Final',
+        AwayScore: 23,
+        HomeScore: 20,
+      });
+
+      mockInstance.get.mockResolvedValueOnce({ data: [week4Game] });
+
+      const result = await nflClient.handleRequest('who won week 4 2025?', 'nfl');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('2025 Week 4');
+      expect(mockInstance.get).toHaveBeenCalledWith('/json/ScoresByWeek/2025/4', expect.anything());
+    });
+
+    it('should NOT append scope note for generic "nfl" with explicit week (data was fetched)', async () => {
+      const week4Game = makeGame({
+        Season: 2025,
+        Week: 4,
+        Status: 'Final',
+        AwayScore: 23,
+        HomeScore: 20,
+      });
+
+      mockInstance.get.mockResolvedValueOnce({ data: [week4Game] });
+
+      const result = await nflClient.handleRequest('results of week 4 2025', 'nfl');
+      expect(result.success).toBe(true);
+      // Should NOT have the "not available" scope note since we fetched explicit data
+      expect(result.data?.text).not.toContain('not available through this data source');
     });
   });
 });
