@@ -583,6 +583,138 @@ describe('MessageHandler findKeyword (start-anchored)', () => {
     const result = (messageHandler as any).findKeyword('can you tell me the weather for dayton');
     expect(result).toBeUndefined();
   });
+
+  it('should skip disabled keywords', () => {
+    const disabledWeather = { ...weatherKw, enabled: false };
+    setKeywords([disabledWeather, generateKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('weather 45403');
+    expect(result).toBeUndefined();
+  });
+
+  it('should match enabled keyword when a different keyword is disabled', () => {
+    const disabledChat = { ...chatKw, enabled: false };
+    setKeywords([weatherKw, generateKw, disabledChat]);
+    const result = (messageHandler as any).findKeyword('weather 45403');
+    expect(result).toBe(weatherKw);
+  });
+});
+
+describe('MessageHandler buildHelpResponse', () => {
+  function setKeywords(keywords: any[]) {
+    (config.getKeywords as jest.Mock).mockReturnValue(keywords);
+  }
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('should list enabled non-builtin keywords with descriptions', () => {
+    setKeywords([
+      { keyword: 'help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
+      { keyword: 'generate', api: 'comfyui', timeout: 600, description: 'Generate image using ComfyUI' },
+      { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
+    ]);
+
+    const result = (messageHandler as any).buildHelpResponse();
+    expect(result).toContain('**generate**');
+    expect(result).toContain('Generate image using ComfyUI');
+    expect(result).toContain('**weather**');
+    expect(result).toContain('Get weather');
+    expect(result).not.toContain('**help**');
+  });
+
+  it('should exclude disabled keywords', () => {
+    setKeywords([
+      { keyword: 'help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
+      { keyword: 'generate', api: 'comfyui', timeout: 600, description: 'Generate image', enabled: false },
+      { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
+    ]);
+
+    const result = (messageHandler as any).buildHelpResponse();
+    expect(result).not.toContain('**generate**');
+    expect(result).toContain('**weather**');
+  });
+
+  it('should return message when no keywords are configured', () => {
+    setKeywords([
+      { keyword: 'help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
+    ]);
+
+    const result = (messageHandler as any).buildHelpResponse();
+    expect(result).toContain('No keywords are currently configured');
+  });
+
+  it('should include Available Keywords header', () => {
+    setKeywords([
+      { keyword: 'ask', api: 'ollama', timeout: 300, description: 'Ask a question' },
+    ]);
+
+    const result = (messageHandler as any).buildHelpResponse();
+    expect(result).toContain('Available Keywords');
+  });
+});
+
+describe('MessageHandler built-in help keyword handling', () => {
+  function createMentionedMessage(content: string): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username: 'testuser' },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: 0,
+        messages: { cache: new Map() },
+        send: jest.fn(),
+      },
+      guild: { name: 'TestGuild' },
+      mentions: { has: jest.fn(() => true) },
+      reference: null,
+      content,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  const helpKw = { keyword: 'help', api: 'ollama' as const, timeout: 30, description: 'Show help', builtin: true };
+  const generateKw = { keyword: 'generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should respond with help text when built-in help keyword is enabled', async () => {
+    (config.getKeywords as jest.Mock).mockReturnValue([helpKw, generateKw]);
+
+    const msg = createMentionedMessage('<@bot-123> help');
+    await messageHandler.handleMessage(msg);
+
+    // Should reply with help text (not go through the normal processing flow)
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Available Keywords'));
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('**generate**'));
+  });
+
+  it('should not trigger help when built-in help is disabled', async () => {
+    const disabledHelp = { ...helpKw, enabled: false };
+    (config.getKeywords as jest.Mock).mockReturnValue([disabledHelp, generateKw]);
+
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValue({
+      success: true,
+      data: { text: 'I can help you!' },
+    });
+
+    (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
+      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    (buildAbilitiesContext as jest.MockedFunction<typeof buildAbilitiesContext>)
+      .mockReturnValue('');
+
+    const msg = createMentionedMessage('<@bot-123> help');
+    await messageHandler.handleMessage(msg);
+
+    // Should go through normal chat flow, not the help handler
+    // The first reply call is the processing message, not the help text
+    expect(msg.reply).toHaveBeenCalledWith('⏳ Processing your request...');
+  });
 });
 
 describe('MessageHandler buildImagePromptFromReply', () => {

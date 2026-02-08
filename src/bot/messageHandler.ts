@@ -110,6 +110,19 @@ class MessageHandler {
       logger.log('success', 'system', `KEYWORD: No first-word match, deferring to two-stage evaluation`);
     }
 
+    // Built-in help keyword: respond immediately with keyword list
+    if (keywordConfig?.builtin && keywordConfig.keyword.toLowerCase() === 'help') {
+      logger.logRequest(message.author.username, `[help] ${content}`);
+      const helpText = this.buildHelpResponse();
+      let processingMessage: Message;
+      try {
+        processingMessage = await message.reply(helpText);
+      } catch (error) {
+        logger.logError(message.author.username, `Failed to send help response: ${error}`);
+      }
+      return;
+    }
+
     // Track whether a non-Ollama API keyword was matched (determines execution path)
     const apiKeywordMatched = keywordMatched && keywordConfig!.api !== 'ollama';
 
@@ -370,13 +383,16 @@ class MessageHandler {
    * Match a keyword only at the very start of the message.
    * Keywords are sorted longest-first so multi-word keywords like
    * "weather report" take priority over shorter ones like "weather".
+   * Disabled keywords (enabled === false) are skipped.
    */
   private findKeyword(content: string): KeywordConfig | undefined {
     const lowerContent = content.toLowerCase();
     // Sort longest keyword first so "weather report" wins over "weather"
-    const sorted = [...config.getKeywords()].sort(
-      (a, b) => b.keyword.length - a.keyword.length
-    );
+    const sorted = [...config.getKeywords()]
+      .filter((k) => k.enabled !== false)
+      .sort(
+        (a, b) => b.keyword.length - a.keyword.length
+      );
     return sorted.find((k) => {
       const keyword = k.keyword.toLowerCase().trim();
       if (!keyword) return false;
@@ -509,6 +525,20 @@ class MessageHandler {
     } else {
       await this.handleOllamaResponse(response as OllamaResponse, processingMessage, requester);
     }
+  }
+
+  /**
+   * Build the help response text listing all enabled keywords and their descriptions.
+   * Built-in keywords (like help itself) are excluded from the list.
+   */
+  buildHelpResponse(): string {
+    const keywords = config.getKeywords().filter(k => k.enabled !== false && !k.builtin);
+    if (keywords.length === 0) {
+      return 'No keywords are currently configured.';
+    }
+
+    const lines = keywords.map(k => `**${k.keyword}** — ${k.description}`);
+    return `📖 **Available Keywords:**\n${lines.join('\n')}`;
   }
 
   /**

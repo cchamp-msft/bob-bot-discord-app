@@ -1,6 +1,13 @@
 {
   "keywords": [
     {
+      "keyword": "help",
+      "api": "ollama",
+      "timeout": 30,
+      "description": "Show available keywords and what they do",
+      "builtin": true
+    },
+    {
       "keyword": "generate",
       "api": "comfyui",
       "timeout": 600,

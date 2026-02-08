@@ -212,6 +212,22 @@ class ConfigWriter {
         if (entry.accuweatherMode !== undefined && entry.accuweatherMode !== 'current' && entry.accuweatherMode !== 'forecast' && entry.accuweatherMode !== 'full') {
           throw new Error(`Keyword "${entry.keyword}" has invalid accuweatherMode "${entry.accuweatherMode}" — must be "current", "forecast", or "full"`);
         }
+        if (entry.enabled !== undefined && typeof entry.enabled !== 'boolean') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid enabled — must be a boolean`);
+        }
+        if (entry.builtin !== undefined && typeof entry.builtin !== 'boolean') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid builtin — must be a boolean`);
+        }
+      }
+
+      // Enforce: custom "help" keyword is only allowed when the built-in help keyword is disabled
+      const builtinHelp = keywords.find(k => k.builtin && k.keyword.toLowerCase() === 'help');
+      const builtinHelpEnabled = builtinHelp ? builtinHelp.enabled !== false : false;
+      if (builtinHelpEnabled) {
+        const customHelpIndex = keywords.findIndex(k => !k.builtin && k.keyword.toLowerCase() === 'help');
+        if (customHelpIndex !== -1) {
+          throw new Error('Cannot save a custom "help" keyword while the built-in help keyword is enabled — disable the built-in help keyword first');
+        }
       }
 
       // Strip unknown/deprecated fields and build clean keyword objects
@@ -225,6 +241,8 @@ class ConfigWriter {
         if (entry.abilityText) clean.abilityText = entry.abilityText;
         if (entry.finalOllamaPass) clean.finalOllamaPass = entry.finalOllamaPass;
         if (entry.accuweatherMode) clean.accuweatherMode = entry.accuweatherMode;
+        if (entry.enabled === false) clean.enabled = false;
+        if (entry.builtin) clean.builtin = true;
         return clean;
       });
 

@@ -201,6 +201,17 @@
     font-size: 0.85em;
   }
   .kw-table .btn-sm { padding: 4px 8px; }
+  .kw-table tr.kw-builtin input:not(.kw-enabled),
+  .kw-table tr.kw-builtin select:not(.kw-enabled) {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .kw-table tr.kw-builtin .kw-builtin-badge {
+    font-size: 0.7em;
+    color: var(--accent);
+    margin-left: 4px;
+    vertical-align: middle;
+  }
 
   /* Bot control bar */
   .bot-controls {
@@ -581,6 +592,7 @@
         <table class="kw-table">
           <thead>
             <tr>
+              <th style="text-align:center" title="Enable or disable this keyword">On</th>
               <th>Keyword</th>
               <th>API</th>
               <th title="Request timeout in seconds">Timeout (s)</th>
@@ -905,8 +917,13 @@
   function addKeywordRow(kw = null) {
     const tbody = document.getElementById('kwBody');
     const tr = document.createElement('tr');
+    const isBuiltin = !!kw?.builtin;
+    const isEnabled = kw ? kw.enabled !== false : true;
+    if (isBuiltin) tr.classList.add('kw-builtin');
+    tr.dataset.builtin = isBuiltin ? '1' : '';
     tr.innerHTML = `
-      <td><input type="text" class="kw-keyword" value="${esc(kw?.keyword || '')}" placeholder="keyword"></td>
+      <td style="text-align:center"><input type="checkbox" class="kw-enabled" ${isEnabled ? 'checked' : ''} title="${isBuiltin ? 'Enable or disable this built-in keyword' : 'Enable or disable this keyword'}"></td>
+      <td><input type="text" class="kw-keyword" value="${esc(kw?.keyword || '')}" placeholder="keyword">${isBuiltin ? '<span class="kw-builtin-badge">built-in</span>' : ''}</td>
       <td><select class="kw-api">
         <option value="comfyui" ${kw?.api === 'comfyui' ? 'selected' : ''}>comfyui</option>
         <option value="ollama" ${kw?.api === 'ollama' ? 'selected' : ''}>ollama</option>
@@ -916,7 +933,7 @@
       <td><input type="text" class="kw-desc" value="${esc(kw?.description || '')}" placeholder="description"></td>
       <td style="text-align:center"><input type="checkbox" class="kw-ability" ${kw?.abilityText ? 'checked' : ''} title="Include this keyword as an ability in Ollama context"></td>
       <td style="text-align:center"><input type="checkbox" class="kw-finalPass" ${kw?.finalOllamaPass ? 'checked' : ''} title="Pass API result through Ollama for conversational refinement"></td>
-      <td><button class="btn-danger btn-sm" onclick="this.closest('tr').remove();markDirty()">✕</button></td>
+      <td>${isBuiltin ? '' : '<button class="btn-danger btn-sm" onclick="this.closest(\'tr\').remove();markDirty()">✕</button>'}</td>
     `;
     // Attach dirty listeners to new row inputs
     tr.querySelectorAll('input, select').forEach(el => {
@@ -932,6 +949,8 @@
     for (const row of rows) {
       const keyword = row.querySelector('.kw-keyword').value.trim();
       if (!keyword) continue;
+      const isBuiltin = row.dataset.builtin === '1';
+      const isEnabled = row.querySelector('.kw-enabled').checked;
       const entry = {
         keyword,
         api: row.querySelector('.kw-api').value,
@@ -942,6 +961,8 @@
       if (isAbility) entry.abilityText = entry.description;
       const finalPass = row.querySelector('.kw-finalPass').checked;
       if (finalPass) entry.finalOllamaPass = true;
+      if (isBuiltin) entry.builtin = true;
+      if (!isEnabled) entry.enabled = false;
       keywords.push(entry);
     }
     return keywords;

@@ -53,7 +53,7 @@ export async function classifyIntent(
   requester: string,
   signal?: AbortSignal
 ): Promise<ClassificationResult> {
-  const keywords = config.getKeywords();
+  const keywords = config.getKeywords().filter(k => k.enabled !== false);
 
   if (keywords.length === 0) {
     logger.log('success', 'system', 'CLASSIFIER: No keywords configured, skipping classification');
@@ -134,7 +134,7 @@ export { buildClassificationPrompt };
  * Returns empty string if no abilities are configured.
  */
 export function buildAbilitiesContext(): string {
-  const keywords = config.getKeywords();
+  const keywords = config.getKeywords().filter(k => k.enabled !== false);
   const abilities = keywords
     .filter((k) => k.abilityText && k.api !== 'ollama')
     .map((k) => `- ${k.abilityText} (keyword: "${k.keyword}")`)

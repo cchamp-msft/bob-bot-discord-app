@@ -38,6 +38,10 @@ export interface KeywordConfig {
   finalOllamaPass?: boolean;
   /** AccuWeather data mode: which data to fetch. Only used when api is 'accuweather'. */
   accuweatherMode?: 'current' | 'forecast' | 'full';
+  /** Whether this keyword is currently enabled. Defaults to true when omitted. */
+  enabled?: boolean;
+  /** Whether this keyword is a built-in that cannot be edited or deleted — only toggled on/off. */
+  builtin?: boolean;
 }
 
 export interface ConfigData {
@@ -79,6 +83,23 @@ class Config {
         }
         if (entry.accuweatherMode !== undefined && entry.accuweatherMode !== 'current' && entry.accuweatherMode !== 'forecast' && entry.accuweatherMode !== 'full') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid accuweatherMode "${entry.accuweatherMode}" — must be "current", "forecast", or "full"`);
+        }
+        if (entry.enabled !== undefined && typeof entry.enabled !== 'boolean') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid enabled — must be a boolean`);
+        }
+        if (entry.builtin !== undefined && typeof entry.builtin !== 'boolean') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid builtin — must be a boolean`);
+        }
+      }
+
+      // Enforce: custom "help" keyword is only allowed when the built-in help keyword is disabled
+      const builtinHelp = config.keywords.find(k => k.builtin && k.keyword.toLowerCase() === 'help');
+      const builtinHelpEnabled = builtinHelp ? builtinHelp.enabled !== false : false;
+      if (builtinHelpEnabled) {
+        const customHelp = config.keywords.find(k => !k.builtin && k.keyword.toLowerCase() === 'help');
+        if (customHelp) {
+          logger.logWarn('config', 'Ignoring custom "help" keyword because the built-in help keyword is enabled');
+          config.keywords = config.keywords.filter(k => k !== customHelp);
         }
       }
 

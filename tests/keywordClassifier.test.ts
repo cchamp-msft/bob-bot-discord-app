@@ -328,6 +328,27 @@ describe('KeywordClassifier', () => {
       expect(context).toBe('');
     });
 
+    it('should exclude disabled keywords from abilities context', () => {
+      (config.getKeywords as jest.Mock).mockReturnValueOnce([
+        { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Gen', abilityText: 'generate images', enabled: false },
+        { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Weather', abilityText: 'check weather' },
+      ]);
+
+      const context = buildAbilitiesContext();
+
+      expect(context).toContain('check weather');
+      expect(context).not.toContain('generate images');
+    });
+
+    it('should return empty when all keywords with abilityText are disabled', () => {
+      (config.getKeywords as jest.Mock).mockReturnValueOnce([
+        { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Gen', abilityText: 'generate images', enabled: false },
+      ]);
+
+      const context = buildAbilitiesContext();
+      expect(context).toBe('');
+    });
+
     it('should include instruction to state keyword on its own line', () => {
       (config.getKeywords as jest.Mock).mockReturnValueOnce([
         { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Weather', abilityText: 'check weather' },
