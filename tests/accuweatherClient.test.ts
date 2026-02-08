@@ -39,7 +39,7 @@ jest.mock('../src/utils/logger', () => ({
 }));
 
 // Import after mocks — singleton captures mockInstance
-import { accuweatherClient } from '../src/api/accuweatherClient';
+import { accuweatherClient, getWeatherEmoji } from '../src/api/accuweatherClient';
 import { config } from '../src/utils/config';
 
 // --- Test data fixtures ---
@@ -79,6 +79,7 @@ const sampleCurrentConditions = {
   HasPrecipitation: false,
   PrecipitationType: null,
   IsDayTime: true,
+  WeatherIcon: 3,
 };
 
 const sampleForecastResponse = {
@@ -90,8 +91,8 @@ const sampleForecastResponse = {
         Minimum: { Value: 55, Unit: 'F' },
         Maximum: { Value: 75, Unit: 'F' },
       },
-      Day: { IconPhrase: 'Partly sunny', HasPrecipitation: false, PrecipitationType: null, PrecipitationIntensity: null },
-      Night: { IconPhrase: 'Clear', HasPrecipitation: false, PrecipitationType: null, PrecipitationIntensity: null },
+      Day: { Icon: 3, IconPhrase: 'Partly sunny', HasPrecipitation: false, PrecipitationType: null, PrecipitationIntensity: null },
+      Night: { Icon: 33, IconPhrase: 'Clear', HasPrecipitation: false, PrecipitationType: null, PrecipitationIntensity: null },
     },
     {
       Date: '2025-06-16T07:00:00-07:00',
@@ -99,8 +100,8 @@ const sampleForecastResponse = {
         Minimum: { Value: 58, Unit: 'F' },
         Maximum: { Value: 78, Unit: 'F' },
       },
-      Day: { IconPhrase: 'Sunny', HasPrecipitation: false, PrecipitationType: null, PrecipitationIntensity: null },
-      Night: { IconPhrase: 'Mostly clear', HasPrecipitation: false, PrecipitationType: null, PrecipitationIntensity: null },
+      Day: { Icon: 1, IconPhrase: 'Sunny', HasPrecipitation: false, PrecipitationType: null, PrecipitationIntensity: null },
+      Night: { Icon: 34, IconPhrase: 'Mostly clear', HasPrecipitation: false, PrecipitationType: null, PrecipitationIntensity: null },
     },
   ],
 };
@@ -111,6 +112,81 @@ describe('AccuWeatherClient', () => {
     (config.getAccuWeatherApiKey as jest.Mock).mockReturnValue('test-api-key');
     (config.getAccuWeatherDefaultLocation as jest.Mock).mockReturnValue('Seattle');
     (config.getAccuWeatherEndpoint as jest.Mock).mockReturnValue('https://dataservice.accuweather.com');
+  });
+
+  // ---- getWeatherEmoji ----
+
+  describe('getWeatherEmoji', () => {
+    it('should return sun emoji for sunny conditions (1-2)', () => {
+      expect(getWeatherEmoji(1)).toBe('☀️');
+      expect(getWeatherEmoji(2)).toBe('☀️');
+    });
+
+    it('should return partly sunny emoji for codes 3-4', () => {
+      expect(getWeatherEmoji(3)).toBe('🌤️');
+      expect(getWeatherEmoji(4)).toBe('🌤️');
+    });
+
+    it('should return cloud emoji for cloudy conditions (7-8)', () => {
+      expect(getWeatherEmoji(7)).toBe('☁️');
+      expect(getWeatherEmoji(8)).toBe('☁️');
+    });
+
+    it('should return fog emoji for fog (11)', () => {
+      expect(getWeatherEmoji(11)).toBe('🌫️');
+    });
+
+    it('should return rain emoji for showers/rain (12-14, 18)', () => {
+      expect(getWeatherEmoji(12)).toBe('🌧️');
+      expect(getWeatherEmoji(13)).toBe('🌧️');
+      expect(getWeatherEmoji(14)).toBe('🌧️');
+      expect(getWeatherEmoji(18)).toBe('🌧️');
+    });
+
+    it('should return thunderstorm emoji for t-storms (15-17)', () => {
+      expect(getWeatherEmoji(15)).toBe('⛈️');
+      expect(getWeatherEmoji(16)).toBe('⛈️');
+      expect(getWeatherEmoji(17)).toBe('⛈️');
+    });
+
+    it('should return snow emoji for snow conditions (22-23)', () => {
+      expect(getWeatherEmoji(22)).toBe('❄️');
+      expect(getWeatherEmoji(23)).toBe('❄️');
+    });
+
+    it('should return ice emoji for ice/sleet/freezing rain (24-26)', () => {
+      expect(getWeatherEmoji(24)).toBe('🧊');
+      expect(getWeatherEmoji(25)).toBe('🧊');
+      expect(getWeatherEmoji(26)).toBe('🧊');
+    });
+
+    it('should return hot/cold/wind emoji for extreme conditions', () => {
+      expect(getWeatherEmoji(30)).toBe('🔥');
+      expect(getWeatherEmoji(31)).toBe('🥶');
+      expect(getWeatherEmoji(32)).toBe('💨');
+    });
+
+    it('should return moon emoji for clear night conditions (33-36)', () => {
+      expect(getWeatherEmoji(33)).toBe('🌙');
+      expect(getWeatherEmoji(34)).toBe('🌙');
+      expect(getWeatherEmoji(35)).toBe('🌙');
+      expect(getWeatherEmoji(36)).toBe('🌙');
+    });
+
+    it('should return night storm/rain emoji for night conditions (39-44)', () => {
+      expect(getWeatherEmoji(39)).toBe('🌧️');
+      expect(getWeatherEmoji(40)).toBe('🌧️');
+      expect(getWeatherEmoji(41)).toBe('⛈️');
+      expect(getWeatherEmoji(42)).toBe('⛈️');
+      expect(getWeatherEmoji(43)).toBe('🌨️');
+      expect(getWeatherEmoji(44)).toBe('❄️');
+    });
+
+    it('should return default emoji for unknown icon codes', () => {
+      expect(getWeatherEmoji(0)).toBe('🌤️');
+      expect(getWeatherEmoji(99)).toBe('🌤️');
+      expect(getWeatherEmoji(-1)).toBe('🌤️');
+    });
   });
 
   // ---- extractLocation ----
@@ -559,6 +635,7 @@ describe('AccuWeatherClient', () => {
       );
 
       expect(text).toContain('Weather for Seattle, WA, United States');
+      expect(text).toMatch(/^🌤️/); // Partly Sunny icon (code 3)
       expect(text).toContain('Current Conditions');
       expect(text).toContain('Partly Cloudy');
       expect(text).toContain('72°F');
@@ -579,7 +656,8 @@ describe('AccuWeatherClient', () => {
       expect(text).toContain('5-Day Forecast');
       expect(text).toContain('Expect nice weather next week');
       expect(text).toContain('55°F–75°F');
-      expect(text).toContain('Partly sunny');
+      expect(text).toContain('🌤️ Day: Partly sunny');
+      expect(text).toContain('🌙 Night: Clear');
     });
 
     it('should format full report with both sections', () => {

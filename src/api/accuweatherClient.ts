@@ -11,6 +11,82 @@ import {
 
 const ACCUWEATHER_BASE_URL = 'https://dataservice.accuweather.com';
 
+/**
+ * Map an AccuWeather icon code (1-44) to a Unicode weather emoji.
+ * Icon reference: https://apidev.accuweather.com/developers/weatherIcons
+ *
+ * Day icons: 1-32, Night icons: 33-44
+ */
+function getWeatherEmoji(iconCode: number): string {
+  switch (iconCode) {
+    case 1:                          // Sunny
+    case 2:                          // Mostly Sunny
+      return '☀️';
+    case 3:                          // Partly Sunny
+    case 4:                          // Intermittent Clouds
+      return '🌤️';
+    case 5:                          // Hazy Sunshine
+      return '😶‍🌫️';
+    case 6:                          // Mostly Cloudy
+      return '🌥️';
+    case 7:                          // Cloudy
+    case 8:                          // Dreary (Overcast)
+      return '☁️';
+    case 11:                         // Fog
+      return '🌫️';
+    case 12:                         // Showers
+    case 13:                         // Mostly Cloudy w/ Showers
+    case 14:                         // Partly Sunny w/ Showers
+      return '🌧️';
+    case 15:                         // T-Storms
+    case 16:                         // Mostly Cloudy w/ T-Storms
+    case 17:                         // Partly Sunny w/ T-Storms
+      return '⛈️';
+    case 18:                         // Rain
+      return '🌧️';
+    case 19:                         // Flurries
+    case 20:                         // Mostly Cloudy w/ Flurries
+    case 21:                         // Partly Sunny w/ Flurries
+      return '🌨️';
+    case 22:                         // Snow
+    case 23:                         // Mostly Cloudy w/ Snow
+      return '❄️';
+    case 24:                         // Ice
+    case 25:                         // Sleet
+    case 26:                         // Freezing Rain
+      return '🧊';
+    case 29:                         // Rain and Snow
+      return '🌨️';
+    case 30:                         // Hot
+      return '🔥';
+    case 31:                         // Cold
+      return '🥶';
+    case 32:                         // Windy
+      return '💨';
+    case 33:                         // Clear (night)
+    case 34:                         // Mostly Clear (night)
+      return '🌙';
+    case 35:                         // Partly Cloudy (night)
+    case 36:                         // Intermittent Clouds (night)
+      return '🌙';
+    case 37:                         // Hazy Moonlight
+    case 38:                         // Mostly Cloudy (night)
+      return '☁️';
+    case 39:                         // Partly Cloudy w/ Showers (night)
+    case 40:                         // Mostly Cloudy w/ Showers (night)
+      return '🌧️';
+    case 41:                         // Partly Cloudy w/ T-Storms (night)
+    case 42:                         // Mostly Cloudy w/ T-Storms (night)
+      return '⛈️';
+    case 43:                         // Mostly Cloudy w/ Flurries (night)
+      return '🌨️';
+    case 44:                         // Mostly Cloudy w/ Snow (night)
+      return '❄️';
+    default:
+      return '🌤️';
+  }
+}
+
 class AccuWeatherClient {
   private client: AxiosInstance;
 
@@ -327,7 +403,13 @@ class AccuWeatherClient {
     mode: 'current' | 'forecast' | 'full'
   ): string {
     const parts: string[] = [];
-    parts.push(`🌤️ Weather for ${locationName}`);
+
+    // Pick the most relevant icon code for the header emoji
+    const headerIcon = current?.WeatherIcon
+      ?? forecast?.DailyForecasts?.[0]?.Day?.Icon
+      ?? 0;
+    const headerEmoji = getWeatherEmoji(headerIcon);
+    parts.push(`${headerEmoji} Weather for ${locationName}`);
     parts.push('');
 
     if (current && (mode === 'current' || mode === 'full')) {
@@ -355,7 +437,9 @@ class AccuWeatherClient {
         const high = day.Temperature.Maximum.Value;
         const low = day.Temperature.Minimum.Value;
         const unit = day.Temperature.Maximum.Unit === 'F' ? '°F' : '°C';
-        parts.push(`• ${date}: ${low}${unit}–${high}${unit} | Day: ${day.Day.IconPhrase} | Night: ${day.Night.IconPhrase}`);
+        const dayEmoji = getWeatherEmoji(day.Day.Icon);
+        const nightEmoji = getWeatherEmoji(day.Night.Icon);
+        parts.push(`• ${date}: ${low}${unit}–${high}${unit} | ${dayEmoji} Day: ${day.Day.IconPhrase} | ${nightEmoji} Night: ${day.Night.IconPhrase}`);
       }
     }
 
@@ -468,3 +552,4 @@ class AccuWeatherClient {
 }
 
 export const accuweatherClient = new AccuWeatherClient();
+export { getWeatherEmoji };
