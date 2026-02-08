@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { Client, GatewayIntentBits, Events, Partials } from 'discord.js';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
 import { messageHandler } from './messageHandler';
@@ -56,7 +56,13 @@ class DiscordManager {
           GatewayIntentBits.DirectMessages,
           GatewayIntentBits.MessageContent,
         ],
+        partials: [
+          Partials.Channel,   // Required: DM channels are not cached by default
+          Partials.Message,   // Allows receiving uncached DM messages
+        ],
       });
+
+      logger.log('success', 'system', 'Discord client configured with DirectMessages intent + Channel/Message partials (DM-ready)');
 
       this.client.once(Events.ClientReady, () => {
         this.status = 'running';

@@ -15,7 +15,7 @@ jest.mock('discord.js', () => ({
     setTimestamp: jest.fn().mockReturnThis(),
     addFields: jest.fn().mockReturnThis(),
   })),
-  ChannelType: { GuildText: 0, GuildAnnouncement: 1 },
+  ChannelType: { DM: 1, GuildText: 0, GuildAnnouncement: 1 },
 }));
 
 jest.mock('../src/utils/config', () => ({
@@ -30,6 +30,7 @@ jest.mock('../src/utils/config', () => ({
     getReplyChainMaxTokens: jest.fn(() => 16000),
     getMaxAttachments: jest.fn(() => 10),
     getImageResponseIncludeEmbed: jest.fn(() => false),
+    getAbilityLoggingDetailed: jest.fn(() => false),
   },
 }));
 
@@ -1090,6 +1091,96 @@ describe('MessageHandler two-stage evaluation', () => {
         }),
       ]),
       expect.anything()
+    );
+  });
+});
+
+describe('MessageHandler DM handling', () => {
+  function createDmMessage(content: string): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username: 'dmuser' },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: 1, // ChannelType.DM
+        messages: {
+          cache: new Map(),
+          fetch: jest.fn().mockResolvedValue(new Map()),
+        },
+        send: jest.fn(),
+      },
+      guild: null,
+      mentions: { has: jest.fn(() => false) },
+      reference: null,
+      content,
+      id: 'dm-msg-1',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getKeywords as jest.Mock).mockReturnValue([]);
+    (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
+      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    (buildAbilitiesContext as jest.MockedFunction<typeof buildAbilitiesContext>)
+      .mockReturnValue('');
+  });
+
+  it('should accept DM messages without mentions or replies', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const { logger } = require('../src/utils/logger');
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Hello from the bot!' },
+    });
+
+    const msg = createDmMessage('hello bot');
+    await messageHandler.handleMessage(msg);
+
+    // Should log incoming DM
+    expect(logger.logIncoming).toHaveBeenCalledWith(
+      'dmuser', 'user-1', 'DM', null, 'hello bot'
+    );
+  });
+
+  it('should collect DM history when reply chain is enabled', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+
+    // Create mock history messages
+    const historyMessages = new Map([
+      ['older-msg', {
+        id: 'older-msg',
+        content: 'Previous question',
+        author: { id: 'user-1', username: 'dmuser' },
+      }],
+      ['bot-reply', {
+        id: 'bot-reply',
+        content: 'Previous answer',
+        author: { id: 'bot-123', username: 'bot' },
+      }],
+    ]);
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Response' },
+    });
+
+    const msg = createDmMessage('follow up question');
+    msg.channel.messages.fetch.mockResolvedValue(historyMessages);
+
+    (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
+
+    await messageHandler.handleMessage(msg);
+
+    // Should have attempted to fetch DM history
+    expect(msg.channel.messages.fetch).toHaveBeenCalledWith(
+      expect.objectContaining({ before: 'dm-msg-1' })
     );
   });
 });

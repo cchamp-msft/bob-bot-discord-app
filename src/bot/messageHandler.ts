@@ -151,8 +151,14 @@ class MessageHandler {
     // Collect reply chain context — needed for any path that may call Ollama
     // (direct chat, two-stage evaluation, or final Ollama pass)
     let conversationHistory: ChatMessage[] = [];
-    if (config.getReplyChainEnabled() && message.reference) {
-      conversationHistory = await this.collectReplyChain(message);
+    if (config.getReplyChainEnabled()) {
+      if (isDM) {
+        // DMs: collect recent channel history (no reply chain needed)
+        conversationHistory = await this.collectDmHistory(message);
+      } else if (message.reference) {
+        // Guild: only collect context when explicitly replying
+        conversationHistory = await this.collectReplyChain(message);
+      }
     }
 
     // Log the request
@@ -302,6 +308,68 @@ class MessageHandler {
     });
   }
 
+  /**
+   * Collect recent DM channel history as conversation context.
+   * Unlike reply-chain collection, this fetches the most recent messages
+   * in the DM channel so DM conversations flow naturally without requiring
+   * explicit replies. Does NOT include the current message.
+   */
+  async collectDmHistory(message: Message): Promise<ChatMessage[]> {
+    const maxDepth = config.getReplyChainMaxDepth();
+    const maxTotalChars = config.getReplyChainMaxTokens();
+    const botId = message.client.user?.id;
+
+    try {
+      // Fetch recent messages before the current one
+      const fetched = await message.channel.messages.fetch({
+        limit: maxDepth + 1, // +1 because the current message may be included
+        before: message.id,
+      });
+
+      if (!fetched || fetched.size === 0) return [];
+
+      // Sort oldest-first
+      const sorted = [...fetched.values()].reverse();
+
+      const chain: ChatMessage[] = [];
+      let totalChars = 0;
+
+      for (const msg of sorted) {
+        // Skip bot's system/processing messages
+        if (msg.content === '⏳ Processing your request...') continue;
+
+        let content = msg.content || '';
+
+        // Strip bot mentions
+        if (botId) {
+          const mentionRegex = new RegExp(`<@!?${botId}>`, 'g');
+          content = content.replace(mentionRegex, '').trim();
+        }
+
+        if (!content) continue;
+
+        // Check character budget
+        if (totalChars + content.length > maxTotalChars) {
+          logger.log('success', 'system', `DM_HISTORY: Character limit reached (${totalChars}/${maxTotalChars}), stopping`);
+          break;
+        }
+        totalChars += content.length;
+
+        const role = msg.author.id === botId ? 'assistant' as const : 'user' as const;
+        chain.push({ role, content });
+      }
+
+      if (chain.length > 0) {
+        logger.log('success', 'system', `DM_HISTORY: Collected ${chain.length} message(s) of context`);
+      }
+
+      return chain;
+    } catch (error) {
+      logger.logError('system', `DM_HISTORY: Failed to fetch DM history: ${error}`);
+      return [];
+    }
+  }
+
   private findKeyword(content: string): KeywordConfig | undefined {
     const lowerContent = content.toLowerCase();
     return config.getKeywords().find((k) => {
@@ -334,6 +402,17 @@ class MessageHandler {
     const historyWithAbilities: ChatMessage[] = [];
     if (abilitiesContext) {
       historyWithAbilities.push({ role: 'system', content: abilitiesContext });
+
+      // Log abilities passed to the model (detailed logging opt-in)
+      if (config.getAbilityLoggingDetailed()) {
+        logger.log('success', 'system', `TWO-STAGE: Abilities context passed to model:\n${abilitiesContext}`);
+      } else {
+        // Always log a summary count
+        const abilityCount = (abilitiesContext.match(/^- /gm) || []).length;
+        logger.log('success', 'system', `TWO-STAGE: ${abilityCount} ability/abilities passed to model`);
+      }
+    } else {
+      logger.log('success', 'system', 'TWO-STAGE: No abilities configured — standard Ollama chat');
     }
     if (conversationHistory.length > 0) {
       historyWithAbilities.push(...conversationHistory);
@@ -371,6 +450,7 @@ class MessageHandler {
         logger.log('success', 'system',
           `TWO-STAGE: Ollama response classified as "${secondClassification.keywordConfig.keyword}" — executing ${secondClassification.keywordConfig.api} API`);
 
+
         // Execute the matched API with optional final Ollama pass
         const apiResult = await executeRoutedRequest(
           secondClassification.keywordConfig,
@@ -390,6 +470,7 @@ class MessageHandler {
     }
 
     // No API keyword found in Ollama's response — use it as-is
+    logger.log('success', 'system', 'TWO-STAGE: No API intent detected in Ollama response — returning as direct chat');
     await this.dispatchResponse(ollamaResult, 'ollama', processingMessage, requester);
   }
 
