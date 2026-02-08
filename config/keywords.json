@@ -23,6 +23,41 @@
       "api": "ollama",
       "timeout": 300,
       "description": "Chat with Ollama AI"
+    },
+    {
+      "keyword": ":text2img",
+      "api": "comfyui",
+      "timeout": 300,
+      "description": "Generate image using ComfyUI"
+    },
+    {
+      "keyword": "weather",
+      "api": "accuweather",
+      "timeout": 60,
+      "description": "Get current weather conditions and 5-day forecast",
+      "accuweatherMode": "full"
+    },
+    {
+      "keyword": "forecast",
+      "api": "accuweather",
+      "timeout": 60,
+      "description": "Get 5-day weather forecast",
+      "accuweatherMode": "forecast"
+    },
+    {
+      "keyword": "conditions",
+      "api": "accuweather",
+      "timeout": 60,
+      "description": "Get current weather conditions",
+      "accuweatherMode": "current"
+    },
+    {
+      "keyword": "weather report",
+      "api": "accuweather",
+      "timeout": 120,
+      "description": "Get an AI-powered opinionated weather report",
+      "routeApi": "ollama",
+      "accuweatherMode": "full"
     }
   ]
 }

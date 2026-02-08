@@ -6,7 +6,7 @@ import {
 } from 'discord.js';
 import { config } from '../utils/config';
 import { requestQueue } from '../utils/requestQueue';
-import { apiManager, ComfyUIResponse, OllamaResponse } from '../api';
+import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse } from '../api';
 import { logger } from '../utils/logger';
 import { chunkText } from '../utils/chunkText';
 import { fileHandler } from '../utils/fileHandler';
@@ -255,4 +255,95 @@ class AskCommand extends BaseCommand {
   }
 }
 
-export const commands: BaseCommand[] = [new GenerateCommand(), new AskCommand()];
+class WeatherCommand extends BaseCommand {
+  data = new SlashCommandBuilder()
+    .setName('weather')
+    .setDescription('Get weather conditions and forecast')
+    .addStringOption((option) =>
+      option
+        .setName('location')
+        .setDescription('City name, zip code, or location key (uses default if omitted)')
+        .setRequired(false)
+    )
+    .addStringOption((option) =>
+      option
+        .setName('type')
+        .setDescription('Type of weather data to fetch')
+        .addChoices(
+          { name: 'Current Conditions', value: 'current' },
+          { name: '5-Day Forecast', value: 'forecast' },
+          { name: 'Full Report', value: 'full' }
+        )
+        .setRequired(false)
+    );
+
+  async execute(interaction: ChatInputCommandInteraction): Promise<void> {
+    const location = interaction.options.getString('location') || '';
+    const type = (interaction.options.getString('type') || 'full') as 'current' | 'forecast' | 'full';
+    const requester = interaction.user.username;
+
+    // Defer reply as ephemeral
+    await interaction.deferReply({ ephemeral: true });
+
+    // Build a prompt-like string for the weather client
+    const prompt = location ? `weather in ${location}` : 'weather';
+
+    // Log the request
+    logger.logRequest(requester, `[weather] ${type} — ${location || '(default location)'}`);
+
+    await interaction.editReply({
+      content: '⏳ Fetching weather data…',
+    });
+
+    try {
+      const timeout = this.getTimeout('weather');
+      const apiResult = await requestQueue.execute<AccuWeatherResponse>(
+        'accuweather',
+        requester,
+        'weather',
+        timeout,
+        (signal) => apiManager.executeRequest('accuweather', requester, prompt, timeout, undefined, undefined, signal, type) as Promise<AccuWeatherResponse>
+      );
+
+      if (!apiResult.success) {
+        const errorDetail = apiResult.error ?? 'Unknown API error';
+        logger.logError(requester, errorDetail);
+        await interaction.editReply({
+          content: `⚠️ ${errorDetail}`,
+        });
+        return;
+      }
+
+      await this.handleResponse(interaction, apiResult, requester);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      logger.logError(requester, errorMsg);
+      await interaction.editReply({
+        content: `⚠️ ${config.getErrorMessage()}`,
+      });
+    }
+  }
+
+  private async handleResponse(
+    interaction: ChatInputCommandInteraction,
+    apiResult: AccuWeatherResponse,
+    requester: string
+  ): Promise<void> {
+    const text = apiResult.data?.text || 'No weather data available.';
+
+    // Split into Discord-safe chunks (newline-aware)
+    const chunks = chunkText(text);
+
+    // Edit the deferred reply with the first chunk
+    await interaction.editReply({ content: chunks[0] });
+
+    // Send remaining chunks as follow-ups
+    for (let i = 1; i < chunks.length; i++) {
+      await interaction.followUp({ content: chunks[i], ephemeral: true });
+    }
+
+    logger.logReply(requester, `Weather response sent: ${text.length} characters`);
+  }
+}
+
+export const commands: BaseCommand[] = [new GenerateCommand(), new AskCommand(), new WeatherCommand()];

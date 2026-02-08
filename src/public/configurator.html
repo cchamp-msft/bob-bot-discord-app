@@ -431,6 +431,37 @@
       </div>
     </section>
 
+    <!-- AccuWeather Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">AccuWeather API</h2>
+      <div class="body">
+        <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
+          Get a free API key at <a href="https://developer.accuweather.com" target="_blank" style="color:var(--accent)">developer.accuweather.com</a>.
+          The AccuWeather API provides current conditions and 5-day forecasts. Configure a default location so users can ask for weather without specifying a city.
+        </p>
+        <div class="field">
+          <label>API Key <span class="note">write-only — never displayed</span></label>
+          <div class="field-row">
+            <div class="field">
+              <input type="password" id="accuweather_api_key" placeholder="Paste AccuWeather API key" autocomplete="off">
+            </div>
+            <div class="field tiny">
+              <button class="btn-test btn-sm" onclick="testConnection('accuweather')">Test</button>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Default Location <span class="note">city name or zip code used when user doesn't specify</span></label>
+          <input type="text" id="accuweather_default_location" data-env="ACCUWEATHER_DEFAULT_LOCATION" placeholder="e.g. New York, 90210, or 349727">
+        </div>
+        <div class="field">
+          <label>Endpoint <span class="note">override only if using a proxy</span></label>
+          <input type="text" id="accuweather_endpoint" data-env="ACCUWEATHER_ENDPOINT" placeholder="https://dataservice.accuweather.com">
+        </div>
+        <div id="accuweatherTestResult" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
+      </div>
+    </section>
+
     <!-- Error Handling Section -->
     <section>
       <h2 onclick="toggleSection(this)">Error Handling</h2>
@@ -522,6 +553,7 @@
       <div class="body open">
         <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
           Map @mention keywords to APIs. Slash commands <code>/generate</code> and <code>/ask</code> are hardcoded in bot code.
+          Route API, Route Model, and Final Pass enable <strong>multi-stage API call stacking</strong> — see README for details.
         </p>
         <table class="kw-table">
           <thead>
@@ -530,6 +562,9 @@
               <th>API</th>
               <th>Timeout (s)</th>
               <th>Description</th>
+              <th>Route API</th>
+              <th>Route Model</th>
+              <th>Final Pass</th>
               <th></th>
             </tr>
           </thead>
@@ -776,6 +811,13 @@
         systemPromptEl.value = cfg.apis.ollamaSystemPrompt;
       }
 
+      // Populate AccuWeather fields
+      document.getElementById('accuweather_default_location').value = cfg.apis.accuweatherDefaultLocation || '';
+      document.getElementById('accuweather_endpoint').value = cfg.apis.accuweather || '';
+      document.getElementById('accuweather_api_key').value = '';
+      document.getElementById('accuweather_api_key').placeholder =
+        cfg.apis.accuweatherApiKeyConfigured ? 'API key configured ✓ — paste new value to change' : 'Paste AccuWeather API key';
+
       // Populate error handling fields
       document.getElementById('error_message').value = cfg.errorHandling?.errorMessage || '';
       document.getElementById('error_rate_limit').value = cfg.errorHandling?.errorRateLimitMinutes || 60;
@@ -829,9 +871,19 @@
       <td><select class="kw-api">
         <option value="comfyui" ${kw?.api === 'comfyui' ? 'selected' : ''}>comfyui</option>
         <option value="ollama" ${kw?.api === 'ollama' ? 'selected' : ''}>ollama</option>
+        <option value="accuweather" ${kw?.api === 'accuweather' ? 'selected' : ''}>accuweather</option>
       </select></td>
       <td><input type="number" class="kw-timeout" value="${kw?.timeout || 300}" style="width:70px"></td>
       <td><input type="text" class="kw-desc" value="${esc(kw?.description || '')}" placeholder="description"></td>
+      <td><select class="kw-routeApi">
+        <option value="" ${!kw?.routeApi ? 'selected' : ''}>—</option>
+        <option value="comfyui" ${kw?.routeApi === 'comfyui' ? 'selected' : ''}>comfyui</option>
+        <option value="ollama" ${kw?.routeApi === 'ollama' ? 'selected' : ''}>ollama</option>
+        <option value="accuweather" ${kw?.routeApi === 'accuweather' ? 'selected' : ''}>accuweather</option>
+        <option value="external" ${kw?.routeApi === 'external' ? 'selected' : ''}>external ⚠️</option>
+      </select></td>
+      <td><input type="text" class="kw-routeModel" value="${esc(kw?.routeModel || '')}" placeholder="optional"></td>
+      <td style="text-align:center"><input type="checkbox" class="kw-finalPass" ${kw?.finalOllamaPass ? 'checked' : ''}></td>
       <td><button class="btn-danger btn-sm" onclick="this.closest('tr').remove();markDirty()">✕</button></td>
     `;
     // Attach dirty listeners to new row inputs
@@ -848,12 +900,19 @@
     for (const row of rows) {
       const keyword = row.querySelector('.kw-keyword').value.trim();
       if (!keyword) continue;
-      keywords.push({
+      const entry = {
         keyword,
         api: row.querySelector('.kw-api').value,
         timeout: parseInt(row.querySelector('.kw-timeout').value, 10) || 300,
         description: row.querySelector('.kw-desc').value.trim() || keyword,
-      });
+      };
+      const routeApi = row.querySelector('.kw-routeApi').value;
+      if (routeApi) entry.routeApi = routeApi;
+      const routeModel = row.querySelector('.kw-routeModel').value.trim();
+      if (routeModel) entry.routeModel = routeModel;
+      const finalPass = row.querySelector('.kw-finalPass').checked;
+      if (finalPass) entry.finalOllamaPass = true;
+      keywords.push(entry);
     }
     return keywords;
   }
@@ -883,6 +942,13 @@
         env['DISCORD_TOKEN'] = tokenVal;
       }
 
+      // Include AccuWeather API key only if user typed a new value (write-only field)
+      const awKeyInput = document.getElementById('accuweather_api_key');
+      const awKeyVal = awKeyInput.value.trim();
+      if (awKeyVal) {
+        env['ACCUWEATHER_API_KEY'] = awKeyVal;
+      }
+
       // Collect keywords
       const keywords = collectKeywords();
 
@@ -900,6 +966,11 @@
         // Clear the token input after successful save
         tokenInput.value = '';
         tokenInput.placeholder = 'Token configured ✓ — paste new value to change';
+        // Clear the AccuWeather API key input after successful save
+        if (awKeyVal) {
+          awKeyInput.value = '';
+          awKeyInput.placeholder = 'API key configured ✓ — paste new value to change';
+        }
         saveMsg.textContent = result.messages.join(' | ');
         saveMsg.className = 'msg ok';
         conLog(`[${new Date().toISOString()}] Save successful`, 'ok');
@@ -965,9 +1036,26 @@
             conLog(`    • ${m.name} (${m.parameterSize}, ${m.family})`);
           }
         }
+
+        // For AccuWeather, show resolved location info
+        if (api === 'accuweather') {
+          const resultEl = document.getElementById('accuweatherTestResult');
+          if (data.location) {
+            const loc = data.location;
+            resultEl.innerHTML = `<span style="color:var(--ok)">✓ API key valid. Default location: ${loc.LocalizedName}, ${loc.AdministrativeArea?.ID || ''}, ${loc.Country?.LocalizedName || ''} (key: ${loc.Key})</span>`;
+            conLog(`  ✓ Default location resolved: ${loc.LocalizedName}, ${loc.AdministrativeArea?.ID || ''}`, 'ok');
+          } else {
+            resultEl.innerHTML = '<span style="color:var(--ok)">✓ API key valid. No default location configured.</span>';
+          }
+        }
       } else {
         conLog(`  ✗ ${api} at ${data.endpoint} is not reachable`, 'err');
         if (data.error) conLog(`    ${data.error}`, 'err');
+
+        if (api === 'accuweather') {
+          const resultEl = document.getElementById('accuweatherTestResult');
+          resultEl.innerHTML = `<span style="color:var(--err)">✗ ${data.error || 'Connection failed'}</span>`;
+        }
       }
       await pollStatus();
     } catch (e) {

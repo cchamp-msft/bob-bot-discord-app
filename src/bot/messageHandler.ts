@@ -6,10 +6,12 @@ import {
 import { config, KeywordConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 import { requestQueue } from '../utils/requestQueue';
-import { apiManager, ComfyUIResponse, OllamaResponse } from '../api';
+import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse } from '../api';
 import { fileHandler } from '../utils/fileHandler';
 import { ChatMessage } from '../types';
 import { chunkText } from '../utils/chunkText';
+import { classifyIntent } from '../utils/keywordClassifier';
+import { executeRoutedRequest } from '../utils/apiRouter';
 
 export type { ChatMessage };
 
@@ -98,8 +100,19 @@ class MessageHandler {
       return;
     }
 
-    // Find matching keyword — fall back to Ollama (chat) if none found
+    // Find matching keyword — fall back to AI classification, then default chat
     let keywordConfig = this.findKeyword(content);
+    let wasAIClassified = false;
+
+    if (!keywordConfig) {
+      // Attempt AI-based classification as fallback
+      const classification = await classifyIntent(content, message.author.username);
+      if (classification.keywordConfig) {
+        keywordConfig = classification.keywordConfig;
+        wasAIClassified = true;
+        logger.log('success', 'system', `AI classified "${content.substring(0, 50)}..." as keyword "${keywordConfig.keyword}"`);
+      }
+    }
 
     if (!keywordConfig) {
       keywordConfig = {
@@ -112,7 +125,10 @@ class MessageHandler {
     }
 
     // Strip the matched routing keyword from the prompt (first occurrence only)
-    content = this.stripKeyword(content, keywordConfig.keyword);
+    // Skip stripping if the keyword was identified by AI (it may not appear literally)
+    if (!wasAIClassified) {
+      content = this.stripKeyword(content, keywordConfig.keyword);
+    }
 
     // For image generation replies, combine quoted message content with the user's reply text.
     // Done before the empty-prompt check so that reply-only-keyword messages (e.g. replying
@@ -154,50 +170,102 @@ class MessageHandler {
     }
 
     try {
-      // Execute through the queue (handles locking + timeout)
-      const apiResult = await requestQueue.execute(
-        keywordConfig.api,
-        message.author.username,
-        keywordConfig.keyword,
-        keywordConfig.timeout || config.getDefaultTimeout(),
-        (signal) =>
-          apiManager.executeRequest(
-            keywordConfig.api,
-            message.author.username,
-            content,
-            keywordConfig.timeout || config.getDefaultTimeout(),
-            undefined,
-            conversationHistory.length > 0 ? conversationHistory : undefined,
-            signal
-          )
-      );
+      // Determine if this keyword uses routing (routeApi or finalOllamaPass)
+      const usesRouting = keywordConfig.routeApi !== undefined || keywordConfig.finalOllamaPass === true;
 
-      if (!apiResult.success) {
-        const errorDetail = apiResult.error ?? 'Unknown API error';
-        logger.logError(message.author.username, errorDetail);
+      if (usesRouting) {
+        // ── Routed pipeline execution ───────────────────────────────
+        const routedResult = await executeRoutedRequest(
+          keywordConfig,
+          content,
+          message.author.username,
+          conversationHistory.length > 0 ? conversationHistory : undefined
+        );
 
-        // Edit processing message with error
-        if (this.canSendErrorMessage()) {
-          await processingMessage.edit(`⚠️ ${config.getErrorMessage()}`);
-        } else {
-          await processingMessage.edit('⚠️ An error occurred processing your request.');
+        if (!routedResult.finalResponse.success) {
+          const errorDetail = routedResult.finalResponse.error ?? 'Unknown API error';
+          logger.logError(message.author.username, errorDetail);
+
+          if (this.canSendErrorMessage()) {
+            await processingMessage.edit(`⚠️ ${config.getErrorMessage()}`);
+          } else {
+            await processingMessage.edit('⚠️ An error occurred processing your request.');
+          }
+          return;
         }
-        return;
-      }
 
-      // Handle response based on API type
-      if (keywordConfig.api === 'comfyui') {
-        await this.handleComfyUIResponse(
-          apiResult as ComfyUIResponse,
-          processingMessage,
-          message.author.username
-        );
+        // Handle response based on the final API type in the pipeline
+        if (routedResult.finalApi === 'comfyui') {
+          await this.handleComfyUIResponse(
+            routedResult.finalResponse as ComfyUIResponse,
+            processingMessage,
+            message.author.username
+          );
+        } else if (routedResult.finalApi === 'accuweather') {
+          await this.handleAccuWeatherResponse(
+            routedResult.finalResponse as AccuWeatherResponse,
+            processingMessage,
+            message.author.username
+          );
+        } else {
+          await this.handleOllamaResponse(
+            routedResult.finalResponse as OllamaResponse,
+            processingMessage,
+            message.author.username
+          );
+        }
       } else {
-        await this.handleOllamaResponse(
-          apiResult as OllamaResponse,
-          processingMessage,
-          message.author.username
+        // ── Direct (non-routed) execution ──────────────────────────
+        const apiResult = await requestQueue.execute(
+          keywordConfig.api,
+          message.author.username,
+          keywordConfig.keyword,
+          keywordConfig.timeout || config.getDefaultTimeout(),
+          (signal) =>
+            apiManager.executeRequest(
+              keywordConfig.api,
+              message.author.username,
+              content,
+              keywordConfig.timeout || config.getDefaultTimeout(),
+              undefined,
+              conversationHistory.length > 0 ? conversationHistory : undefined,
+              signal,
+              keywordConfig.accuweatherMode
+            )
         );
+
+        if (!apiResult.success) {
+          const errorDetail = apiResult.error ?? 'Unknown API error';
+          logger.logError(message.author.username, errorDetail);
+
+          if (this.canSendErrorMessage()) {
+            await processingMessage.edit(`⚠️ ${config.getErrorMessage()}`);
+          } else {
+            await processingMessage.edit('⚠️ An error occurred processing your request.');
+          }
+          return;
+        }
+
+        // Handle response based on API type
+        if (keywordConfig.api === 'comfyui') {
+          await this.handleComfyUIResponse(
+            apiResult as ComfyUIResponse,
+            processingMessage,
+            message.author.username
+          );
+        } else if (keywordConfig.api === 'accuweather') {
+          await this.handleAccuWeatherResponse(
+            apiResult as AccuWeatherResponse,
+            processingMessage,
+            message.author.username
+          );
+        } else {
+          await this.handleOllamaResponse(
+            apiResult as OllamaResponse,
+            processingMessage,
+            message.author.username
+          );
+        }
       }
     } catch (error) {
       const errorMsg =
@@ -473,6 +541,32 @@ class MessageHandler {
     logger.logReply(
       requester,
       `Ollama response sent: ${text.length} characters`
+    );
+  }
+
+  private async handleAccuWeatherResponse(
+    apiResult: AccuWeatherResponse,
+    processingMessage: Message,
+    requester: string
+  ): Promise<void> {
+    const text = apiResult.data?.text || 'No weather data available.';
+
+    // Split into Discord-safe chunks (newline-aware)
+    const chunks = chunkText(text);
+
+    // Edit processing message with first chunk as plain text
+    await processingMessage.edit({ content: chunks[0], embeds: [] });
+
+    // Send remaining chunks as follow-up messages in the same channel
+    for (let i = 1; i < chunks.length; i++) {
+      if ('send' in processingMessage.channel) {
+        await processingMessage.channel.send(chunks[i]);
+      }
+    }
+
+    logger.logReply(
+      requester,
+      `AccuWeather response sent: ${text.length} characters`
     );
   }
 }
