@@ -57,6 +57,20 @@
       "finalOllamaPass": true
     },
     {
+      "keyword": "nfl superbowl report",
+      "api": "nfl",
+      "timeout": 60,
+      "description": "Get an AI-enhanced Super Bowl assessment with game data and news",
+      "finalOllamaPass": true
+    },
+    {
+      "keyword": "superbowl report",
+      "api": "nfl",
+      "timeout": 60,
+      "description": "Get an AI-enhanced Super Bowl assessment with game data and news",
+      "finalOllamaPass": true
+    },
+    {
       "keyword": "superbowl",
       "api": "nfl",
       "timeout": 30,

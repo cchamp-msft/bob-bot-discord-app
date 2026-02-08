@@ -125,10 +125,17 @@ export async function executeRoutedRequest(
     } else if (keywordConfig.api === 'nfl') {
       const nflResponse = primaryResult as NFLResponse;
       const nflData = nflResponse.data?.text ?? 'No NFL data available.';
-      const isNewsKeyword = keywordConfig.keyword.toLowerCase().includes('news');
-      const openTag = isNewsKeyword ? '[NFL News Data]' : '[NFL Game Data]';
-      const closeTag = isNewsKeyword ? '[End NFL News Data]' : '[End NFL Game Data]';
-      finalPrompt = `${openTag}\n${nflData}\n${closeTag}\n\nUser request: ${content}\n\nPlease provide a helpful, conversational response based on the NFL data above. Be concise and natural.`;
+      const lowerKw = keywordConfig.keyword.toLowerCase();
+      const isSuperBowlReport = lowerKw.includes('superbowl') && lowerKw.includes('report');
+      const isNewsKeyword = lowerKw.includes('news');
+      const openTag = isSuperBowlReport ? '[NFL Super Bowl Report Data]'
+        : isNewsKeyword ? '[NFL News Data]' : '[NFL Game Data]';
+      const closeTag = isSuperBowlReport ? '[End NFL Super Bowl Report Data]'
+        : isNewsKeyword ? '[End NFL News Data]' : '[End NFL Game Data]';
+      const instruction = isSuperBowlReport
+        ? config.getSuperBowlReportPrompt()
+        : 'Please provide a helpful, conversational response based on the NFL data above. Be concise and natural.';
+      finalPrompt = `${openTag}\n${nflData}\n${closeTag}\n\nUser request: ${content}\n\n${instruction}`;
     } else {
       finalPrompt = buildFinalPassPrompt(content, primaryExtracted);
     }

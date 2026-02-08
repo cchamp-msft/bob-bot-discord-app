@@ -11,6 +11,7 @@ jest.mock('../src/utils/config', () => ({
     getAccuWeatherEndpoint: jest.fn(() => 'https://dataservice.accuweather.com'),
     getAccuWeatherApiKey: jest.fn(() => ''),
     getAccuWeatherDefaultLocation: jest.fn(() => ''),
+    getSuperBowlReportPrompt: jest.fn(() => 'Provide an intelligent, comprehensive assessment of the current Super Bowl based on the data above. Include context from the news articles to enrich the analysis. Be insightful and conversational.'),
   },
 }));
 
@@ -581,6 +582,79 @@ describe('ApiRouter', () => {
 
       const prompt = await captureNflFinalPrompt(keyword, 'Some NFL data', 'tell me about the chiefs');
       expect(prompt).toContain('User request: tell me about the chiefs');
+    });
+
+    it('should wrap "nfl superbowl report" with [NFL Super Bowl Report Data] tags and custom prompt', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'nfl superbowl report',
+        api: 'nfl',
+        timeout: 60,
+        description: 'Super Bowl report',
+        finalOllamaPass: true,
+      };
+
+      const prompt = await captureNflFinalPrompt(keyword, 'Super Bowl Game Status\nSF vs KC', 'tell me about the super bowl');
+      expect(prompt).toContain('[NFL Super Bowl Report Data]');
+      expect(prompt).toContain('[End NFL Super Bowl Report Data]');
+      expect(prompt).not.toContain('[NFL Game Data]');
+      expect(prompt).not.toContain('[NFL News Data]');
+      expect(prompt).toContain('intelligent, comprehensive assessment');
+    });
+
+    it('should wrap "superbowl report" with [NFL Super Bowl Report Data] tags and custom prompt', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'superbowl report',
+        api: 'nfl',
+        timeout: 60,
+        description: 'Super Bowl report',
+        finalOllamaPass: true,
+      };
+
+      const prompt = await captureNflFinalPrompt(keyword, 'Super Bowl Game Status\nSF vs KC', 'give me a report');
+      expect(prompt).toContain('[NFL Super Bowl Report Data]');
+      expect(prompt).toContain('[End NFL Super Bowl Report Data]');
+      expect(prompt).toContain('intelligent, comprehensive assessment');
+    });
+
+    it('should use configurable prompt for superbowl report', async () => {
+      const { config } = require('../src/utils/config');
+      (config.getSuperBowlReportPrompt as jest.Mock).mockReturnValueOnce('Custom super bowl instruction.');
+
+      const keyword: KeywordConfig = {
+        keyword: 'nfl superbowl report',
+        api: 'nfl',
+        timeout: 60,
+        description: 'Super Bowl report',
+        finalOllamaPass: true,
+      };
+
+      const prompt = await captureNflFinalPrompt(keyword, 'SB data', 'report');
+      expect(prompt).toContain('Custom super bowl instruction.');
+      expect(prompt).not.toContain('helpful, conversational response');
+    });
+
+    it('should fall back to NFL result when superbowl report final pass fails', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'nfl superbowl report',
+        api: 'nfl',
+        timeout: 60,
+        description: 'Super Bowl report',
+        finalOllamaPass: true,
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Super Bowl data', games: [] },
+      });
+
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Ollama down',
+      });
+
+      const result = await executeRoutedRequest(keyword, 'report', 'testuser');
+      expect(result.finalApi).toBe('nfl');
+      expect(result.finalResponse.success).toBe(true);
     });
   });
 });
