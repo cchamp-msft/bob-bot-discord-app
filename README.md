@@ -5,6 +5,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 ## Features
 
 - ✅ @mention and DM detection with inline replies
+- ✅ **DM conversation context** — DMs automatically include recent message history without requiring explicit replies
 - ✅ Slash commands with ephemeral responses (shareable by user)
 - ✅ ComfyUI integration for image generation (WebSocket-based with HTTP polling fallback)
 - ✅ Ollama integration for AI text generation
@@ -32,6 +33,8 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **Two-stage evaluation** — Ollama responses are re-evaluated for API keyword triggers, enabling automatic ability routing
 - ✅ **Weather slash command** — `/weather` command with optional location and report type parameters
 - ✅ **Weather→AI routing** — weather data piped through Ollama for AI-powered weather reports via `finalOllamaPass`
+- ✅ **Global final-pass model** — configurable Ollama model for all final-pass refinements
+- ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
 
 ## Project Structure
 
@@ -243,6 +246,13 @@ The bot requires the following **Gateway Intents** configured in the [Discord De
 
 > ⚠️ **`MessageContent` is a Privileged Intent.** It must be explicitly enabled in the Developer Portal. For bots in **100+ servers**, Discord requires verification and approval for this intent. Without it, the bot cannot read message content or traverse reply chains.
 
+The bot also requires the following **Partials** (configured automatically in code):
+
+| Partial | Purpose |
+|---------|--------|
+| `Channel` | Required for receiving DM messages (DM channels are not cached by default) |
+| `Message` | Allows receiving uncached DM messages |
+
 ### Bot Permissions
 
 When generating an OAuth2 invite link, include these **Bot Permissions**:
@@ -253,29 +263,41 @@ When generating an OAuth2 invite link, include these **Bot Permissions**:
 - **Embed Links** — send ComfyUI response embeds
 - **Use Slash Commands** — register and respond to `/generate` and `/ask`
 
-## Reply Chain Context
+## Reply Chain Context & DM History
 
-When a user replies to a previous message (theirs or the bot's), the bot automatically traverses the Discord reply chain to build conversation history. This context is sent to Ollama using the `/api/chat` endpoint with proper role-based messages (`user` / `assistant`), enabling multi-turn conversations.
+The bot provides conversation context to Ollama in two ways:
+
+- **Server (guild) messages**: When a user replies to a previous message, the bot traverses the Discord reply chain to build conversation history.
+- **DMs**: Recent DM channel messages are included automatically as context — no explicit replies are needed. DM conversations flow naturally.
+
+In both cases, context is sent to Ollama using the `/api/chat` endpoint with proper role-based messages (`user` / `assistant`), enabling multi-turn conversations.
 
 ### How It Works
 
+**Server (reply chain)**:
 1. User sends a message that replies to a previous bot response
 2. Bot traverses `message.reference` links up the chain (up to max depth)
 3. Each message in the chain is tagged as `user` or `assistant` based on the author
-4. The full conversation is sent to Ollama's chat API with the system prompt
-5. Ollama responds with awareness of the entire conversation
+4. The full conversation is sent to Ollama’s chat API with the system prompt
+
+**DMs (automatic history)**:
+1. User sends a DM to the bot
+2. Bot fetches recent messages from the DM channel (up to max depth)
+3. Messages are tagged as `user` or `assistant` and sent as conversation context
+4. No explicit reply chains are needed — DMs always include recent history
 
 ### Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REPLY_CHAIN_ENABLED` | `true` | Set to `false` to disable reply chain traversal |
+| `REPLY_CHAIN_ENABLED` | `true` | Set to `false` to disable reply chain traversal and DM history |
 | `REPLY_CHAIN_MAX_DEPTH` | `10` | Maximum messages to traverse (1–50) |
 | `REPLY_CHAIN_MAX_TOKENS` | `16000` | Character budget for collected context (1,000–128,000) |
 
 ### Behavior Notes
 
 - Reply chain traversal for **Ollama** builds multi-turn conversation history
+- **DMs** automatically include recent channel messages as context (same depth/token limits apply)
 - **ComfyUI** image generation uses single-level reply context — the replied-to message content is prepended to the prompt
 - Routing keywords (e.g., "generate", "imagine") are stripped from the prompt before submission to the image model
 - Deleted or inaccessible messages in the chain are skipped gracefully
@@ -324,10 +346,17 @@ Extended fields in `config/keywords.json`:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `abilityText` | `string` | Human-readable description of what this API can do, included in Ollama's abilities context |
-| `routeModel` | `string` | Specific Ollama model for the final pass |
-| `finalOllamaPass` | `boolean` | Pass the API result through Ollama for conversational refinement |
+| `abilityText` | `string` | Human-readable description of what this API can do, included in Ollama’s abilities context. In the configurator, this is set automatically from the Description field when the Ability checkbox is checked. |
+| `finalOllamaPass` | `boolean` | Pass the API result through Ollama for conversational refinement using the global final-pass model |
 | `accuweatherMode` | `'current' \| 'forecast' \| 'full'` | AccuWeather data scope: current conditions only, 5-day forecast only, or both (default: `full`) |
+
+### Global Final-Pass Model
+
+The `OLLAMA_FINAL_PASS_MODEL` environment variable (configurable in the configurator) specifies which Ollama model to use for all final-pass refinements. If not set, the default `OLLAMA_MODEL` is used.
+
+### Ability Logging
+
+The `ABILITY_LOGGING_DETAILED` environment variable (configurable in the configurator) enables verbose logging of the abilities context sent to Ollama during two-stage evaluation. When disabled (default), only a summary count is logged. When enabled, the full abilities text is logged to help debug routing behavior.
 
 ### Example Flows
 
