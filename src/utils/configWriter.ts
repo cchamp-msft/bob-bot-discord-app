@@ -203,14 +203,17 @@ class ConfigWriter {
         }
 
         // Validate optional routing fields (must match Config.loadKeywords rules)
-        if (entry.routeApi !== undefined && entry.routeApi !== 'comfyui' && entry.routeApi !== 'ollama' && entry.routeApi !== 'accuweather' && entry.routeApi !== 'external') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid routeApi "${entry.routeApi}" — must be "comfyui", "ollama", "accuweather", or "external"`);
+        if (entry.abilityText !== undefined && typeof entry.abilityText !== 'string') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid abilityText — must be a string`);
         }
         if (entry.routeModel !== undefined && typeof entry.routeModel !== 'string') {
           throw new Error(`Keyword "${entry.keyword}" has invalid routeModel — must be a string`);
         }
         if (entry.finalOllamaPass !== undefined && typeof entry.finalOllamaPass !== 'boolean') {
           throw new Error(`Keyword "${entry.keyword}" has invalid finalOllamaPass — must be a boolean`);
+        }
+        if (entry.accuweatherMode !== undefined && entry.accuweatherMode !== 'current' && entry.accuweatherMode !== 'forecast' && entry.accuweatherMode !== 'full') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid accuweatherMode "${entry.accuweatherMode}" — must be "current", "forecast", or "full"`);
         }
       }
 

@@ -32,11 +32,11 @@ export interface KeywordConfig {
   api: 'comfyui' | 'ollama' | 'accuweather';
   timeout: number;
   description: string;
-  /** Target API to route to after AI classification identifies this keyword. */
-  routeApi?: 'comfyui' | 'ollama' | 'accuweather' | 'external';
-  /** Specific Ollama model to use when routeApi is 'ollama'. */
+  /** Human-readable description of this keyword's API ability, provided to Ollama as context so it can suggest using this API when relevant. */
+  abilityText?: string;
+  /** Specific Ollama model to use for the final Ollama pass. */
   routeModel?: string;
-  /** When true, pass the routed API result back through Ollama for conversational refinement. */
+  /** When true, pass the API result back through Ollama for conversational refinement. */
   finalOllamaPass?: boolean;
   /** AccuWeather data mode: which data to fetch. Only used when api is 'accuweather'. */
   accuweatherMode?: 'current' | 'forecast' | 'full';
@@ -73,8 +73,8 @@ class Config {
         if (typeof entry.timeout !== 'number' || entry.timeout <= 0) {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid timeout — must be a positive number`);
         }
-        if (entry.routeApi !== undefined && entry.routeApi !== 'comfyui' && entry.routeApi !== 'ollama' && entry.routeApi !== 'accuweather' && entry.routeApi !== 'external') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid routeApi "${entry.routeApi}" — must be "comfyui", "ollama", "accuweather", or "external"`);
+        if (entry.abilityText !== undefined && typeof entry.abilityText !== 'string') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityText — must be a string`);
         }
         if (entry.routeModel !== undefined && typeof entry.routeModel !== 'string') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid routeModel — must be a string`);

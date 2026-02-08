@@ -253,30 +253,21 @@ describe('ConfigWriter', () => {
       expect(content.keywords).toHaveLength(0);
     });
 
-    it('should accept valid routeApi field', async () => {
+    it('should accept valid abilityText field', async () => {
       await configWriter.updateKeywords([
-        { ...validKeyword, routeApi: 'comfyui' },
+        { ...validKeyword, abilityText: 'do something useful' },
       ]);
 
       const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].routeApi).toBe('comfyui');
+      expect(content.keywords[0].abilityText).toBe('do something useful');
     });
 
-    it('should accept routeApi "external"', async () => {
-      await configWriter.updateKeywords([
-        { ...validKeyword, routeApi: 'external' },
-      ]);
-
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].routeApi).toBe('external');
-    });
-
-    it('should reject invalid routeApi value', async () => {
+    it('should reject non-string abilityText', async () => {
       await expect(
         configWriter.updateKeywords([
-          { ...validKeyword, routeApi: 'invalid' as any },
+          { ...validKeyword, abilityText: 123 as any },
         ])
-      ).rejects.toThrow('invalid routeApi');
+      ).rejects.toThrow('invalid abilityText');
     });
 
     it('should accept valid routeModel field', async () => {
@@ -316,7 +307,7 @@ describe('ConfigWriter', () => {
     it('should persist keywords with all routing fields', async () => {
       const full = {
         ...validKeyword,
-        routeApi: 'comfyui' as const,
+        abilityText: 'do something',
         routeModel: 'specialized',
         finalOllamaPass: true,
       };
@@ -326,7 +317,7 @@ describe('ConfigWriter', () => {
       expect(content.keywords[0]).toMatchObject({
         keyword: 'test',
         api: 'ollama',
-        routeApi: 'comfyui',
+        abilityText: 'do something',
         routeModel: 'specialized',
         finalOllamaPass: true,
       });
@@ -336,9 +327,29 @@ describe('ConfigWriter', () => {
       await configWriter.updateKeywords([validKeyword]);
 
       const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].routeApi).toBeUndefined();
+      expect(content.keywords[0].abilityText).toBeUndefined();
       expect(content.keywords[0].routeModel).toBeUndefined();
       expect(content.keywords[0].finalOllamaPass).toBeUndefined();
+      expect(content.keywords[0].accuweatherMode).toBeUndefined();
+    });
+
+    it('should accept valid accuweatherMode values', async () => {
+      for (const mode of ['current', 'forecast', 'full'] as const) {
+        await configWriter.updateKeywords([
+          { ...validKeyword, api: 'accuweather', accuweatherMode: mode },
+        ]);
+
+        const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+        expect(content.keywords[0].accuweatherMode).toBe(mode);
+      }
+    });
+
+    it('should reject invalid accuweatherMode value', async () => {
+      await expect(
+        configWriter.updateKeywords([
+          { ...validKeyword, api: 'accuweather', accuweatherMode: 'invalid' as any },
+        ])
+      ).rejects.toThrow('invalid accuweatherMode');
     });
 
     it('should reject null entry', async () => {
