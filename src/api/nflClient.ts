@@ -120,7 +120,7 @@ class NFLCache {
   }
 }
 
-class NFLClient {
+export class NFLClient {
   private client: AxiosInstance;
   private cache = new NFLCache();
 
@@ -134,10 +134,12 @@ class NFLClient {
    * Rebuild the axios instance with the current endpoint from config.
    */
   refresh(): void {
-    this.client = axios.create({
-      baseURL: config.getNflEndpoint() || NFL_BASE_URL,
-    });
+    const baseURL = config.getNflEndpoint() || NFL_BASE_URL;
+    this.client = axios.create({ baseURL });
     this.cache.clear();
+    if (config.getNflLoggingLevel() >= 0) {
+      logger.log('success', 'nfl', `NFL: Client refreshed — endpoint: ${baseURL}`);
+    }
   }
 
   /**
@@ -178,19 +180,25 @@ class NFLClient {
    * Fetch current week number from SportsData.io.
    */
   async getCurrentWeek(signal?: AbortSignal): Promise<number | null> {
+    const logLevel = config.getNflLoggingLevel();
     const cached = this.cache.get<number>('currentWeek');
-    if (cached !== null) return cached;
+    if (cached !== null) {
+      if (logLevel >= 1) logger.log('success', 'nfl', `NFL: currentWeek cache HIT — week ${cached}`);
+      return cached;
+    }
 
     const apiKey = config.getNflApiKey();
     if (!apiKey) return null;
 
     try {
+      if (logLevel >= 1) logger.log('success', 'nfl', 'NFL: Fetching /json/CurrentWeek');
       const response = await this.client.get('/json/CurrentWeek', {
         params: { key: apiKey },
         signal,
       });
       const week = response.data as number;
       this.cache.set('currentWeek', week, 3600); // cache 1 hour
+      if (logLevel >= 0) logger.log('success', 'nfl', `NFL: currentWeek = ${week} (cached 1h)`);
       return week;
     } catch (error) {
       if (isAbortError(error)) throw error;
@@ -203,19 +211,25 @@ class NFLClient {
    * Fetch current season year from SportsData.io.
    */
   async getCurrentSeason(signal?: AbortSignal): Promise<number | null> {
+    const logLevel = config.getNflLoggingLevel();
     const cached = this.cache.get<number>('currentSeason');
-    if (cached !== null) return cached;
+    if (cached !== null) {
+      if (logLevel >= 1) logger.log('success', 'nfl', `NFL: currentSeason cache HIT — season ${cached}`);
+      return cached;
+    }
 
     const apiKey = config.getNflApiKey();
     if (!apiKey) return null;
 
     try {
+      if (logLevel >= 1) logger.log('success', 'nfl', 'NFL: Fetching /json/CurrentSeason');
       const response = await this.client.get('/json/CurrentSeason', {
         params: { key: apiKey },
         signal,
       });
       const season = response.data as number;
       this.cache.set('currentSeason', season, 86400); // cache 24 hours
+      if (logLevel >= 0) logger.log('success', 'nfl', `NFL: currentSeason = ${season} (cached 24h)`);
       return season;
     } catch (error) {
       if (isAbortError(error)) throw error;
@@ -228,15 +242,21 @@ class NFLClient {
    * Fetch scores for a specific season and week.
    */
   async getScores(season: number, week: number, signal?: AbortSignal): Promise<NFLGameScore[]> {
+    const logLevel = config.getNflLoggingLevel();
     const cacheKey = `scores-${season}-${week}`;
     const cached = this.cache.get<NFLGameScore[]>(cacheKey);
-    if (cached !== null) return cached;
+    if (cached !== null) {
+      if (logLevel >= 1) logger.log('success', 'nfl', `NFL: scores cache HIT — ${cacheKey} (${cached.length} game(s))`);
+      return cached;
+    }
 
     const apiKey = config.getNflApiKey();
     if (!apiKey) return [];
 
     try {
-      const response = await this.client.get(`/json/ScoresBasic/${season}/${week}`, {
+      const endpoint = `/json/ScoresBasic/${season}/${week}`;
+      if (logLevel >= 1) logger.log('success', 'nfl', `NFL: Fetching ${endpoint}`);
+      const response = await this.client.get(endpoint, {
         params: { key: apiKey },
         signal,
       });
@@ -246,6 +266,16 @@ class NFLClient {
       const hasLive = games.some(g => g.Status === 'InProgress');
       const ttl = hasLive ? 60 : 300; // 1 min live, 5 min otherwise
       this.cache.set(cacheKey, games, ttl);
+
+      // Summarize game statuses
+      const statusCounts: Record<string, number> = {};
+      for (const g of games) {
+        statusCounts[g.Status] = (statusCounts[g.Status] || 0) + 1;
+      }
+      const statusSummary = Object.entries(statusCounts).map(([s, c]) => `${s}:${c}`).join(', ');
+      if (logLevel >= 0) {
+        logger.log('success', 'nfl', `NFL: Scores ${season}/wk${week} — ${games.length} game(s) [${statusSummary}] (cached ${ttl}s)`);
+      }
 
       return games;
     } catch (error) {
@@ -495,6 +525,11 @@ class NFLClient {
     }
 
     const lowerKeyword = keyword.toLowerCase();
+    const logLevel = config.getNflLoggingLevel();
+
+    if (logLevel >= 0) {
+      logger.log('success', 'nfl', `NFL: handleRequest keyword="${keyword}" content="${content.length > 80 ? content.substring(0, 80) + '...' : content}"`);
+    }
 
     try {
       if (lowerKeyword === 'superbowl') {
@@ -537,12 +572,14 @@ class NFLClient {
     }
 
     const text = this.formatSuperBowl(game);
+    this.logResponsePayload('superbowl', text);
     return { success: true, data: { text, games: [game] } };
   }
 
   private async handleAllScores(signal?: AbortSignal): Promise<NFLResponse> {
     const games = await this.getCurrentWeekScores(signal);
     const text = this.formatGameList(games);
+    this.logResponsePayload('nfl scores', text);
     return { success: true, data: { text, games } };
   }
 
@@ -564,6 +601,7 @@ class NFLClient {
     }
 
     const text = this.formatGame(game);
+    this.logResponsePayload('nfl score', text);
     return { success: true, data: { text, games: [game] } };
   }
 
@@ -572,8 +610,49 @@ class NFLClient {
     // as structured data. If finalOllamaPass is configured on the keyword,
     // apiRouter will pass this through Ollama for conversational response.
     const games = await this.getCurrentWeekScores(signal);
-    const text = this.formatGamesContextForAI(games);
+    let text = this.formatGamesContextForAI(games);
+
+    // Add scope note when the request implies historical/seasonal data
+    // that the current-week endpoint cannot provide
+    const scopePatterns = /playoff|postseason|season|championship|divisional|wild\s*card|conference|\b20[12]\d\b/i;
+    if (scopePatterns.test(content)) {
+      text += '\n\nNote: The data above reflects the current week\'s games only. Historical, postseason, and full-season results are not available through this data source.';
+    }
+
+    this.logResponsePayload('nfl', text);
     return { success: true, data: { text, games } };
+  }
+
+  // ── Logging helpers ───────────────────────────────────────────
+
+  /**
+   * Log the formatted response payload at the configured verbosity.
+   *   Level 0: length summary only
+   *   Level 1: trimmed preview (first 200 chars)
+   *   Level 2: full payload
+   */
+  private logResponsePayload(keyword: string, text: string): void {
+    const logLevel = config.getNflLoggingLevel();
+    if (logLevel <= 0) {
+      logger.log('success', 'nfl', `NFL: [${keyword}] response — ${text.length} chars`);
+      return;
+    }
+    if (logLevel === 1) {
+      const preview = text.length > 200 ? text.substring(0, 200) + '...' : text;
+      logger.log('success', 'nfl', `NFL: [${keyword}] response (${text.length} chars): ${preview}`);
+      return;
+    }
+    // Level 2 — full payload
+    logger.log('success', 'nfl', `NFL: [${keyword}] response (${text.length} chars):\n${text}`);
+  }
+
+  /**
+   * Check whether a keyword can operate with no additional user content.
+   * Used by the message handler to skip the empty-content guard.
+   */
+  static allowsEmptyContent(keyword: string): boolean {
+    const lower = keyword.toLowerCase();
+    return lower === 'nfl scores' || lower === 'superbowl' || lower === 'nfl';
   }
 }
 

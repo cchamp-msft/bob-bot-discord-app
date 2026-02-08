@@ -182,6 +182,9 @@ export interface PublicConfig {
   abilityLogging: {
     detailed: boolean;
   };
+  nflLogging: {
+    level: number;
+  };
   imageResponse: {
     includeEmbed: boolean;
   };

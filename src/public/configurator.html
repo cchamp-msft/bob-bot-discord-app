@@ -524,6 +524,14 @@
           <label>Endpoint <span class="note">override only if using a proxy</span></label>
           <input type="text" id="nfl_endpoint" data-env="NFL_BASE_URL" placeholder="https://api.sportsdata.io/v3/nfl/scores">
         </div>
+        <div class="field narrow">
+          <label title="Controls how much NFL API detail is written to logs. 0 = summary only, 1 = summary + trimmed preview, 2 = full payload">Logging Level ℹ️</label>
+          <select id="nfl_logging_level" data-env="NFL_LOGGING_LEVEL" onchange="markDirty()">
+            <option value="0">0 — Summary</option>
+            <option value="1">1 — Preview</option>
+            <option value="2">2 — Full</option>
+          </select>
+        </div>
         <div id="nflTestResult" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
       </div>
     </section>
@@ -892,6 +900,10 @@
       document.getElementById('nfl_api_key').value = '';
       document.getElementById('nfl_api_key').placeholder =
         cfg.apis.nflApiKeyConfigured ? 'API key configured ✓ — paste new value to change' : 'Paste SportsData.io API key';
+
+      // Populate NFL logging level
+      const nflLogLevel = document.getElementById('nfl_logging_level');
+      nflLogLevel.value = String(cfg.nflLogging?.level ?? 1);
 
       // Populate error handling fields
       document.getElementById('error_message').value = cfg.errorHandling?.errorMessage || '';

@@ -12,6 +12,7 @@ import { ChatMessage, NFLResponse } from '../types';
 import { chunkText } from '../utils/chunkText';
 import { classifyIntent, buildAbilitiesContext } from '../utils/keywordClassifier';
 import { executeRoutedRequest } from '../utils/apiRouter';
+import { NFLClient } from '../api/nflClient';
 
 export type { ChatMessage };
 
@@ -150,11 +151,20 @@ class MessageHandler {
     }
 
     if (!content) {
-      logger.logIgnored(message.author.username, 'Empty message after keyword removal');
-      await message.reply(
-        'Please include a prompt or question after the keyword!'
-      );
-      return;
+      // Some keywords (e.g. "nfl scores", "superbowl") work without extra content.
+      // For those, use the keyword itself as the content so the request proceeds.
+      const keywordAllowsEmpty =
+        (keywordConfig.api === 'nfl' && NFLClient.allowsEmptyContent(keywordConfig.keyword));
+
+      if (keywordAllowsEmpty) {
+        content = keywordConfig.keyword;
+      } else {
+        logger.logIgnored(message.author.username, 'Empty message after keyword removal');
+        await message.reply(
+          'Please include a prompt or question after the keyword!'
+        );
+        return;
+      }
     }
 
     // Collect reply chain context — needed for any path that may call Ollama

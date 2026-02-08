@@ -24,6 +24,7 @@ jest.mock('../src/utils/config', () => ({
     getNflEndpoint: jest.fn(() => 'https://api.sportsdata.io/v3/nfl/scores'),
     getNflApiKey: jest.fn(() => 'test-nfl-key'),
     getNflEnabled: jest.fn(() => true),
+    getNflLoggingLevel: jest.fn(() => 1),
   },
 }));
 
@@ -36,7 +37,7 @@ jest.mock('../src/utils/logger', () => ({
   },
 }));
 
-import { nflClient } from '../src/api/nflClient';
+import { nflClient, NFLClient } from '../src/api/nflClient';
 import { config } from '../src/utils/config';
 import { NFLGameScore } from '../src/types';
 
@@ -550,6 +551,95 @@ describe('NFLClient', () => {
       const result = await nflClient.handleRequest('', 'nfl scores');
       expect(result.success).toBe(true);
       expect(result.data?.text).toContain('No NFL games');
+    });
+
+    it('should append scope note when generic "nfl" query mentions playoffs', async () => {
+      mockInstance.get.mockResolvedValueOnce({ data: 2025 });
+      mockInstance.get.mockResolvedValueOnce({ data: 1 });
+      mockInstance.get.mockResolvedValueOnce({ data: [finalGame] });
+
+      const result = await nflClient.handleRequest('results of 2025 playoffs final games', 'nfl');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('current week');
+      expect(result.data?.text).toContain('not available');
+    });
+
+    it('should NOT append scope note for generic "nfl" query without historical terms', async () => {
+      mockInstance.get.mockResolvedValueOnce({ data: 2025 });
+      mockInstance.get.mockResolvedValueOnce({ data: 1 });
+      mockInstance.get.mockResolvedValueOnce({ data: [liveGame] });
+
+      const result = await nflClient.handleRequest('who is winning?', 'nfl');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).not.toContain('not available');
+    });
+  });
+
+  // ── allowsEmptyContent ─────────────────────────────────────
+
+  describe('allowsEmptyContent', () => {
+    it('should return true for "nfl scores"', () => {
+      expect(NFLClient.allowsEmptyContent('nfl scores')).toBe(true);
+    });
+
+    it('should return true for "superbowl"', () => {
+      expect(NFLClient.allowsEmptyContent('superbowl')).toBe(true);
+    });
+
+    it('should return true for "nfl"', () => {
+      expect(NFLClient.allowsEmptyContent('nfl')).toBe(true);
+    });
+
+    it('should return false for "nfl score" (requires team)', () => {
+      expect(NFLClient.allowsEmptyContent('nfl score')).toBe(false);
+    });
+
+    it('should be case-insensitive', () => {
+      expect(NFLClient.allowsEmptyContent('NFL Scores')).toBe(true);
+      expect(NFLClient.allowsEmptyContent('Superbowl')).toBe(true);
+    });
+  });
+
+  // ── Logging level gating ───────────────────────────────────
+
+  describe('logging levels', () => {
+    it('should log at level 0 with summary only', async () => {
+      (config.getNflLoggingLevel as jest.Mock).mockReturnValue(0);
+      const { logger } = require('../src/utils/logger');
+
+      mockInstance.get.mockResolvedValueOnce({ data: 2025 });
+      mockInstance.get.mockResolvedValueOnce({ data: 1 });
+      mockInstance.get.mockResolvedValueOnce({ data: [finalGame] });
+
+      await nflClient.handleRequest('', 'nfl scores');
+
+      // At level 0, should log summary lines (season, week, scores count)
+      const logCalls = (logger.log as jest.Mock).mock.calls
+        .filter((c: string[]) => c[2]?.startsWith('NFL:'));
+      expect(logCalls.length).toBeGreaterThan(0);
+
+      // Should NOT log cache HIT/Fetching lines at level 0
+      const detailCalls = logCalls.filter((c: string[]) =>
+        c[2]?.includes('cache HIT') || c[2]?.includes('Fetching')
+      );
+      expect(detailCalls.length).toBe(0);
+    });
+
+    it('should log cache hits and fetch details at level 1', async () => {
+      (config.getNflLoggingLevel as jest.Mock).mockReturnValue(1);
+      const { logger } = require('../src/utils/logger');
+
+      // Prime cache for season
+      mockInstance.get.mockResolvedValueOnce({ data: 2025 });
+      await nflClient.getCurrentSeason();
+      (logger.log as jest.Mock).mockClear();
+
+      // Second call should hit cache
+      await nflClient.getCurrentSeason();
+
+      const logCalls = (logger.log as jest.Mock).mock.calls
+        .filter((c: string[]) => c[2]?.includes('cache HIT'));
+      expect(logCalls.length).toBe(1);
     });
   });
 });

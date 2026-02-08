@@ -222,6 +222,17 @@ class Config {
   }
 
   /**
+   * NFL logging verbosity level.
+   *   0 = summary only (endpoint, season/week, cache hit/miss, game count)
+   *   1 = summary + trimmed payload preview (default)
+   *   2 = full payload text
+   */
+  getNflLoggingLevel(): number {
+    const raw = this.parseIntEnv('NFL_LOGGING_LEVEL', 1);
+    return Math.max(0, Math.min(raw, 2));
+  }
+
+  /**
    * Whether reply chain context collection is enabled.
    * When true, the bot traverses Discord reply chains to build
    * conversation history for Ollama chat requests.
@@ -393,6 +404,7 @@ class Config {
     const prevImageResponseIncludeEmbed = this.getImageResponseIncludeEmbed();
     const prevOllamaFinalPassModel = this.getOllamaFinalPassModel();
     const prevAbilityLogging = this.getAbilityLoggingDetailed();
+    const prevNflLoggingLevel = this.getNflLoggingLevel();
     const prevNflEndpoint = this.getNflEndpoint();
     const prevNflApiKey = this.getNflApiKey();
     const prevNflEnabled = this.getNflEnabled();
@@ -445,6 +457,7 @@ class Config {
     if (this.getImageResponseIncludeEmbed() !== prevImageResponseIncludeEmbed) reloaded.push('IMAGE_RESPONSE_INCLUDE_EMBED');
     if (this.getOllamaFinalPassModel() !== prevOllamaFinalPassModel) reloaded.push('OLLAMA_FINAL_PASS_MODEL');
     if (this.getAbilityLoggingDetailed() !== prevAbilityLogging) reloaded.push('ABILITY_LOGGING_DETAILED');
+    if (this.getNflLoggingLevel() !== prevNflLoggingLevel) reloaded.push('NFL_LOGGING_LEVEL');
     if (this.getNflEndpoint() !== prevNflEndpoint) reloaded.push('NFL_BASE_URL');
     if (this.getNflApiKey() !== prevNflApiKey) reloaded.push('NFL_API_KEY');
     if (this.getNflEnabled() !== prevNflEnabled) reloaded.push('NFL_ENABLED');
@@ -522,6 +535,9 @@ class Config {
       },
       abilityLogging: {
         detailed: this.getAbilityLoggingDetailed(),
+      },
+      nflLogging: {
+        level: this.getNflLoggingLevel(),
       },
       imageResponse: {
         includeEmbed: this.getImageResponseIncludeEmbed(),

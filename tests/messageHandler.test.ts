@@ -31,6 +31,10 @@ jest.mock('../src/utils/config', () => ({
     getMaxAttachments: jest.fn(() => 10),
     getImageResponseIncludeEmbed: jest.fn(() => false),
     getAbilityLoggingDetailed: jest.fn(() => false),
+    getNflEndpoint: jest.fn(() => 'https://api.sportsdata.io/v3/nfl/scores'),
+    getNflApiKey: jest.fn(() => ''),
+    getNflEnabled: jest.fn(() => true),
+    getNflLoggingLevel: jest.fn(() => 0),
   },
 }));
 
@@ -1322,5 +1326,94 @@ describe('MessageHandler DM handling', () => {
     expect(msg.channel.messages.fetch).toHaveBeenCalledWith(
       expect.objectContaining({ before: 'dm-msg-1' })
     );
+  });
+});
+
+describe('MessageHandler empty-content bypass for NFL keywords', () => {
+  function createDmMessage(content: string): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username: 'nfluser' },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: 1, // ChannelType.DM
+        messages: {
+          cache: new Map(),
+          fetch: jest.fn().mockResolvedValue(new Map()),
+        },
+        send: jest.fn(),
+      },
+      guild: null,
+      mentions: { has: jest.fn(() => false) },
+      reference: null,
+      content,
+      id: 'dm-nfl-1',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getKeywords as jest.Mock).mockReturnValue([
+      { keyword: 'nfl scores', api: 'nfl', timeout: 30, description: 'All scores' },
+      { keyword: 'nfl score', api: 'nfl', timeout: 30, description: 'Team score' },
+      { keyword: 'superbowl', api: 'nfl', timeout: 30, description: 'Super Bowl' },
+    ]);
+    (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
+      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    (buildAbilitiesContext as jest.MockedFunction<typeof buildAbilitiesContext>)
+      .mockReturnValue('');
+  });
+
+  it('should NOT reply with empty-content error for "nfl scores" with no extra text', async () => {
+    const mockRouted = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+    mockRouted.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: '🏈 **NFL Scores**\n\n✅ Some game' } },
+      finalApi: 'nfl',
+      stages: [],
+    });
+
+    const msg = createDmMessage('nfl scores');
+    await messageHandler.handleMessage(msg);
+
+    // Should NOT show the "please include a prompt" message
+    expect(msg.reply).not.toHaveBeenCalledWith(
+      'Please include a prompt or question after the keyword!'
+    );
+    // Should have called executeRoutedRequest
+    expect(mockRouted).toHaveBeenCalled();
+  });
+
+  it('should still reject empty content for "nfl score" (requires team parameter)', async () => {
+    const { logger } = require('../src/utils/logger');
+    const msg = createDmMessage('nfl score');
+    await messageHandler.handleMessage(msg);
+
+    // Should show the "please include a prompt" message
+    expect(msg.reply).toHaveBeenCalledWith(
+      'Please include a prompt or question after the keyword!'
+    );
+    expect(logger.logIgnored).toHaveBeenCalled();
+  });
+
+  it('should NOT reply with empty-content error for "superbowl" with no extra text', async () => {
+    const mockRouted = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+    mockRouted.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: '🏈 **Super Bowl** 🏈' } },
+      finalApi: 'nfl',
+      stages: [],
+    });
+
+    const msg = createDmMessage('superbowl');
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).not.toHaveBeenCalledWith(
+      'Please include a prompt or question after the keyword!'
+    );
+    expect(mockRouted).toHaveBeenCalled();
   });
 });
