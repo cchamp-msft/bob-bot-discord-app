@@ -326,6 +326,33 @@ describe('Config', () => {
     });
   });
 
+  describe('getSuperBowlReportPrompt', () => {
+    const { config } = require('../src/utils/config');
+
+    it('should return default prompt when env not set', () => {
+      delete process.env.NFL_SUPERBOWL_REPORT_PROMPT;
+      const prompt = config.getSuperBowlReportPrompt();
+      expect(prompt).toContain('intelligent, comprehensive assessment');
+      expect(prompt).toContain('Super Bowl');
+    });
+
+    it('should return custom prompt when env is set', () => {
+      process.env.NFL_SUPERBOWL_REPORT_PROMPT = 'Custom bowl report prompt.';
+      expect(config.getSuperBowlReportPrompt()).toBe('Custom bowl report prompt.');
+    });
+
+    it('should return empty string when env is explicitly set to empty', () => {
+      process.env.NFL_SUPERBOWL_REPORT_PROMPT = '';
+      expect(config.getSuperBowlReportPrompt()).toBe('');
+    });
+
+    it('should be included in getPublicConfig', () => {
+      process.env.NFL_SUPERBOWL_REPORT_PROMPT = 'Test prompt';
+      const pub = config.getPublicConfig();
+      expect(pub.apis.nflSuperBowlReportPrompt).toBe('Test prompt');
+    });
+  });
+
   describe('getKeywordConfig', () => {
     const { config } = require('../src/utils/config');
 

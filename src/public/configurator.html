@@ -500,7 +500,7 @@
       <div class="body">
         <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
           Powered by ESPN's public API — no API key required.
-          Provides live scores, schedules, Super Bowl data, and news. Use keywords like <code style="color:var(--accent)">nfl scores</code>, <code style="color:var(--accent)">nfl score &lt;team&gt;</code>, <code style="color:var(--accent)">superbowl</code>, <code style="color:var(--accent)">nfl news</code>, or <code style="color:var(--accent)">nfl news report</code>.
+          Provides live scores, schedules, Super Bowl data, and news. Use keywords like <code style="color:var(--accent)">nfl scores</code>, <code style="color:var(--accent)">nfl score &lt;team&gt;</code>, <code style="color:var(--accent)">superbowl</code>, <code style="color:var(--accent)">superbowl report</code>, <code style="color:var(--accent)">nfl news</code>, or <code style="color:var(--accent)">nfl news report</code>.
         </p>
         <div class="field">
           <label>Enabled</label>
@@ -520,6 +520,11 @@
             <option value="1">1 — Preview</option>
             <option value="2">2 — Full</option>
           </select>
+        </div>
+        <div class="field">
+          <label>Super Bowl Report Prompt <span class="note">AI instruction for the <code style="color:var(--accent)">superbowl report</code> keyword</span></label>
+          <textarea id="nfl_superbowl_report_prompt" data-env="NFL_SUPERBOWL_REPORT_PROMPT" rows="3" placeholder="Provide an intelligent, comprehensive assessment of the current Super Bowl based on the data above. Include context from the news articles to enrich the analysis. Be insightful and conversational."></textarea>
+          <button type="button" class="btn small" onclick="document.getElementById('nfl_superbowl_report_prompt').value='';markDirty();" title="Clear to use default prompt">Reset to Default</button>
         </div>
         <div id="nflTestResult" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
       </div>
@@ -890,6 +895,9 @@
       // Populate NFL logging level
       const nflLogLevel = document.getElementById('nfl_logging_level');
       nflLogLevel.value = String(cfg.nflLogging?.level ?? 1);
+
+      // Populate Super Bowl report prompt
+      document.getElementById('nfl_superbowl_report_prompt').value = cfg.apis.nflSuperBowlReportPrompt || '';
 
       // Populate error handling fields
       document.getElementById('error_message').value = cfg.errorHandling?.errorMessage || '';

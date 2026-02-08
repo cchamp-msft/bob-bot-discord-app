@@ -299,6 +299,7 @@ export interface PublicConfig {
     accuweatherApiKeyConfigured: boolean;
     nfl: string;
     nflEnabled: boolean;
+    nflSuperBowlReportPrompt: string;
   };
   defaultWorkflow: {
     model: string;
