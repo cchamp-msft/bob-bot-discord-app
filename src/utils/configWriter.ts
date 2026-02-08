@@ -206,9 +206,6 @@ class ConfigWriter {
         if (entry.abilityText !== undefined && typeof entry.abilityText !== 'string') {
           throw new Error(`Keyword "${entry.keyword}" has invalid abilityText — must be a string`);
         }
-        if (entry.routeModel !== undefined && typeof entry.routeModel !== 'string') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid routeModel — must be a string`);
-        }
         if (entry.finalOllamaPass !== undefined && typeof entry.finalOllamaPass !== 'boolean') {
           throw new Error(`Keyword "${entry.keyword}" has invalid finalOllamaPass — must be a boolean`);
         }
@@ -217,11 +214,25 @@ class ConfigWriter {
         }
       }
 
+      // Strip unknown/deprecated fields and build clean keyword objects
+      const cleanKeywords: KeywordConfig[] = keywords.map(entry => {
+        const clean: KeywordConfig = {
+          keyword: entry.keyword,
+          api: entry.api,
+          timeout: entry.timeout,
+          description: entry.description,
+        };
+        if (entry.abilityText) clean.abilityText = entry.abilityText;
+        if (entry.finalOllamaPass) clean.finalOllamaPass = entry.finalOllamaPass;
+        if (entry.accuweatherMode) clean.accuweatherMode = entry.accuweatherMode;
+        return clean;
+      });
+
       // Write to file
-      const configData: ConfigData = { keywords };
+      const configData: ConfigData = { keywords: cleanKeywords };
       fs.writeFileSync(
         this.keywordsPath,
-        JSON.stringify(configData, null, 2),
+        `${JSON.stringify(configData, null, 2)}\n`,
         'utf-8'
       );
     } catch (error) {

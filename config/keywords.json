@@ -3,16 +3,14 @@
     {
       "keyword": "generate",
       "api": "comfyui",
-      "timeout": 300,
-      "description": "Generate image using ComfyUI",
-      "abilityText": "generate images from text descriptions"
+      "timeout": 600,
+      "description": "Generate image using ComfyUI"
     },
     {
       "keyword": "imagine",
       "api": "comfyui",
-      "timeout": 300,
-      "description": "Generate image using ComfyUI",
-      "abilityText": "generate images from text descriptions"
+      "timeout": 600,
+      "description": "Generate image using ComfyUI"
     },
     {
       "keyword": "ask",
@@ -27,43 +25,28 @@
       "description": "Chat with Ollama AI"
     },
     {
-      "keyword": ":text2img",
-      "api": "comfyui",
-      "timeout": 300,
-      "description": "Generate image using ComfyUI"
-    },
-    {
       "keyword": "weather",
       "api": "accuweather",
       "timeout": 60,
-      "description": "Get current weather conditions and 5-day forecast",
-      "abilityText": "check current weather conditions and 5-day forecasts for any location",
-      "accuweatherMode": "full"
+      "description": "Get current weather conditions and 5-day forecast"
     },
     {
       "keyword": "forecast",
       "api": "accuweather",
       "timeout": 60,
-      "description": "Get 5-day weather forecast",
-      "abilityText": "check 5-day weather forecasts for any location",
-      "accuweatherMode": "forecast"
+      "description": "Get 5-day weather forecast"
     },
     {
       "keyword": "conditions",
       "api": "accuweather",
       "timeout": 60,
-      "description": "Get current weather conditions",
-      "abilityText": "check current weather conditions for any location",
-      "accuweatherMode": "current"
+      "description": "Get current weather conditions"
     },
     {
       "keyword": "weather report",
       "api": "accuweather",
-      "timeout": 120,
-      "description": "Get an AI-powered opinionated weather report",
-      "abilityText": "provide detailed AI-powered weather reports for any location",
-      "accuweatherMode": "full",
-      "finalOllamaPass": true
+      "timeout": 360,
+      "description": "Get an AI-powered opinionated weather report"
     }
   ]
 }

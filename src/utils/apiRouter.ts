@@ -1,4 +1,4 @@
-import { KeywordConfig } from './config';
+import { config, KeywordConfig } from './config';
 import { logger } from './logger';
 import { requestQueue } from './requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse } from '../api';
@@ -121,7 +121,7 @@ export async function executeRoutedRequest(
           requester,
           finalPrompt,
           keywordConfig.timeout,
-          keywordConfig.routeModel,
+          config.getOllamaFinalPassModel() || undefined,
           conversationHistory?.length ? conversationHistory : undefined,
           sig
         )

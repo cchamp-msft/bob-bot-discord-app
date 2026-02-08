@@ -34,8 +34,6 @@ export interface KeywordConfig {
   description: string;
   /** Human-readable description of this keyword's API ability, provided to Ollama as context so it can suggest using this API when relevant. */
   abilityText?: string;
-  /** Specific Ollama model to use for the final Ollama pass. */
-  routeModel?: string;
   /** When true, pass the API result back through Ollama for conversational refinement. */
   finalOllamaPass?: boolean;
   /** AccuWeather data mode: which data to fetch. Only used when api is 'accuweather'. */
@@ -75,9 +73,6 @@ class Config {
         }
         if (entry.abilityText !== undefined && typeof entry.abilityText !== 'string') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityText — must be a string`);
-        }
-        if (entry.routeModel !== undefined && typeof entry.routeModel !== 'string') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid routeModel — must be a string`);
         }
         if (entry.finalOllamaPass !== undefined && typeof entry.finalOllamaPass !== 'boolean') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid finalOllamaPass — must be a boolean`);
@@ -172,6 +167,23 @@ class Config {
 
   getErrorRateLimitMinutes(): number {
     return this.parseIntEnv('ERROR_RATE_LIMIT_MINUTES', 60);
+  }
+
+  /**
+   * Ollama model used for the final refinement pass on API results.
+   * Falls back to the default OLLAMA_MODEL if not set.
+   */
+  getOllamaFinalPassModel(): string {
+    return process.env.OLLAMA_FINAL_PASS_MODEL || this.getOllamaModel();
+  }
+
+  /**
+   * Whether detailed ability logging is enabled.
+   * When true, the full abilities context sent to Ollama is logged.
+   * Default: false (off).
+   */
+  getAbilityLoggingDetailed(): boolean {
+    return process.env.ABILITY_LOGGING_DETAILED === 'true';
   }
 
   /**
@@ -343,6 +355,8 @@ class Config {
     const prevReplyChainMaxDepth = this.getReplyChainMaxDepth();
     const prevReplyChainMaxTokens = this.getReplyChainMaxTokens();
     const prevImageResponseIncludeEmbed = this.getImageResponseIncludeEmbed();
+    const prevOllamaFinalPassModel = this.getOllamaFinalPassModel();
+    const prevAbilityLogging = this.getAbilityLoggingDetailed();
     const prevDefaultModel = this.getComfyUIDefaultModel();
     const prevDefaultWidth = this.getComfyUIDefaultWidth();
     const prevDefaultHeight = this.getComfyUIDefaultHeight();
@@ -390,6 +404,8 @@ class Config {
     if (this.getReplyChainMaxDepth() !== prevReplyChainMaxDepth) reloaded.push('REPLY_CHAIN_MAX_DEPTH');
     if (this.getReplyChainMaxTokens() !== prevReplyChainMaxTokens) reloaded.push('REPLY_CHAIN_MAX_TOKENS');
     if (this.getImageResponseIncludeEmbed() !== prevImageResponseIncludeEmbed) reloaded.push('IMAGE_RESPONSE_INCLUDE_EMBED');
+    if (this.getOllamaFinalPassModel() !== prevOllamaFinalPassModel) reloaded.push('OLLAMA_FINAL_PASS_MODEL');
+    if (this.getAbilityLoggingDetailed() !== prevAbilityLogging) reloaded.push('ABILITY_LOGGING_DETAILED');
     if (this.getComfyUIDefaultModel() !== prevDefaultModel) reloaded.push('COMFYUI_DEFAULT_MODEL');
     if (this.getComfyUIDefaultWidth() !== prevDefaultWidth) reloaded.push('COMFYUI_DEFAULT_WIDTH');
     if (this.getComfyUIDefaultHeight() !== prevDefaultHeight) reloaded.push('COMFYUI_DEFAULT_HEIGHT');
@@ -423,6 +439,7 @@ class Config {
         comfyui: this.getComfyUIEndpoint(),
         ollama: this.getOllamaEndpoint(),
         ollamaModel: this.getOllamaModel(),
+        ollamaFinalPassModel: this.getOllamaFinalPassModel(),
         ollamaSystemPrompt: this.getOllamaSystemPrompt(),
         comfyuiWorkflowConfigured: this.hasComfyUIWorkflow(),
         accuweather: this.getAccuWeatherEndpoint(),
@@ -457,6 +474,9 @@ class Config {
         enabled: this.getReplyChainEnabled(),
         maxDepth: this.getReplyChainMaxDepth(),
         maxTokens: this.getReplyChainMaxTokens(),
+      },
+      abilityLogging: {
+        detailed: this.getAbilityLoggingDetailed(),
       },
       imageResponse: {
         includeEmbed: this.getImageResponseIncludeEmbed(),

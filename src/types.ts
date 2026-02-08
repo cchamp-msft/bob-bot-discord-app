@@ -7,9 +7,6 @@ export interface ChatMessage {
 /** Recognized API backend identifiers. */
 export type ApiType = 'comfyui' | 'ollama' | 'accuweather';
 
-/** Extended API type that includes the 'external' routing target. */
-export type RouteApiType = ApiType | 'external';
-
 // ── AccuWeather response types ─────────────────────────────────
 
 /** AccuWeather location object returned by city/postal code search. */
@@ -97,6 +94,7 @@ export interface PublicConfig {
     comfyui: string;
     ollama: string;
     ollamaModel: string;
+    ollamaFinalPassModel: string;
     ollamaSystemPrompt: string;
     comfyuiWorkflowConfigured: boolean;
     accuweather: string;
@@ -131,6 +129,9 @@ export interface PublicConfig {
     enabled: boolean;
     maxDepth: number;
     maxTokens: number;
+  };
+  abilityLogging: {
+    detailed: boolean;
   };
   imageResponse: {
     includeEmbed: boolean;

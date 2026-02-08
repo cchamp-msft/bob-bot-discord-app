@@ -6,6 +6,7 @@
 jest.mock('../src/utils/config', () => ({
   config: {
     getOllamaModel: jest.fn(() => 'llama2'),
+    getOllamaFinalPassModel: jest.fn(() => 'llama2'),
     getDefaultTimeout: jest.fn(() => 300),
     getAccuWeatherEndpoint: jest.fn(() => 'https://dataservice.accuweather.com'),
     getAccuWeatherApiKey: jest.fn(() => ''),
@@ -291,14 +292,13 @@ describe('ApiRouter', () => {
     });
   });
 
-  describe('executeRoutedRequest — routeModel', () => {
-    it('should use routeModel in final Ollama pass', async () => {
+  describe('executeRoutedRequest — finalOllamaPass model', () => {
+    it('should use global final-pass model in final Ollama pass', async () => {
       const keyword: KeywordConfig = {
         keyword: 'generate',
         api: 'comfyui',
         timeout: 300,
         description: 'Generate image',
-        routeModel: 'specialized-model',
         finalOllamaPass: true,
       };
 

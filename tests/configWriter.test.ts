@@ -270,23 +270,6 @@ describe('ConfigWriter', () => {
       ).rejects.toThrow('invalid abilityText');
     });
 
-    it('should accept valid routeModel field', async () => {
-      await configWriter.updateKeywords([
-        { ...validKeyword, routeModel: 'llama3' },
-      ]);
-
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].routeModel).toBe('llama3');
-    });
-
-    it('should reject non-string routeModel', async () => {
-      await expect(
-        configWriter.updateKeywords([
-          { ...validKeyword, routeModel: 123 as any },
-        ])
-      ).rejects.toThrow('invalid routeModel');
-    });
-
     it('should accept valid finalOllamaPass field', async () => {
       await configWriter.updateKeywords([
         { ...validKeyword, finalOllamaPass: true },
@@ -308,7 +291,6 @@ describe('ConfigWriter', () => {
       const full = {
         ...validKeyword,
         abilityText: 'do something',
-        routeModel: 'specialized',
         finalOllamaPass: true,
       };
       await configWriter.updateKeywords([full]);
@@ -318,7 +300,6 @@ describe('ConfigWriter', () => {
         keyword: 'test',
         api: 'ollama',
         abilityText: 'do something',
-        routeModel: 'specialized',
         finalOllamaPass: true,
       });
     });
@@ -328,7 +309,6 @@ describe('ConfigWriter', () => {
 
       const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
       expect(content.keywords[0].abilityText).toBeUndefined();
-      expect(content.keywords[0].routeModel).toBeUndefined();
       expect(content.keywords[0].finalOllamaPass).toBeUndefined();
       expect(content.keywords[0].accuweatherMode).toBeUndefined();
     });
@@ -350,6 +330,23 @@ describe('ConfigWriter', () => {
           { ...validKeyword, api: 'accuweather', accuweatherMode: 'invalid' as any },
         ])
       ).rejects.toThrow('invalid accuweatherMode');
+    });
+
+    it('should strip unknown fields like routeApi on save', async () => {
+      const entryWithRouteApi = {
+        ...validKeyword,
+        routeApi: 'comfyui',  // deprecated/unknown field
+        routeModel: 'specialized',  // deprecated field
+        extraField: 'ignored',
+      } as any;
+      await configWriter.updateKeywords([entryWithRouteApi]);
+
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].routeApi).toBeUndefined();
+      expect(content.keywords[0].routeModel).toBeUndefined();
+      expect(content.keywords[0].extraField).toBeUndefined();
+      expect(content.keywords[0].keyword).toBe('test');
+      expect(content.keywords[0].api).toBe('ollama');
     });
 
     it('should reject null entry', async () => {

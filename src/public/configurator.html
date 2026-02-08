@@ -428,6 +428,27 @@
           </p>
           <textarea id="ollama_system_prompt" data-env="OLLAMA_SYSTEM_PROMPT" rows="4" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9em;font-family:inherit;resize:vertical" placeholder="You are a helpful Discord bot assistant. Be friendly and helpful by default, but match the user's tone when appropriate—if someone is being snarky or playful, feel free to respond in kind. Always prioritize being useful and respectful."></textarea>
         </div>
+        <hr style="border-color:var(--border);margin:16px 0">
+        <div class="field">
+          <label>
+            Final Pass Model
+            <span class="note">used when Final Pass is enabled on a keyword — falls back to default model above</span>
+          </label>
+          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
+            When a keyword has <strong>Final Pass</strong> checked, the API result is refined through Ollama using this model.
+            Click <strong>Test</strong> above to populate the model list. Leave empty to use the default Ollama model.
+          </p>
+          <select id="ollama_final_pass_model" data-env="OLLAMA_FINAL_PASS_MODEL" onchange="markDirty()">
+            <option value="">— use default model —</option>
+          </select>
+        </div>
+        <div class="field narrow">
+          <label title="When enabled, the full abilities context sent to Ollama is logged in the status console">Detailed Ability Logging ℹ️</label>
+          <select id="ability_logging_detailed" data-env="ABILITY_LOGGING_DETAILED" onchange="markDirty()">
+            <option value="false">Off</option>
+            <option value="true">On</option>
+          </select>
+        </div>
       </div>
     </section>
 
@@ -526,7 +547,8 @@
       <h2 onclick="toggleSection(this)">Reply Chain Context</h2>
       <div class="body">
         <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
-          When users reply to previous messages, the bot traverses the reply chain to build conversation history for Ollama. This enables multi-turn conversations.
+          When enabled, the bot collects conversation history for Ollama. In servers, this traverses reply chains.
+          In <strong>DMs</strong>, recent messages are included automatically without requiring explicit replies.
         </p>
         <div class="field-row">
           <div class="field narrow">
@@ -552,19 +574,19 @@
       <h2 class="open" onclick="toggleSection(this)">Keywords → API Routing</h2>
       <div class="body open">
         <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
-          Map @mention keywords to APIs. Slash commands <code>/generate</code> and <code>/ask</code> are hardcoded in bot code.
-          Route API, Route Model, and Final Pass enable <strong>multi-stage API call stacking</strong> — see README for details.
+          Map @mention keywords to APIs. When <strong>Ability</strong> is checked, the keyword's description is included
+          as context so Ollama can suggest using that API even when the keyword isn't typed explicitly.
+          <strong>Final Pass</strong> sends the API result back through Ollama for conversational refinement.
         </p>
         <table class="kw-table">
           <thead>
             <tr>
               <th>Keyword</th>
               <th>API</th>
-              <th>Timeout (s)</th>
-              <th>Description</th>
-              <th>Route API</th>
-              <th>Route Model</th>
-              <th>Final Pass</th>
+              <th title="Request timeout in seconds">Timeout (s)</th>
+              <th title="Human-readable description; used as ability context when Ability is checked">Description</th>
+              <th title="When checked, this keyword's description is included in Ollama's abilities context so it can suggest using this API without the keyword being typed" style="text-align:center">Ability ℹ️</th>
+              <th title="When checked, the API result is passed through Ollama for conversational refinement using the global Final Pass Model" style="text-align:center">Final Pass ℹ️</th>
               <th></th>
             </tr>
           </thead>
@@ -828,6 +850,23 @@
       document.getElementById('reply_chain_max_depth').value = cfg.replyChain?.maxDepth || 10;
       document.getElementById('reply_chain_max_tokens').value = cfg.replyChain?.maxTokens || 16000;
 
+      // Populate ability logging
+      const alDetailed = document.getElementById('ability_logging_detailed');
+      alDetailed.value = cfg.abilityLogging?.detailed ? 'true' : 'false';
+
+      // Populate Final Pass Model (saved selection)
+      const fpModelSelect = document.getElementById('ollama_final_pass_model');
+      if (cfg.apis.ollamaFinalPassModel && cfg.apis.ollamaFinalPassModel !== cfg.apis.ollamaModel) {
+        const exists = Array.from(fpModelSelect.options).some(o => o.value === cfg.apis.ollamaFinalPassModel);
+        if (!exists) {
+          const opt = document.createElement('option');
+          opt.value = cfg.apis.ollamaFinalPassModel;
+          opt.textContent = cfg.apis.ollamaFinalPassModel + ' (saved)';
+          fpModelSelect.appendChild(opt);
+        }
+        fpModelSelect.value = cfg.apis.ollamaFinalPassModel;
+      }
+
       // Populate image response setting
       const irEmbed = document.getElementById('image_response_include_embed');
       irEmbed.value = cfg.imageResponse?.includeEmbed ? 'true' : 'false';
@@ -875,15 +914,8 @@
       </select></td>
       <td><input type="number" class="kw-timeout" value="${kw?.timeout || 300}" style="width:70px"></td>
       <td><input type="text" class="kw-desc" value="${esc(kw?.description || '')}" placeholder="description"></td>
-      <td><select class="kw-routeApi">
-        <option value="" ${!kw?.routeApi ? 'selected' : ''}>—</option>
-        <option value="comfyui" ${kw?.routeApi === 'comfyui' ? 'selected' : ''}>comfyui</option>
-        <option value="ollama" ${kw?.routeApi === 'ollama' ? 'selected' : ''}>ollama</option>
-        <option value="accuweather" ${kw?.routeApi === 'accuweather' ? 'selected' : ''}>accuweather</option>
-        <option value="external" ${kw?.routeApi === 'external' ? 'selected' : ''}>external ⚠️</option>
-      </select></td>
-      <td><input type="text" class="kw-routeModel" value="${esc(kw?.routeModel || '')}" placeholder="optional"></td>
-      <td style="text-align:center"><input type="checkbox" class="kw-finalPass" ${kw?.finalOllamaPass ? 'checked' : ''}></td>
+      <td style="text-align:center"><input type="checkbox" class="kw-ability" ${kw?.abilityText ? 'checked' : ''} title="Include this keyword as an ability in Ollama context"></td>
+      <td style="text-align:center"><input type="checkbox" class="kw-finalPass" ${kw?.finalOllamaPass ? 'checked' : ''} title="Pass API result through Ollama for conversational refinement"></td>
       <td><button class="btn-danger btn-sm" onclick="this.closest('tr').remove();markDirty()">✕</button></td>
     `;
     // Attach dirty listeners to new row inputs
@@ -906,10 +938,8 @@
         timeout: parseInt(row.querySelector('.kw-timeout').value, 10) || 300,
         description: row.querySelector('.kw-desc').value.trim() || keyword,
       };
-      const routeApi = row.querySelector('.kw-routeApi').value;
-      if (routeApi) entry.routeApi = routeApi;
-      const routeModel = row.querySelector('.kw-routeModel').value.trim();
-      if (routeModel) entry.routeModel = routeModel;
+      const isAbility = row.querySelector('.kw-ability').checked;
+      if (isAbility) entry.abilityText = entry.description;
       const finalPass = row.querySelector('.kw-finalPass').checked;
       if (finalPass) entry.finalOllamaPass = true;
       keywords.push(entry);
@@ -1029,6 +1059,25 @@
             if (exists) {
               modelSelect.value = currentValue;
             }
+          }
+
+          // Also populate the Final Pass Model dropdown
+          const fpModelSelect = document.getElementById('ollama_final_pass_model');
+          const fpCurrentValue = fpModelSelect.value;
+          fpModelSelect.innerHTML = '';
+          const fpDefaultOpt = document.createElement('option');
+          fpDefaultOpt.value = '';
+          fpDefaultOpt.textContent = '— use default model —';
+          fpModelSelect.appendChild(fpDefaultOpt);
+          for (const model of data.models) {
+            const opt = document.createElement('option');
+            opt.value = model.name;
+            opt.textContent = `${model.name} (${model.parameterSize}, ${model.family}, ${model.quantization})`;
+            fpModelSelect.appendChild(opt);
+          }
+          if (fpCurrentValue) {
+            const exists = Array.from(fpModelSelect.options).some(o => o.value === fpCurrentValue);
+            if (exists) fpModelSelect.value = fpCurrentValue;
           }
 
           conLog(`  ✓ Found ${data.models.length} model(s)`, 'ok');
