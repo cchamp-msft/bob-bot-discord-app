@@ -35,7 +35,7 @@ jest.mock('../src/utils/requestQueue', () => ({
   },
 }));
 
-import { classifyIntent, buildClassificationPrompt } from '../src/utils/keywordClassifier';
+import { classifyIntent, buildClassificationPrompt, buildAbilitiesContext } from '../src/utils/keywordClassifier';
 import { ollamaClient } from '../src/api/ollamaClient';
 import { config } from '../src/utils/config';
 import { requestQueue } from '../src/utils/requestQueue';
@@ -266,6 +266,77 @@ describe('KeywordClassifier', () => {
 
       expect(prompt).toContain('ONLY the keyword value');
       expect(prompt).toContain('no explanation');
+    });
+  });
+
+  describe('buildAbilitiesContext', () => {
+    it('should return empty string when no keywords have abilityText', () => {
+      (config.getKeywords as jest.Mock).mockReturnValueOnce([
+        { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat' },
+        { keyword: 'ask', api: 'ollama', timeout: 300, description: 'Ask' },
+      ]);
+
+      const context = buildAbilitiesContext();
+      expect(context).toBe('');
+    });
+
+    it('should include abilities from keywords with abilityText', () => {
+      (config.getKeywords as jest.Mock).mockReturnValueOnce([
+        { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Gen image', abilityText: 'generate images from text descriptions' },
+        { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Get weather', abilityText: 'check weather for any location' },
+        { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat' },
+      ]);
+
+      const context = buildAbilitiesContext();
+
+      expect(context).toContain('generate images from text descriptions');
+      expect(context).toContain('keyword: "generate"');
+      expect(context).toContain('check weather for any location');
+      expect(context).toContain('keyword: "weather"');
+      expect(context).toContain('You have access to the following abilities');
+    });
+
+    it('should exclude ollama keywords even if they have abilityText', () => {
+      (config.getKeywords as jest.Mock).mockReturnValueOnce([
+        { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat', abilityText: 'chat with AI' },
+        { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Gen', abilityText: 'generate images' },
+      ]);
+
+      const context = buildAbilitiesContext();
+
+      expect(context).toContain('generate images');
+      expect(context).not.toContain('chat with AI');
+    });
+
+    it('should deduplicate abilities with identical text', () => {
+      (config.getKeywords as jest.Mock).mockReturnValueOnce([
+        { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Gen 1', abilityText: 'generate images from text descriptions' },
+        { keyword: 'imagine', api: 'comfyui', timeout: 300, description: 'Gen 2', abilityText: 'generate images from text descriptions' },
+      ]);
+
+      const context = buildAbilitiesContext();
+
+      // Each unique ability should appear only once (by full line including keyword)
+      const lines = context.split('\n').filter(l => l.startsWith('- '));
+      expect(lines).toHaveLength(2); // "generate" and "imagine" have different keyword names
+    });
+
+    it('should return empty string when no keywords are configured', () => {
+      (config.getKeywords as jest.Mock).mockReturnValueOnce([]);
+
+      const context = buildAbilitiesContext();
+      expect(context).toBe('');
+    });
+
+    it('should include instruction to mention keyword', () => {
+      (config.getKeywords as jest.Mock).mockReturnValueOnce([
+        { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Weather', abilityText: 'check weather' },
+      ]);
+
+      const context = buildAbilitiesContext();
+
+      expect(context).toContain('mention the relevant keyword');
+      expect(context).toContain('Do not fabricate data');
     });
   });
 });

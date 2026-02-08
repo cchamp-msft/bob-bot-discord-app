@@ -23,14 +23,17 @@ export interface RoutedResult {
 }
 
 /**
- * Execute a routed API request pipeline based on keyword configuration.
+ * Execute an API request with an optional final Ollama refinement pass.
  *
  * Flow:
  * 1. Execute the primary API request (keywordConfig.api)
- * 2. If routeApi is specified and differs from api, execute a second request
- *    passing stage 1's result as context
- * 3. If finalOllamaPass is true, run the result through Ollama for
- *    conversational refinement
+ * 2. If finalOllamaPass is true, pass the result through Ollama for
+ *    conversational refinement (abilities context is NOT included to
+ *    prevent endless API call loops)
+ *
+ * The two-stage keyword evaluation (Ollama → classifyIntent → API) is
+ * handled by the message handler, not this function. This function only
+ * handles the API execution + optional final formatting pass.
  *
  * @param keywordConfig - The keyword configuration with routing fields.
  * @param content - The user's prompt text.
@@ -47,14 +50,12 @@ export async function executeRoutedRequest(
   signal?: AbortSignal
 ): Promise<RoutedResult> {
   const stages: StageResult[] = [];
-  const effectiveRouteApi = keywordConfig.routeApi ?? keywordConfig.api;
-  const needsRouting = keywordConfig.routeApi !== undefined && keywordConfig.routeApi !== keywordConfig.api;
   const needsFinalPass = keywordConfig.finalOllamaPass === true;
 
-  // ── Stage 1: Primary API request ──────────────────────────────
-  logger.log('success', 'system', `ROUTER: Stage 1 — executing ${keywordConfig.api} request for "${keywordConfig.keyword}"`);
+  // ── Primary API request ───────────────────────────────────────
+  logger.log('success', 'system', `ROUTER: Executing ${keywordConfig.api} request for "${keywordConfig.keyword}"`);
 
-  const stage1Result = await requestQueue.execute(
+  const primaryResult = await requestQueue.execute(
     keywordConfig.api,
     requester,
     keywordConfig.keyword,
@@ -72,121 +73,71 @@ export async function executeRoutedRequest(
       )
   );
 
-  const stage1Extracted = extractStageResult(keywordConfig.api, stage1Result);
-  stages.push(stage1Extracted);
+  const primaryExtracted = extractStageResult(keywordConfig.api, primaryResult);
+  stages.push(primaryExtracted);
 
-  // Check for stage 1 failure
-  if (!stage1Result.success) {
-    logger.logError('system', `ROUTER: Stage 1 failed: ${stage1Result.error}`);
-    return { finalResponse: stage1Result, finalApi: keywordConfig.api, stages };
+  if (!primaryResult.success) {
+    logger.logError('system', `ROUTER: ${keywordConfig.api} request failed: ${primaryResult.error}`);
+    return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };
   }
 
-  logger.log('success', 'system', `ROUTER: Stage 1 complete — ${keywordConfig.api} returned successfully`);
+  logger.log('success', 'system', `ROUTER: ${keywordConfig.api} request complete`);
 
-  // ── Stage 2: Routed API request (if configured) ──────────────
-  let currentResult = stage1Result;
-  let currentApi = keywordConfig.api;
+  // ── Final Ollama pass (if configured) ─────────────────────────
+  if (needsFinalPass) {
+    // Don't double-pass through Ollama if the primary API was already Ollama
+    if (keywordConfig.api === 'ollama') {
+      logger.log('success', 'system', 'ROUTER: Skipping final Ollama pass — primary API was already Ollama');
+      return { finalResponse: primaryResult, finalApi: 'ollama', stages };
+    }
 
-  if (needsRouting && effectiveRouteApi !== 'external') {
-    logger.log('success', 'system', `ROUTER: Stage 2 — routing to ${effectiveRouteApi}`);
+    logger.log('success', 'system', 'ROUTER: Final Ollama refinement pass');
 
-    // Build the stage 2 prompt from stage 1's output
-    let stage2Prompt: string;
-    if (stage1Extracted.sourceApi === 'accuweather' && effectiveRouteApi === 'ollama') {
-      // For AccuWeather → Ollama routing, use the AI-formatted context
-      const awResponse = stage1Extracted.rawResponse as AccuWeatherResponse;
+    // Build final prompt — use structured AI context for AccuWeather
+    let finalPrompt: string;
+    if (keywordConfig.api === 'accuweather') {
+      const awResponse = primaryResult as AccuWeatherResponse;
+      const locationName = awResponse.data?.location
+        ? `${awResponse.data.location.LocalizedName}, ${awResponse.data.location.AdministrativeArea.ID}, ${awResponse.data.location.Country.LocalizedName}`
+        : 'Unknown location';
       const aiContext = accuweatherClient.formatWeatherContextForAI(
-        awResponse.data?.location
-          ? `${awResponse.data.location.LocalizedName}, ${awResponse.data.location.AdministrativeArea.ID}, ${awResponse.data.location.Country.LocalizedName}`
-          : 'Unknown location',
+        locationName,
         awResponse.data?.current ?? null,
         awResponse.data?.forecast ?? null
       );
-      stage2Prompt = `${aiContext}\n\nUser request: ${content}`;
+      finalPrompt = `${aiContext}\n\nUser request: ${content}\n\nPlease provide a helpful, conversational response based on the weather data above. Be concise and natural.`;
     } else {
-      stage2Prompt = stage1Extracted.text
-        ? `${stage1Extracted.text}\n\nOriginal request: ${content}`
-        : content;
+      finalPrompt = buildFinalPassPrompt(content, primaryExtracted);
     }
 
-    const stage2Model = keywordConfig.routeModel;
-
-    const stage2Result = await requestQueue.execute(
-      effectiveRouteApi as 'comfyui' | 'ollama' | 'accuweather',
+    const finalResult = await requestQueue.execute(
+      'ollama',
       requester,
-      `${keywordConfig.keyword}:routed`,
+      `${keywordConfig.keyword}:final`,
       keywordConfig.timeout,
       (sig) =>
         apiManager.executeRequest(
-          effectiveRouteApi as 'comfyui' | 'ollama' | 'accuweather',
+          'ollama',
           requester,
-          stage2Prompt,
+          finalPrompt,
           keywordConfig.timeout,
-          stage2Model,
-          undefined,
+          keywordConfig.routeModel,
+          conversationHistory?.length ? conversationHistory : undefined,
           sig
         )
     );
 
-    const stage2Extracted = extractStageResult(effectiveRouteApi as 'comfyui' | 'ollama' | 'accuweather', stage2Result);
-    stages.push(stage2Extracted);
+    const finalExtracted = extractStageResult('ollama', finalResult);
+    stages.push(finalExtracted);
 
-    if (!stage2Result.success) {
-      // Stage 2 failed — return stage 1 result with a warning
-      logger.logWarn('system', `ROUTER: Stage 2 (${effectiveRouteApi}) failed: ${stage2Result.error} — returning stage 1 result`);
-      return { finalResponse: stage1Result, finalApi: keywordConfig.api, stages };
+    if (!finalResult.success) {
+      logger.logWarn('system', `ROUTER: Final Ollama pass failed: ${finalResult.error} — returning API result`);
+      return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };
     }
 
-    logger.log('success', 'system', `ROUTER: Stage 2 complete — ${effectiveRouteApi} returned successfully`);
-    currentResult = stage2Result;
-    currentApi = effectiveRouteApi as 'comfyui' | 'ollama' | 'accuweather';
-  } else if (needsRouting && effectiveRouteApi === 'external') {
-    logger.logWarn('system', `ROUTER: External API routing not yet implemented — skipping stage 2`);
+    logger.log('success', 'system', 'ROUTER: Final Ollama pass complete');
+    return { finalResponse: finalResult, finalApi: 'ollama', stages };
   }
 
-  // ── Stage 3: Final Ollama pass (if configured) ────────────────
-  if (needsFinalPass) {
-    // Don't double-pass through Ollama if the last stage was already Ollama
-    // and there was no routing (i.e., it would just be sending the same thing twice)
-    const lastStage = stages[stages.length - 1];
-    const shouldSkipFinalPass = currentApi === 'ollama' && !needsRouting;
-
-    if (shouldSkipFinalPass) {
-      logger.log('success', 'system', 'ROUTER: Skipping final Ollama pass — last stage was already Ollama with no routing');
-    } else {
-      logger.log('success', 'system', 'ROUTER: Stage 3 — final Ollama refinement pass');
-
-      const finalPrompt = buildFinalPassPrompt(content, lastStage);
-
-      const finalResult = await requestQueue.execute(
-        'ollama',
-        requester,
-        `${keywordConfig.keyword}:final`,
-        keywordConfig.timeout,
-        (sig) =>
-          apiManager.executeRequest(
-            'ollama',
-            requester,
-            finalPrompt,
-            keywordConfig.timeout,
-            keywordConfig.routeModel,
-            conversationHistory?.length ? conversationHistory : undefined,
-            sig
-          )
-      );
-
-      const finalExtracted = extractStageResult('ollama', finalResult);
-      stages.push(finalExtracted);
-
-      if (!finalResult.success) {
-        logger.logWarn('system', `ROUTER: Final Ollama pass failed: ${finalResult.error} — returning previous result`);
-        return { finalResponse: currentResult, finalApi: currentApi, stages };
-      }
-
-      logger.log('success', 'system', 'ROUTER: Final Ollama pass complete');
-      return { finalResponse: finalResult, finalApi: 'ollama', stages };
-    }
-  }
-
-  return { finalResponse: currentResult, finalApi: currentApi, stages };
+  return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };
 }

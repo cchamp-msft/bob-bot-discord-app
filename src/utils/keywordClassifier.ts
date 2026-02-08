@@ -124,3 +124,30 @@ export async function classifyIntent(
 
 // Exported for testing
 export { buildClassificationPrompt };
+
+/**
+ * Build a system-level context string describing the bot's available API abilities.
+ * This helps Ollama understand what external tools are available so it can
+ * suggest appropriate API calls in its response.
+ *
+ * Only keywords with `abilityText` configured and a non-Ollama API are included.
+ * Returns empty string if no abilities are configured.
+ */
+export function buildAbilitiesContext(): string {
+  const keywords = config.getKeywords();
+  const abilities = keywords
+    .filter((k) => k.abilityText && k.api !== 'ollama')
+    .map((k) => `- ${k.abilityText} (keyword: "${k.keyword}")`)
+    // Deduplicate entries with identical text
+    .filter((item, index, self) => self.indexOf(item) === index);
+
+  if (abilities.length === 0) return '';
+
+  return [
+    'You have access to the following abilities through external APIs:',
+    ...abilities,
+    '',
+    'If the user\'s request relates to one of these abilities, mention the relevant keyword in your response so it can be routed to the appropriate API.',
+    'Do not fabricate data for these abilities — let the API handle the request.',
+  ].join('\n');
+}

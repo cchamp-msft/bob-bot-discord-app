@@ -1,6 +1,6 @@
 /**
- * ApiRouter tests — exercises the multi-stage routing pipeline
- * for stacking API calls. Uses mocked request queue and API manager.
+ * ApiRouter tests — exercises the simplified API execution + optional
+ * final Ollama pass pipeline. Uses mocked request queue and API manager.
  */
 
 jest.mock('../src/utils/config', () => ({
@@ -42,6 +42,7 @@ jest.mock('../src/api/accuweatherClient', () => ({
 import { executeRoutedRequest } from '../src/utils/apiRouter';
 import { requestQueue } from '../src/utils/requestQueue';
 import { KeywordConfig } from '../src/utils/config';
+import { accuweatherClient } from '../src/api/accuweatherClient';
 
 const mockExecute = requestQueue.execute as jest.MockedFunction<typeof requestQueue.execute>;
 
@@ -50,8 +51,8 @@ describe('ApiRouter', () => {
     jest.clearAllMocks();
   });
 
-  describe('executeRoutedRequest — single stage (no routing)', () => {
-    it('should execute a single API request when no routeApi is configured', async () => {
+  describe('executeRoutedRequest — single stage (no final pass)', () => {
+    it('should execute a single API request when no finalOllamaPass is configured', async () => {
       const keyword: KeywordConfig = {
         keyword: 'chat',
         api: 'ollama',
@@ -72,7 +73,7 @@ describe('ApiRouter', () => {
       expect(mockExecute).toHaveBeenCalledTimes(1);
     });
 
-    it('should return failure when stage 1 fails', async () => {
+    it('should return failure when primary API fails', async () => {
       const keyword: KeywordConfig = {
         keyword: 'generate',
         api: 'comfyui',
@@ -90,85 +91,26 @@ describe('ApiRouter', () => {
       expect(result.finalResponse.success).toBe(false);
       expect(result.stages).toHaveLength(1);
     });
-  });
 
-  describe('executeRoutedRequest — two stages (with routeApi)', () => {
-    it('should execute stage 1 then route to stage 2', async () => {
+    it('should execute accuweather directly without final pass', async () => {
       const keyword: KeywordConfig = {
-        keyword: 'analyze',
-        api: 'ollama',
-        timeout: 300,
-        description: 'Analyze with AI',
-        routeApi: 'comfyui',
+        keyword: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
       };
 
-      // Stage 1: Ollama analysis
       mockExecute.mockResolvedValueOnce({
         success: true,
-        data: { text: 'A beautiful sunset over the ocean' },
+        data: { text: 'Sunny, 72°F' },
       });
 
-      // Stage 2: ComfyUI generation
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: { images: ['http://example.com/sunset.png'] },
-      });
+      const result = await executeRoutedRequest(keyword, 'weather in Seattle', 'testuser');
 
-      const result = await executeRoutedRequest(keyword, 'describe and draw a sunset', 'testuser');
-
-      expect(result.finalApi).toBe('comfyui');
+      expect(result.finalApi).toBe('accuweather');
       expect(result.finalResponse.success).toBe(true);
-      expect(result.stages).toHaveLength(2);
-      expect(mockExecute).toHaveBeenCalledTimes(2);
-    });
-
-    it('should return stage 1 result when stage 2 fails', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'analyze',
-        api: 'ollama',
-        timeout: 300,
-        description: 'Analyze with AI',
-        routeApi: 'comfyui',
-      };
-
-      // Stage 1: Success
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: { text: 'Analysis complete' },
-      });
-
-      // Stage 2: Failure
-      mockExecute.mockResolvedValueOnce({
-        success: false,
-        error: 'ComfyUI timeout',
-      });
-
-      const result = await executeRoutedRequest(keyword, 'analyze this', 'testuser');
-
-      // Should gracefully fall back to stage 1 result
-      expect(result.finalApi).toBe('ollama');
-      expect(result.finalResponse.success).toBe(true);
-      expect(result.stages).toHaveLength(2);
-    });
-
-    it('should not execute stage 2 when routeApi equals api', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'chat',
-        api: 'ollama',
-        timeout: 300,
-        description: 'Chat',
-        routeApi: 'ollama', // same as api — no actual routing
-      };
-
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: { text: 'Response' },
-      });
-
-      const result = await executeRoutedRequest(keyword, 'hello', 'testuser');
-
-      expect(mockExecute).toHaveBeenCalledTimes(1);
       expect(result.stages).toHaveLength(1);
+      expect(mockExecute).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -182,7 +124,7 @@ describe('ApiRouter', () => {
         finalOllamaPass: true,
       };
 
-      // Stage 1: ComfyUI
+      // Primary: ComfyUI
       mockExecute.mockResolvedValueOnce({
         success: true,
         data: { images: ['http://example.com/img.png'] },
@@ -201,7 +143,7 @@ describe('ApiRouter', () => {
       expect(mockExecute).toHaveBeenCalledTimes(2);
     });
 
-    it('should skip final Ollama pass when last stage was already Ollama without routing', async () => {
+    it('should skip final Ollama pass when primary API is already Ollama', async () => {
       const keyword: KeywordConfig = {
         keyword: 'chat',
         api: 'ollama',
@@ -222,7 +164,7 @@ describe('ApiRouter', () => {
       expect(result.stages).toHaveLength(1);
     });
 
-    it('should return previous result when final Ollama pass fails', async () => {
+    it('should return primary result when final Ollama pass fails', async () => {
       const keyword: KeywordConfig = {
         keyword: 'generate',
         api: 'comfyui',
@@ -231,7 +173,7 @@ describe('ApiRouter', () => {
         finalOllamaPass: true,
       };
 
-      // Stage 1: Success
+      // Primary: Success
       mockExecute.mockResolvedValueOnce({
         success: true,
         data: { images: ['http://example.com/img.png'] },
@@ -252,90 +194,127 @@ describe('ApiRouter', () => {
     });
   });
 
-  describe('executeRoutedRequest — three stages (routeApi + finalOllamaPass)', () => {
-    it('should execute all three stages when both routeApi and finalOllamaPass are set', async () => {
+  describe('executeRoutedRequest — AccuWeather with final Ollama pass', () => {
+    it('should use formatWeatherContextForAI for AccuWeather final pass', async () => {
       const keyword: KeywordConfig = {
-        keyword: 'analyze-generate',
-        api: 'ollama',
-        timeout: 300,
-        description: 'Analyze then generate',
-        routeApi: 'comfyui',
+        keyword: 'weather report',
+        api: 'accuweather',
+        timeout: 120,
+        description: 'AI weather report',
         finalOllamaPass: true,
       };
 
-      // Stage 1: Ollama analysis
+      // Primary: AccuWeather
       mockExecute.mockResolvedValueOnce({
         success: true,
-        data: { text: 'A sunset scene' },
+        data: {
+          text: 'Sunny, 72°F',
+          location: {
+            Key: '351409',
+            LocalizedName: 'Seattle',
+            Country: { ID: 'US', LocalizedName: 'United States' },
+            AdministrativeArea: { ID: 'WA', LocalizedName: 'Washington' },
+          },
+          current: { WeatherText: 'Sunny' },
+          forecast: null,
+        },
       });
 
-      // Stage 2: ComfyUI generation
+      // Final pass: Ollama
       mockExecute.mockResolvedValueOnce({
         success: true,
-        data: { images: ['http://example.com/sunset.png'] },
+        data: { text: 'Beautiful day in Seattle! Sunny skies with 72°F.' },
       });
 
-      // Stage 3: Final Ollama refinement
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: { text: 'Here is your sunset image!' },
-      });
-
-      const result = await executeRoutedRequest(keyword, 'make a sunset picture', 'testuser');
+      const result = await executeRoutedRequest(keyword, 'weather report for Seattle', 'testuser');
 
       expect(result.finalApi).toBe('ollama');
-      expect(result.stages).toHaveLength(3);
-      expect(mockExecute).toHaveBeenCalledTimes(3);
+      expect(result.stages).toHaveLength(2);
+      expect(accuweatherClient.formatWeatherContextForAI).toHaveBeenCalledWith(
+        'Seattle, WA, United States',
+        { WeatherText: 'Sunny' },
+        null
+      );
     });
-  });
 
-  describe('executeRoutedRequest — external API stub', () => {
-    it('should skip stage 2 when routeApi is external (not yet implemented)', async () => {
+    it('should use "Unknown location" when location data is missing', async () => {
       const keyword: KeywordConfig = {
-        keyword: 'external-test',
-        api: 'ollama',
-        timeout: 300,
-        description: 'Test external',
-        routeApi: 'external',
+        keyword: 'weather report',
+        api: 'accuweather',
+        timeout: 120,
+        description: 'AI weather report',
+        finalOllamaPass: true,
       };
 
       mockExecute.mockResolvedValueOnce({
         success: true,
-        data: { text: 'Stage 1 result' },
+        data: { text: 'Sunny' },
       });
 
-      const result = await executeRoutedRequest(keyword, 'test', 'testuser');
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Weather report' },
+      });
 
-      // Should only execute stage 1 since external is not implemented
-      expect(mockExecute).toHaveBeenCalledTimes(1);
-      expect(result.finalApi).toBe('ollama');
+      await executeRoutedRequest(keyword, 'weather report', 'testuser');
+
+      expect(accuweatherClient.formatWeatherContextForAI).toHaveBeenCalledWith(
+        'Unknown location',
+        null,
+        null
+      );
+    });
+
+    it('should fall back to AccuWeather result when final Ollama pass fails', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'weather report',
+        api: 'accuweather',
+        timeout: 120,
+        description: 'AI weather report',
+        finalOllamaPass: true,
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Raw weather data' },
+      });
+
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Ollama timeout',
+      });
+
+      const result = await executeRoutedRequest(keyword, 'weather report', 'testuser');
+
+      expect(result.finalApi).toBe('accuweather');
+      expect(result.finalResponse.success).toBe(true);
     });
   });
 
   describe('executeRoutedRequest — routeModel', () => {
-    it('should use routeModel in stage 2 queue keyword', async () => {
+    it('should use routeModel in final Ollama pass', async () => {
       const keyword: KeywordConfig = {
-        keyword: 'analyze',
-        api: 'ollama',
+        keyword: 'generate',
+        api: 'comfyui',
         timeout: 300,
-        description: 'Analyze',
-        routeApi: 'comfyui',
+        description: 'Generate image',
         routeModel: 'specialized-model',
+        finalOllamaPass: true,
       };
-
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: { text: 'Analyzed' },
-      });
 
       mockExecute.mockResolvedValueOnce({
         success: true,
         data: { images: ['http://example.com/img.png'] },
       });
 
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Described image' },
+      });
+
       await executeRoutedRequest(keyword, 'test', 'testuser');
 
-      // Stage 2 should be called
+      // Final pass should be called
       expect(mockExecute).toHaveBeenCalledTimes(2);
     });
   });

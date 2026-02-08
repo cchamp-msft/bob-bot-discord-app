@@ -10,7 +10,7 @@ import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse } from
 import { fileHandler } from '../utils/fileHandler';
 import { ChatMessage } from '../types';
 import { chunkText } from '../utils/chunkText';
-import { classifyIntent } from '../utils/keywordClassifier';
+import { classifyIntent, buildAbilitiesContext } from '../utils/keywordClassifier';
 import { executeRoutedRequest } from '../utils/apiRouter';
 
 export type { ChatMessage };
@@ -114,6 +114,9 @@ class MessageHandler {
       }
     }
 
+    // Track whether a non-Ollama API keyword was matched (determines execution path)
+    const apiKeywordMatched = keywordConfig !== undefined && keywordConfig.api !== 'ollama';
+
     if (!keywordConfig) {
       keywordConfig = {
         keyword: 'chat',
@@ -145,9 +148,10 @@ class MessageHandler {
       return;
     }
 
-    // Collect reply chain context for Ollama requests
+    // Collect reply chain context — needed for any path that may call Ollama
+    // (direct chat, two-stage evaluation, or final Ollama pass)
     let conversationHistory: ChatMessage[] = [];
-    if (keywordConfig.api === 'ollama' && config.getReplyChainEnabled() && message.reference) {
+    if (config.getReplyChainEnabled() && message.reference) {
       conversationHistory = await this.collectReplyChain(message);
     }
 
@@ -170,11 +174,8 @@ class MessageHandler {
     }
 
     try {
-      // Determine if this keyword uses routing (routeApi or finalOllamaPass)
-      const usesRouting = keywordConfig.routeApi !== undefined || keywordConfig.finalOllamaPass === true;
-
-      if (usesRouting) {
-        // ── Routed pipeline execution ───────────────────────────────
+      if (apiKeywordMatched) {
+        // ── API keyword path: execute API with optional final Ollama pass ──
         const routedResult = await executeRoutedRequest(
           keywordConfig,
           content,
@@ -182,90 +183,21 @@ class MessageHandler {
           conversationHistory.length > 0 ? conversationHistory : undefined
         );
 
-        if (!routedResult.finalResponse.success) {
-          const errorDetail = routedResult.finalResponse.error ?? 'Unknown API error';
-          logger.logError(message.author.username, errorDetail);
-
-          if (this.canSendErrorMessage()) {
-            await processingMessage.edit(`⚠️ ${config.getErrorMessage()}`);
-          } else {
-            await processingMessage.edit('⚠️ An error occurred processing your request.');
-          }
-          return;
-        }
-
-        // Handle response based on the final API type in the pipeline
-        if (routedResult.finalApi === 'comfyui') {
-          await this.handleComfyUIResponse(
-            routedResult.finalResponse as ComfyUIResponse,
-            processingMessage,
-            message.author.username
-          );
-        } else if (routedResult.finalApi === 'accuweather') {
-          await this.handleAccuWeatherResponse(
-            routedResult.finalResponse as AccuWeatherResponse,
-            processingMessage,
-            message.author.username
-          );
-        } else {
-          await this.handleOllamaResponse(
-            routedResult.finalResponse as OllamaResponse,
-            processingMessage,
-            message.author.username
-          );
-        }
-      } else {
-        // ── Direct (non-routed) execution ──────────────────────────
-        const apiResult = await requestQueue.execute(
-          keywordConfig.api,
-          message.author.username,
-          keywordConfig.keyword,
-          keywordConfig.timeout || config.getDefaultTimeout(),
-          (signal) =>
-            apiManager.executeRequest(
-              keywordConfig.api,
-              message.author.username,
-              content,
-              keywordConfig.timeout || config.getDefaultTimeout(),
-              undefined,
-              conversationHistory.length > 0 ? conversationHistory : undefined,
-              signal,
-              keywordConfig.accuweatherMode
-            )
+        await this.dispatchResponse(
+          routedResult.finalResponse,
+          routedResult.finalApi,
+          processingMessage,
+          message.author.username
         );
-
-        if (!apiResult.success) {
-          const errorDetail = apiResult.error ?? 'Unknown API error';
-          logger.logError(message.author.username, errorDetail);
-
-          if (this.canSendErrorMessage()) {
-            await processingMessage.edit(`⚠️ ${config.getErrorMessage()}`);
-          } else {
-            await processingMessage.edit('⚠️ An error occurred processing your request.');
-          }
-          return;
-        }
-
-        // Handle response based on API type
-        if (keywordConfig.api === 'comfyui') {
-          await this.handleComfyUIResponse(
-            apiResult as ComfyUIResponse,
-            processingMessage,
-            message.author.username
-          );
-        } else if (keywordConfig.api === 'accuweather') {
-          await this.handleAccuWeatherResponse(
-            apiResult as AccuWeatherResponse,
-            processingMessage,
-            message.author.username
-          );
-        } else {
-          await this.handleOllamaResponse(
-            apiResult as OllamaResponse,
-            processingMessage,
-            message.author.username
-          );
-        }
+      } else {
+        // ── Ollama path: chat with abilities context, then second evaluation ──
+        await this.executeWithTwoStageEvaluation(
+          content,
+          keywordConfig,
+          processingMessage,
+          message.author.username,
+          conversationHistory
+        );
       }
     } catch (error) {
       const errorMsg =
@@ -379,6 +311,117 @@ class MessageHandler {
       const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
       return pattern.test(lowerContent);
     });
+  }
+
+  /**
+   * Execute the two-stage evaluation flow:
+   * 1. Call Ollama with abilities context so it knows what APIs are available
+   * 2. Classify Ollama's response for non-Ollama API keywords
+   * 3. If a non-Ollama API keyword is found, execute that API with optional final pass
+   * 4. Otherwise return Ollama's response as the final answer
+   */
+  private async executeWithTwoStageEvaluation(
+    content: string,
+    keywordConfig: KeywordConfig,
+    processingMessage: Message,
+    requester: string,
+    conversationHistory: ChatMessage[]
+  ): Promise<void> {
+    const timeout = keywordConfig.timeout || config.getDefaultTimeout();
+
+    // Build conversation history with abilities context for Ollama
+    const abilitiesContext = buildAbilitiesContext();
+    const historyWithAbilities: ChatMessage[] = [];
+    if (abilitiesContext) {
+      historyWithAbilities.push({ role: 'system', content: abilitiesContext });
+    }
+    if (conversationHistory.length > 0) {
+      historyWithAbilities.push(...conversationHistory);
+    }
+
+    // Stage 1: Call Ollama with abilities context
+    const ollamaResult = await requestQueue.execute(
+      'ollama',
+      requester,
+      keywordConfig.keyword,
+      timeout,
+      (signal) =>
+        apiManager.executeRequest(
+          'ollama',
+          requester,
+          content,
+          timeout,
+          undefined,
+          historyWithAbilities.length > 0 ? historyWithAbilities : undefined,
+          signal
+        )
+    ) as OllamaResponse;
+
+    if (!ollamaResult.success) {
+      await this.dispatchResponse(ollamaResult, 'ollama', processingMessage, requester);
+      return;
+    }
+
+    // Stage 2: Classify Ollama's response for API keywords
+    const ollamaText = ollamaResult.data?.text;
+    if (ollamaText) {
+      const secondClassification = await classifyIntent(ollamaText, requester);
+
+      if (secondClassification.keywordConfig && secondClassification.keywordConfig.api !== 'ollama') {
+        logger.log('success', 'system',
+          `TWO-STAGE: Ollama response classified as "${secondClassification.keywordConfig.keyword}" — executing ${secondClassification.keywordConfig.api} API`);
+
+        // Execute the matched API with optional final Ollama pass
+        const apiResult = await executeRoutedRequest(
+          secondClassification.keywordConfig,
+          content,
+          requester,
+          conversationHistory.length > 0 ? conversationHistory : undefined
+        );
+
+        await this.dispatchResponse(
+          apiResult.finalResponse,
+          apiResult.finalApi,
+          processingMessage,
+          requester
+        );
+        return;
+      }
+    }
+
+    // No API keyword found in Ollama's response — use it as-is
+    await this.dispatchResponse(ollamaResult, 'ollama', processingMessage, requester);
+  }
+
+  /**
+   * Dispatch a response to the appropriate handler based on API type.
+   * Handles error responses uniformly.
+   */
+  private async dispatchResponse(
+    response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse,
+    api: 'comfyui' | 'ollama' | 'accuweather',
+    processingMessage: Message,
+    requester: string
+  ): Promise<void> {
+    if (!response.success) {
+      const errorDetail = response.error ?? 'Unknown API error';
+      logger.logError(requester, errorDetail);
+
+      if (this.canSendErrorMessage()) {
+        await processingMessage.edit(`⚠️ ${config.getErrorMessage()}`);
+      } else {
+        await processingMessage.edit('⚠️ An error occurred processing your request.');
+      }
+      return;
+    }
+
+    if (api === 'comfyui') {
+      await this.handleComfyUIResponse(response as ComfyUIResponse, processingMessage, requester);
+    } else if (api === 'accuweather') {
+      await this.handleAccuWeatherResponse(response as AccuWeatherResponse, processingMessage, requester);
+    } else {
+      await this.handleOllamaResponse(response as OllamaResponse, processingMessage, requester);
+    }
   }
 
   /**
