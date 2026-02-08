@@ -45,7 +45,7 @@ Logs are **not transmitted** to external services unless you explicitly configur
 
 ## Third-Party Services
 
-The Bot may interact with third-party APIs (ComfyUI, Ollama, etc.). These interactions:
+The Bot may interact with third-party APIs (ComfyUI, Ollama, AccuWeather, SportsData.io, etc.). These interactions:
 - Include your username and message content (as needed for the request)
 - Are made directly from your request
 - Are subject to the privacy policies of those third-party services

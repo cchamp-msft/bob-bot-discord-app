@@ -1,6 +1,6 @@
 # Bob Bot - Discord AI Integration
 
-A Discord bot that monitors @mentions and DMs, routes keyword-matched requests to ComfyUI or Ollama APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
+A Discord bot that monitors @mentions and DMs, routes keyword-matched requests to ComfyUI, Ollama, AccuWeather, and SportsData.io NFL APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
 
 ## Features
 
@@ -10,6 +10,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ ComfyUI integration for image generation (WebSocket-based with HTTP polling fallback)
 - ✅ Ollama integration for AI text generation
 - ✅ AccuWeather integration for real-time weather data (current conditions + 5-day forecast)
+- ✅ **NFL game data** — live scores, weekly schedules, team lookups, and Super Bowl tracking via SportsData.io
 - ✅ Serial request processing with max 1 concurrent per API
 - ✅ Configurable per-keyword timeouts (default: 300s)
 - ✅ Smart file handling (attachments for small files, URL links for large)
@@ -35,6 +36,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **Weather→AI routing** — weather data piped through Ollama for AI-powered weather reports via `finalOllamaPass`
 - ✅ **Global final-pass model** — configurable Ollama model for all final-pass refinements
 - ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
+- ✅ **NFL commands** — `nfl scores`, `nfl score <team>`, `superbowl`, and `nfl` (AI-enhanced) keywords
 
 ## Project Structure
 
@@ -50,6 +52,7 @@ src/
 ├── api/
 │   ├── index.ts          # API manager
 │   ├── accuweatherClient.ts # AccuWeather API client (weather data)
+│   ├── nflClient.ts      # SportsData.io NFL API client (scores, schedules)
 │   ├── comfyuiClient.ts  # ComfyUI API client (workflow execution)
 │   ├── comfyuiWebSocket.ts # ComfyUI WebSocket manager (real-time execution tracking)
 │   └── ollamaClient.ts   # Ollama API client
@@ -93,6 +96,7 @@ outputs/
 - ComfyUI instance (optional, for image generation)
 - Ollama instance (optional, for text generation)
 - AccuWeather API key (optional, for weather data — free tier at [developer.accuweather.com](https://developer.accuweather.com))
+- SportsData.io API key (optional, for NFL scores — free tier at [sportsdata.io](https://sportsdata.io))
 
 ### Installation
 
@@ -114,7 +118,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_API_KEY`, `NFL_BASE_URL`, `NFL_ENABLED`
 
 ### Running the Bot
 
@@ -171,8 +175,9 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **Bot Token**: Write-only field — token is never displayed or logged, only persisted to `.env`
 - **Start/Stop Controls**: Connect or disconnect the bot from Discord without restarting the process
 - **Connection Status**: Live indicator showing stopped / connecting / running / error
-- **API Endpoints**: Configure ComfyUI/Ollama/AccuWeather URLs with live connection testing
+- **API Endpoints**: Configure ComfyUI/Ollama/AccuWeather/NFL URLs with live connection testing
 - **AccuWeather**: API key (write-only), default location, endpoint configuration, and test connection with location resolution
+- **NFL**: API key (write-only), enabled toggle, endpoint configuration, and test connection
 - **Ollama Model Selection**: Test connection auto-discovers available models; select and save desired model
 - **Ollama System Prompt**: Configurable system prompt sets the bot's personality; reset-to-default button included
 - **ComfyUI Workflow Upload**: Upload a workflow JSON file with `%prompt%` placeholder validation
@@ -188,10 +193,11 @@ The bot includes a **localhost-only web configurator** for easy management witho
 ### Hot-Reload vs Restart Required
 
 **Hot-Reload (no restart needed):**
-- ComfyUI/Ollama/AccuWeather endpoints
+- ComfyUI/Ollama/AccuWeather/NFL endpoints
 - Ollama model selection
 - Ollama system prompt
 - AccuWeather API key and default location
+- NFL API key and enabled state
 - Default workflow parameters (model, size, steps, sampler, scheduler, denoise)
 - Error message and rate limit
 - Reply chain settings (enabled, max depth, max tokens)
@@ -227,9 +233,10 @@ npm run test:watch
 - **logger.test.ts** — Log formatting, level mapping, console output, file tail
 - **requestQueue.test.ts** — API locking, timeouts, concurrency
 - **keywordClassifier.test.ts** — AI classification logic, prompt building, fallback handling
-- **apiRouter.test.ts** — Multi-stage routing, partial failures, final pass logic
+- **apiRouter.test.ts** — Multi-stage routing, partial failures, final pass logic, NFL routing
 - **responseTransformer.test.ts** — Result extraction, context prompt building
 - **accuweatherClient.test.ts** — Location resolution, weather data fetching, formatting, health checks
+- **nflClient.test.ts** — Team resolution, game formatting, API fetching, health checks, request dispatching
 
 All tests run without requiring Discord connection or external APIs.
 
@@ -470,13 +477,49 @@ The `/weather` command supports two optional parameters:
 | `location` | string (optional) | City name, zip code, or location key |
 | `type` | choice (optional) | `current`, `forecast`, or `full` (default: `full`) |
 
+### NFL Game Data
+
+The bot integrates with [SportsData.io](https://sportsdata.io) for NFL game scores, schedules, and Super Bowl data. A free-tier API key provides access to basic score data.
+
+#### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NFL_API_KEY` | Yes | API key from SportsData.io |
+| `NFL_BASE_URL` | No | Base URL override (default: `https://api.sportsdata.io/v3/nfl/scores`) |
+| `NFL_ENABLED` | No | Enable/disable NFL features (default: `true` when API key is set) |
+
+#### NFL Keywords
+
+Four default NFL keywords are configured in `config/keywords.json`:
+
+| Keyword | Behavior |
+|---------|----------|
+| `superbowl` | Shows current/last Super Bowl game with detailed info |
+| `nfl scores` | Lists all games for the current week |
+| `nfl score` | Shows score for a specific team (e.g., `nfl score chiefs`) |
+| `nfl` | Fetches current week data and passes through Ollama for AI-enhanced responses |
+
+#### Team Resolution
+
+The bot supports multiple team name formats:
+- **Nicknames**: `chiefs`, `eagles`, `niners`, `pats`
+- **City names**: `kansas city`, `philadelphia`, `green bay`
+- **Abbreviations**: `KC`, `PHI`, `GB`, `SF`
+- **Informal**: `philly`, `bucs`, `jags`
+
 ### @mention Usage
+
 Mention the bot with a keyword and prompt:
 ```
 @BobBot generate a beautiful sunset landscape
 @BobBot ask what is the meaning of life?
 @BobBot weather in Seattle
 @BobBot forecast for 90210
+@BobBot nfl scores
+@BobBot nfl score chiefs
+@BobBot superbowl
+@BobBot nfl who is favored to win the super bowl?
 ```
 
 The bot replies inline — the initial "Processing" message is edited in-place with the final response. You can also DM the bot directly without needing an @mention.

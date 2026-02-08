@@ -1,7 +1,7 @@
 {
   "name": "bob-bot-discord-app",
   "version": "1.0.0",
-  "description": "Discord bot with ComfyUI and Ollama integration",
+  "description": "Discord bot with ComfyUI, Ollama, AccuWeather, and NFL integration",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -17,6 +17,8 @@
     "bot",
     "comfyui",
     "ollama",
+    "accuweather",
+    "nfl",
     "ai"
   ],
   "author": "",
