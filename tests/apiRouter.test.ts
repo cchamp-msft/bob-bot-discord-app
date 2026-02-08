@@ -40,6 +40,12 @@ jest.mock('../src/api/accuweatherClient', () => ({
   },
 }));
 
+jest.mock('../src/api/nflClient', () => ({
+  nflClient: {
+    handleRequest: jest.fn(),
+  },
+}));
+
 import { executeRoutedRequest } from '../src/utils/apiRouter';
 import { requestQueue } from '../src/utils/requestQueue';
 import { KeywordConfig } from '../src/utils/config';
@@ -316,6 +322,108 @@ describe('ApiRouter', () => {
 
       // Final pass should be called
       expect(mockExecute).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('executeRoutedRequest — NFL routing', () => {
+    it('should route NFL requests through requestQueue with nfl api type', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'nfl scores',
+        api: 'nfl',
+        timeout: 30,
+        description: 'NFL scores',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: '🏈 **NFL Scores**\n\n✅ Eagles 28 - Cowboys 21 (Final)', games: [] },
+      });
+
+      const result = await executeRoutedRequest(keyword, 'nfl scores', 'testuser');
+
+      expect(result.finalApi).toBe('nfl');
+      expect(result.finalResponse.success).toBe(true);
+      expect(result.stages).toHaveLength(1);
+      expect(mockExecute).toHaveBeenCalledWith(
+        'nfl',
+        'testuser',
+        'nfl scores',
+        30,
+        expect.any(Function)
+      );
+    });
+
+    it('should support NFL with final Ollama pass', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'nfl',
+        api: 'nfl',
+        timeout: 60,
+        description: 'NFL chat',
+        finalOllamaPass: true,
+      };
+
+      // Primary: NFL data (plain — router wraps with markers)
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'NFL Scores - Current Week\nChiefs 14 - Ravens 10', games: [] },
+      });
+
+      // Final pass: Ollama
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'The Chiefs are currently leading the Ravens 14-10 in an exciting game!' },
+      });
+
+      const result = await executeRoutedRequest(keyword, 'who is winning the chiefs game?', 'testuser');
+
+      expect(result.finalApi).toBe('ollama');
+      expect(result.stages).toHaveLength(2);
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+    });
+
+    it('should fall back to NFL result when final Ollama pass fails', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'nfl',
+        api: 'nfl',
+        timeout: 60,
+        description: 'NFL chat',
+        finalOllamaPass: true,
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'NFL data here', games: [] },
+      });
+
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Ollama unavailable',
+      });
+
+      const result = await executeRoutedRequest(keyword, 'nfl update', 'testuser');
+
+      expect(result.finalApi).toBe('nfl');
+      expect(result.finalResponse.success).toBe(true);
+    });
+
+    it('should return error when NFL request fails', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'nfl scores',
+        api: 'nfl',
+        timeout: 30,
+        description: 'NFL scores',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'NFL API key not configured',
+      });
+
+      const result = await executeRoutedRequest(keyword, 'nfl scores', 'testuser');
+
+      expect(result.finalApi).toBe('nfl');
+      expect(result.finalResponse.success).toBe(false);
+      expect(result.stages).toHaveLength(1);
     });
   });
 });

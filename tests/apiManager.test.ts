@@ -33,18 +33,31 @@ jest.mock('../src/api/accuweatherClient', () => {
   return { accuweatherClient: client };
 });
 
+jest.mock('../src/api/nflClient', () => {
+  const client = {
+    refresh: jest.fn(),
+    handleRequest: jest.fn(),
+    testConnection: jest.fn(),
+  };
+  return { nflClient: client };
+});
+
 jest.mock('../src/utils/config', () => ({
   config: {
     getOllamaModel: jest.fn(() => 'llama2'),
     getAccuWeatherEndpoint: jest.fn(() => 'https://dataservice.accuweather.com'),
     getAccuWeatherApiKey: jest.fn(() => ''),
     getAccuWeatherDefaultLocation: jest.fn(() => ''),
+    getNflEndpoint: jest.fn(() => 'https://api.sportsdata.io/v3/nfl/scores'),
+    getNflApiKey: jest.fn(() => ''),
+    getNflEnabled: jest.fn(() => false),
   },
 }));
 
 import { apiManager } from '../src/api/index';
 import { ollamaClient } from '../src/api/ollamaClient';
 import { comfyuiClient } from '../src/api/comfyuiClient';
+import { nflClient } from '../src/api/nflClient';
 
 describe('ApiManager', () => {
   beforeEach(() => {
@@ -52,11 +65,12 @@ describe('ApiManager', () => {
   });
 
   describe('refreshClients', () => {
-    it('should call refresh() on both clients', () => {
+    it('should call refresh() on all clients', () => {
       apiManager.refreshClients();
 
       expect(ollamaClient.refresh).toHaveBeenCalledTimes(1);
       expect(comfyuiClient.refresh).toHaveBeenCalledTimes(1);
+      expect(nflClient.refresh).toHaveBeenCalledTimes(1);
     });
   });
 
