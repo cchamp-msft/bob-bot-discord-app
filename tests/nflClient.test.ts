@@ -761,6 +761,201 @@ describe('NFLClient', () => {
     });
   });
 
+  describe('filterArticlesByKeyword', () => {
+    it('should filter articles containing keyword in headline', () => {
+      const articles = [
+        makeNewsArticle({ headline: 'Super Bowl LX Preview', description: 'Big game coming' }),
+        makeNewsArticle({ headline: 'Trade Deadline Updates', description: 'Teams make moves' }),
+        makeNewsArticle({ headline: 'Puppy Bowl is Back!', description: 'Adorable competition' }),
+      ];
+      const result = nflClient.filterArticlesByKeyword(articles, 'bowl');
+      expect(result).toHaveLength(2);
+      expect(result[0].headline).toContain('Bowl');
+      expect(result[1].headline).toContain('Bowl');
+    });
+
+    it('should filter articles containing keyword in description', () => {
+      const articles = [
+        makeNewsArticle({ headline: 'Game Preview', description: 'The road to the Super Bowl continues' }),
+        makeNewsArticle({ headline: 'Rookie Watch', description: 'Top draft picks shine' }),
+      ];
+      const result = nflClient.filterArticlesByKeyword(articles, 'bowl');
+      expect(result).toHaveLength(1);
+      expect(result[0].headline).toBe('Game Preview');
+    });
+
+    it('should be case-insensitive', () => {
+      const articles = [
+        makeNewsArticle({ headline: 'SUPER BOWL PREVIEW' }),
+        makeNewsArticle({ headline: 'super bowl preview' }),
+      ];
+      const result = nflClient.filterArticlesByKeyword(articles, 'Bowl');
+      expect(result).toHaveLength(2);
+    });
+
+    it('should return empty array when no articles match', () => {
+      const articles = [
+        makeNewsArticle({ headline: 'Trade Deadline' }),
+        makeNewsArticle({ headline: 'Injury Report' }),
+      ];
+      const result = nflClient.filterArticlesByKeyword(articles, 'bowl');
+      expect(result).toHaveLength(0);
+    });
+
+    it('should handle articles with missing description', () => {
+      const articles = [
+        makeNewsArticle({ headline: 'Bowl Game Preview', description: undefined }),
+      ];
+      const result = nflClient.filterArticlesByKeyword(articles, 'bowl');
+      expect(result).toHaveLength(1);
+    });
+  });
+
+  describe('formatSuperBowlContextForAI', () => {
+    it('should format a finished Super Bowl without emoji', () => {
+      const game = mapESPNEventToGame(superBowlEvent());
+      const text = nflClient.formatSuperBowlContextForAI(game);
+      expect(text).toContain('Super Bowl LX');
+      expect(text).toContain('Winner: Kansas City Chiefs');
+      expect(text).toContain('Allegiant Stadium');
+      expect(text).toContain('Status: Final');
+      expect(text).not.toContain('🏈');
+      expect(text).not.toContain('🏆');
+    });
+
+    it('should include team records', () => {
+      const game = mapESPNEventToGame(superBowlEvent());
+      const text = nflClient.formatSuperBowlContextForAI(game);
+      expect(text).toContain('16-3');
+      expect(text).toContain('15-4');
+    });
+
+    it('should format a scheduled Super Bowl with date and broadcast', () => {
+      const event = superBowlEvent();
+      event.competitions[0].status.type.state = 'pre';
+      event.competitions[0].status.type.completed = false;
+      event.competitions[0].competitors.forEach(c => { c.score = '0'; });
+      const game = mapESPNEventToGame(event);
+      const text = nflClient.formatSuperBowlContextForAI(game);
+      expect(text).toContain('Super Bowl LX');
+      expect(text).toContain('Status: Scheduled');
+      expect(text).toContain('Broadcast: FOX');
+    });
+
+    it('should format an in-progress Super Bowl with game clock', () => {
+      const event = superBowlEvent();
+      event.competitions[0].status = {
+        clock: 120,
+        displayClock: '2:00',
+        period: 4,
+        type: {
+          id: '2',
+          name: 'STATUS_IN_PROGRESS',
+          state: 'in',
+          completed: false,
+          description: 'In Progress',
+          detail: '2:00 - 4th Quarter',
+          shortDetail: '2:00 - 4th',
+        },
+      };
+      event.competitions[0].competitors[0].score = '17';
+      event.competitions[0].competitors[1].score = '21';
+      const game = mapESPNEventToGame(event);
+      const text = nflClient.formatSuperBowlContextForAI(game);
+      expect(text).toContain('Q4');
+      expect(text).toContain('Status: In Progress');
+      expect(text).not.toContain('🏈');
+    });
+  });
+
+  describe('handleSuperBowlReport', () => {
+    it('should combine game data and filtered news', async () => {
+      // Mock scoreboard with Super Bowl game
+      const sbResponse = makeESPNScoreboard([superBowlEvent()]);
+      mockInstance.get.mockResolvedValueOnce({ data: sbResponse });
+
+      // Mock news with bowl-related and unrelated articles
+      const articles = [
+        makeNewsArticle({ headline: 'Super Bowl LX Preview', description: 'Big game analysis' }),
+        makeNewsArticle({ headline: 'Trade Deadline Moves', description: 'Teams make deals' }),
+        makeNewsArticle({ headline: 'Puppy Bowl Returns', description: 'Adorable pets compete' }),
+      ];
+      mockInstance.get.mockResolvedValueOnce({ data: { articles } });
+
+      const result = await nflClient.handleRequest('', 'nfl superbowl report');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('Super Bowl Game Status');
+      expect(result.data?.text).toContain('Super Bowl LX');
+      expect(result.data?.text).toContain('Related News & Coverage');
+      expect(result.data?.text).toContain('Super Bowl LX Preview');
+      expect(result.data?.text).toContain('Puppy Bowl Returns');
+      expect(result.data?.text).not.toContain('Trade Deadline Moves');
+      expect(result.data?.games).toHaveLength(1);
+      expect(result.data?.articles).toHaveLength(2);
+    });
+
+    it('should handle missing Super Bowl game gracefully', async () => {
+      // getSuperBowlGame: first scoreboard call (no SB), fallback postseason (empty)
+      // fetchNews: news call — all run via Promise.all so interleaved
+      const articles = [
+        makeNewsArticle({ headline: 'Super Bowl Predictions', description: 'Who will win?' }),
+      ];
+      // Mock responses in order they are called:
+      // 1. getCurrentScoreboard (from getSuperBowlGame)
+      // 2. fetchNews happens in parallel — but since getSuperBowlGame calls fetchScoreboard
+      //    first, the first mock.get resolves for scoreboard
+      // Use mockImplementation to handle parallel calls by URL
+      mockInstance.get.mockImplementation((url: string, opts?: any) => {
+        if (url === '/scoreboard') {
+          // Return no Super Bowl games
+          return Promise.resolve({ data: makeESPNScoreboard([]) });
+        }
+        if (url === '/news') {
+          return Promise.resolve({ data: { articles } });
+        }
+        return Promise.reject(new Error(`Unexpected URL: ${url}`));
+      });
+
+      const result = await nflClient.handleRequest('', 'superbowl report');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('No Super Bowl game data currently available');
+      expect(result.data?.text).toContain('Super Bowl Predictions');
+      expect(result.data?.games).toBeUndefined();
+      expect(result.data?.articles).toHaveLength(1);
+    });
+
+    it('should handle no matching news articles', async () => {
+      const sbResponse = makeESPNScoreboard([superBowlEvent()]);
+      mockInstance.get.mockResolvedValueOnce({ data: sbResponse });
+
+      // News with no bowl-related articles
+      const articles = [
+        makeNewsArticle({ headline: 'Trade Deadline', description: 'Moves made' }),
+      ];
+      mockInstance.get.mockResolvedValueOnce({ data: { articles } });
+
+      const result = await nflClient.handleRequest('', 'nfl superbowl report');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('No bowl-related news articles found');
+      expect(result.data?.articles).toBeUndefined();
+    });
+
+    it('should dispatch for both "nfl superbowl report" and "superbowl report"', async () => {
+      for (const keyword of ['nfl superbowl report', 'superbowl report']) {
+        (nflClient as any).cache.clear();
+        jest.clearAllMocks();
+
+        const sbResponse = makeESPNScoreboard([superBowlEvent()]);
+        mockInstance.get.mockResolvedValueOnce({ data: sbResponse });
+        mockInstance.get.mockResolvedValueOnce({ data: { articles: [] } });
+
+        const result = await nflClient.handleRequest('', keyword);
+        expect(result.success).toBe(true);
+        expect(result.data?.text).toContain('Super Bowl Game Status');
+      }
+    });
+  });
+
   // ── Scoreboard API calls ──────────────────────────────────
 
   describe('fetchScoreboard', () => {
@@ -1162,6 +1357,14 @@ describe('NFLClient', () => {
 
     it('should return true for "nfl news report"', () => {
       expect(NFLClient.allowsEmptyContent('nfl news report')).toBe(true);
+    });
+
+    it('should return true for "nfl superbowl report"', () => {
+      expect(NFLClient.allowsEmptyContent('nfl superbowl report')).toBe(true);
+    });
+
+    it('should return true for "superbowl report"', () => {
+      expect(NFLClient.allowsEmptyContent('superbowl report')).toBe(true);
     });
 
     it('should return false for "nfl score" (requires team)', () => {

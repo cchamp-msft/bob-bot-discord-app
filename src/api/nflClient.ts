@@ -588,6 +588,105 @@ export class NFLClient {
     return lines.join('\n');
   }
 
+  /**
+   * Filter news articles by keyword presence in headline or description.
+   * Case-insensitive matching.
+   */
+  filterArticlesByKeyword(articles: ESPNNewsArticle[], keyword: string): ESPNNewsArticle[] {
+    const lower = keyword.toLowerCase();
+    return articles.filter(a => {
+      const headline = (a.headline || '').toLowerCase();
+      const description = (a.description || '').toLowerCase();
+      return headline.includes(lower) || description.includes(lower);
+    });
+  }
+
+  /**
+   * Format Super Bowl game data as plain-text AI-readable context.
+   * Unlike formatSuperBowl(), this omits emoji formatting for cleaner AI input.
+   */
+  formatSuperBowlContextForAI(game: NFLGameScore): string {
+    const lines: string[] = [];
+    const espn = game._espn;
+    const comp = espn?.competitions?.[0];
+
+    const sbHeadline = comp?.notes?.find(n => n.headline?.toLowerCase().includes('super bowl'))?.headline;
+    lines.push(sbHeadline || 'Super Bowl');
+
+    if (game.StadiumDetails) {
+      const stadium = game.StadiumDetails;
+      lines.push(`Venue: ${stadium.Name}, ${stadium.City}, ${stadium.State}`);
+    }
+
+    const away = this.getTeamName(game.AwayTeam);
+    const home = this.getTeamName(game.HomeTeam);
+
+    const awayComp = comp?.competitors?.find((c: ESPNCompetitor) => c.homeAway === 'away');
+    const homeComp = comp?.competitors?.find((c: ESPNCompetitor) => c.homeAway === 'home');
+    const awayRecord = awayComp?.records?.find(r => r.type === 'total')?.summary;
+    const homeRecord = homeComp?.records?.find(r => r.type === 'total')?.summary;
+
+    if (game.Status === 'Scheduled') {
+      const dateStr = game.Date ? new Date(game.Date).toLocaleString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+      }) : 'TBD';
+      lines.push(`${away}${awayRecord ? ` (${awayRecord})` : ''} vs ${home}${homeRecord ? ` (${homeRecord})` : ''}`);
+      lines.push(`Date: ${dateStr}`);
+      if (game.Channel) lines.push(`Broadcast: ${game.Channel}`);
+      lines.push('Status: Scheduled');
+    } else if (game.Status === 'InProgress') {
+      const awayScore = game.AwayScore ?? 0;
+      const homeScore = game.HomeScore ?? 0;
+      const quarter = game.Quarter || '?';
+      const time = game.TimeRemaining || '';
+      const qDisplay = quarter === 'Half' ? 'Halftime' : `Q${quarter} ${time}`.trim();
+
+      lines.push(`${away}${awayRecord ? ` (${awayRecord})` : ''}: ${awayScore}`);
+      lines.push(`${home}${homeRecord ? ` (${homeRecord})` : ''}: ${homeScore}`);
+      lines.push(`Game Clock: ${qDisplay}`);
+
+      if (comp?.situation) {
+        const sit = comp.situation;
+        const parts: string[] = [];
+        if (sit.possession) {
+          const possTeam = sit.possession === awayComp?.id ? game.AwayTeam : game.HomeTeam;
+          parts.push(`Possession: ${possTeam}`);
+        }
+        if (sit.down && sit.distance) {
+          parts.push(`${sit.down}${ordinalSuffix(sit.down)} & ${sit.distance}`);
+        }
+        if (sit.yardLine) {
+          parts.push(`at ${sit.yardLine}-yard line`);
+        }
+        if (sit.isRedZone) {
+          parts.push('Red Zone');
+        }
+        if (parts.length > 0) lines.push(parts.join(' | '));
+
+
+        if (sit.lastPlay?.text) {
+          lines.push(`Last Play: ${sit.lastPlay.text}`);
+        }
+      }
+
+      if (game.Channel) lines.push(`Broadcast: ${game.Channel}`);
+      lines.push('Status: In Progress');
+    } else {
+      const awayScore = game.AwayScore ?? 0;
+      const homeScore = game.HomeScore ?? 0;
+      const suffix = game.Status === 'F/OT' ? ' (OT)' : '';
+      const winner = awayScore > homeScore ? away : home;
+
+      lines.push(`${away}${awayRecord ? ` (${awayRecord})` : ''}: ${awayScore}`);
+      lines.push(`${home}${homeRecord ? ` (${homeRecord})` : ''}: ${homeScore}`);
+      lines.push(`Winner: ${winner}${suffix}`);
+      lines.push(`Status: ${game.Status}`);
+    }
+
+    return lines.join('\n');
+  }
+
   // ── Formatting ────────────────────────────────────────────────
 
   /**
@@ -783,6 +882,10 @@ export class NFLClient {
     }
 
     try {
+      if (lowerKeyword === 'nfl superbowl report' || lowerKeyword === 'superbowl report') {
+        return await this.handleSuperBowlReport(content, signal);
+      }
+
       if (lowerKeyword === 'superbowl') {
         return await this.handleSuperBowl(signal);
       }
@@ -829,6 +932,46 @@ export class NFLClient {
     const text = this.formatSuperBowl(game);
     this.logResponsePayload('superbowl', text);
     return { success: true, data: { text, games: [game] } };
+  }
+
+  private async handleSuperBowlReport(_content: string, signal?: AbortSignal): Promise<NFLResponse> {
+    // Fetch game data and news in parallel
+    const [game, articles] = await Promise.all([
+      this.getSuperBowlGame(signal),
+      this.fetchNews(15, signal),
+    ]);
+
+    // Filter news for bowl-related articles
+    const filteredArticles = this.filterArticlesByKeyword(articles, 'bowl');
+
+    // Build combined AI context
+    const sections: string[] = [];
+
+    sections.push('Super Bowl Game Status');
+    if (game) {
+      sections.push(this.formatSuperBowlContextForAI(game));
+    } else {
+      sections.push('No Super Bowl game data currently available.');
+    }
+
+    sections.push('');
+    sections.push('Related News & Coverage');
+    if (filteredArticles.length > 0) {
+      sections.push(this.formatNewsContextForAI(filteredArticles));
+    } else {
+      sections.push('No bowl-related news articles found.');
+    }
+
+    const text = sections.join('\n');
+    this.logResponsePayload('superbowl report', text);
+    return {
+      success: true,
+      data: {
+        text,
+        games: game ? [game] : undefined,
+        articles: filteredArticles.length > 0 ? filteredArticles : undefined,
+      },
+    };
   }
 
   private async handleAllScores(content: string, signal?: AbortSignal): Promise<NFLResponse> {
@@ -1013,7 +1156,8 @@ export class NFLClient {
   static allowsEmptyContent(keyword: string): boolean {
     const lower = keyword.toLowerCase();
     return lower === 'nfl scores' || lower === 'superbowl' || lower === 'nfl'
-      || lower === 'nfl news' || lower === 'nfl news report';
+      || lower === 'nfl news' || lower === 'nfl news report'
+      || lower === 'nfl superbowl report' || lower === 'superbowl report';
   }
 }
 
