@@ -8,6 +8,8 @@ interface QueueEntry<T = unknown> {
   executor: (signal: AbortSignal) => Promise<T>;
   resolve: (value: T) => void;
   reject: (reason: unknown) => void;
+  /** Optional external signal from the caller for cooperative cancellation. */
+  callerSignal?: AbortSignal;
 }
 
 class RequestQueue {
@@ -67,7 +69,8 @@ class RequestQueue {
     requester: string,
     keyword: string,
     timeout: number,
-    executor: ((signal: AbortSignal) => Promise<T>) | (() => Promise<T>)
+    executor: ((signal: AbortSignal) => Promise<T>) | (() => Promise<T>),
+    callerSignal?: AbortSignal
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const entry: QueueEntry<T> = {
@@ -78,6 +81,7 @@ class RequestQueue {
         executor: executor as (signal: AbortSignal) => Promise<T>,
         resolve,
         reject,
+        callerSignal,
       };
 
       this.getQueue(api).push(entry as unknown as QueueEntry);
@@ -97,6 +101,13 @@ class RequestQueue {
 
     while (queue.length > 0) {
       const entry = queue.shift()!;
+
+      // Skip entries whose caller has already cancelled — no point executing
+      if (entry.callerSignal?.aborted) {
+        entry.reject(new Error('Request was cancelled before execution'));
+        continue;
+      }
+
       this.setActive(api, true);
 
       const controller = new AbortController();
@@ -110,8 +121,13 @@ class RequestQueue {
           }, entry.timeout * 1000);
         });
 
+        // Combine the queue's timeout signal with any caller-provided signal
+        const effectiveSignal = entry.callerSignal
+          ? AbortSignal.any([controller.signal, entry.callerSignal])
+          : controller.signal;
+
         const result = await Promise.race([
-          entry.executor(controller.signal),
+          entry.executor(effectiveSignal),
           timeoutPromise,
         ]);
         entry.resolve(result);

@@ -504,6 +504,19 @@ describe('NFLClient', () => {
       }
     });
 
+    it('should propagate abort errors from getSuperBowlGame path', async () => {
+      const abortError = new DOMException('The operation was aborted', 'AbortError');
+
+      // getCurrentSeason succeeds
+      mockInstance.get.mockResolvedValueOnce({ data: 2025 });
+      // getScores(2025, 22) — abort during Super Bowl week fetch
+      mockInstance.get.mockRejectedValueOnce(abortError);
+
+      const result = await nflClient.handleRequest('', 'superbowl');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('cancelled');
+    });
+
     it('should reject with AbortError when signal is already aborted', async () => {
       const controller = new AbortController();
       controller.abort();
@@ -511,9 +524,32 @@ describe('NFLClient', () => {
       mockInstance.get.mockRejectedValue(new DOMException('The operation was aborted', 'AbortError'));
 
       const result = await nflClient.handleRequest('', 'nfl scores', controller.signal);
-      // With aborted signal, axios calls reject; getCurrentSeason/getCurrentWeek
-      // swallow the error and return null/0, leading to an empty scores result
+      // Abort errors now surface as a user-facing error instead of empty data
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('cancelled');
+    });
+
+    it('should surface axios CanceledError as timeout message', async () => {
+      const canceledError = new Error('canceled');
+      canceledError.name = 'CanceledError';
+      (canceledError as any).code = 'ERR_CANCELED';
+
+      mockInstance.get.mockRejectedValue(canceledError);
+
+      const result = await nflClient.handleRequest('', 'nfl scores');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('cancelled');
+    });
+
+    it('should still swallow non-abort API errors in fetch helpers', async () => {
+      // Non-abort errors in getCurrentSeason/getCurrentWeek return null,
+      // leading to empty scores — normal "no games" behavior
+      mockInstance.get.mockRejectedValueOnce(new Error('Server error'));
+      mockInstance.get.mockRejectedValueOnce(new Error('Server error'));
+
+      const result = await nflClient.handleRequest('', 'nfl scores');
       expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('No NFL games');
     });
   });
 });

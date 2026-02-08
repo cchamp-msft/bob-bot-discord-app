@@ -249,5 +249,91 @@ describe('RequestQueue', () => {
       expect(results).toContain('p2-ok');
       expect(results).toHaveLength(2);
     });
+
+    it('should combine caller signal with timeout signal via AbortSignal.any', async () => {
+      let receivedSignal: AbortSignal | undefined;
+
+      const callerController = new AbortController();
+
+      await requestQueue.execute(
+        'ollama', 'user1', 'ask', 60,
+        async (sig) => {
+          receivedSignal = sig;
+          return 'done';
+        },
+        callerController.signal
+      );
+
+      // The executor should receive a combined signal (not the raw caller signal)
+      expect(receivedSignal).toBeDefined();
+      // It should not be the caller signal directly (it's a composite)
+      expect(receivedSignal).not.toBe(callerController.signal);
+      // When the caller aborts, the combined signal should also abort
+      expect(receivedSignal!.aborted).toBe(false);
+      callerController.abort();
+      expect(receivedSignal!.aborted).toBe(true);
+    });
+
+    it('should pass queue signal directly when no caller signal is provided', async () => {
+      let receivedSignal: AbortSignal | undefined;
+
+      await requestQueue.execute(
+        'ollama', 'user1', 'ask', 60,
+        async (sig) => {
+          receivedSignal = sig;
+          return 'done';
+        }
+      );
+
+      // Without a caller signal, the executor gets the queue's own signal
+      expect(receivedSignal).toBeDefined();
+      expect(receivedSignal!.aborted).toBe(false);
+    });
+
+    it('should reject when caller signal is already aborted', async () => {
+      const callerController = new AbortController();
+      callerController.abort();
+
+      const promise = requestQueue.execute(
+        'ollama', 'user1', 'ask', 60,
+        async (sig) => {
+          // Should never reach here — entry is skipped before execution
+          return 'done';
+        },
+        callerController.signal
+      );
+
+      await expect(promise).rejects.toThrow('cancelled');
+    });
+
+    it('should skip queued entry without invoking executor when caller aborts while waiting', async () => {
+      const callerController = new AbortController();
+      let executorCalled = false;
+
+      // First request: holds the lock long enough for us to abort the second
+      const p1 = requestQueue.execute(
+        'ollama', 'user1', 'ask', 10,
+        async () => {
+          // Abort the second request's signal while it's queued
+          callerController.abort();
+          await new Promise(r => setTimeout(r, 30));
+          return 'first';
+        }
+      );
+
+      // Second request: enqueued behind p1 with a caller signal
+      const p2 = requestQueue.execute(
+        'ollama', 'user2', 'ask', 10,
+        async () => {
+          executorCalled = true;
+          return 'second';
+        },
+        callerController.signal
+      );
+
+      await expect(p1).resolves.toBe('first');
+      await expect(p2).rejects.toThrow('cancelled');
+      expect(executorCalled).toBe(false);
+    });
   });
 });

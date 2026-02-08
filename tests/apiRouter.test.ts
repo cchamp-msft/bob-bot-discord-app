@@ -349,7 +349,8 @@ describe('ApiRouter', () => {
         'testuser',
         'nfl scores',
         30,
-        expect.any(Function)
+        expect.any(Function),
+        undefined
       );
     });
 
@@ -424,6 +425,87 @@ describe('ApiRouter', () => {
       expect(result.finalApi).toBe('nfl');
       expect(result.finalResponse.success).toBe(false);
       expect(result.stages).toHaveLength(1);
+    });
+  });
+
+  describe('executeRoutedRequest — signal forwarding', () => {
+    it('should pass caller signal to requestQueue.execute', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'chat',
+        api: 'ollama',
+        timeout: 300,
+        description: 'Chat',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Hello!' },
+      });
+
+      const controller = new AbortController();
+      await executeRoutedRequest(keyword, 'hello', 'testuser', undefined, controller.signal);
+
+      // requestQueue.execute should have been called with the signal as 6th arg
+      expect(mockExecute).toHaveBeenCalledWith(
+        'ollama', 'testuser', 'chat', 300,
+        expect.any(Function),
+        controller.signal
+      );
+    });
+
+    it('should pass caller signal for NFL requests too', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'nfl scores',
+        api: 'nfl',
+        timeout: 30,
+        description: 'NFL scores',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Scores', games: [] },
+      });
+
+      const controller = new AbortController();
+      await executeRoutedRequest(keyword, '', 'testuser', undefined, controller.signal);
+
+      expect(mockExecute).toHaveBeenCalledWith(
+        'nfl', 'testuser', 'nfl scores', 30,
+        expect.any(Function),
+        controller.signal
+      );
+    });
+
+    it('should pass caller signal to final Ollama pass', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'nfl',
+        api: 'nfl',
+        timeout: 60,
+        description: 'NFL',
+        finalOllamaPass: true,
+      };
+
+      // Primary NFL request
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'NFL scores data', games: [] },
+      });
+
+      // Final Ollama pass
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Final result' },
+      });
+
+      const controller = new AbortController();
+      await executeRoutedRequest(keyword, 'what happened in the nfl?', 'testuser', undefined, controller.signal);
+
+      // Both calls should receive the signal as 6th arg
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+      const finalPassCall = mockExecute.mock.calls[1];
+      expect(finalPassCall[0]).toBe('ollama');
+      expect(finalPassCall[2]).toBe('nfl:final');
+      expect(finalPassCall[5]).toBe(controller.signal);
     });
   });
 });

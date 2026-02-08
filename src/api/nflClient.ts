@@ -3,6 +3,19 @@ import { config } from '../utils/config';
 import { logger } from '../utils/logger';
 import { NFLGameScore, NFLResponse, NFLHealthResult } from '../types';
 
+/**
+ * Detect whether an error is an abort/cancellation error.
+ * Covers native AbortError and axios CanceledError.
+ */
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  if (error instanceof Error) {
+    if (error.name === 'AbortError' || error.name === 'CanceledError') return true;
+    if ('code' in error && (error as { code?: string }).code === 'ERR_CANCELED') return true;
+  }
+  return false;
+}
+
 const NFL_BASE_URL = 'https://api.sportsdata.io/v3/nfl/scores';
 
 /** NFL team abbreviation → full name map for fuzzy team lookup. */
@@ -180,6 +193,7 @@ class NFLClient {
       this.cache.set('currentWeek', week, 3600); // cache 1 hour
       return week;
     } catch (error) {
+      if (isAbortError(error)) throw error;
       logger.logError('nfl', `Failed to fetch current week: ${error}`);
       return null;
     }
@@ -204,6 +218,7 @@ class NFLClient {
       this.cache.set('currentSeason', season, 86400); // cache 24 hours
       return season;
     } catch (error) {
+      if (isAbortError(error)) throw error;
       logger.logError('nfl', `Failed to fetch current season: ${error}`);
       return null;
     }
@@ -234,6 +249,7 @@ class NFLClient {
 
       return games;
     } catch (error) {
+      if (isAbortError(error)) throw error;
       logger.logError('nfl', `Failed to fetch scores for ${season} week ${week}: ${error}`);
       return [];
     }
@@ -288,7 +304,8 @@ class NFLClient {
 
         // Fallback: if only one game in the week, it's likely the Super Bowl
         if (games.length === 1 && games[0].SeasonType === 3) return games[0];
-      } catch {
+      } catch (error) {
+        if (isAbortError(error)) throw error;
         // Week doesn't exist yet, continue
       }
     }
@@ -499,6 +516,9 @@ class NFLClient {
 
       return { success: false, error: `Unknown NFL keyword: ${keyword}` };
     } catch (error) {
+      if (isAbortError(error)) {
+        return { success: false, error: 'NFL request was cancelled or timed out. Please try again.' };
+      }
       const msg = error instanceof Error ? error.message : String(error);
       logger.logError('nfl', `NFL request failed: ${msg}`);
       return { success: false, error: `NFL API error: ${msg}` };

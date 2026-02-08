@@ -65,7 +65,8 @@ export async function executeRoutedRequest(
       requester,
       keywordConfig.keyword,
       keywordConfig.timeout,
-      (sig) => nflClient.handleRequest(content, keywordConfig.keyword, sig)
+      (sig) => nflClient.handleRequest(content, keywordConfig.keyword, sig),
+      signal
     ) as NFLResponse;
   } else {
     primaryResult = await requestQueue.execute(
@@ -83,7 +84,8 @@ export async function executeRoutedRequest(
           conversationHistory?.length ? conversationHistory : undefined,
           sig,
           keywordConfig.accuweatherMode
-        )
+        ),
+      signal
     ) as ComfyUIResponse | OllamaResponse | AccuWeatherResponse;
   }
 
@@ -142,7 +144,8 @@ export async function executeRoutedRequest(
           config.getOllamaFinalPassModel() || undefined,
           conversationHistory?.length ? conversationHistory : undefined,
           sig
-        )
+        ),
+      signal
     ) as OllamaResponse;
 
     const finalExtracted = extractStageResult('ollama', finalResult);
