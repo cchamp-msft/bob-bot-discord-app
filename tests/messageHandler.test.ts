@@ -57,7 +57,17 @@ jest.mock('../src/utils/fileHandler', () => ({
   fileHandler: { saveFromUrl: jest.fn(), shouldAttachFile: jest.fn(), readFile: jest.fn() },
 }));
 
+jest.mock('../src/utils/keywordClassifier', () => ({
+  classifyIntent: jest.fn().mockResolvedValue({ keywordConfig: null, wasClassified: false }),
+}));
+
+jest.mock('../src/utils/apiRouter', () => ({
+  executeRoutedRequest: jest.fn(),
+}));
+
 import { config } from '../src/utils/config';
+import { classifyIntent } from '../src/utils/keywordClassifier';
+import { executeRoutedRequest } from '../src/utils/apiRouter';
 
 // We need to test the rate-limit behavior. The MessageHandler class is not
 // exported directly, but the singleton is. We can access its private method.
@@ -711,5 +721,195 @@ describe('MessageHandler reply-only-keyword for comfyui', () => {
     const requestCalls = logger.logRequest.mock.calls;
     const lastCall = requestCalls[requestCalls.length - 1];
     expect(lastCall[1]).toContain('a beautiful sunset');
+  });
+});
+
+describe('MessageHandler AI-classified routing path', () => {
+  const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
+  const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+
+  function createMentionedMessage(content: string): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username: 'testuser' },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: 0,
+        messages: { cache: new Map() },
+        send: jest.fn(),
+      },
+      guild: { name: 'TestGuild' },
+      mentions: { has: jest.fn(() => true) },
+      reference: null,
+      content,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // No regex-matched keywords so AI classification kicks in
+    (config.getKeywords as jest.Mock).mockReturnValue([]);
+  });
+
+  afterEach(() => {
+    // Reset default
+    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
+  });
+
+  it('should use routed pipeline when AI-classified keyword has routeApi', async () => {
+    const routedKeyword = {
+      keyword: 'generate',
+      api: 'comfyui' as const,
+      timeout: 300,
+      description: 'Image gen',
+      routeApi: 'ollama' as const,
+    };
+
+    mockClassifyIntent.mockResolvedValueOnce({
+      keywordConfig: routedKeyword,
+      wasClassified: true,
+    });
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'routed response' } },
+      finalApi: 'ollama',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> draw me a sunset');
+    await messageHandler.handleMessage(msg);
+
+    // Should have called the routed pipeline
+    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
+      routedKeyword,
+      expect.stringContaining('draw me a sunset'),
+      'testuser',
+      undefined
+    );
+
+    // Processing message should have been edited with the response
+    const processingMessage = await msg.reply.mock.results[0].value;
+    expect(processingMessage.edit).toHaveBeenCalled();
+  });
+
+  it('should use routed pipeline when AI-classified keyword has finalOllamaPass', async () => {
+    const routedKeyword = {
+      keyword: 'analyze',
+      api: 'ollama' as const,
+      timeout: 300,
+      description: 'Analyze content',
+      finalOllamaPass: true,
+    };
+
+    mockClassifyIntent.mockResolvedValueOnce({
+      keywordConfig: routedKeyword,
+      wasClassified: true,
+    });
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'final result' } },
+      finalApi: 'ollama',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> analyze this data');
+    await messageHandler.handleMessage(msg);
+
+    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
+      routedKeyword,
+      expect.stringContaining('analyze this data'),
+      'testuser',
+      undefined
+    );
+  });
+
+  it('should not strip keyword from content when AI-classified', async () => {
+    const routedKeyword = {
+      keyword: 'generate',
+      api: 'comfyui' as const,
+      timeout: 300,
+      description: 'Image gen',
+      routeApi: 'ollama' as const,
+    };
+
+    mockClassifyIntent.mockResolvedValueOnce({
+      keywordConfig: routedKeyword,
+      wasClassified: true,
+    });
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'ok' } },
+      finalApi: 'ollama',
+      stages: [],
+    });
+
+    // Content doesn't literally have "generate" — AI inferred it
+    const msg = createMentionedMessage('<@bot-123> make me a picture of a cat');
+    await messageHandler.handleMessage(msg);
+
+    // Content should be passed unmodified (no keyword stripping)
+    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
+      routedKeyword,
+      'make me a picture of a cat',
+      'testuser',
+      undefined
+    );
+  });
+
+  it('should fall back to default chat when AI classification returns no match', async () => {
+    mockClassifyIntent.mockResolvedValueOnce({
+      keywordConfig: null,
+      wasClassified: true,
+    });
+
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValue({
+      success: true,
+      data: { text: 'chat response' },
+    });
+
+    const msg = createMentionedMessage('<@bot-123> random unclassified message');
+    await messageHandler.handleMessage(msg);
+
+    // Should NOT have used the routed pipeline
+    expect(mockExecuteRoutedRequest).not.toHaveBeenCalled();
+
+    // Should have used the direct execution path
+    expect(requestQueue.execute).toHaveBeenCalled();
+  });
+
+  it('should handle routed pipeline error gracefully', async () => {
+    const routedKeyword = {
+      keyword: 'generate',
+      api: 'comfyui' as const,
+      timeout: 300,
+      description: 'Image gen',
+      routeApi: 'ollama' as const,
+    };
+
+    mockClassifyIntent.mockResolvedValueOnce({
+      keywordConfig: routedKeyword,
+      wasClassified: true,
+    });
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: false, error: 'Pipeline failed' },
+      finalApi: 'ollama',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> generate something');
+    await messageHandler.handleMessage(msg);
+
+    // Should have sent an error response to the user
+    const processingMessage = await msg.reply.mock.results[0].value;
+    expect(processingMessage.edit).toHaveBeenCalledWith(
+      expect.stringContaining('⚠️')
+    );
   });
 });

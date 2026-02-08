@@ -4,19 +4,28 @@
  */
 
 jest.mock('discord.js', () => ({
-  SlashCommandBuilder: jest.fn().mockImplementation(() => ({
-    setName: jest.fn().mockReturnThis(),
-    setDescription: jest.fn().mockReturnThis(),
-    addStringOption: jest.fn().mockImplementation(function (this: any, fn: Function) {
-      fn({
-        setName: jest.fn().mockReturnThis(),
-        setDescription: jest.fn().mockReturnThis(),
-        setRequired: jest.fn().mockReturnThis(),
-      });
-      return this;
-    }),
-    name: 'generate',
-  })),
+  SlashCommandBuilder: jest.fn().mockImplementation(() => {
+    const builder: any = {
+      setName: jest.fn().mockImplementation(function (this: any, n: string) { this.name = n; return this; }),
+      setDescription: jest.fn().mockReturnThis(),
+      addStringOption: jest.fn().mockImplementation(function (this: any, fn: Function) {
+        const option: any = {
+          setName: jest.fn().mockReturnValue(null),
+          setDescription: jest.fn().mockReturnValue(null),
+          setRequired: jest.fn().mockReturnValue(null),
+          addChoices: jest.fn().mockReturnValue(null),
+        };
+        option.setName.mockReturnValue(option);
+        option.setDescription.mockReturnValue(option);
+        option.setRequired.mockReturnValue(option);
+        option.addChoices.mockReturnValue(option);
+        fn(option);
+        return this;
+      }),
+      name: '',
+    };
+    return builder;
+  }),
   EmbedBuilder: jest.fn().mockImplementation(() => ({
     setColor: jest.fn().mockReturnThis(),
     setTitle: jest.fn().mockReturnThis(),

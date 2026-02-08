@@ -23,9 +23,22 @@ jest.mock('../src/api/comfyuiClient', () => {
   return { comfyuiClient: client };
 });
 
+jest.mock('../src/api/accuweatherClient', () => {
+  const client = {
+    refresh: jest.fn(),
+    getWeather: jest.fn(),
+    isHealthy: jest.fn(),
+    testConnection: jest.fn(),
+  };
+  return { accuweatherClient: client };
+});
+
 jest.mock('../src/utils/config', () => ({
   config: {
     getOllamaModel: jest.fn(() => 'llama2'),
+    getAccuWeatherEndpoint: jest.fn(() => 'https://dataservice.accuweather.com'),
+    getAccuWeatherApiKey: jest.fn(() => ''),
+    getAccuWeatherDefaultLocation: jest.fn(() => ''),
   },
 }));
 

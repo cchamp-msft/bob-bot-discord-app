@@ -252,5 +252,117 @@ describe('ConfigWriter', () => {
       const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
       expect(content.keywords).toHaveLength(0);
     });
+
+    it('should accept valid routeApi field', async () => {
+      await configWriter.updateKeywords([
+        { ...validKeyword, routeApi: 'comfyui' },
+      ]);
+
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].routeApi).toBe('comfyui');
+    });
+
+    it('should accept routeApi "external"', async () => {
+      await configWriter.updateKeywords([
+        { ...validKeyword, routeApi: 'external' },
+      ]);
+
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].routeApi).toBe('external');
+    });
+
+    it('should reject invalid routeApi value', async () => {
+      await expect(
+        configWriter.updateKeywords([
+          { ...validKeyword, routeApi: 'invalid' as any },
+        ])
+      ).rejects.toThrow('invalid routeApi');
+    });
+
+    it('should accept valid routeModel field', async () => {
+      await configWriter.updateKeywords([
+        { ...validKeyword, routeModel: 'llama3' },
+      ]);
+
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].routeModel).toBe('llama3');
+    });
+
+    it('should reject non-string routeModel', async () => {
+      await expect(
+        configWriter.updateKeywords([
+          { ...validKeyword, routeModel: 123 as any },
+        ])
+      ).rejects.toThrow('invalid routeModel');
+    });
+
+    it('should accept valid finalOllamaPass field', async () => {
+      await configWriter.updateKeywords([
+        { ...validKeyword, finalOllamaPass: true },
+      ]);
+
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].finalOllamaPass).toBe(true);
+    });
+
+    it('should reject non-boolean finalOllamaPass', async () => {
+      await expect(
+        configWriter.updateKeywords([
+          { ...validKeyword, finalOllamaPass: 'yes' as any },
+        ])
+      ).rejects.toThrow('invalid finalOllamaPass');
+    });
+
+    it('should persist keywords with all routing fields', async () => {
+      const full = {
+        ...validKeyword,
+        routeApi: 'comfyui' as const,
+        routeModel: 'specialized',
+        finalOllamaPass: true,
+      };
+      await configWriter.updateKeywords([full]);
+
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0]).toMatchObject({
+        keyword: 'test',
+        api: 'ollama',
+        routeApi: 'comfyui',
+        routeModel: 'specialized',
+        finalOllamaPass: true,
+      });
+    });
+
+    it('should accept keywords without optional routing fields', async () => {
+      await configWriter.updateKeywords([validKeyword]);
+
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].routeApi).toBeUndefined();
+      expect(content.keywords[0].routeModel).toBeUndefined();
+      expect(content.keywords[0].finalOllamaPass).toBeUndefined();
+    });
+
+    it('should reject null entry', async () => {
+      await expect(
+        configWriter.updateKeywords([null as any])
+      ).rejects.toThrow('Invalid keyword entry at index 0');
+    });
+
+    it('should reject undefined entry', async () => {
+      await expect(
+        configWriter.updateKeywords([undefined as any])
+      ).rejects.toThrow('Invalid keyword entry at index 0');
+    });
+
+    it('should reject entry missing keyword field', async () => {
+      await expect(
+        configWriter.updateKeywords([{ api: 'ollama', timeout: 300, description: 'no keyword' } as any])
+      ).rejects.toThrow('missing "keyword"');
+    });
+
+    it('should report correct index for malformed entry', async () => {
+      await expect(
+        configWriter.updateKeywords([validKeyword, null as any])
+      ).rejects.toThrow('at index 1');
+    });
   });
 });
