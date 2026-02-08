@@ -36,7 +36,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **Weather→AI routing** — weather data piped through Ollama for AI-powered weather reports via `finalOllamaPass`
 - ✅ **Global final-pass model** — configurable Ollama model for all final-pass refinements
 - ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
-- ✅ **NFL commands** — `nfl scores`, `nfl score <team>`, `superbowl`, `nfl news`, `nfl news report`, and `nfl` (AI-enhanced) keywords
+- ✅ **NFL commands** — `nfl scores`, `nfl score <team>`, `superbowl`, `superbowl report`, `nfl superbowl report`, `nfl news`, `nfl news report`, and `nfl` (AI-enhanced) keywords
 
 ## Project Structure
 
@@ -118,7 +118,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`, `NFL_SUPERBOWL_REPORT_PROMPT`
 
 ### Running the Bot
 
@@ -177,7 +177,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **Connection Status**: Live indicator showing stopped / connecting / running / error
 - **API Endpoints**: Configure ComfyUI/Ollama/AccuWeather/NFL URLs with live connection testing
 - **AccuWeather**: API key (write-only), default location, endpoint configuration, and test connection with location resolution
-- **NFL**: Enabled toggle, endpoint configuration, and test connection (no API key needed — ESPN public API)
+- **NFL**: Enabled toggle, endpoint configuration, Super Bowl report prompt, and test connection (no API key needed — ESPN public API)
 - **Ollama Model Selection**: Test connection auto-discovers available models; select and save desired model
 - **Ollama System Prompt**: Configurable system prompt sets the bot's personality; reset-to-default button included
 - **ComfyUI Workflow Upload**: Upload a workflow JSON file with `%prompt%` placeholder validation
@@ -198,6 +198,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - Ollama system prompt
 - AccuWeather API key and default location
 - NFL enabled state
+- NFL Super Bowl report prompt
 - Default workflow parameters (model, size, steps, sampler, scheduler, denoise)
 - Error message and rate limit
 - Reply chain settings (enabled, max depth, max tokens)
