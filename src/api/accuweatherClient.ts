@@ -310,7 +310,10 @@ class AccuWeatherClient {
       return zipMatch[1];
     }
 
-    return '';
+    // Fallback: treat the entire input as a location name.
+    // This handles keyword-stripped prompts (e.g. "new york" after
+    // the message handler removed the "weather" keyword).
+    return cleaned;
   }
 
   /**

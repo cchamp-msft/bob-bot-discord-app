@@ -140,8 +140,14 @@ describe('AccuWeatherClient', () => {
       expect(accuweatherClient.extractLocation('what is 98101 looking like')).toBe('98101');
     });
 
-    it('should return empty string when no location found', () => {
-      expect(accuweatherClient.extractLocation('hello world')).toBe('');
+    it('should return empty string for empty input', () => {
+      expect(accuweatherClient.extractLocation('')).toBe('');
+      expect(accuweatherClient.extractLocation('   ')).toBe('');
+    });
+
+    it('should return entire input when keyword already stripped', () => {
+      expect(accuweatherClient.extractLocation('new york')).toBe('new york');
+      expect(accuweatherClient.extractLocation('Los Angeles')).toBe('Los Angeles');
     });
 
     it('should handle "what\'s the weather in <city>"', () => {
@@ -439,7 +445,7 @@ describe('AccuWeatherClient', () => {
 
     it('should return error when no location found and no default', async () => {
       (config.getAccuWeatherDefaultLocation as jest.Mock).mockReturnValue('');
-      const result = await accuweatherClient.getWeather('hello', 'testuser');
+      const result = await accuweatherClient.getWeather('', 'testuser');
       expect(result.success).toBe(false);
       expect(result.error).toContain('No location specified');
     });
