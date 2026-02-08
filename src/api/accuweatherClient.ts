@@ -87,6 +87,30 @@ function getWeatherEmoji(iconCode: number): string {
   }
 }
 
+/**
+ * Map a temperature to a gauge emoji representing comfort level.
+ * Accepts both °F and °C via the `unit` parameter (defaults to 'F').
+ *
+ * Levels (°F thresholds):
+ *  - 🥶  0°F and below  (Arctic!)
+ *  - 🧊  0–32°F         (Freezing)
+ *  - ❄️  32–48°F        (Cold)
+ *  - 🧥  48–63°F        (Jacket weather)
+ *  - 😊  63–81°F        (Pleasant)
+ *  - 🥵  81–100°F       (Hot!)
+ *  - 🔥  100°F+         (Scorching!)
+ */
+function getTempGaugeEmoji(temp: number, unit: 'F' | 'C' = 'F'): string {
+  const f = unit === 'C' ? temp * 9 / 5 + 32 : temp;
+  if (f <= 0)   return '🥶';
+  if (f <= 32)  return '🧊';
+  if (f <= 48)  return '❄️';
+  if (f <= 63)  return '🧥';
+  if (f <= 81)  return '😊';
+  if (f <= 100) return '🥵';
+  return '🔥';
+}
+
 class AccuWeatherClient {
   private client: AxiosInstance;
 
@@ -432,14 +456,34 @@ class AccuWeatherClient {
       if (forecast.Headline?.Text) {
         parts.push(`_${forecast.Headline.Text}_`);
       }
-      for (const day of forecast.DailyForecasts) {
+
+      // Pre-scan to find max content width per column
+      const cols = forecast.DailyForecasts.map(day => {
         const date = new Date(day.Date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const high = day.Temperature.Maximum.Value;
-        const low = day.Temperature.Minimum.Value;
-        const unit = day.Temperature.Maximum.Unit === 'F' ? '°F' : '°C';
-        const dayEmoji = getWeatherEmoji(day.Day.Icon);
-        const nightEmoji = getWeatherEmoji(day.Night.Icon);
-        parts.push(`• ${date}: ${low}${unit}–${high}${unit} | ${dayEmoji} Day: ${day.Day.IconPhrase} | ${nightEmoji} Night: ${day.Night.IconPhrase}`);
+        const tempUnit: 'F' | 'C' = day.Temperature.Maximum.Unit === 'F' ? 'F' : 'C';
+        const unit = tempUnit === 'F' ? '°F' : '°C';
+        const temp = `${day.Temperature.Minimum.Value}-${day.Temperature.Maximum.Value}${unit}`;
+        const dayPhrase = `Day: ${day.Day.IconPhrase}`;
+        const nightPhrase = `Night: ${day.Night.IconPhrase}`;
+        return { date, temp, tempUnit, dayPhrase, nightPhrase };
+      });
+      // +2 accounts for leading and trailing space inside each code block
+      const dateW  = Math.max(...cols.map(c => c.date.length)) + 2;
+      const tempW  = Math.max(...cols.map(c => c.temp.length)) + 2;
+      const dayW   = Math.max(...cols.map(c => c.dayPhrase.length)) + 2;
+      const nightW = Math.max(...cols.map(c => c.nightPhrase.length)) + 2;
+
+      for (const col of cols) {
+        const high = forecast.DailyForecasts[cols.indexOf(col)].Temperature.Maximum.Value;
+        const dayData = forecast.DailyForecasts[cols.indexOf(col)];
+        const tempEmoji = getTempGaugeEmoji(high, col.tempUnit);
+        const dayEmoji = getWeatherEmoji(dayData.Day.Icon);
+        const nightEmoji = getWeatherEmoji(dayData.Night.Icon);
+        const datePad = ` ${col.date} `.padEnd(dateW);
+        const tempPad = ` ${col.temp} `.padEnd(tempW);
+        const dayPad  = ` ${col.dayPhrase} `.padEnd(dayW);
+        const nightPad = ` ${col.nightPhrase} `.padEnd(nightW);
+        parts.push(`\`${datePad}\` ${tempEmoji} \`${tempPad}\` ${dayEmoji} \`${dayPad}\` ${nightEmoji} \`${nightPad}\``);
       }
     }
 
@@ -552,4 +596,4 @@ class AccuWeatherClient {
 }
 
 export const accuweatherClient = new AccuWeatherClient();
-export { getWeatherEmoji };
+export { getWeatherEmoji, getTempGaugeEmoji };

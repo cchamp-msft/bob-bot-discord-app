@@ -39,7 +39,7 @@ jest.mock('../src/utils/logger', () => ({
 }));
 
 // Import after mocks — singleton captures mockInstance
-import { accuweatherClient, getWeatherEmoji } from '../src/api/accuweatherClient';
+import { accuweatherClient, getWeatherEmoji, getTempGaugeEmoji } from '../src/api/accuweatherClient';
 import { config } from '../src/utils/config';
 
 // --- Test data fixtures ---
@@ -186,6 +186,60 @@ describe('AccuWeatherClient', () => {
       expect(getWeatherEmoji(0)).toBe('🌤️');
       expect(getWeatherEmoji(99)).toBe('🌤️');
       expect(getWeatherEmoji(-1)).toBe('🌤️');
+    });
+  });
+
+  // ---- getTempGaugeEmoji ----
+
+  describe('getTempGaugeEmoji', () => {
+    it('should return arctic emoji for 0°F and below', () => {
+      expect(getTempGaugeEmoji(0)).toBe('🥶');
+      expect(getTempGaugeEmoji(-10)).toBe('🥶');
+    });
+
+    it('should return freezing emoji for 0-32°F', () => {
+      expect(getTempGaugeEmoji(1)).toBe('🧊');
+      expect(getTempGaugeEmoji(32)).toBe('🧊');
+    });
+
+    it('should return cold emoji for 32-48°F', () => {
+      expect(getTempGaugeEmoji(33)).toBe('❄️');
+      expect(getTempGaugeEmoji(48)).toBe('❄️');
+    });
+
+    it('should return jacket emoji for 48-63°F', () => {
+      expect(getTempGaugeEmoji(49)).toBe('🧥');
+      expect(getTempGaugeEmoji(63)).toBe('🧥');
+    });
+
+    it('should return pleasant emoji for 63-81°F', () => {
+      expect(getTempGaugeEmoji(64)).toBe('😊');
+      expect(getTempGaugeEmoji(81)).toBe('😊');
+    });
+
+    it('should return hot emoji for 81-100°F', () => {
+      expect(getTempGaugeEmoji(82)).toBe('🥵');
+      expect(getTempGaugeEmoji(100)).toBe('🥵');
+    });
+
+    it('should return scorching emoji for 100°F+', () => {
+      expect(getTempGaugeEmoji(101)).toBe('🔥');
+      expect(getTempGaugeEmoji(115)).toBe('🔥');
+    });
+
+    it('should convert Celsius to Fahrenheit when unit is C', () => {
+      // 0°C = 32°F → Freezing 🧊
+      expect(getTempGaugeEmoji(0, 'C')).toBe('🧊');
+      // -18°C = -0.4°F → Arctic 🥶
+      expect(getTempGaugeEmoji(-18, 'C')).toBe('🥶');
+      // 10°C = 50°F → Jacket 🧥
+      expect(getTempGaugeEmoji(10, 'C')).toBe('🧥');
+      // 20°C = 68°F → Pleasant 😊
+      expect(getTempGaugeEmoji(20, 'C')).toBe('😊');
+      // 35°C = 95°F → Hot 🥵
+      expect(getTempGaugeEmoji(35, 'C')).toBe('🥵');
+      // 40°C = 104°F → Scorching 🔥
+      expect(getTempGaugeEmoji(40, 'C')).toBe('🔥');
     });
   });
 
@@ -655,9 +709,9 @@ describe('AccuWeatherClient', () => {
 
       expect(text).toContain('5-Day Forecast');
       expect(text).toContain('Expect nice weather next week');
-      expect(text).toContain('55°F–75°F');
-      expect(text).toContain('🌤️ Day: Partly sunny');
-      expect(text).toContain('🌙 Night: Clear');
+      expect(text).toContain(' 55-75°F ');
+      expect(text).toContain('🌤️ ` Day: Partly sunny');
+      expect(text).toContain('🌙 ` Night: Clear');
     });
 
     it('should format full report with both sections', () => {
