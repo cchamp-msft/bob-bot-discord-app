@@ -29,9 +29,17 @@ normalizeEscapedEnvVars();
 
 export interface KeywordConfig {
   keyword: string;
-  api: 'comfyui' | 'ollama';
+  api: 'comfyui' | 'ollama' | 'accuweather';
   timeout: number;
   description: string;
+  /** Target API to route to after AI classification identifies this keyword. */
+  routeApi?: 'comfyui' | 'ollama' | 'accuweather' | 'external';
+  /** Specific Ollama model to use when routeApi is 'ollama'. */
+  routeModel?: string;
+  /** When true, pass the routed API result back through Ollama for conversational refinement. */
+  finalOllamaPass?: boolean;
+  /** AccuWeather data mode: which data to fetch. Only used when api is 'accuweather'. */
+  accuweatherMode?: 'current' | 'forecast' | 'full';
 }
 
 export interface ConfigData {
@@ -59,11 +67,23 @@ class Config {
         if (!entry.keyword || typeof entry.keyword !== 'string') {
           throw new Error(`keywords.json: invalid keyword entry — missing "keyword" string`);
         }
-        if (entry.api !== 'comfyui' && entry.api !== 'ollama') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui" or "ollama"`);
+        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", or "accuweather"`);
         }
         if (typeof entry.timeout !== 'number' || entry.timeout <= 0) {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid timeout — must be a positive number`);
+        }
+        if (entry.routeApi !== undefined && entry.routeApi !== 'comfyui' && entry.routeApi !== 'ollama' && entry.routeApi !== 'accuweather' && entry.routeApi !== 'external') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid routeApi "${entry.routeApi}" — must be "comfyui", "ollama", "accuweather", or "external"`);
+        }
+        if (entry.routeModel !== undefined && typeof entry.routeModel !== 'string') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid routeModel — must be a string`);
+        }
+        if (entry.finalOllamaPass !== undefined && typeof entry.finalOllamaPass !== 'boolean') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid finalOllamaPass — must be a boolean`);
+        }
+        if (entry.accuweatherMode !== undefined && entry.accuweatherMode !== 'current' && entry.accuweatherMode !== 'forecast' && entry.accuweatherMode !== 'full') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid accuweatherMode "${entry.accuweatherMode}" — must be "current", "forecast", or "full"`);
         }
       }
 
@@ -99,6 +119,18 @@ class Config {
 
   getOllamaEndpoint(): string {
     return process.env.OLLAMA_ENDPOINT || 'http://localhost:11434';
+  }
+
+  getAccuWeatherEndpoint(): string {
+    return process.env.ACCUWEATHER_ENDPOINT || 'https://dataservice.accuweather.com';
+  }
+
+  getAccuWeatherApiKey(): string {
+    return process.env.ACCUWEATHER_API_KEY || '';
+  }
+
+  getAccuWeatherDefaultLocation(): string {
+    return process.env.ACCUWEATHER_DEFAULT_LOCATION || '';
   }
 
   getHttpPort(): number {
@@ -275,10 +307,10 @@ class Config {
     return parsed;
   }
 
-  getApiEndpoint(api: 'comfyui' | 'ollama'): string {
-    return api === 'comfyui'
-      ? this.getComfyUIEndpoint()
-      : this.getOllamaEndpoint();
+  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather'): string {
+    if (api === 'comfyui') return this.getComfyUIEndpoint();
+    if (api === 'accuweather') return this.getAccuWeatherEndpoint();
+    return this.getOllamaEndpoint();
   }
 
   /**
@@ -296,6 +328,9 @@ class Config {
     const prevPort = this.port;
     const prevComfyUI = this.getComfyUIEndpoint();
     const prevOllama = this.getOllamaEndpoint();
+    const prevAccuWeather = this.getAccuWeatherEndpoint();
+    const prevAccuWeatherKey = this.getAccuWeatherApiKey();
+    const prevAccuWeatherLocation = this.getAccuWeatherDefaultLocation();
     const prevBaseUrl = this.getOutputBaseUrl();
     const prevThreshold = this.getFileSizeThreshold();
     const prevTimeout = this.getDefaultTimeout();
@@ -340,6 +375,9 @@ class Config {
     // Track hot-reloaded changes
     if (this.getComfyUIEndpoint() !== prevComfyUI) reloaded.push('COMFYUI_ENDPOINT');
     if (this.getOllamaEndpoint() !== prevOllama) reloaded.push('OLLAMA_ENDPOINT');
+    if (this.getAccuWeatherEndpoint() !== prevAccuWeather) reloaded.push('ACCUWEATHER_ENDPOINT');
+    if (this.getAccuWeatherApiKey() !== prevAccuWeatherKey) reloaded.push('ACCUWEATHER_API_KEY');
+    if (this.getAccuWeatherDefaultLocation() !== prevAccuWeatherLocation) reloaded.push('ACCUWEATHER_DEFAULT_LOCATION');
     if (this.getOutputBaseUrl() !== prevBaseUrl) reloaded.push('OUTPUT_BASE_URL');
     if (this.getFileSizeThreshold() !== prevThreshold) reloaded.push('FILE_SIZE_THRESHOLD');
     if (this.getDefaultTimeout() !== prevTimeout) reloaded.push('DEFAULT_TIMEOUT');
@@ -387,6 +425,9 @@ class Config {
         ollamaModel: this.getOllamaModel(),
         ollamaSystemPrompt: this.getOllamaSystemPrompt(),
         comfyuiWorkflowConfigured: this.hasComfyUIWorkflow(),
+        accuweather: this.getAccuWeatherEndpoint(),
+        accuweatherDefaultLocation: this.getAccuWeatherDefaultLocation(),
+        accuweatherApiKeyConfigured: !!this.getAccuWeatherApiKey(),
       },
       defaultWorkflow: {
         model: this.getComfyUIDefaultModel(),

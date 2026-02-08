@@ -1,7 +1,7 @@
 import { logger } from './logger';
 
 interface QueueEntry<T = unknown> {
-  api: 'comfyui' | 'ollama';
+  api: 'comfyui' | 'ollama' | 'accuweather';
   requester: string;
   keyword: string;
   timeout: number;
@@ -13,28 +13,38 @@ interface QueueEntry<T = unknown> {
 class RequestQueue {
   private comfyuiActive: boolean = false;
   private ollamaActive: boolean = false;
+  private accuweatherActive: boolean = false;
   private comfyuiQueue: QueueEntry[] = [];
   private ollamaQueue: QueueEntry[] = [];
+  private accuweatherQueue: QueueEntry[] = [];
 
-  isApiAvailable(api: 'comfyui' | 'ollama'): boolean {
-    return api === 'comfyui' ? !this.comfyuiActive : !this.ollamaActive;
+  isApiAvailable(api: 'comfyui' | 'ollama' | 'accuweather'): boolean {
+    if (api === 'comfyui') return !this.comfyuiActive;
+    if (api === 'accuweather') return !this.accuweatherActive;
+    return !this.ollamaActive;
   }
 
   /** Number of pending (waiting) entries for an API. */
-  pending(api: 'comfyui' | 'ollama'): number {
-    return api === 'comfyui' ? this.comfyuiQueue.length : this.ollamaQueue.length;
+  pending(api: 'comfyui' | 'ollama' | 'accuweather'): number {
+    if (api === 'comfyui') return this.comfyuiQueue.length;
+    if (api === 'accuweather') return this.accuweatherQueue.length;
+    return this.ollamaQueue.length;
   }
 
-  private setActive(api: 'comfyui' | 'ollama', active: boolean): void {
+  private setActive(api: 'comfyui' | 'ollama' | 'accuweather', active: boolean): void {
     if (api === 'comfyui') {
       this.comfyuiActive = active;
+    } else if (api === 'accuweather') {
+      this.accuweatherActive = active;
     } else {
       this.ollamaActive = active;
     }
   }
 
-  private getQueue(api: 'comfyui' | 'ollama'): QueueEntry[] {
-    return api === 'comfyui' ? this.comfyuiQueue : this.ollamaQueue;
+  private getQueue(api: 'comfyui' | 'ollama' | 'accuweather'): QueueEntry[] {
+    if (api === 'comfyui') return this.comfyuiQueue;
+    if (api === 'accuweather') return this.accuweatherQueue;
+    return this.ollamaQueue;
   }
 
   /**
@@ -46,7 +56,7 @@ class RequestQueue {
    * cooperative callers can stop work early.
    */
   execute<T>(
-    api: 'comfyui' | 'ollama',
+    api: 'comfyui' | 'ollama' | 'accuweather',
     requester: string,
     keyword: string,
     timeout: number,
@@ -75,7 +85,7 @@ class RequestQueue {
   /**
    * Drain the queue for a given API — runs entries one at a time.
    */
-  private async drain(api: 'comfyui' | 'ollama'): Promise<void> {
+  private async drain(api: 'comfyui' | 'ollama' | 'accuweather'): Promise<void> {
     const queue = this.getQueue(api);
 
     while (queue.length > 0) {

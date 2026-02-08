@@ -173,25 +173,44 @@ class ConfigWriter {
 
       // Check for duplicates
       const keywordNames = new Set<string>();
-      for (const entry of keywords) {
+      for (let i = 0; i < keywords.length; i++) {
+        const entry = keywords[i];
+
+        // Guard against null/undefined/non-object entries
+        if (!entry || typeof entry !== 'object') {
+          throw new Error(`Invalid keyword entry at index ${i} — expected object with "keyword" field`);
+        }
+
+        // Validate using same rules as Config.loadKeywords()
+        if (!entry.keyword || typeof entry.keyword !== 'string') {
+          throw new Error(`Invalid keyword entry at index ${i} — missing "keyword" string`);
+        }
+
         const normalized = entry.keyword.toLowerCase().trim();
         if (keywordNames.has(normalized)) {
           throw new Error(`Duplicate keyword: "${entry.keyword}"`);
         }
         keywordNames.add(normalized);
 
-        // Validate using same rules as Config.loadKeywords()
-        if (!entry.keyword || typeof entry.keyword !== 'string') {
-          throw new Error('Invalid keyword entry — missing "keyword" string');
-        }
-        if (entry.api !== 'comfyui' && entry.api !== 'ollama') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui" or "ollama"`);
+        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", or "accuweather"`);
         }
         if (typeof entry.timeout !== 'number' || entry.timeout <= 0) {
           throw new Error(`Keyword "${entry.keyword}" has invalid timeout — must be a positive number`);
         }
         if (!entry.description || typeof entry.description !== 'string') {
           throw new Error(`Keyword "${entry.keyword}" missing description`);
+        }
+
+        // Validate optional routing fields (must match Config.loadKeywords rules)
+        if (entry.routeApi !== undefined && entry.routeApi !== 'comfyui' && entry.routeApi !== 'ollama' && entry.routeApi !== 'accuweather' && entry.routeApi !== 'external') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid routeApi "${entry.routeApi}" — must be "comfyui", "ollama", "accuweather", or "external"`);
+        }
+        if (entry.routeModel !== undefined && typeof entry.routeModel !== 'string') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid routeModel — must be a string`);
+        }
+        if (entry.finalOllamaPass !== undefined && typeof entry.finalOllamaPass !== 'boolean') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid finalOllamaPass — must be a boolean`);
         }
       }
 
