@@ -127,7 +127,7 @@ export async function executeRoutedRequest(
       const nflData = nflResponse.data?.text ?? 'No NFL data available.';
       const isNewsKeyword = keywordConfig.keyword.toLowerCase().includes('news');
       const openTag = isNewsKeyword ? '[NFL News Data]' : '[NFL Game Data]';
-      const closeTag = isNewsKeyword ? '[End NFL News Data]' : '[End NFL Data]';
+      const closeTag = isNewsKeyword ? '[End NFL News Data]' : '[End NFL Game Data]';
       finalPrompt = `${openTag}\n${nflData}\n${closeTag}\n\nUser request: ${content}\n\nPlease provide a helpful, conversational response based on the NFL data above. Be concise and natural.`;
     } else {
       finalPrompt = buildFinalPassPrompt(content, primaryExtracted);

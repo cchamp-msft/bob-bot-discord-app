@@ -50,8 +50,10 @@ import { executeRoutedRequest } from '../src/utils/apiRouter';
 import { requestQueue } from '../src/utils/requestQueue';
 import { KeywordConfig } from '../src/utils/config';
 import { accuweatherClient } from '../src/api/accuweatherClient';
+import { apiManager } from '../src/api';
 
 const mockExecute = requestQueue.execute as jest.MockedFunction<typeof requestQueue.execute>;
+const mockApiExecute = apiManager.executeRequest as jest.MockedFunction<typeof apiManager.executeRequest>;
 
 describe('ApiRouter', () => {
   beforeEach(() => {
@@ -506,6 +508,79 @@ describe('ApiRouter', () => {
       expect(finalPassCall[0]).toBe('ollama');
       expect(finalPassCall[2]).toBe('nfl:final');
       expect(finalPassCall[5]).toBe(controller.signal);
+    });
+  });
+
+  // ── NFL final-pass prompt markers ─────────────────────────
+
+  describe('NFL final-pass prompt markers', () => {
+    /**
+     * Helper: sets up a final-pass flow and captures the prompt string
+     * passed through to apiManager.executeRequest via the callback.
+     */
+    async function captureNflFinalPrompt(keyword: KeywordConfig, nflText: string, userContent: string): Promise<string> {
+      // Primary NFL result
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: nflText, games: [] },
+      });
+
+      // Final Ollama pass — invoke the callback to capture apiManager args
+      mockApiExecute.mockResolvedValue({ success: true, data: { text: 'AI response' } } as any);
+      mockExecute.mockImplementationOnce(async (_api, _req, _label, _timeout, callback) => {
+        await callback(undefined as any);
+        return { success: true, data: { text: 'AI response' } };
+      });
+
+      await executeRoutedRequest(keyword, userContent, 'testuser');
+
+      // The prompt is the 3rd argument to apiManager.executeRequest
+      return mockApiExecute.mock.calls[0][2] as string;
+    }
+
+    it('should wrap generic "nfl" final-pass with [NFL Game Data] / [End NFL Game Data]', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'nfl',
+        api: 'nfl',
+        timeout: 60,
+        description: 'NFL chat',
+        finalOllamaPass: true,
+      };
+
+      const prompt = await captureNflFinalPrompt(keyword, 'NFL Scores - Current Week\nChiefs 14 - Ravens 10', 'who is winning?');
+      expect(prompt).toContain('[NFL Game Data]');
+      expect(prompt).toContain('[End NFL Game Data]');
+      expect(prompt).not.toContain('[NFL News Data]');
+      expect(prompt).not.toContain('[End NFL News Data]');
+    });
+
+    it('should wrap "nfl news report" final-pass with [NFL News Data] / [End NFL News Data]', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'nfl news report',
+        api: 'nfl',
+        timeout: 60,
+        description: 'NFL news report',
+        finalOllamaPass: true,
+      };
+
+      const prompt = await captureNflFinalPrompt(keyword, 'NFL News Headlines\n- Chiefs sign free agent', 'give me the latest');
+      expect(prompt).toContain('[NFL News Data]');
+      expect(prompt).toContain('[End NFL News Data]');
+      expect(prompt).not.toContain('[NFL Game Data]');
+      expect(prompt).not.toContain('[End NFL Game Data]');
+    });
+
+    it('should include user request in the final prompt', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'nfl',
+        api: 'nfl',
+        timeout: 60,
+        description: 'NFL chat',
+        finalOllamaPass: true,
+      };
+
+      const prompt = await captureNflFinalPrompt(keyword, 'Some NFL data', 'tell me about the chiefs');
+      expect(prompt).toContain('User request: tell me about the chiefs');
     });
   });
 });
