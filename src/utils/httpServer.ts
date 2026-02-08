@@ -68,9 +68,9 @@ class HttpServer {
 
     // GET test API connectivity
     this.app.get('/api/config/test-connection/:api', localhostOnly, async (req, res) => {
-      const api = req.params.api as 'comfyui' | 'ollama';
-      if (api !== 'comfyui' && api !== 'ollama') {
-        res.status(400).json({ error: 'Invalid API — must be "comfyui" or "ollama"' });
+      const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather';
+      if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather') {
+        res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", or "accuweather"' });
         return;
       }
 
@@ -85,6 +85,18 @@ class HttpServer {
             logger.logError('configurator', `Connection test: ollama at ${endpoint} — FAILED${result.error ? ': ' + result.error : ''}`);
           }
           res.json({ api, endpoint, healthy: result.healthy, models: result.models, error: result.error });
+        } else if (api === 'accuweather') {
+          const result = await apiManager.testAccuWeatherConnection();
+          const endpoint = config.getApiEndpoint(api);
+          if (result.healthy) {
+            const locationInfo = result.location
+              ? ` (default location: ${result.location.LocalizedName}, ${result.location.AdministrativeArea.ID})`
+              : '';
+            logger.log('success', 'configurator', `Connection test: accuweather — OK${locationInfo}`);
+          } else {
+            logger.logError('configurator', `Connection test: accuweather — FAILED${result.error ? ': ' + result.error : ''}`);
+          }
+          res.json({ api, endpoint, healthy: result.healthy, location: result.location, error: result.error });
         } else {
           const healthy = await apiManager.checkApiHealth(api);
           const endpoint = config.getApiEndpoint(api);
@@ -93,7 +105,7 @@ class HttpServer {
           res.json({ api, endpoint, healthy, error });
         }
       } catch (error) {
-        const endpoint = config.getApiEndpoint(api);
+        const endpoint = config.getApiEndpoint(api as 'comfyui' | 'ollama' | 'accuweather');
         logger.logError('configurator', `Connection test: ${api} at ${endpoint} — ERROR: ${error}`);
         res.json({ api, endpoint, healthy: false, error: String(error) });
       }
@@ -275,7 +287,7 @@ class HttpServer {
         // Update .env values if provided
         if (env && typeof env === 'object') {
           // Build a safe list of key names for logging (never log token values)
-          const sensitiveKeys = ['DISCORD_TOKEN'];
+          const sensitiveKeys = ['DISCORD_TOKEN', 'ACCUWEATHER_API_KEY'];
           const safeKeyNames = Object.keys(env).map(k =>
             sensitiveKeys.includes(k) ? `${k} (changed)` : k
           );
