@@ -72,7 +72,11 @@ class AccuWeatherClient {
     }
 
     // Text-based city search
-    return await this.searchCity(trimmed);
+    const cityResult = await this.searchCity(trimmed);
+    if (cityResult) return cityResult;
+
+    // Fallback: autocomplete search when direct city search fails
+    return await this.searchWithAutocomplete(trimmed);
   }
 
   /**
@@ -117,6 +121,30 @@ class AccuWeatherClient {
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       logger.logError('accuweather', `Postal code search failed for "${postalCode}": ${errorMsg}`);
+      return null;
+    }
+  }
+
+  /**
+   * Search for a location using the autocomplete API.
+   * Used as a fallback when direct city search returns no results.
+   * Returns the first (most relevant) match or null.
+   */
+  async searchWithAutocomplete(query: string): Promise<AccuWeatherLocation | null> {
+    const apiKey = config.getAccuWeatherApiKey();
+    if (!apiKey) return null;
+
+    try {
+      const response = await this.client.get('/locations/v1/cities/autocomplete', {
+        params: { apikey: apiKey, q: query },
+      });
+      if (response.status === 200 && Array.isArray(response.data) && response.data.length > 0) {
+        return response.data[0] as AccuWeatherLocation;
+      }
+      return null;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.logError('accuweather', `Autocomplete search failed for "${query}": ${errorMsg}`);
       return null;
     }
   }

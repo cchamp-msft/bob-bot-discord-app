@@ -213,6 +213,35 @@ describe('AccuWeatherClient', () => {
       });
     });
 
+    it('should fall back to autocomplete when city search returns no results', async () => {
+      // City search returns empty
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: [] });
+      // Autocomplete returns a match
+      mockInstance.get.mockResolvedValueOnce({
+        status: 200,
+        data: [sampleLocation],
+      });
+
+      const result = await accuweatherClient.resolveLocation('LA');
+      expect(result).toEqual(sampleLocation);
+      expect(mockInstance.get).toHaveBeenCalledWith('/locations/v1/cities/search', {
+        params: { apikey: 'test-api-key', q: 'LA' },
+      });
+      expect(mockInstance.get).toHaveBeenCalledWith('/locations/v1/cities/autocomplete', {
+        params: { apikey: 'test-api-key', q: 'LA' },
+      });
+    });
+
+    it('should return null when both city search and autocomplete fail', async () => {
+      // City search returns empty
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: [] });
+      // Autocomplete also returns empty
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: [] });
+
+      const result = await accuweatherClient.resolveLocation('xyznonexistent');
+      expect(result).toBeNull();
+    });
+
     it('should validate numeric location keys', async () => {
       mockInstance.get.mockResolvedValueOnce({
         status: 200,
@@ -289,6 +318,45 @@ describe('AccuWeatherClient', () => {
     it('should return null when API key is missing', async () => {
       (config.getAccuWeatherApiKey as jest.Mock).mockReturnValue('');
       const result = await accuweatherClient.searchByPostalCode('98101');
+      expect(result).toBeNull();
+    });
+  });
+
+  // ---- searchWithAutocomplete ----
+
+  describe('searchWithAutocomplete', () => {
+    it('should return the first autocomplete match', async () => {
+      mockInstance.get.mockResolvedValueOnce({
+        status: 200,
+        data: [sampleLocation],
+      });
+
+      const result = await accuweatherClient.searchWithAutocomplete('Sea');
+      expect(result).toEqual(sampleLocation);
+      expect(mockInstance.get).toHaveBeenCalledWith('/locations/v1/cities/autocomplete', {
+        params: { apikey: 'test-api-key', q: 'Sea' },
+      });
+    });
+
+    it('should return null when no results found', async () => {
+      mockInstance.get.mockResolvedValueOnce({
+        status: 200,
+        data: [],
+      });
+
+      const result = await accuweatherClient.searchWithAutocomplete('xyznonexistent');
+      expect(result).toBeNull();
+    });
+
+    it('should return null when API key is missing', async () => {
+      (config.getAccuWeatherApiKey as jest.Mock).mockReturnValue('');
+      const result = await accuweatherClient.searchWithAutocomplete('Seattle');
+      expect(result).toBeNull();
+    });
+
+    it('should return null and log error on network failure', async () => {
+      mockInstance.get.mockRejectedValueOnce(new Error('Network Error'));
+      const result = await accuweatherClient.searchWithAutocomplete('Seattle');
       expect(result).toBeNull();
     });
   });
@@ -377,6 +445,12 @@ describe('AccuWeatherClient', () => {
     });
 
     it('should return error when location cannot be resolved', async () => {
+      // City search returns empty
+      mockInstance.get.mockResolvedValueOnce({
+        status: 200,
+        data: [],
+      });
+      // Autocomplete fallback also returns empty
       mockInstance.get.mockResolvedValueOnce({
         status: 200,
         data: [],
