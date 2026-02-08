@@ -22,7 +22,6 @@ jest.mock('axios', () => ({
 jest.mock('../src/utils/config', () => ({
   config: {
     getNflEndpoint: jest.fn(() => 'https://site.api.espn.com/apis/site/v2/sports/football/nfl'),
-    getNflApiKey: jest.fn(() => ''),
     getNflEnabled: jest.fn(() => true),
     getNflLoggingLevel: jest.fn(() => 1),
   },
@@ -1173,6 +1172,65 @@ describe('NFLClient', () => {
       expect(NFLClient.allowsEmptyContent('NFL Scores')).toBe(true);
       expect(NFLClient.allowsEmptyContent('Superbowl')).toBe(true);
       expect(NFLClient.allowsEmptyContent('NFL News')).toBe(true);
+    });
+  });
+
+  // ── Endpoint validation ─────────────────────────────────
+
+  describe('endpoint validation', () => {
+    it('should log a warning when endpoint is not ESPN', () => {
+      const { logger } = require('../src/utils/logger');
+      (config.getNflEndpoint as jest.Mock).mockReturnValue('https://api.sportsdata.io/v3/nfl/scores');
+
+      // Trigger refresh which re-evaluates the endpoint
+      nflClient.refresh();
+
+      expect(logger.log).toHaveBeenCalledWith(
+        'warn', 'nfl',
+        expect.stringContaining('is not an ESPN URL')
+      );
+    });
+
+    it('should not log a warning when endpoint is ESPN', () => {
+      const { logger } = require('../src/utils/logger');
+      (config.getNflEndpoint as jest.Mock).mockReturnValue('https://site.api.espn.com/apis/site/v2/sports/football/nfl');
+
+      nflClient.refresh();
+
+      expect(logger.log).not.toHaveBeenCalledWith(
+        'warn', 'nfl',
+        expect.stringContaining('is not an ESPN URL')
+      );
+    });
+
+    it('should include 401 hint when scoreboard fetch returns 401', async () => {
+      const { logger } = require('../src/utils/logger');
+      const error = new Error('Request failed with status code 401') as any;
+      error.response = { status: 401 };
+      mockInstance.get.mockRejectedValueOnce(error);
+
+      const result = await nflClient.handleRequest('', 'nfl scores');
+
+      expect(logger.logError).toHaveBeenCalledWith(
+        'nfl',
+        expect.stringContaining('check NFL_BASE_URL in .env')
+      );
+      expect(result.data?.text).toContain('No NFL games found');
+    });
+
+    it('should include 401 hint when news fetch returns 401', async () => {
+      const { logger } = require('../src/utils/logger');
+      const error = new Error('Request failed with status code 401') as any;
+      error.response = { status: 401 };
+      mockInstance.get.mockRejectedValueOnce(error);
+
+      const result = await nflClient.handleRequest('', 'nfl news');
+
+      expect(logger.logError).toHaveBeenCalledWith(
+        'nfl',
+        expect.stringContaining('check NFL_BASE_URL in .env')
+      );
+      expect(result.data?.text).toContain('No NFL news available');
     });
   });
 

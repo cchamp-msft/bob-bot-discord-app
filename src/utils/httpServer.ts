@@ -296,7 +296,7 @@ class HttpServer {
         // Update .env values if provided
         if (env && typeof env === 'object') {
           // Build a safe list of key names for logging (never log token values)
-          const sensitiveKeys = ['DISCORD_TOKEN', 'ACCUWEATHER_API_KEY', 'NFL_API_KEY'];
+          const sensitiveKeys = ['DISCORD_TOKEN', 'ACCUWEATHER_API_KEY'];
           const safeKeyNames = Object.keys(env).map(k =>
             sensitiveKeys.includes(k) ? `${k} (changed)` : k
           );

@@ -155,10 +155,6 @@ class Config {
     return process.env.NFL_BASE_URL || 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
   }
 
-  getNflApiKey(): string {
-    return process.env.NFL_API_KEY || '';
-  }
-
   getNflEnabled(): boolean {
     return process.env.NFL_ENABLED !== 'false';
   }
@@ -406,7 +402,6 @@ class Config {
     const prevAbilityLogging = this.getAbilityLoggingDetailed();
     const prevNflLoggingLevel = this.getNflLoggingLevel();
     const prevNflEndpoint = this.getNflEndpoint();
-    const prevNflApiKey = this.getNflApiKey();
     const prevNflEnabled = this.getNflEnabled();
     const prevDefaultModel = this.getComfyUIDefaultModel();
     const prevDefaultWidth = this.getComfyUIDefaultWidth();
@@ -459,7 +454,6 @@ class Config {
     if (this.getAbilityLoggingDetailed() !== prevAbilityLogging) reloaded.push('ABILITY_LOGGING_DETAILED');
     if (this.getNflLoggingLevel() !== prevNflLoggingLevel) reloaded.push('NFL_LOGGING_LEVEL');
     if (this.getNflEndpoint() !== prevNflEndpoint) reloaded.push('NFL_BASE_URL');
-    if (this.getNflApiKey() !== prevNflApiKey) reloaded.push('NFL_API_KEY');
     if (this.getNflEnabled() !== prevNflEnabled) reloaded.push('NFL_ENABLED');
     if (this.getComfyUIDefaultModel() !== prevDefaultModel) reloaded.push('COMFYUI_DEFAULT_MODEL');
     if (this.getComfyUIDefaultWidth() !== prevDefaultWidth) reloaded.push('COMFYUI_DEFAULT_WIDTH');

@@ -303,9 +303,11 @@ export class NFLClient {
   private cache = new NFLCache();
 
   constructor() {
-    this.client = axios.create({
-      baseURL: config.getNflEndpoint() || ESPN_BASE_URL,
-    });
+    const baseURL = config.getNflEndpoint() || ESPN_BASE_URL;
+    this.client = axios.create({ baseURL });
+    if (!baseURL.includes('espn.com')) {
+      logger.log('warn', 'nfl', `NFL: Endpoint "${baseURL}" is not an ESPN URL — requests may fail`);
+    }
   }
 
   /**
@@ -315,6 +317,9 @@ export class NFLClient {
     const baseURL = config.getNflEndpoint() || ESPN_BASE_URL;
     this.client = axios.create({ baseURL });
     this.cache.clear();
+    if (!baseURL.includes('espn.com')) {
+      logger.log('warn', 'nfl', `NFL: Endpoint "${baseURL}" is not an ESPN URL — requests may fail`);
+    }
     if (config.getNflLoggingLevel() >= 0) {
       logger.log('success', 'nfl', `NFL: Client refreshed — endpoint: ${baseURL}`);
     }
@@ -404,7 +409,10 @@ export class NFLClient {
       return games;
     } catch (error) {
       if (isAbortError(error)) throw error;
-      logger.logError('nfl', `Failed to fetch ESPN scoreboard (${paramStr}): ${error}`);
+      const hint = (error as { response?: { status?: number } })?.response?.status === 401
+        ? ' — check NFL_BASE_URL in .env (should be ESPN)'
+        : '';
+      logger.logError('nfl', `Failed to fetch ESPN scoreboard (${paramStr}): ${error}${hint}`);
       return [];
     }
   }
@@ -533,7 +541,10 @@ export class NFLClient {
       return articles;
     } catch (error) {
       if (isAbortError(error)) throw error;
-      logger.logError('nfl', `Failed to fetch ESPN news: ${error}`);
+      const hint = (error as { response?: { status?: number } })?.response?.status === 401
+        ? ' — check NFL_BASE_URL in .env (should be ESPN)'
+        : '';
+      logger.logError('nfl', `Failed to fetch ESPN news: ${error}${hint}`);
       return [];
     }
   }
