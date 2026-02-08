@@ -55,6 +55,33 @@
       "timeout": 360,
       "description": "Get an AI-powered opinionated weather report",
       "finalOllamaPass": true
+    },
+    {
+      "keyword": "superbowl",
+      "api": "nfl",
+      "timeout": 30,
+      "description": "Get current Super Bowl game status and score",
+      "abilityText": "I can check the current Super Bowl game status, score, and details."
+    },
+    {
+      "keyword": "nfl scores",
+      "api": "nfl",
+      "timeout": 30,
+      "description": "Get all current NFL game scores"
+    },
+    {
+      "keyword": "nfl score",
+      "api": "nfl",
+      "timeout": 30,
+      "description": "Get a specific NFL team's game score (e.g. 'nfl score chiefs')"
+    },
+    {
+      "keyword": "nfl",
+      "api": "nfl",
+      "timeout": 60,
+      "description": "Get NFL game information, enhanced with live data",
+      "abilityText": "I can look up NFL game scores, schedules, and live game status for any team.",
+      "finalOllamaPass": true
     }
   ]
 }

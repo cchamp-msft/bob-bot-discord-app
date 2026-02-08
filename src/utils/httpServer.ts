@@ -68,9 +68,9 @@ class HttpServer {
 
     // GET test API connectivity
     this.app.get('/api/config/test-connection/:api', localhostOnly, async (req, res) => {
-      const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather';
-      if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather') {
-        res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", or "accuweather"' });
+      const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl';
+      if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather' && api !== 'nfl') {
+        res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", "accuweather", or "nfl"' });
         return;
       }
 
@@ -97,15 +97,24 @@ class HttpServer {
             logger.logError('configurator', `Connection test: accuweather — FAILED${result.error ? ': ' + result.error : ''}`);
           }
           res.json({ api, endpoint, healthy: result.healthy, location: result.location, error: result.error });
+        } else if (api === 'nfl') {
+          const result = await apiManager.checkNflHealth();
+          const endpoint = config.getApiEndpoint('nfl');
+          if (result.healthy) {
+            logger.log('success', 'configurator', `Connection test: nfl — OK`);
+          } else {
+            logger.logError('configurator', `Connection test: nfl — FAILED${result.error ? ': ' + result.error : ''}`);
+          }
+          res.json({ api, endpoint, healthy: result.healthy, error: result.error });
         } else {
           const healthy = await apiManager.checkApiHealth(api);
-          const endpoint = config.getApiEndpoint(api);
+          const endpoint = config.getApiEndpoint(api as 'comfyui' | 'ollama' | 'accuweather');
           const error = healthy ? undefined : 'ComfyUI did not respond with a healthy status';
           logger.log(healthy ? 'success' : 'error', 'configurator', `Connection test: ${api} at ${endpoint} — ${healthy ? 'OK' : 'FAILED'}`);
           res.json({ api, endpoint, healthy, error });
         }
       } catch (error) {
-        const endpoint = config.getApiEndpoint(api as 'comfyui' | 'ollama' | 'accuweather');
+        const endpoint = config.getApiEndpoint(api);
         logger.logError('configurator', `Connection test: ${api} at ${endpoint} — ERROR: ${error}`);
         res.json({ api, endpoint, healthy: false, error: String(error) });
       }
@@ -287,7 +296,7 @@ class HttpServer {
         // Update .env values if provided
         if (env && typeof env === 'object') {
           // Build a safe list of key names for logging (never log token values)
-          const sensitiveKeys = ['DISCORD_TOKEN', 'ACCUWEATHER_API_KEY'];
+          const sensitiveKeys = ['DISCORD_TOKEN', 'ACCUWEATHER_API_KEY', 'NFL_API_KEY'];
           const safeKeyNames = Object.keys(env).map(k =>
             sensitiveKeys.includes(k) ? `${k} (changed)` : k
           );

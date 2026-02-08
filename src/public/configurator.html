@@ -494,6 +494,40 @@
       </div>
     </section>
 
+    <!-- NFL Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">NFL API (SportsData.io)</h2>
+      <div class="body">
+        <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
+          Get a free API key at <a href="https://sportsdata.io" target="_blank" style="color:var(--accent)">sportsdata.io</a>.
+          The NFL API provides live scores, schedules, and Super Bowl data. Use keywords like <code style="color:var(--accent)">nfl scores</code>, <code style="color:var(--accent)">nfl score &lt;team&gt;</code>, or <code style="color:var(--accent)">superbowl</code>.
+        </p>
+        <div class="field">
+          <label>Enabled</label>
+          <select id="nfl_enabled" data-env="NFL_ENABLED">
+            <option value="false">Off</option>
+            <option value="true">On</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>API Key <span class="note">write-only — never displayed</span></label>
+          <div class="field-row">
+            <div class="field">
+              <input type="password" id="nfl_api_key" placeholder="Paste SportsData.io API key" autocomplete="off">
+            </div>
+            <div class="field tiny">
+              <button class="btn-test btn-sm" onclick="testConnection('nfl')">Test</button>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Endpoint <span class="note">override only if using a proxy</span></label>
+          <input type="text" id="nfl_endpoint" data-env="NFL_BASE_URL" placeholder="https://api.sportsdata.io/v3/nfl/scores">
+        </div>
+        <div id="nflTestResult" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
+      </div>
+    </section>
+
     <!-- Error Handling Section -->
     <section>
       <h2 onclick="toggleSection(this)">Error Handling</h2>
@@ -852,6 +886,13 @@
       document.getElementById('accuweather_api_key').placeholder =
         cfg.apis.accuweatherApiKeyConfigured ? 'API key configured ✓ — paste new value to change' : 'Paste AccuWeather API key';
 
+      // Populate NFL fields
+      document.getElementById('nfl_enabled').value = cfg.apis.nflEnabled ? 'true' : 'false';
+      document.getElementById('nfl_endpoint').value = cfg.apis.nfl || '';
+      document.getElementById('nfl_api_key').value = '';
+      document.getElementById('nfl_api_key').placeholder =
+        cfg.apis.nflApiKeyConfigured ? 'API key configured ✓ — paste new value to change' : 'Paste SportsData.io API key';
+
       // Populate error handling fields
       document.getElementById('error_message').value = cfg.errorHandling?.errorMessage || '';
       document.getElementById('error_rate_limit').value = cfg.errorHandling?.errorRateLimitMinutes || 60;
@@ -928,6 +969,7 @@
         <option value="comfyui" ${kw?.api === 'comfyui' ? 'selected' : ''}>comfyui</option>
         <option value="ollama" ${kw?.api === 'ollama' ? 'selected' : ''}>ollama</option>
         <option value="accuweather" ${kw?.api === 'accuweather' ? 'selected' : ''}>accuweather</option>
+        <option value="nfl" ${kw?.api === 'nfl' ? 'selected' : ''}>nfl</option>
       </select></td>
       <td><input type="number" class="kw-timeout" value="${kw?.timeout || 300}" style="width:70px"></td>
       <td><input type="text" class="kw-desc" value="${esc(kw?.description || '')}" placeholder="description"></td>
@@ -998,6 +1040,13 @@
       const awKeyVal = awKeyInput.value.trim();
       if (awKeyVal) {
         env['ACCUWEATHER_API_KEY'] = awKeyVal;
+      }
+
+      // Include NFL API key only if user typed a new value (write-only field)
+      const nflKeyInput = document.getElementById('nfl_api_key');
+      const nflKeyVal = nflKeyInput.value.trim();
+      if (nflKeyVal) {
+        env['NFL_API_KEY'] = nflKeyVal;
       }
 
       // Collect keywords
@@ -1118,12 +1167,22 @@
             resultEl.innerHTML = '<span style="color:var(--ok)">✓ API key valid. No default location configured.</span>';
           }
         }
+
+        // For NFL, show success status
+        if (api === 'nfl') {
+          const resultEl = document.getElementById('nflTestResult');
+          resultEl.innerHTML = '<span style="color:var(--ok)">✓ API key valid. NFL data available.</span>';
+        }
       } else {
         conLog(`  ✗ ${api} at ${data.endpoint} is not reachable`, 'err');
         if (data.error) conLog(`    ${data.error}`, 'err');
 
         if (api === 'accuweather') {
           const resultEl = document.getElementById('accuweatherTestResult');
+          resultEl.innerHTML = `<span style="color:var(--err)">✗ ${data.error || 'Connection failed'}</span>`;
+        }
+        if (api === 'nfl') {
+          const resultEl = document.getElementById('nflTestResult');
           resultEl.innerHTML = `<span style="color:var(--err)">✗ ${data.error || 'Connection failed'}</span>`;
         }
       }

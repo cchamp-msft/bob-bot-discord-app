@@ -1,10 +1,11 @@
 import { comfyuiClient, ComfyUIResponse } from './comfyuiClient';
 import { ollamaClient, OllamaResponse, OllamaHealthResult } from './ollamaClient';
 import { accuweatherClient } from './accuweatherClient';
+import { nflClient } from './nflClient';
 import { config } from '../utils/config';
-import { ChatMessage, AccuWeatherResponse, AccuWeatherHealthResult } from '../types';
+import { ChatMessage, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult } from '../types';
 
-export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, AccuWeatherResponse, AccuWeatherHealthResult };
+export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult };
 
 class ApiManager {
   async executeRequest(
@@ -47,6 +48,11 @@ class ApiManager {
     ollamaClient.refresh();
     comfyuiClient.refresh();
     accuweatherClient.refresh();
+    nflClient.refresh();
+  }
+
+  async checkNflHealth(): Promise<NFLHealthResult> {
+    return await nflClient.testConnection();
   }
 
   /**

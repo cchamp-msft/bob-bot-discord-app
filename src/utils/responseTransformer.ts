@@ -1,19 +1,19 @@
 import { ComfyUIResponse } from '../api/comfyuiClient';
 import { OllamaResponse } from '../api/ollamaClient';
-import { AccuWeatherResponse } from '../types';
+import { AccuWeatherResponse, NFLResponse } from '../types';
 
 /**
  * Unified result from any API stage in a routed pipeline.
  */
 export interface StageResult {
   /** The type of API that produced this result. */
-  sourceApi: 'comfyui' | 'ollama' | 'accuweather' | 'external';
-  /** Extracted text content (from Ollama, AccuWeather, or future text-based APIs). */
+  sourceApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'external';
+  /** Extracted text content (from Ollama, AccuWeather, NFL, or future text-based APIs). */
   text?: string;
   /** Extracted image URLs (from ComfyUI). */
   images?: string[];
   /** The raw API response for final handling. */
-  rawResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse;
+  rawResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse;
 }
 
 /**
@@ -55,17 +55,31 @@ export function extractFromAccuWeather(response: AccuWeatherResponse): StageResu
 }
 
 /**
+ * Extract usable text content from an NFL response.
+ */
+export function extractFromNFL(response: NFLResponse): StageResult {
+  return {
+    sourceApi: 'nfl',
+    text: response.data?.text ?? undefined,
+    rawResponse: response,
+  };
+}
+
+/**
  * Extract a StageResult from any API response based on the API type.
  */
 export function extractStageResult(
-  api: 'comfyui' | 'ollama' | 'accuweather',
-  response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl',
+  response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse
 ): StageResult {
   if (api === 'comfyui') {
     return extractFromComfyUI(response as ComfyUIResponse);
   }
   if (api === 'accuweather') {
     return extractFromAccuWeather(response as AccuWeatherResponse);
+  }
+  if (api === 'nfl') {
+    return extractFromNFL(response as NFLResponse);
   }
   return extractFromOllama(response as OllamaResponse);
 }

@@ -5,7 +5,7 @@ export interface ChatMessage {
 }
 
 /** Recognized API backend identifiers. */
-export type ApiType = 'comfyui' | 'ollama' | 'accuweather';
+export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl';
 
 // ── AccuWeather response types ─────────────────────────────────
 
@@ -84,6 +84,52 @@ export interface AccuWeatherHealthResult {
   location?: AccuWeatherLocation;
 }
 
+// ── NFL / SportsData.io response types ─────────────────────────
+
+/** Basic score data from SportsData.io ScoresBasic endpoint. */
+export interface NFLGameScore {
+  GameKey: string;
+  Season: number;
+  SeasonType: number;
+  Week: number;
+  Date: string | null;
+  AwayTeam: string;
+  HomeTeam: string;
+  AwayScore: number | null;
+  HomeScore: number | null;
+  Channel: string | null;
+  Quarter: string | null;
+  TimeRemaining: string | null;
+  Status: 'Scheduled' | 'InProgress' | 'Final' | 'F/OT' | 'Suspended' | 'Postponed' | 'Delayed' | 'Canceled' | 'Forfeit';
+  StadiumDetails: {
+    Name: string;
+    City: string;
+    State: string;
+    Country: string;
+  } | null;
+  IsClosed: boolean;
+  AwayTeamMoneyLine: number | null;
+  HomeTeamMoneyLine: number | null;
+  PointSpread: number | null;
+  OverUnder: number | null;
+}
+
+/** Standard response from NFLClient methods. */
+export interface NFLResponse {
+  success: boolean;
+  data?: {
+    text: string;
+    games?: NFLGameScore[];
+  };
+  error?: string;
+}
+
+/** Result of an NFL API health check. */
+export interface NFLHealthResult {
+  healthy: boolean;
+  error?: string;
+}
+
 /** Safe (no secrets) config snapshot returned by GET /api/config. */
 export interface PublicConfig {
   discord: {
@@ -100,6 +146,9 @@ export interface PublicConfig {
     accuweather: string;
     accuweatherDefaultLocation: string;
     accuweatherApiKeyConfigured: boolean;
+    nfl: string;
+    nflApiKeyConfigured: boolean;
+    nflEnabled: boolean;
   };
   defaultWorkflow: {
     model: string;

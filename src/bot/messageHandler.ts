@@ -8,7 +8,7 @@ import { logger } from '../utils/logger';
 import { requestQueue } from '../utils/requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse } from '../api';
 import { fileHandler } from '../utils/fileHandler';
-import { ChatMessage } from '../types';
+import { ChatMessage, NFLResponse } from '../types';
 import { chunkText } from '../utils/chunkText';
 import { classifyIntent, buildAbilitiesContext } from '../utils/keywordClassifier';
 import { executeRoutedRequest } from '../utils/apiRouter';
@@ -501,8 +501,8 @@ class MessageHandler {
    * Handles error responses uniformly.
    */
   private async dispatchResponse(
-    response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse,
-    api: 'comfyui' | 'ollama' | 'accuweather',
+    response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse,
+    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl',
     processingMessage: Message,
     requester: string
   ): Promise<void> {
@@ -522,6 +522,8 @@ class MessageHandler {
       await this.handleComfyUIResponse(response as ComfyUIResponse, processingMessage, requester);
     } else if (api === 'accuweather') {
       await this.handleAccuWeatherResponse(response as AccuWeatherResponse, processingMessage, requester);
+    } else if (api === 'nfl') {
+      await this.handleNFLResponse(response as NFLResponse, processingMessage, requester);
     } else {
       await this.handleOllamaResponse(response as OllamaResponse, processingMessage, requester);
     }
@@ -727,6 +729,32 @@ class MessageHandler {
     logger.logReply(
       requester,
       `AccuWeather response sent: ${text.length} characters`
+    );
+  }
+
+  private async handleNFLResponse(
+    apiResult: NFLResponse,
+    processingMessage: Message,
+    requester: string
+  ): Promise<void> {
+    const text = apiResult.data?.text || 'No NFL data available.';
+
+    // Split into Discord-safe chunks (newline-aware)
+    const chunks = chunkText(text);
+
+    // Edit processing message with first chunk as plain text
+    await processingMessage.edit({ content: chunks[0], embeds: [] });
+
+    // Send remaining chunks as follow-up messages in the same channel
+    for (let i = 1; i < chunks.length; i++) {
+      if ('send' in processingMessage.channel) {
+        await processingMessage.channel.send(chunks[i]);
+      }
+    }
+
+    logger.logReply(
+      requester,
+      `NFL response sent: ${text.length} characters`
     );
   }
 }

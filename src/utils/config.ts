@@ -29,7 +29,7 @@ normalizeEscapedEnvVars();
 
 export interface KeywordConfig {
   keyword: string;
-  api: 'comfyui' | 'ollama' | 'accuweather';
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl';
   timeout: number;
   description: string;
   /** Human-readable description of this keyword's API ability, provided to Ollama as context so it can suggest using this API when relevant. */
@@ -69,8 +69,8 @@ class Config {
         if (!entry.keyword || typeof entry.keyword !== 'string') {
           throw new Error(`keywords.json: invalid keyword entry — missing "keyword" string`);
         }
-        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", or "accuweather"`);
+        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather' && entry.api !== 'nfl') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", or "nfl"`);
         }
         if (typeof entry.timeout !== 'number' || entry.timeout <= 0) {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid timeout — must be a positive number`);
@@ -147,6 +147,20 @@ class Config {
 
   getAccuWeatherDefaultLocation(): string {
     return process.env.ACCUWEATHER_DEFAULT_LOCATION || '';
+  }
+
+  // ── NFL / SportsData.io configuration ───────────────────
+
+  getNflEndpoint(): string {
+    return process.env.NFL_BASE_URL || 'https://api.sportsdata.io/v3/nfl/scores';
+  }
+
+  getNflApiKey(): string {
+    return process.env.NFL_API_KEY || '';
+  }
+
+  getNflEnabled(): boolean {
+    return process.env.NFL_ENABLED !== 'false';
   }
 
   getHttpPort(): number {
@@ -340,9 +354,10 @@ class Config {
     return parsed;
   }
 
-  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather'): string {
+  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl'): string {
     if (api === 'comfyui') return this.getComfyUIEndpoint();
     if (api === 'accuweather') return this.getAccuWeatherEndpoint();
+    if (api === 'nfl') return this.getNflEndpoint();
     return this.getOllamaEndpoint();
   }
 
@@ -378,6 +393,9 @@ class Config {
     const prevImageResponseIncludeEmbed = this.getImageResponseIncludeEmbed();
     const prevOllamaFinalPassModel = this.getOllamaFinalPassModel();
     const prevAbilityLogging = this.getAbilityLoggingDetailed();
+    const prevNflEndpoint = this.getNflEndpoint();
+    const prevNflApiKey = this.getNflApiKey();
+    const prevNflEnabled = this.getNflEnabled();
     const prevDefaultModel = this.getComfyUIDefaultModel();
     const prevDefaultWidth = this.getComfyUIDefaultWidth();
     const prevDefaultHeight = this.getComfyUIDefaultHeight();
@@ -427,6 +445,9 @@ class Config {
     if (this.getImageResponseIncludeEmbed() !== prevImageResponseIncludeEmbed) reloaded.push('IMAGE_RESPONSE_INCLUDE_EMBED');
     if (this.getOllamaFinalPassModel() !== prevOllamaFinalPassModel) reloaded.push('OLLAMA_FINAL_PASS_MODEL');
     if (this.getAbilityLoggingDetailed() !== prevAbilityLogging) reloaded.push('ABILITY_LOGGING_DETAILED');
+    if (this.getNflEndpoint() !== prevNflEndpoint) reloaded.push('NFL_BASE_URL');
+    if (this.getNflApiKey() !== prevNflApiKey) reloaded.push('NFL_API_KEY');
+    if (this.getNflEnabled() !== prevNflEnabled) reloaded.push('NFL_ENABLED');
     if (this.getComfyUIDefaultModel() !== prevDefaultModel) reloaded.push('COMFYUI_DEFAULT_MODEL');
     if (this.getComfyUIDefaultWidth() !== prevDefaultWidth) reloaded.push('COMFYUI_DEFAULT_WIDTH');
     if (this.getComfyUIDefaultHeight() !== prevDefaultHeight) reloaded.push('COMFYUI_DEFAULT_HEIGHT');
@@ -466,6 +487,9 @@ class Config {
         accuweather: this.getAccuWeatherEndpoint(),
         accuweatherDefaultLocation: this.getAccuWeatherDefaultLocation(),
         accuweatherApiKeyConfigured: !!this.getAccuWeatherApiKey(),
+        nfl: this.getNflEndpoint(),
+        nflApiKeyConfigured: !!this.getNflApiKey(),
+        nflEnabled: this.getNflEnabled(),
       },
       defaultWorkflow: {
         model: this.getComfyUIDefaultModel(),

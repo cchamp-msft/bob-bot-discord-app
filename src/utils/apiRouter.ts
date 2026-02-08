@@ -3,7 +3,8 @@ import { logger } from './logger';
 import { requestQueue } from './requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse } from '../api';
 import { accuweatherClient } from '../api/accuweatherClient';
-import { ChatMessage } from '../types';
+import { nflClient } from '../api/nflClient';
+import { ChatMessage, NFLResponse } from '../types';
 import {
   StageResult,
   extractStageResult,
@@ -15,9 +16,9 @@ import {
  */
 export interface RoutedResult {
   /** The final API response to present to the user. */
-  finalResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse;
+  finalResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse;
   /** The API type that produced the final response (for handler dispatch). */
-  finalApi: 'comfyui' | 'ollama' | 'accuweather';
+  finalApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl';
   /** Intermediate stage results (for debugging/logging). */
   stages: StageResult[];
 }
@@ -55,23 +56,36 @@ export async function executeRoutedRequest(
   // ── Primary API request ───────────────────────────────────────
   logger.log('success', 'system', `ROUTER: Executing ${keywordConfig.api} request for "${keywordConfig.keyword}"`);
 
-  const primaryResult = await requestQueue.execute(
-    keywordConfig.api,
-    requester,
-    keywordConfig.keyword,
-    keywordConfig.timeout,
-    (sig) =>
-      apiManager.executeRequest(
-        keywordConfig.api,
-        requester,
-        content,
-        keywordConfig.timeout,
-        undefined,
-        conversationHistory?.length ? conversationHistory : undefined,
-        sig,
-        keywordConfig.accuweatherMode
-      )
-  );
+  let primaryResult: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse;
+
+  if (keywordConfig.api === 'nfl') {
+    // NFL requests bypass the generic apiManager and use the NFL client directly
+    primaryResult = await requestQueue.execute(
+      'nfl',
+      requester,
+      keywordConfig.keyword,
+      keywordConfig.timeout,
+      (sig) => nflClient.handleRequest(content, keywordConfig.keyword, sig)
+    ) as NFLResponse;
+  } else {
+    primaryResult = await requestQueue.execute(
+      keywordConfig.api,
+      requester,
+      keywordConfig.keyword,
+      keywordConfig.timeout,
+      (sig) =>
+        apiManager.executeRequest(
+          keywordConfig.api as 'comfyui' | 'ollama' | 'accuweather',
+          requester,
+          content,
+          keywordConfig.timeout,
+          undefined,
+          conversationHistory?.length ? conversationHistory : undefined,
+          sig,
+          keywordConfig.accuweatherMode
+        )
+    ) as ComfyUIResponse | OllamaResponse | AccuWeatherResponse;
+  }
 
   const primaryExtracted = extractStageResult(keywordConfig.api, primaryResult);
   stages.push(primaryExtracted);
@@ -93,7 +107,7 @@ export async function executeRoutedRequest(
 
     logger.log('success', 'system', 'ROUTER: Final Ollama refinement pass');
 
-    // Build final prompt — use structured AI context for AccuWeather
+    // Build final prompt — use structured AI context for AccuWeather and NFL
     let finalPrompt: string;
     if (keywordConfig.api === 'accuweather') {
       const awResponse = primaryResult as AccuWeatherResponse;
@@ -106,6 +120,10 @@ export async function executeRoutedRequest(
         awResponse.data?.forecast ?? null
       );
       finalPrompt = `${aiContext}\n\nUser request: ${content}\n\nPlease provide a helpful, conversational response based on the weather data above. Be concise and natural.`;
+    } else if (keywordConfig.api === 'nfl') {
+      const nflResponse = primaryResult as NFLResponse;
+      const nflData = nflResponse.data?.text ?? 'No NFL data available.';
+      finalPrompt = `[NFL Game Data]\n${nflData}\n[End NFL Data]\n\nUser request: ${content}\n\nPlease provide a helpful, conversational response based on the NFL data above. Be concise and natural.`;
     } else {
       finalPrompt = buildFinalPassPrompt(content, primaryExtracted);
     }
@@ -125,7 +143,7 @@ export async function executeRoutedRequest(
           conversationHistory?.length ? conversationHistory : undefined,
           sig
         )
-    );
+    ) as OllamaResponse;
 
     const finalExtracted = extractStageResult('ollama', finalResult);
     stages.push(finalExtracted);
