@@ -46,7 +46,8 @@
       "keyword": "weather report",
       "api": "accuweather",
       "timeout": 360,
-      "description": "Get an AI-powered opinionated weather report"
+      "description": "Get an AI-powered opinionated weather report",
+      "finalOllamaPass": true
     }
   ]
 }
