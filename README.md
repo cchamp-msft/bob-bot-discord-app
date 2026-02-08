@@ -29,9 +29,9 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ Comprehensive request logging with date/requester/status tracking
 - ✅ Organized output directory structure with date formatting
 - ✅ **Unit test suite** — 100+ tests covering core functionality
-- ✅ **API call stacking** — AI-based keyword classification with multi-stage API routing and optional Ollama refinement pass
+- ✅ **Two-stage evaluation** — Ollama responses are re-evaluated for API keyword triggers, enabling automatic ability routing
 - ✅ **Weather slash command** — `/weather` command with optional location and report type parameters
-- ✅ **Weather→AI routing** — weather data can be piped through Ollama for AI-powered weather reports
+- ✅ **Weather→AI routing** — weather data piped through Ollama for AI-powered weather reports via `finalOllamaPass`
 
 ## Project Structure
 
@@ -283,16 +283,17 @@ When a user replies to a previous message (theirs or the bot's), the bot automat
 - Single messages (not replies) work exactly as before — no context overhead
 - Bot responses are sent as **plain text** (not embed blocks) for a conversational feel
 
-## API Call Stacking
+## Two-Stage Evaluation & API Routing
 
-Keywords can be configured with multi-stage API routing. When a user's message doesn't match any keyword via regex, the bot uses Ollama to classify the intent and route to the appropriate API.
+The bot uses a two-stage evaluation flow to intelligently route requests. Keywords define available abilities that Ollama can discover and trigger during conversation.
 
 ### How It Works
 
-1. **Regex matching** (fast path) — checked first for explicit keywords like "generate" or "chat"
+1. **Regex matching** (fast path) — checked first for explicit keywords like "generate" or "weather"
 2. **AI classification** (fallback) — if no regex match, Ollama analyzes the message intent and maps it to a registered keyword
-3. **Routed execution** — if the matched keyword has `routeApi` configured, the result of the primary API call is passed to a second API
-4. **Final refinement** (optional) — if `finalOllamaPass` is true, the pipeline result is sent through Ollama for a conversational response
+3. **Direct API routing** — if a non-Ollama keyword is matched (regex or AI), the request is sent directly to the primary API
+4. **Two-stage evaluation** — if an Ollama keyword is matched (e.g., "chat", "ask") or no keyword is matched, the request is sent to Ollama with an abilities context describing available API capabilities. Ollama's response is then re-evaluated via `classifyIntent()` — if it references an API keyword, that API is executed automatically
+5. **Final refinement** (optional) — if a keyword has `finalOllamaPass: true`, the API result is sent through Ollama for a conversational response
 
 ### Keyword Configuration
 
@@ -306,15 +307,15 @@ Extended fields in `config/keywords.json`:
       "api": "comfyui",
       "timeout": 300,
       "description": "Generate image using ComfyUI",
-      "finalOllamaPass": true
+      "abilityText": "generate images from text descriptions"
     },
     {
-      "keyword": "analyze",
-      "api": "ollama",
-      "timeout": 300,
-      "description": "Analyze text then generate image",
-      "routeApi": "comfyui",
-      "routeModel": "llama3",
+      "keyword": "weather report",
+      "api": "accuweather",
+      "timeout": 120,
+      "description": "AI weather report",
+      "abilityText": "check current weather conditions and forecasts",
+      "accuweatherMode": "full",
       "finalOllamaPass": true
     }
   ]
@@ -323,23 +324,24 @@ Extended fields in `config/keywords.json`:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `routeApi` | `'comfyui' \| 'ollama' \| 'accuweather' \| 'external'` | Target API for a second-stage request after the primary API |
-| `routeModel` | `string` | Specific Ollama model for the routed/final stage |
-| `finalOllamaPass` | `boolean` | Pass the pipeline result through Ollama for conversational refinement |
+| `abilityText` | `string` | Human-readable description of what this API can do, included in Ollama's abilities context |
+| `routeModel` | `string` | Specific Ollama model for the final pass |
+| `finalOllamaPass` | `boolean` | Pass the API result through Ollama for conversational refinement |
+| `accuweatherMode` | `'current' \| 'forecast' \| 'full'` | AccuWeather data scope: current conditions only, 5-day forecast only, or both (default: `full`) |
 
 ### Example Flows
 
-- **Simple**: `generate` → ComfyUI (existing behavior, unchanged)
-- **With refinement**: `generate` + `finalOllamaPass: true` → ComfyUI → Ollama describes the result
-- **Full pipeline**: `analyze` (Ollama) → `routeApi: comfyui` → `finalOllamaPass: true` → 3-stage execution
-- **Weather→AI**: `weather report` (AccuWeather) → `routeApi: ollama` → AI-powered weather summary
+- **Simple**: `generate` → ComfyUI (direct API call)
+- **Weather→AI**: `weather report` (AccuWeather) → `finalOllamaPass: true` → Ollama formats the weather data
+- **Two-stage**: User says "is it going to rain?" → no keyword match → Ollama with abilities → response mentions weather → AccuWeather triggered → Ollama formats result
 - **AI-classified**: User says "can you draw a sunset?" → AI identifies intent as "generate" → routes to ComfyUI
+- **No API match**: User says "tell me a joke" → Ollama with abilities → response has no API keywords → Ollama response returned directly
 
 ### Error Handling
 
-- If stage 2 fails, the stage 1 result is returned with a warning logged
-- If the final Ollama pass fails, the previous stage result is returned
-- If AI classification fails or returns no match, the request falls back to default chat
+- If the final Ollama pass fails, the raw API result is returned
+- If two-stage evaluation finds an API keyword but the API call fails, an error is reported to the user
+- If AI classification fails or returns no match, the request goes through two-stage evaluation
 
 ## Usage
 
