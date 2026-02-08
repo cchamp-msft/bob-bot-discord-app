@@ -1,7 +1,11 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
-import { NFLGameScore, NFLResponse, NFLHealthResult } from '../types';
+import {
+  NFLGameScore, NFLResponse, NFLHealthResult,
+  ESPNScoreboardResponse, ESPNEvent, ESPNCompetition, ESPNCompetitor,
+  ESPNNewsArticle, ESPNNewsResponse,
+} from '../types';
 
 /**
  * Parsed season/week from a user query.
@@ -25,7 +29,7 @@ function isAbortError(error: unknown): boolean {
   return false;
 }
 
-const NFL_BASE_URL = 'https://api.sportsdata.io/v3/nfl/scores';
+const ESPN_BASE_URL = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 
 /**
  * Parse an explicit season and/or week from user input.
@@ -82,6 +86,114 @@ export function parseSeasonWeek(content: string): ParsedWeekQuery {
 
   return result;
 }
+
+// ── ESPN → NFLGameScore adapter ─────────────────────────────────
+
+/**
+ * Map ESPN status fields to the internal NFLGameScore.Status union.
+ */
+function mapESPNStatus(status: ESPNCompetition['status']): NFLGameScore['Status'] {
+  const { state, name } = status.type;
+
+  if (state === 'pre') return 'Scheduled';
+
+  if (state === 'in') {
+    if (name === 'STATUS_DELAYED') return 'Delayed';
+    return 'InProgress';
+  }
+
+  if (state === 'post') {
+    if (name === 'STATUS_POSTPONED') return 'Postponed';
+    if (name === 'STATUS_CANCELED') return 'Canceled';
+    if (status.period > 4) return 'F/OT';
+    return 'Final';
+  }
+
+  return 'Scheduled';
+}
+
+/**
+ * Derive the Quarter field from ESPN status.
+ */
+function mapESPNQuarter(status: ESPNCompetition['status']): string | null {
+  if (status.type.state === 'pre') return null;
+  if (status.type.name === 'STATUS_HALFTIME') return 'Half';
+  if (status.period === 0) return null;
+  if (status.period > 4) return 'OT';
+  return String(status.period);
+}
+
+/**
+ * Convert a single ESPN event into the internal NFLGameScore model.
+ */
+export function mapESPNEventToGame(event: ESPNEvent): NFLGameScore {
+  const competition = event.competitions[0];
+  const status = competition.status;
+
+  // Find home and away competitors
+  const home = competition.competitors.find((c: ESPNCompetitor) => c.homeAway === 'home');
+  const away = competition.competitors.find((c: ESPNCompetitor) => c.homeAway === 'away');
+
+  const homeScore = home?.score !== undefined ? parseInt(home.score, 10) : null;
+  const awayScore = away?.score !== undefined ? parseInt(away.score, 10) : null;
+
+  // Venue
+  let stadiumDetails: NFLGameScore['StadiumDetails'] = null;
+  if (competition.venue) {
+    stadiumDetails = {
+      Name: competition.venue.fullName,
+      City: competition.venue.address?.city ?? '',
+      State: competition.venue.address?.state ?? '',
+      Country: competition.venue.address?.country ?? 'USA',
+    };
+  }
+
+  // Odds
+  let pointSpread: number | null = null;
+  let overUnder: number | null = null;
+  let awayMoneyLine: number | null = null;
+  let homeMoneyLine: number | null = null;
+  if (competition.odds && competition.odds.length > 0) {
+    const odds = competition.odds[0];
+    pointSpread = odds.spread ?? null;
+    overUnder = odds.overUnder ?? null;
+    awayMoneyLine = odds.awayTeamOdds?.moneyLine ?? null;
+    homeMoneyLine = odds.homeTeamOdds?.moneyLine ?? null;
+  }
+
+  return {
+    GameKey: event.id,
+    Season: event.season.year,
+    SeasonType: event.season.type,
+    Week: event.week.number,
+    Date: event.date || null,
+    AwayTeam: away?.team.abbreviation ?? '',
+    HomeTeam: home?.team.abbreviation ?? '',
+    AwayScore: status.type.state === 'pre' ? null : (isNaN(awayScore as number) ? null : awayScore),
+    HomeScore: status.type.state === 'pre' ? null : (isNaN(homeScore as number) ? null : homeScore),
+    Channel: competition.broadcast || null,
+    Quarter: mapESPNQuarter(status),
+    TimeRemaining: status.type.state === 'in' ? status.displayClock : null,
+    Status: mapESPNStatus(status),
+    StadiumDetails: stadiumDetails,
+    IsClosed: status.type.completed,
+    AwayTeamMoneyLine: awayMoneyLine,
+    HomeTeamMoneyLine: homeMoneyLine,
+    PointSpread: pointSpread,
+    OverUnder: overUnder,
+    _espn: event,
+  };
+}
+
+/**
+ * Map a full ESPN scoreboard response into an array of NFLGameScore.
+ */
+export function mapESPNScoreboard(response: ESPNScoreboardResponse): NFLGameScore[] {
+  if (!response.events || !Array.isArray(response.events)) return [];
+  return response.events.map(mapESPNEventToGame);
+}
+
+// ── Team maps ───────────────────────────────────────────────────
 
 /** NFL team abbreviation → full name map for fuzzy team lookup. */
 const TEAM_MAP: Record<string, string> = {
@@ -155,9 +267,8 @@ const TEAM_ALIASES: Record<string, string> = {
   commanders: 'WAS', washington: 'WAS',
 };
 
-/**
- * Simple in-memory cache for NFL API responses.
- */
+// ── Cache ───────────────────────────────────────────────────────
+
 interface CacheEntry<T> {
   data: T;
   expiresAt: number;
@@ -185,13 +296,15 @@ class NFLCache {
   }
 }
 
+// ── NFLClient ───────────────────────────────────────────────────
+
 export class NFLClient {
   private client: AxiosInstance;
   private cache = new NFLCache();
 
   constructor() {
     this.client = axios.create({
-      baseURL: config.getNflEndpoint() || NFL_BASE_URL,
+      baseURL: config.getNflEndpoint() || ESPN_BASE_URL,
     });
   }
 
@@ -199,7 +312,7 @@ export class NFLClient {
    * Rebuild the axios instance with the current endpoint from config.
    */
   refresh(): void {
-    const baseURL = config.getNflEndpoint() || NFL_BASE_URL;
+    const baseURL = config.getNflEndpoint() || ESPN_BASE_URL;
     this.client = axios.create({ baseURL });
     this.cache.clear();
     if (config.getNflLoggingLevel() >= 0) {
@@ -239,119 +352,43 @@ export class NFLClient {
     return TEAM_MAP[abbr.toUpperCase()] || abbr;
   }
 
-  // ── API Endpoints ─────────────────────────────────────────────
+  // ── ESPN API Endpoints ────────────────────────────────────────
 
   /**
-   * Fetch current week number from SportsData.io.
+   * Fetch scoreboard from ESPN. No API key required.
+   * Supports current (default), by date (?dates=YYYYMMDD), or
+   * by week/season (?week=N&seasontype=T&season=Y).
    */
-  async getCurrentWeek(signal?: AbortSignal): Promise<number | null> {
-    const logLevel = config.getNflLoggingLevel();
-    const cached = this.cache.get<number>('currentWeek');
-    if (cached !== null) {
-      if (logLevel >= 1) logger.log('success', 'nfl', `NFL: currentWeek cache HIT — week ${cached}`);
-      return cached;
-    }
-
-    const apiKey = config.getNflApiKey();
-    if (!apiKey) return null;
-
-    try {
-      if (logLevel >= 1) logger.log('success', 'nfl', 'NFL: Fetching /json/CurrentWeek');
-      const response = await this.client.get('/json/CurrentWeek', {
-        params: { key: apiKey },
-        signal,
-      });
-      const week = response.data as number;
-      this.cache.set('currentWeek', week, 3600); // cache 1 hour
-      if (logLevel >= 0) logger.log('success', 'nfl', `NFL: currentWeek = ${week} (cached 1h)`);
-      return week;
-    } catch (error) {
-      if (isAbortError(error)) throw error;
-      logger.logError('nfl', `Failed to fetch current week: ${error}`);
-      return null;
-    }
-  }
-
-  /**
-   * Fetch current season year from SportsData.io.
-   */
-  async getCurrentSeason(signal?: AbortSignal): Promise<number | null> {
-    const logLevel = config.getNflLoggingLevel();
-    const cached = this.cache.get<number>('currentSeason');
-    if (cached !== null) {
-      if (logLevel >= 1) logger.log('success', 'nfl', `NFL: currentSeason cache HIT — season ${cached}`);
-      return cached;
-    }
-
-    const apiKey = config.getNflApiKey();
-    if (!apiKey) return null;
-
-    try {
-      if (logLevel >= 1) logger.log('success', 'nfl', 'NFL: Fetching /json/CurrentSeason');
-      const response = await this.client.get('/json/CurrentSeason', {
-        params: { key: apiKey },
-        signal,
-      });
-      const season = response.data as number;
-      this.cache.set('currentSeason', season, 86400); // cache 24 hours
-      if (logLevel >= 0) logger.log('success', 'nfl', `NFL: currentSeason = ${season} (cached 24h)`);
-      return season;
-    } catch (error) {
-      if (isAbortError(error)) throw error;
-      logger.logError('nfl', `Failed to fetch current season: ${error}`);
-      return null;
-    }
-  }
-
-  /**
-   * Fetch scores for a specific season and week using the lightweight
-   * ScoresBasic endpoint. Best for current-week quick lookups.
-   */
-  async getScores(season: number, week: number, signal?: AbortSignal): Promise<NFLGameScore[]> {
-    return this.fetchScores(season, week, 'ScoresBasic', signal);
-  }
-
-  /**
-   * Fetch scores using the full ScoresByWeek endpoint.
-   * Preferred for explicit/historical week queries where data accuracy
-   * matters more than payload size.
-   */
-  async getScoresByWeek(season: number, week: number, signal?: AbortSignal): Promise<NFLGameScore[]> {
-    return this.fetchScores(season, week, 'ScoresByWeek', signal);
-  }
-
-  /**
-   * Internal shared fetch for both ScoresBasic and ScoresByWeek endpoints.
-   */
-  private async fetchScores(
-    season: number,
-    week: number,
-    endpointType: 'ScoresBasic' | 'ScoresByWeek',
+  async fetchScoreboard(
+    params?: { dates?: string; week?: number; seasontype?: number; season?: number },
     signal?: AbortSignal
   ): Promise<NFLGameScore[]> {
     const logLevel = config.getNflLoggingLevel();
-    const cacheKey = `scores-${endpointType}-${season}-${week}`;
+
+    // Build cache key from params
+    const paramStr = params
+      ? Object.entries(params).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join('&')
+      : 'current';
+    const cacheKey = `scoreboard-${paramStr}`;
+
     const cached = this.cache.get<NFLGameScore[]>(cacheKey);
     if (cached !== null) {
-      if (logLevel >= 1) logger.log('success', 'nfl', `NFL: scores cache HIT — ${cacheKey} (${cached.length} game(s))`);
+      if (logLevel >= 1) logger.log('success', 'nfl', `NFL: scoreboard cache HIT — ${cacheKey} (${cached.length} game(s))`);
       return cached;
     }
 
-    const apiKey = config.getNflApiKey();
-    if (!apiKey) return [];
-
     try {
-      const endpoint = `/json/${endpointType}/${season}/${week}`;
-      if (logLevel >= 1) logger.log('success', 'nfl', `NFL: Fetching ${endpoint}`);
-      const response = await this.client.get(endpoint, {
-        params: { key: apiKey },
+      if (logLevel >= 1) logger.log('success', 'nfl', `NFL: Fetching /scoreboard (${paramStr})`);
+      const response = await this.client.get('/scoreboard', {
+        params,
         signal,
       });
-      const games = response.data as NFLGameScore[];
+      const espnData = response.data as ESPNScoreboardResponse;
+      const games = mapESPNScoreboard(espnData);
 
       // Use short cache for in-progress games, longer for final scores
       const hasLive = games.some(g => g.Status === 'InProgress');
-      const ttl = hasLive ? 60 : 300; // 1 min live, 5 min otherwise
+      const ttl = hasLive ? 60 : 300;
       this.cache.set(cacheKey, games, ttl);
 
       // Summarize game statuses
@@ -361,65 +398,39 @@ export class NFLClient {
       }
       const statusSummary = Object.entries(statusCounts).map(([s, c]) => `${s}:${c}`).join(', ');
       if (logLevel >= 0) {
-        logger.log('success', 'nfl', `NFL: Scores ${season}/wk${week} via ${endpointType} — ${games.length} game(s) [${statusSummary}] (cached ${ttl}s)`);
+        logger.log('success', 'nfl', `NFL: Scoreboard (${paramStr}) — ${games.length} game(s) [${statusSummary}] (cached ${ttl}s)`);
       }
-
-      // Validate returned data matches the requested season/week
-      this.validateScoresData(games, season, week, endpointType);
 
       return games;
     } catch (error) {
       if (isAbortError(error)) throw error;
-      logger.logError('nfl', `Failed to fetch scores for ${season} week ${week} via ${endpointType}: ${error}`);
+      logger.logError('nfl', `Failed to fetch ESPN scoreboard (${paramStr}): ${error}`);
       return [];
     }
   }
 
   /**
-   * Validate that returned scores data matches the requested season/week.
-   * Logs a warning if mismatches are detected, which may indicate a
-   * sandbox/trial API key returning sample data.
+   * Fetch the current scoreboard (no date/week filter).
    */
-  private validateScoresData(
-    games: NFLGameScore[],
-    expectedSeason: number,
-    expectedWeek: number,
-    endpointType: string
-  ): void {
-    if (games.length === 0) return;
+  async getCurrentScoreboard(signal?: AbortSignal): Promise<NFLGameScore[]> {
+    return this.fetchScoreboard(undefined, signal);
+  }
 
-    const mismatched = games.filter(
-      g => (g.Season && g.Season !== expectedSeason) || (g.Week && g.Week !== expectedWeek)
-    );
-
-    if (mismatched.length > 0) {
-      const sample = mismatched[0];
-      logger.logError(
-        'nfl',
-        `NFL DATA VALIDATION WARNING: Requested ${expectedSeason}/wk${expectedWeek} via ${endpointType} ` +
-        `but received games with Season=${sample.Season}, Week=${sample.Week}. ` +
-        `${mismatched.length}/${games.length} game(s) mismatched. ` +
-        `This may indicate a sandbox/trial API key returning sample data. ` +
-        `Verify your NFL_API_KEY has production access at sportsdata.io.`
-      );
-    }
+  /**
+   * Fetch scores for a specific season and week.
+   */
+  async getScoresByWeek(season: number, week: number, signal?: AbortSignal): Promise<NFLGameScore[]> {
+    // ESPN uses seasontype: 1=pre, 2=regular, 3=post
+    // Default to regular season (2) unless the caller knows otherwise
+    return this.fetchScoreboard({ season, week, seasontype: 2 }, signal);
   }
 
   /**
    * Fetch the current week's game scores.
+   * ESPN defaults to the current week automatically.
    */
   async getCurrentWeekScores(signal?: AbortSignal): Promise<NFLGameScore[]> {
-    const [season, week] = await Promise.all([
-      this.getCurrentSeason(signal),
-      this.getCurrentWeek(signal),
-    ]);
-
-    if (!season || !week) {
-      logger.logError('nfl', 'Could not determine current season/week');
-      return [];
-    }
-
-    return this.getScores(season, week, signal);
+    return this.getCurrentScoreboard(signal);
   }
 
   /**
@@ -432,52 +443,53 @@ export class NFLClient {
   }
 
   /**
-   * Find the Super Bowl game. Searches postseason weeks for the championship game.
-   * The Super Bowl is typically the last game of week 22 (conference champ round is 21).
-   * SportsData.io uses SeasonType 3 for postseason.
+   * Find the Super Bowl game.
+   * ESPN annotates the Super Bowl with a note headline containing "Super Bowl".
+   * Falls back to looking for postseason (SeasonType 3) games.
    */
   async getSuperBowlGame(signal?: AbortSignal): Promise<NFLGameScore | null> {
-    const season = await this.getCurrentSeason(signal);
-    if (!season) return null;
+    // Try current scoreboard first — during Super Bowl week this is sufficient
+    const games = await this.getCurrentScoreboard(signal);
 
-    // Try the postseason Super Bowl week (typically week 4 of postseason = overall week 22)
-    // SportsData.io postseason weeks: WildCard=1, Divisional=2, ConfChamp=3, SuperBowl=4
-    // But scores endpoint uses sequential week numbers for the full season
-    // Postseason starts at week 18 (after 17 regular season weeks + bye)
-    // Super Bowl is usually week 22
-    for (const week of [22, 21, 23]) {
-      try {
-        const games = await this.getScores(season, week, signal);
-        // Super Bowl is the only game in its week with SeasonType 3
-        const sb = games.find(g => g.SeasonType === 3 && games.filter(x => x.SeasonType === 3).length <= 1);
-        if (sb) return sb;
-
-        // Fallback: if only one game in the week, it's likely the Super Bowl
-        if (games.length === 1 && games[0].SeasonType === 3) return games[0];
-      } catch (error) {
-        if (isAbortError(error)) throw error;
-        // Week doesn't exist yet, continue
+    // Look for game with "Super Bowl" in its notes
+    for (const game of games) {
+      const espn = game._espn;
+      if (espn) {
+        const comp = espn.competitions[0];
+        const hasSuperBowlNote = comp.notes?.some(
+          n => n.headline?.toLowerCase().includes('super bowl')
+        );
+        if (hasSuperBowlNote) return game;
       }
+    }
+
+    // Fallback: look for a single postseason game (SeasonType 3)
+    const postseasonGames = games.filter(g => g.SeasonType === 3);
+    if (postseasonGames.length === 1) return postseasonGames[0];
+
+    // Try fetching postseason explicitly with week 5 (Super Bowl week in ESPN)
+    try {
+      const season = games.length > 0 ? games[0].Season : new Date().getFullYear();
+      const sbGames = await this.fetchScoreboard({ season, week: 5, seasontype: 3 }, signal);
+      if (sbGames.length > 0) return sbGames[0];
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+      // Silently continue
     }
 
     return null;
   }
 
   /**
-   * Test NFL API connection and return health status.
+   * Test ESPN API connection and return health status.
+   * No API key needed — just check that the endpoint responds.
    */
   async testConnection(): Promise<NFLHealthResult> {
-    const apiKey = config.getNflApiKey();
-    if (!apiKey) {
-      return { healthy: false, error: 'NFL_API_KEY is not configured' };
-    }
-
     try {
-      const response = await this.client.get('/json/CurrentSeason', {
-        params: { key: apiKey },
+      const response = await this.client.get('/scoreboard', {
         timeout: 10000,
       });
-      if (response.status === 200 && typeof response.data === 'number') {
+      if (response.status === 200 && response.data?.events) {
         return { healthy: true };
       }
       return { healthy: false, error: `Unexpected response: ${response.status}` };
@@ -493,6 +505,76 @@ export class NFLClient {
   async isHealthy(): Promise<boolean> {
     const result = await this.testConnection();
     return result.healthy;
+  }
+
+  // ── News ──────────────────────────────────────────────────────
+
+  /**
+   * Fetch NFL news articles from ESPN.
+   */
+  async fetchNews(limit: number = 10, signal?: AbortSignal): Promise<ESPNNewsArticle[]> {
+    const logLevel = config.getNflLoggingLevel();
+    const cacheKey = `news-${limit}`;
+    const cached = this.cache.get<ESPNNewsArticle[]>(cacheKey);
+    if (cached !== null) {
+      if (logLevel >= 1) logger.log('success', 'nfl', `NFL: news cache HIT — ${cached.length} article(s)`);
+      return cached;
+    }
+
+    try {
+      if (logLevel >= 1) logger.log('success', 'nfl', `NFL: Fetching /news (limit=${limit})`);
+      const response = await this.client.get('/news', { signal });
+      const data = response.data as ESPNNewsResponse;
+      const articles = (data.articles || []).slice(0, limit);
+      this.cache.set(cacheKey, articles, 300); // 5 minute cache
+      if (logLevel >= 0) {
+        logger.log('success', 'nfl', `NFL: News — ${articles.length} article(s) (cached 5m)`);
+      }
+      return articles;
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+      logger.logError('nfl', `Failed to fetch ESPN news: ${error}`);
+      return [];
+    }
+  }
+
+  /**
+   * Format news articles into a readable numbered list.
+   */
+  formatNews(articles: ESPNNewsArticle[]): string {
+    if (articles.length === 0) return 'No NFL news available.';
+
+    const lines: string[] = ['📰 **NFL News**', ''];
+    for (let i = 0; i < articles.length; i++) {
+      const a = articles[i];
+      const date = new Date(a.published).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric',
+      });
+      lines.push(`**${i + 1}.** ${a.headline}`);
+      if (a.description) {
+        lines.push(`   ${a.description}`);
+      }
+      lines.push(`   _${date}${a.byline ? ` — ${a.byline}` : ''}_`);
+      lines.push('');
+    }
+    return lines.join('\n').trimEnd();
+  }
+
+  /**
+   * Format news articles as AI-readable context for Ollama enhancement.
+   */
+  formatNewsContextForAI(articles: ESPNNewsArticle[]): string {
+    if (articles.length === 0) return 'No NFL news data available.';
+
+    const lines: string[] = ['NFL News Headlines'];
+    for (const a of articles) {
+      const date = new Date(a.published).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+      });
+      lines.push(`- ${a.headline} (${date})`);
+      if (a.description) lines.push(`  ${a.description}`);
+    }
+    return lines.join('\n');
   }
 
   // ── Formatting ────────────────────────────────────────────────
@@ -534,10 +616,16 @@ export class NFLClient {
 
   /**
    * Format a Super Bowl game with extra detail.
+   * Enhanced with ESPN data: records, broadcast info, situation.
    */
   formatSuperBowl(game: NFLGameScore): string {
     const lines: string[] = [];
-    lines.push('🏈 **Super Bowl** 🏈');
+    const espn = game._espn;
+    const comp = espn?.competitions?.[0];
+
+    // Title — use note headline if available (e.g. "Super Bowl LX")
+    const sbHeadline = comp?.notes?.find(n => n.headline?.toLowerCase().includes('super bowl'))?.headline;
+    lines.push(`🏈 **${sbHeadline || 'Super Bowl'}** 🏈`);
 
     if (game.StadiumDetails) {
       const stadium = game.StadiumDetails;
@@ -549,12 +637,18 @@ export class NFLClient {
     const away = this.getTeamName(game.AwayTeam);
     const home = this.getTeamName(game.HomeTeam);
 
+    // Team records from ESPN
+    const awayComp = comp?.competitors?.find((c: ESPNCompetitor) => c.homeAway === 'away');
+    const homeComp = comp?.competitors?.find((c: ESPNCompetitor) => c.homeAway === 'home');
+    const awayRecord = awayComp?.records?.find(r => r.type === 'total')?.summary;
+    const homeRecord = homeComp?.records?.find(r => r.type === 'total')?.summary;
+
     if (game.Status === 'Scheduled') {
       const dateStr = game.Date ? new Date(game.Date).toLocaleString('en-US', {
         weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
         hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
       }) : 'TBD';
-      lines.push(`**${away}** vs **${home}**`);
+      lines.push(`**${away}**${awayRecord ? ` (${awayRecord})` : ''} vs **${home}**${homeRecord ? ` (${homeRecord})` : ''}`);
       lines.push(`📅 ${dateStr}`);
       if (game.Channel) lines.push(`📺 ${game.Channel}`);
     } else if (game.Status === 'InProgress') {
@@ -564,10 +658,35 @@ export class NFLClient {
       const time = game.TimeRemaining || '';
       const qDisplay = quarter === 'Half' ? 'Halftime' : `Q${quarter} ${time}`.trim();
 
-      lines.push(`**${away}** ${awayScore}`);
-      lines.push(`**${home}** ${homeScore}`);
+      lines.push(`**${away}**${awayRecord ? ` (${awayRecord})` : ''} ${awayScore}`);
+      lines.push(`**${home}**${homeRecord ? ` (${homeRecord})` : ''} ${homeScore}`);
       lines.push('');
       lines.push(`📊 ${qDisplay}`);
+
+      // Situation details (down & distance, possession, red zone)
+      if (comp?.situation) {
+        const sit = comp.situation;
+        const parts: string[] = [];
+        if (sit.possession) {
+          const possTeam = sit.possession === awayComp?.id ? game.AwayTeam : game.HomeTeam;
+          parts.push(`🏈 ${possTeam} ball`);
+        }
+        if (sit.down && sit.distance) {
+          parts.push(`${sit.down}${ordinalSuffix(sit.down)} & ${sit.distance}`);
+        }
+        if (sit.yardLine) {
+          parts.push(`at ${sit.yardLine}-yard line`);
+        }
+        if (sit.isRedZone) {
+          parts.push('🔴 Red Zone');
+        }
+        if (parts.length > 0) lines.push(parts.join(' | '));
+
+        if (sit.lastPlay?.text) {
+          lines.push(`▶️ ${sit.lastPlay.text}`);
+        }
+      }
+
       if (game.Channel) lines.push(`📺 ${game.Channel}`);
     } else {
       const awayScore = game.AwayScore ?? 0;
@@ -575,8 +694,8 @@ export class NFLClient {
       const suffix = game.Status === 'F/OT' ? ' (OT)' : '';
       const winner = awayScore > homeScore ? away : home;
 
-      lines.push(`**${away}** ${awayScore}`);
-      lines.push(`**${home}** ${homeScore}`);
+      lines.push(`**${away}**${awayRecord ? ` (${awayRecord})` : ''} ${awayScore}`);
+      lines.push(`**${home}**${homeRecord ? ` (${homeRecord})` : ''} ${homeScore}`);
       lines.push('');
       lines.push(`🏆 **${winner}** wins!${suffix}`);
     }
@@ -631,17 +750,12 @@ export class NFLClient {
    * Dispatches to the appropriate method based on the keyword and content.
    *
    * @param content - User's message content (after keyword stripping)
-   * @param keyword - The matched keyword (e.g. "superbowl", "nfl scores", "nfl score", "nfl")
+   * @param keyword - The matched keyword (e.g. "superbowl", "nfl scores", "nfl score", "nfl", "nfl news", "nfl news report")
    * @returns Formatted NFL response
    */
   async handleRequest(content: string, keyword: string, signal?: AbortSignal): Promise<NFLResponse> {
     if (!config.getNflEnabled()) {
       return { success: false, error: 'NFL features are currently disabled.' };
-    }
-
-    const apiKey = config.getNflApiKey();
-    if (!apiKey) {
-      return { success: false, error: 'NFL API key is not configured. Set NFL_API_KEY in your environment.' };
     }
 
     const lowerKeyword = keyword.toLowerCase();
@@ -670,6 +784,14 @@ export class NFLClient {
         return await this.handleTeamScore(content, signal);
       }
 
+      if (lowerKeyword === 'nfl news report') {
+        return await this.handleNewsReport(content, signal);
+      }
+
+      if (lowerKeyword === 'nfl news') {
+        return await this.handleNews(content, signal);
+      }
+
       // Generic "nfl" keyword — fetch all current data for AI context
       if (lowerKeyword === 'nfl') {
         return await this.handleGenericNfl(content, signal);
@@ -689,11 +811,7 @@ export class NFLClient {
   private async handleSuperBowl(signal?: AbortSignal): Promise<NFLResponse> {
     const game = await this.getSuperBowlGame(signal);
     if (!game) {
-      // No Super Bowl game found — report what we know
-      const season = await this.getCurrentSeason(signal);
-      const text = season
-        ? `The Super Bowl game could not be found for the ${season} season. It may not be scheduled yet, or the season may still be in progress.`
-        : 'Could not determine the current NFL season.';
+      const text = 'The Super Bowl game could not be found. It may not be scheduled yet, or the season may still be in progress.';
       return { success: true, data: { text } };
     }
 
@@ -706,40 +824,23 @@ export class NFLClient {
     const parsed = parseSeasonWeek(content);
     const isExplicit = parsed.season !== undefined || parsed.week !== undefined;
 
-    let season: number | null;
-    let week: number | null;
     let games: NFLGameScore[];
+    let label: string;
 
     if (isExplicit) {
-      // Resolve missing fields from current season/week
-      const [curSeason, curWeek] = await Promise.all([
-        parsed.season ? Promise.resolve(parsed.season) : this.getCurrentSeason(signal),
-        parsed.week ? Promise.resolve(parsed.week) : this.getCurrentWeek(signal),
-      ]);
-      season = curSeason;
-      week = curWeek;
-
-      if (!season || !week) {
-        return { success: true, data: { text: 'Could not determine season/week. Please try again.' } };
-      }
-
-      // Use ScoresByWeek for explicit/historical queries
+      const season = parsed.season ?? new Date().getFullYear();
+      const week = parsed.week ?? 1;
       games = await this.getScoresByWeek(season, week, signal);
+      label = `${season} Week ${week}`;
     } else {
-      // Current week — use lighter ScoresBasic endpoint
       games = await this.getCurrentWeekScores(signal);
-      season = games.length > 0 ? games[0].Season : null;
-      week = games.length > 0 ? games[0].Week : null;
+      label = 'Current Week';
     }
-
-    const label = isExplicit && season && week
-      ? `${season} Week ${week}`
-      : 'Current Week';
 
     let text: string;
     if (games.length === 0) {
-      text = isExplicit && season && week
-        ? `No NFL games found for ${season} Week ${week}.`
+      text = isExplicit
+        ? `No NFL games found for ${label}.`
         : 'No NFL games found for the current week.';
     } else {
       const header = isExplicit ? `🏈 **NFL Scores — ${label}**` : '🏈 **NFL Scores**';
@@ -747,22 +848,6 @@ export class NFLClient {
       for (const game of games) {
         lines.push(this.formatGame(game));
       }
-
-      // Append data-quality warning if validation detected mismatches
-      if (isExplicit && season && week) {
-        const mismatched = games.filter(
-          g => (g.Season && g.Season !== season) || (g.Week && g.Week !== week)
-        );
-        if (mismatched.length > 0) {
-          lines.push('');
-          lines.push(
-            `⚠️ **Data quality notice:** The API returned data that may not match the requested ` +
-            `${season} Week ${week}. Your API key may be a trial/sandbox key returning sample data. ` +
-            `Verify your key at sportsdata.io.`
-          );
-        }
-      }
-
       text = lines.join('\n');
     }
 
@@ -794,14 +879,8 @@ export class NFLClient {
     let game: NFLGameScore | null;
 
     if (isExplicit) {
-      const [season, week] = await Promise.all([
-        parsed.season ? Promise.resolve(parsed.season) : this.getCurrentSeason(signal),
-        parsed.week ? Promise.resolve(parsed.week) : this.getCurrentWeek(signal),
-      ]);
-
-      if (!season || !week) {
-        return { success: true, data: { text: 'Could not determine season/week. Please try again.' } };
-      }
+      const season = parsed.season ?? new Date().getFullYear();
+      const week = parsed.week ?? 1;
 
       const games = await this.getScoresByWeek(season, week, signal);
       const upper = teamAbbr.toUpperCase();
@@ -824,6 +903,27 @@ export class NFLClient {
     return { success: true, data: { text, games: [game] } };
   }
 
+  private async handleNews(_content: string, signal?: AbortSignal): Promise<NFLResponse> {
+    const articles = await this.fetchNews(5, signal);
+    if (articles.length === 0) {
+      return { success: true, data: { text: 'No NFL news available at this time.' } };
+    }
+    const text = this.formatNews(articles);
+    this.logResponsePayload('nfl news', text);
+    return { success: true, data: { text, articles } };
+  }
+
+  private async handleNewsReport(_content: string, signal?: AbortSignal): Promise<NFLResponse> {
+    const articles = await this.fetchNews(11, signal);
+    if (articles.length === 0) {
+      return { success: true, data: { text: 'No NFL news available at this time.' } };
+    }
+    // Return AI-formatted context — apiRouter will pass through Ollama final pass
+    const text = this.formatNewsContextForAI(articles);
+    this.logResponsePayload('nfl news report', text);
+    return { success: true, data: { text, articles } };
+  }
+
   private async handleGenericNfl(content: string, signal?: AbortSignal): Promise<NFLResponse> {
     // For the generic "nfl" keyword, fetch scores and return as structured
     // data. If finalOllamaPass is configured on the keyword, apiRouter will
@@ -835,15 +935,8 @@ export class NFLClient {
     let label: string;
 
     if (isExplicit) {
-      const [season, week] = await Promise.all([
-        parsed.season ? Promise.resolve(parsed.season) : this.getCurrentSeason(signal),
-        parsed.week ? Promise.resolve(parsed.week) : this.getCurrentWeek(signal),
-      ]);
-
-      if (!season || !week) {
-        return { success: true, data: { text: 'Could not determine season/week for your query.' } };
-      }
-
+      const season = parsed.season ?? new Date().getFullYear();
+      const week = parsed.week ?? 1;
       games = await this.getScoresByWeek(season, week, signal);
       label = `${season} Week ${week}`;
     } else {
@@ -871,20 +964,7 @@ export class NFLClient {
     if (!isExplicit) {
       const scopePatterns = /playoff|postseason|season|championship|divisional|wild\s*card|conference|\b20[12]\d\b/i;
       if (scopePatterns.test(content)) {
-        text += '\n\nNote: The data above reflects the current week\'s games only. Historical, postseason, and full-season results are not available through this data source.';
-      }
-    }
-
-    // Append data-quality warning if validation detected mismatches
-    if (isExplicit && games.length > 0) {
-      const reqSeason = parsed.season ?? games[0]?.Season;
-      const reqWeek = parsed.week ?? games[0]?.Week;
-      const mismatched = games.filter(
-        g => (g.Season && g.Season !== reqSeason) || (g.Week && g.Week !== reqWeek)
-      );
-      if (mismatched.length > 0) {
-        text += '\n\n⚠️ Data quality notice: The API returned data that may not match the requested ' +
-          `${label}. Your API key may be a trial/sandbox key returning sample data.`;
+        text += '\n\nNote: The data above reflects the current week\'s games only. For historical results, try specifying a season and week (e.g., "nfl scores week 4 2025").';
       }
     }
 
@@ -921,7 +1001,21 @@ export class NFLClient {
    */
   static allowsEmptyContent(keyword: string): boolean {
     const lower = keyword.toLowerCase();
-    return lower === 'nfl scores' || lower === 'superbowl' || lower === 'nfl';
+    return lower === 'nfl scores' || lower === 'superbowl' || lower === 'nfl'
+      || lower === 'nfl news' || lower === 'nfl news report';
+  }
+}
+
+/**
+ * Ordinal suffix for numbers (1st, 2nd, 3rd, 4th).
+ */
+function ordinalSuffix(n: number): string {
+  if (n >= 11 && n <= 13) return 'th';
+  switch (n % 10) {
+    case 1: return 'st';
+    case 2: return 'nd';
+    case 3: return 'rd';
+    default: return 'th';
   }
 }
 

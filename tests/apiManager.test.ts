@@ -48,8 +48,7 @@ jest.mock('../src/utils/config', () => ({
     getAccuWeatherEndpoint: jest.fn(() => 'https://dataservice.accuweather.com'),
     getAccuWeatherApiKey: jest.fn(() => ''),
     getAccuWeatherDefaultLocation: jest.fn(() => ''),
-    getNflEndpoint: jest.fn(() => 'https://api.sportsdata.io/v3/nfl/scores'),
-    getNflApiKey: jest.fn(() => ''),
+    getNflEndpoint: jest.fn(() => 'https://site.api.espn.com/apis/site/v2/sports/football/nfl'),
     getNflEnabled: jest.fn(() => false),
   },
 }));

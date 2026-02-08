@@ -499,8 +499,8 @@
       <h2 onclick="toggleSection(this)">NFL API (SportsData.io)</h2>
       <div class="body">
         <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
-          Get a free API key at <a href="https://sportsdata.io" target="_blank" style="color:var(--accent)">sportsdata.io</a>.
-          The NFL API provides live scores, schedules, and Super Bowl data. Use keywords like <code style="color:var(--accent)">nfl scores</code>, <code style="color:var(--accent)">nfl score &lt;team&gt;</code>, or <code style="color:var(--accent)">superbowl</code>.
+          Powered by ESPN's public API — no API key required.
+          Provides live scores, schedules, Super Bowl data, and news. Use keywords like <code style="color:var(--accent)">nfl scores</code>, <code style="color:var(--accent)">nfl score &lt;team&gt;</code>, <code style="color:var(--accent)">superbowl</code>, <code style="color:var(--accent)">nfl news</code>, or <code style="color:var(--accent)">nfl news report</code>.
         </p>
         <div class="field">
           <label>Enabled</label>
@@ -510,19 +510,8 @@
           </select>
         </div>
         <div class="field">
-          <label>API Key <span class="note">write-only — never displayed</span></label>
-          <div class="field-row">
-            <div class="field">
-              <input type="password" id="nfl_api_key" placeholder="Paste SportsData.io API key" autocomplete="off">
-            </div>
-            <div class="field tiny">
-              <button class="btn-test btn-sm" onclick="testConnection('nfl')">Test</button>
-            </div>
-          </div>
-        </div>
-        <div class="field">
           <label>Endpoint <span class="note">override only if using a proxy</span></label>
-          <input type="text" id="nfl_endpoint" data-env="NFL_BASE_URL" placeholder="https://api.sportsdata.io/v3/nfl/scores">
+          <input type="text" id="nfl_endpoint" data-env="NFL_BASE_URL" placeholder="https://site.api.espn.com/apis/site/v2/sports/football/nfl">
         </div>
         <div class="field narrow">
           <label title="Controls how much NFL API detail is written to logs. 0 = summary only, 1 = summary + trimmed preview, 2 = full payload">Logging Level ℹ️</label>
@@ -897,9 +886,6 @@
       // Populate NFL fields
       document.getElementById('nfl_enabled').value = cfg.apis.nflEnabled ? 'true' : 'false';
       document.getElementById('nfl_endpoint').value = cfg.apis.nfl || '';
-      document.getElementById('nfl_api_key').value = '';
-      document.getElementById('nfl_api_key').placeholder =
-        cfg.apis.nflApiKeyConfigured ? 'API key configured ✓ — paste new value to change' : 'Paste SportsData.io API key';
 
       // Populate NFL logging level
       const nflLogLevel = document.getElementById('nfl_logging_level');
@@ -1052,13 +1038,6 @@
       const awKeyVal = awKeyInput.value.trim();
       if (awKeyVal) {
         env['ACCUWEATHER_API_KEY'] = awKeyVal;
-      }
-
-      // Include NFL API key only if user typed a new value (write-only field)
-      const nflKeyInput = document.getElementById('nfl_api_key');
-      const nflKeyVal = nflKeyInput.value.trim();
-      if (nflKeyVal) {
-        env['NFL_API_KEY'] = nflKeyVal;
       }
 
       // Collect keywords

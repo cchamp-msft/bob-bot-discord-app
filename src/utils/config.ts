@@ -149,10 +149,10 @@ class Config {
     return process.env.ACCUWEATHER_DEFAULT_LOCATION || '';
   }
 
-  // ── NFL / SportsData.io configuration ───────────────────
+  // ── NFL / ESPN configuration ─────────────────────────────
 
   getNflEndpoint(): string {
-    return process.env.NFL_BASE_URL || 'https://api.sportsdata.io/v3/nfl/scores';
+    return process.env.NFL_BASE_URL || 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
   }
 
   getNflApiKey(): string {
@@ -501,7 +501,6 @@ class Config {
         accuweatherDefaultLocation: this.getAccuWeatherDefaultLocation(),
         accuweatherApiKeyConfigured: !!this.getAccuWeatherApiKey(),
         nfl: this.getNflEndpoint(),
-        nflApiKeyConfigured: !!this.getNflApiKey(),
         nflEnabled: this.getNflEnabled(),
       },
       defaultWorkflow: {

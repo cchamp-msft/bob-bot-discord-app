@@ -125,7 +125,10 @@ export async function executeRoutedRequest(
     } else if (keywordConfig.api === 'nfl') {
       const nflResponse = primaryResult as NFLResponse;
       const nflData = nflResponse.data?.text ?? 'No NFL data available.';
-      finalPrompt = `[NFL Game Data]\n${nflData}\n[End NFL Data]\n\nUser request: ${content}\n\nPlease provide a helpful, conversational response based on the NFL data above. Be concise and natural.`;
+      const isNewsKeyword = keywordConfig.keyword.toLowerCase().includes('news');
+      const openTag = isNewsKeyword ? '[NFL News Data]' : '[NFL Game Data]';
+      const closeTag = isNewsKeyword ? '[End NFL News Data]' : '[End NFL Data]';
+      finalPrompt = `${openTag}\n${nflData}\n${closeTag}\n\nUser request: ${content}\n\nPlease provide a helpful, conversational response based on the NFL data above. Be concise and natural.`;
     } else {
       finalPrompt = buildFinalPassPrompt(content, primaryExtracted);
     }

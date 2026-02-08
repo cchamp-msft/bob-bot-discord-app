@@ -1,6 +1,6 @@
 # Bob Bot - Discord AI Integration
 
-A Discord bot that monitors @mentions and DMs, routes keyword-matched requests to ComfyUI, Ollama, AccuWeather, and SportsData.io NFL APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
+A Discord bot that monitors @mentions and DMs, routes keyword-matched requests to ComfyUI, Ollama, AccuWeather, and ESPN NFL APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
 
 ## Features
 
@@ -10,7 +10,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ ComfyUI integration for image generation (WebSocket-based with HTTP polling fallback)
 - ✅ Ollama integration for AI text generation
 - ✅ AccuWeather integration for real-time weather data (current conditions + 5-day forecast)
-- ✅ **NFL game data** — live scores, weekly schedules, team lookups, and Super Bowl tracking via SportsData.io
+- ✅ **NFL game data** — live scores, weekly schedules, team lookups, Super Bowl tracking, and news via ESPN
 - ✅ Serial request processing with max 1 concurrent per API
 - ✅ Configurable per-keyword timeouts (default: 300s)
 - ✅ Smart file handling (attachments for small files, URL links for large)
@@ -36,7 +36,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **Weather→AI routing** — weather data piped through Ollama for AI-powered weather reports via `finalOllamaPass`
 - ✅ **Global final-pass model** — configurable Ollama model for all final-pass refinements
 - ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
-- ✅ **NFL commands** — `nfl scores`, `nfl score <team>`, `superbowl`, and `nfl` (AI-enhanced) keywords
+- ✅ **NFL commands** — `nfl scores`, `nfl score <team>`, `superbowl`, `nfl news`, `nfl news report`, and `nfl` (AI-enhanced) keywords
 
 ## Project Structure
 
@@ -52,7 +52,7 @@ src/
 ├── api/
 │   ├── index.ts          # API manager
 │   ├── accuweatherClient.ts # AccuWeather API client (weather data)
-│   ├── nflClient.ts      # SportsData.io NFL API client (scores, schedules)
+│   ├── nflClient.ts      # ESPN NFL API client (scores, schedules, news)
 │   ├── comfyuiClient.ts  # ComfyUI API client (workflow execution)
 │   ├── comfyuiWebSocket.ts # ComfyUI WebSocket manager (real-time execution tracking)
 │   └── ollamaClient.ts   # Ollama API client
@@ -96,7 +96,7 @@ outputs/
 - ComfyUI instance (optional, for image generation)
 - Ollama instance (optional, for text generation)
 - AccuWeather API key (optional, for weather data — free tier at [developer.accuweather.com](https://developer.accuweather.com))
-- SportsData.io API key (optional, for NFL scores — free tier at [sportsdata.io](https://sportsdata.io))
+- No API key required for NFL data (ESPN public API)
 
 ### Installation
 
@@ -118,7 +118,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_API_KEY`, `NFL_BASE_URL`, `NFL_ENABLED`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`
 
 ### Running the Bot
 
@@ -177,7 +177,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **Connection Status**: Live indicator showing stopped / connecting / running / error
 - **API Endpoints**: Configure ComfyUI/Ollama/AccuWeather/NFL URLs with live connection testing
 - **AccuWeather**: API key (write-only), default location, endpoint configuration, and test connection with location resolution
-- **NFL**: API key (write-only), enabled toggle, endpoint configuration, and test connection
+- **NFL**: Enabled toggle, endpoint configuration, and test connection (no API key needed — ESPN public API)
 - **Ollama Model Selection**: Test connection auto-discovers available models; select and save desired model
 - **Ollama System Prompt**: Configurable system prompt sets the bot's personality; reset-to-default button included
 - **ComfyUI Workflow Upload**: Upload a workflow JSON file with `%prompt%` placeholder validation
@@ -197,7 +197,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - Ollama model selection
 - Ollama system prompt
 - AccuWeather API key and default location
-- NFL API key and enabled state
+- NFL enabled state
 - Default workflow parameters (model, size, steps, sampler, scheduler, denoise)
 - Error message and rate limit
 - Reply chain settings (enabled, max depth, max tokens)
@@ -236,7 +236,7 @@ npm run test:watch
 - **apiRouter.test.ts** — Multi-stage routing, partial failures, final pass logic, NFL routing
 - **responseTransformer.test.ts** — Result extraction, context prompt building
 - **accuweatherClient.test.ts** — Location resolution, weather data fetching, formatting, health checks
-- **nflClient.test.ts** — Team resolution, game formatting, API fetching, health checks, request dispatching, season/week parsing, endpoint selection, data validation
+- **nflClient.test.ts** — ESPN adapter mapping, team resolution, game formatting, news methods, API fetching, health checks, request dispatching, season/week parsing
 
 All tests run without requiring Discord connection or external APIs.
 
@@ -479,17 +479,14 @@ The `/weather` command supports two optional parameters:
 
 ### NFL Game Data
 
-The bot integrates with [SportsData.io](https://sportsdata.io) for NFL game scores, schedules, and Super Bowl data. A free-tier API key provides access to basic score data.
-
-> **Important:** Trial/sandbox API keys may return sample/placeholder data instead of real scores. If you see scores that don't match known results, verify your API key has production access at [sportsdata.io](https://sportsdata.io). The bot will log warnings when it detects data mismatches.
+The bot integrates with [ESPN's public API](https://site.api.espn.com/apis/site/v2/sports/football/nfl) for NFL game scores, schedules, Super Bowl data, and news. No API key is required.
 
 #### Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NFL_API_KEY` | Yes | API key from SportsData.io |
-| `NFL_BASE_URL` | No | Base URL override (default: `https://api.sportsdata.io/v3/nfl/scores`) |
-| `NFL_ENABLED` | No | Enable/disable NFL features (default: `true` when API key is set) |
+| `NFL_BASE_URL` | No | Base URL override (default: `https://site.api.espn.com/apis/site/v2/sports/football/nfl`) |
+| `NFL_ENABLED` | No | Enable/disable NFL features (default: `true`) |
 
 #### NFL Keywords
 
@@ -500,6 +497,8 @@ Four default NFL keywords are configured in `config/keywords.json`:
 | `superbowl` | Shows current/last Super Bowl game with detailed info |
 | `nfl scores` | Lists all games for the current week, or a specific week if specified (e.g., `nfl scores week 4 2025`) |
 | `nfl score` | Shows score for a specific team (e.g., `nfl score chiefs`), supports historical lookups (e.g., `nfl score chiefs week 4 2025`) |
+| `nfl news` | Shows the 5 latest NFL news headlines from ESPN |
+| `nfl news report` | Fetches 11 news articles and passes through Ollama for an AI-enhanced news summary |
 | `nfl` | Fetches current week data and passes through Ollama for AI-enhanced responses; supports historical week queries |
 
 #### Historical Week Queries
@@ -510,14 +509,15 @@ All NFL keywords support explicit season/week lookups:
 - `nfl score chiefs week 4 2025` — Chiefs game from 2025 Week 4
 - `nfl who won week 10` — Week 10 of the current season (AI-enhanced)
 
-When an explicit week is requested, the bot uses the full `ScoresByWeek` endpoint for data accuracy. Current-week queries use the lighter `ScoresBasic` endpoint.
+When an explicit week is requested, the bot uses ESPN's week/season query parameters. Current-week queries use the default scoreboard endpoint.
 
 #### Endpoint Selection
 
-| Query type | Endpoint used | Cache TTL |
+| Query type | ESPN Endpoint | Cache TTL |
 |-----------|---------------|----------|
-| Current week (no explicit week) | `/json/ScoresBasic/{season}/{week}` | 60s live, 300s final |
-| Explicit week/season | `/json/ScoresByWeek/{season}/{week}` | 60s live, 300s final |
+| Current week (no explicit week) | `/scoreboard` | 60s live, 300s final |
+| Explicit week/season | `/scoreboard?season=Y&week=N&seasontype=T` | 60s live, 300s final |
+| News | `/news` | 300s |
 
 #### Team Resolution
 
@@ -538,6 +538,8 @@ Mention the bot with a keyword and prompt:
 @BobBot nfl scores
 @BobBot nfl score chiefs
 @BobBot superbowl
+@BobBot nfl news
+@BobBot nfl news report
 @BobBot nfl who is favored to win the super bowl?
 ```
 

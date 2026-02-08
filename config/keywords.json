@@ -76,6 +76,19 @@
       "description": "Get a specific NFL team's game score (e.g. 'nfl score chiefs')"
     },
     {
+      "keyword": "nfl news report",
+      "api": "nfl",
+      "timeout": 60,
+      "description": "Get an AI-enhanced NFL news report",
+      "finalOllamaPass": true
+    },
+    {
+      "keyword": "nfl news",
+      "api": "nfl",
+      "timeout": 30,
+      "description": "Get latest NFL news headlines"
+    },
+    {
       "keyword": "nfl",
       "api": "nfl",
       "timeout": 60,
