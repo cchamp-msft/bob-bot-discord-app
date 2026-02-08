@@ -8,6 +8,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ Slash commands with ephemeral responses (shareable by user)
 - ✅ ComfyUI integration for image generation (WebSocket-based with HTTP polling fallback)
 - ✅ Ollama integration for AI text generation
+- ✅ AccuWeather integration for real-time weather data (current conditions + 5-day forecast)
 - ✅ Serial request processing with max 1 concurrent per API
 - ✅ Configurable per-keyword timeouts (default: 300s)
 - ✅ Smart file handling (attachments for small files, URL links for large)
@@ -28,6 +29,9 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ Comprehensive request logging with date/requester/status tracking
 - ✅ Organized output directory structure with date formatting
 - ✅ **Unit test suite** — 100+ tests covering core functionality
+- ✅ **API call stacking** — AI-based keyword classification with multi-stage API routing and optional Ollama refinement pass
+- ✅ **Weather slash command** — `/weather` command with optional location and report type parameters
+- ✅ **Weather→AI routing** — weather data can be piped through Ollama for AI-powered weather reports
 
 ## Project Structure
 
@@ -42,6 +46,7 @@ src/
 │   └── commands.ts       # Slash command definitions
 ├── api/
 │   ├── index.ts          # API manager
+│   ├── accuweatherClient.ts # AccuWeather API client (weather data)
 │   ├── comfyuiClient.ts  # ComfyUI API client (workflow execution)
 │   ├── comfyuiWebSocket.ts # ComfyUI WebSocket manager (real-time execution tracking)
 │   └── ollamaClient.ts   # Ollama API client
@@ -53,7 +58,10 @@ src/
     ├── logger.ts         # Unified logging system (console + file + configurator tail)
     ├── fileHandler.ts    # File output management
     ├── requestQueue.ts   # Request queue with API availability tracking
-    └── httpServer.ts     # Express HTTP server for file serving + configurator
+    ├── httpServer.ts     # Express HTTP server for file serving + configurator
+    ├── keywordClassifier.ts  # AI-based keyword classification (Ollama fallback)
+    ├── apiRouter.ts      # Multi-stage API routing pipeline
+    └── responseTransformer.ts # Stage result extraction and context building
 
 config/
 └── keywords.json         # Keyword to API mapping with timeouts
@@ -81,6 +89,7 @@ outputs/
 - A Discord Bot Token (can be configured after install via the web configurator)
 - ComfyUI instance (optional, for image generation)
 - Ollama instance (optional, for text generation)
+- AccuWeather API key (optional, for weather data — free tier at [developer.accuweather.com](https://developer.accuweather.com))
 
 ### Installation
 
@@ -102,7 +111,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`
 
 ### Running the Bot
 
@@ -159,7 +168,8 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **Bot Token**: Write-only field — token is never displayed or logged, only persisted to `.env`
 - **Start/Stop Controls**: Connect or disconnect the bot from Discord without restarting the process
 - **Connection Status**: Live indicator showing stopped / connecting / running / error
-- **API Endpoints**: Configure ComfyUI/Ollama URLs with live connection testing
+- **API Endpoints**: Configure ComfyUI/Ollama/AccuWeather URLs with live connection testing
+- **AccuWeather**: API key (write-only), default location, endpoint configuration, and test connection with location resolution
 - **Ollama Model Selection**: Test connection auto-discovers available models; select and save desired model
 - **Ollama System Prompt**: Configurable system prompt sets the bot's personality; reset-to-default button included
 - **ComfyUI Workflow Upload**: Upload a workflow JSON file with `%prompt%` placeholder validation
@@ -175,9 +185,10 @@ The bot includes a **localhost-only web configurator** for easy management witho
 ### Hot-Reload vs Restart Required
 
 **Hot-Reload (no restart needed):**
-- ComfyUI/Ollama endpoints
+- ComfyUI/Ollama/AccuWeather endpoints
 - Ollama model selection
 - Ollama system prompt
+- AccuWeather API key and default location
 - Default workflow parameters (model, size, steps, sampler, scheduler, denoise)
 - Error message and rate limit
 - Reply chain settings (enabled, max depth, max tokens)
@@ -194,7 +205,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 
 ## Running Tests
 
-The bot includes a comprehensive unit test suite with 169 tests covering configuration, logging, file handling, request queuing, message handling, API clients, and config persistence.
+The bot includes a comprehensive unit test suite covering configuration, logging, file handling, request queuing, message handling, API clients, and config persistence.
 
 ### Run all tests:
 ```bash
@@ -212,6 +223,10 @@ npm run test:watch
 - **fileHandler.test.ts** — File saving, sanitization, path generation
 - **logger.test.ts** — Log formatting, level mapping, console output, file tail
 - **requestQueue.test.ts** — API locking, timeouts, concurrency
+- **keywordClassifier.test.ts** — AI classification logic, prompt building, fallback handling
+- **apiRouter.test.ts** — Multi-stage routing, partial failures, final pass logic
+- **responseTransformer.test.ts** — Result extraction, context prompt building
+- **accuweatherClient.test.ts** — Location resolution, weather data fetching, formatting, health checks
 
 All tests run without requiring Discord connection or external APIs.
 
@@ -268,6 +283,64 @@ When a user replies to a previous message (theirs or the bot's), the bot automat
 - Single messages (not replies) work exactly as before — no context overhead
 - Bot responses are sent as **plain text** (not embed blocks) for a conversational feel
 
+## API Call Stacking
+
+Keywords can be configured with multi-stage API routing. When a user's message doesn't match any keyword via regex, the bot uses Ollama to classify the intent and route to the appropriate API.
+
+### How It Works
+
+1. **Regex matching** (fast path) — checked first for explicit keywords like "generate" or "chat"
+2. **AI classification** (fallback) — if no regex match, Ollama analyzes the message intent and maps it to a registered keyword
+3. **Routed execution** — if the matched keyword has `routeApi` configured, the result of the primary API call is passed to a second API
+4. **Final refinement** (optional) — if `finalOllamaPass` is true, the pipeline result is sent through Ollama for a conversational response
+
+### Keyword Configuration
+
+Extended fields in `config/keywords.json`:
+
+```json
+{
+  "keywords": [
+    {
+      "keyword": "generate",
+      "api": "comfyui",
+      "timeout": 300,
+      "description": "Generate image using ComfyUI",
+      "finalOllamaPass": true
+    },
+    {
+      "keyword": "analyze",
+      "api": "ollama",
+      "timeout": 300,
+      "description": "Analyze text then generate image",
+      "routeApi": "comfyui",
+      "routeModel": "llama3",
+      "finalOllamaPass": true
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `routeApi` | `'comfyui' \| 'ollama' \| 'accuweather' \| 'external'` | Target API for a second-stage request after the primary API |
+| `routeModel` | `string` | Specific Ollama model for the routed/final stage |
+| `finalOllamaPass` | `boolean` | Pass the pipeline result through Ollama for conversational refinement |
+
+### Example Flows
+
+- **Simple**: `generate` → ComfyUI (existing behavior, unchanged)
+- **With refinement**: `generate` + `finalOllamaPass: true` → ComfyUI → Ollama describes the result
+- **Full pipeline**: `analyze` (Ollama) → `routeApi: comfyui` → `finalOllamaPass: true` → 3-stage execution
+- **Weather→AI**: `weather report` (AccuWeather) → `routeApi: ollama` → AI-powered weather summary
+- **AI-classified**: User says "can you draw a sunset?" → AI identifies intent as "generate" → routes to ComfyUI
+
+### Error Handling
+
+- If stage 2 fails, the stage 1 result is returned with a warning logged
+- If the final Ollama pass fails, the previous stage result is returned
+- If AI classification fails or returns no match, the request falls back to default chat
+
 ## Usage
 
 ### Ollama Model Configuration
@@ -318,11 +391,61 @@ The workflow is stored in `.config/comfyui-workflow.json`.
 
 **Workflow Precedence:** If a custom workflow is uploaded, it always takes priority over the default workflow. Remove the custom workflow via the configurator to revert to default workflow settings.
 
+### AccuWeather Configuration
+
+The bot integrates with [AccuWeather](https://developer.accuweather.com) for real-time weather data. A free-tier API key provides 50 calls/day.
+
+#### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ACCUWEATHER_API_KEY` | Yes | API key from AccuWeather Developer Portal |
+| `ACCUWEATHER_DEFAULT_LOCATION` | No | Default location when user doesn't specify one (city name, zip code, or AccuWeather location key) |
+| `ACCUWEATHER_ENDPOINT` | No | Base URL override (default: `https://dataservice.accuweather.com`) |
+
+#### Location Resolution
+
+The bot supports multiple location input formats:
+- **City names**: `Seattle`, `New York City`, `London`
+- **US zip codes** (5 digits): `90210`, `98101`
+- **AccuWeather location keys** (numeric): `351409`
+
+When a user says "weather in Seattle", the bot extracts "Seattle", resolves it via AccuWeather's location search API, and fetches weather data.
+
+#### Weather Keywords
+
+Four default weather keywords are configured in `config/keywords.json`:
+
+| Keyword | Mode | Behavior |
+|---------|------|----------|
+| `weather` | full | Direct weather report (current + forecast) |
+| `forecast` | forecast | Direct 5-day forecast only |
+| `conditions` | current | Direct current conditions only |
+| `weather report` | full | Weather data routed through Ollama for AI-powered report |
+
+#### Weather Slash Command
+
+The `/weather` command supports two optional parameters:
+
+```
+/weather                          # Default location, full report
+/weather location: Chicago        # Specified location, full report
+/weather location: 90210 type: forecast   # Zip code, forecast only
+/weather type: current            # Default location, current conditions
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `location` | string (optional) | City name, zip code, or location key |
+| `type` | choice (optional) | `current`, `forecast`, or `full` (default: `full`) |
+
 ### @mention Usage
 Mention the bot with a keyword and prompt:
 ```
 @BobBot generate a beautiful sunset landscape
 @BobBot ask what is the meaning of life?
+@BobBot weather in Seattle
+@BobBot forecast for 90210
 ```
 
 The bot replies inline — the initial "Processing" message is edited in-place with the final response. You can also DM the bot directly without needing an @mention.
@@ -332,6 +455,8 @@ Use slash commands for ephemeral responses:
 ```
 /generate prompt: a beautiful sunset landscape
 /ask question: what is the meaning of life? model: llama2
+/weather location: Seattle type: full
+/weather location: 90210 type: forecast
 ```
 
 ## API Rate Limiting
