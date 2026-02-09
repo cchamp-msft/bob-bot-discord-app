@@ -75,7 +75,7 @@ Implementation session: 2026-02-09
 
 ## Next Steps
 
-- [x] **Run tests** — All 4 export tests pass. Full suite: 759/759 passed (2026-02-09).
+- [x] **Run tests** — All 4 export tests pass (`npx jest --testPathPatterns="defaultWorkflowRoutes"`). Full suite: 759/759 passed (2026-02-09).
 - [x] **commitpls** — Committed as `feat(comfyui): add workflow export endpoint and UI`.
 
 ## Notes
