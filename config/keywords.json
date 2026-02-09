@@ -24,39 +24,57 @@
       "api": "ollama",
       "timeout": 300,
       "description": "Ask a question using Ollama",
-      "abilityText": "Ask a question using Ollama"
+      "abilityText": "Ask a question using Ollama",
+      "contextFilterEnabled": true,
+      "contextFilterMinDepth": 1,
+      "contextFilterMaxDepth": 20
     },
     {
       "keyword": "chat",
       "api": "ollama",
       "timeout": 300,
       "description": "Chat with Ollama AI",
-      "abilityText": "Chat with Ollama AI"
+      "abilityText": "Chat with Ollama AI",
+      "contextFilterEnabled": true,
+      "contextFilterMinDepth": 1,
+      "contextFilterMaxDepth": 20
     },
     {
       "keyword": "weather",
       "api": "accuweather",
       "timeout": 60,
-      "description": "Get current weather conditions and 5-day forecast"
+      "description": "Get current weather conditions and 5-day forecast",
+      "contextFilterEnabled": true,
+      "contextFilterMinDepth": 1,
+      "contextFilterMaxDepth": 1
     },
     {
       "keyword": "forecast",
       "api": "accuweather",
       "timeout": 60,
-      "description": "Get 5-day weather forecast"
+      "description": "Get 5-day weather forecast",
+      "contextFilterEnabled": true,
+      "contextFilterMinDepth": 1,
+      "contextFilterMaxDepth": 1
     },
     {
       "keyword": "conditions",
       "api": "accuweather",
       "timeout": 60,
-      "description": "Get current weather conditions"
+      "description": "Get current weather conditions",
+      "contextFilterEnabled": true,
+      "contextFilterMinDepth": 1,
+      "contextFilterMaxDepth": 1
     },
     {
       "keyword": "weather report",
       "api": "accuweather",
       "timeout": 360,
       "description": "Get an AI-powered opinionated weather report",
-      "finalOllamaPass": true
+      "finalOllamaPass": true,
+      "contextFilterEnabled": true,
+      "contextFilterMinDepth": 1,
+      "contextFilterMaxDepth": 1
     },
     {
       "keyword": "nfl superbowl report",
@@ -111,6 +129,15 @@
       "description": "Get NFL game information, enhanced with live data",
       "abilityText": "Get NFL game information, enhanced with live data",
       "finalOllamaPass": true
+    },
+    {
+      "keyword": "analyze",
+      "api": "ollama",
+      "timeout": 60,
+      "description": "Analyze the context and generate the most relevant assessment based on the context",
+      "contextFilterEnabled": true,
+      "contextFilterMinDepth": 20,
+      "contextFilterMaxDepth": 20
     }
   ]
 }
