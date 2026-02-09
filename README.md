@@ -183,6 +183,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **ComfyUI Workflow Upload**: Upload a workflow JSON file with `%prompt%` placeholder validation
 - **Default Workflow Builder**: Configure a basic text-to-image workflow with checkpoint model, image size, steps, sampler, scheduler, and denoise — no manual JSON editing required
 - **ComfyUI Discovery**: Auto-detect available checkpoints, samplers, and schedulers from the connected ComfyUI instance
+- **Workflow Export**: Download the currently active workflow as ComfyUI API format JSON for external testing
 - **Error Handling**: Configure user-facing error message and rate limit interval
 - **HTTP Server**: Adjust port and output base URL
 - **Limits**: Set file size threshold, default timeout, and max attachments per message
@@ -509,6 +510,12 @@ When a Discord user triggers image generation, all occurrences of `%prompt%` in 
 The workflow is stored in `.config/comfyui-workflow.json`.
 
 **Workflow Precedence:** If a custom workflow is uploaded, it always takes priority over the default workflow. Remove the custom workflow via the configurator to revert to default workflow settings.
+
+#### Exporting Workflows for ComfyUI Testing
+
+The configurator includes an **Export Current Workflow** button that downloads the currently active workflow (custom or default) as a JSON file in ComfyUI API format. The exported file can be submitted directly to ComfyUI's `/prompt` endpoint for testing outside the bot.
+
+The `%prompt%` placeholder is preserved in the export — replace it manually with your test prompt text before submitting to ComfyUI.
 
 ### AccuWeather Configuration
 

@@ -198,6 +198,26 @@ class HttpServer {
       }
     });
 
+    // GET export currently active workflow as ComfyUI API format JSON
+    this.app.get('/api/config/workflow/export', localhostOnly, async (_req, res) => {
+      try {
+        const result = await comfyuiClient.getExportWorkflow();
+        if (!result) {
+          res.status(400).json({
+            success: false,
+            error: 'No workflow configured. Upload a custom workflow or configure default workflow settings first.',
+          });
+          return;
+        }
+        logger.log('success', 'configurator', `Workflow exported (source: ${result.source})`);
+        res.json({ success: true, workflow: result.workflow, source: result.source, params: result.params });
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.logError('configurator', `Workflow export ERROR: ${errorMsg}`);
+        res.status(500).json({ success: false, error: errorMsg });
+      }
+    });
+
     // POST save default workflow parameters
     this.app.post('/api/config/default-workflow', localhostOnly, async (req, res) => {
       try {

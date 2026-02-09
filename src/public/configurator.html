@@ -317,6 +317,10 @@
             <button class="btn-sm" style="font-size:0.78em;color:#e57373;border-color:#e57373" onclick="deleteCustomWorkflow()">Remove Custom Workflow</button>
             <span style="font-size:0.75em;color:var(--text-dim);margin-left:8px">Removes uploaded workflow so the default workflow is used instead</span>
           </div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:10px">
+            <button class="btn-sm" style="font-size:0.78em" onclick="exportWorkflow()">Export Current Workflow</button>
+            <span id="exportStatus" style="font-size:0.78em;color:var(--text-dim)"></span>
+          </div>
         </div>
 
         <!-- Default Workflow Settings -->
@@ -1448,6 +1452,35 @@
       }
     } catch (e) {
       conLog(`  ✗ Delete failed: ${e.message}`, 'err');
+    }
+  }
+
+  async function exportWorkflow() {
+    const statusEl = document.getElementById('exportStatus');
+    statusEl.innerHTML = '<span style="color:var(--warn)">Exporting…</span>';
+    conLog(`[${new Date().toISOString()}] Exporting current workflow…`);
+    try {
+      const res = await fetch('/api/config/workflow/export');
+      const data = await res.json();
+      if (data.success) {
+        const blob = new Blob([JSON.stringify(data.workflow, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'comfyui-workflow-export.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        statusEl.innerHTML = `<span style="color:var(--ok)">✓ Exported (${data.source})</span>`;
+        conLog(`  ✓ Workflow exported (source: ${data.source})`, 'ok');
+      } else {
+        statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(data.error)}</span>`;
+        conLog(`  ✗ Export failed: ${data.error}`, 'err');
+      }
+    } catch (e) {
+      statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(e.message)}</span>`;
+      conLog(`  ✗ Export failed: ${e.message}`, 'err');
     }
   }
 

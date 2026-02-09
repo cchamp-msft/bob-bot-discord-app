@@ -2,6 +2,7 @@
  * Default workflow route tests — exercises:
  *   POST /api/config/default-workflow  (save params with validation)
  *   DELETE /api/config/workflow         (remove custom workflow)
+ *   GET /api/config/workflow/export     (export active workflow)
  *   GET /api/config/comfyui/samplers    (discovery proxy)
  *   GET /api/config/comfyui/schedulers  (discovery proxy)
  *   GET /api/config/comfyui/checkpoints (discovery proxy)
@@ -16,6 +17,7 @@ import http from 'http';
 const mockGetSamplers = jest.fn();
 const mockGetSchedulers = jest.fn();
 const mockGetCheckpoints = jest.fn();
+const mockGetExportWorkflow = jest.fn();
 
 jest.mock('../src/api/comfyuiClient', () => ({
   comfyuiClient: {
@@ -27,6 +29,7 @@ jest.mock('../src/api/comfyuiClient', () => ({
     getSamplers: mockGetSamplers,
     getSchedulers: mockGetSchedulers,
     getCheckpoints: mockGetCheckpoints,
+    getExportWorkflow: mockGetExportWorkflow,
   },
 }));
 
@@ -410,6 +413,75 @@ describe('Default Workflow Routes', () => {
       expect(res.status).toBe(500);
       expect(res.body.success).toBe(false);
       expect(res.body.error).toContain('EPERM');
+    });
+  });
+
+  // ── GET /api/config/workflow/export ─────────────────
+
+  describe('GET /api/config/workflow/export', () => {
+    it('should export default workflow with params', async () => {
+      const defaultWorkflow = {
+        '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'model.safetensors' } },
+        '2': { class_type: 'CLIPTextEncode', inputs: { text: '%prompt%', clip: ['1', 1] } },
+      };
+      const params = {
+        ckpt_name: 'model.safetensors',
+        width: 1024,
+        height: 1024,
+        steps: 20,
+        cfg: 7.0,
+        sampler_name: 'euler',
+        scheduler: 'normal',
+        denoise: 0.88,
+      };
+      mockGetExportWorkflow.mockResolvedValue({ workflow: defaultWorkflow, source: 'default', params });
+
+      const res = await getJson(server, '/api/config/workflow/export');
+
+      expect(res.status).toBe(200);
+      const body = res.body as Record<string, unknown>;
+      expect(body.success).toBe(true);
+      expect(body.source).toBe('default');
+      expect(body.workflow).toEqual(defaultWorkflow);
+      expect(body.params).toEqual(params);
+    });
+
+    it('should export custom workflow without params', async () => {
+      const customWorkflow = {
+        '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'custom.safetensors' } },
+      };
+      mockGetExportWorkflow.mockResolvedValue({ workflow: customWorkflow, source: 'custom' });
+
+      const res = await getJson(server, '/api/config/workflow/export');
+
+      expect(res.status).toBe(200);
+      const body = res.body as Record<string, unknown>;
+      expect(body.success).toBe(true);
+      expect(body.source).toBe('custom');
+      expect(body.workflow).toEqual(customWorkflow);
+      expect(body.params).toBeUndefined();
+    });
+
+    it('should return 400 when no workflow is configured', async () => {
+      mockGetExportWorkflow.mockResolvedValue(null);
+
+      const res = await getJson(server, '/api/config/workflow/export');
+
+      expect(res.status).toBe(400);
+      const body = res.body as Record<string, unknown>;
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('No workflow configured');
+    });
+
+    it('should return 500 when getExportWorkflow throws', async () => {
+      mockGetExportWorkflow.mockRejectedValue(new Error('Unexpected error'));
+
+      const res = await getJson(server, '/api/config/workflow/export');
+
+      expect(res.status).toBe(500);
+      const body = res.body as Record<string, unknown>;
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('Unexpected error');
     });
   });
 

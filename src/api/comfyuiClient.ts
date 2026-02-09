@@ -534,6 +534,42 @@ class ComfyUIClient {
     return this.cachedDefaultWorkflow;
   }
 
+  /**
+   * Get the currently active workflow for export (custom or default).
+   * Returns the workflow object, its source, and default params if applicable.
+   * Returns null when no workflow is configured.
+   */
+  async getExportWorkflow(): Promise<{
+    workflow: Record<string, unknown>;
+    source: 'custom' | 'default';
+    params?: DefaultWorkflowParams;
+  } | null> {
+    const customJson = config.getComfyUIWorkflow();
+    if (customJson) {
+      const validation = this.validateWorkflow(customJson);
+      if (!validation.valid) return null;
+      const effectiveJson = validation.convertedWorkflow ?? customJson;
+      return { workflow: JSON.parse(effectiveJson), source: 'custom' };
+    }
+
+    const model = config.getComfyUIDefaultModel();
+    if (!model) return null;
+
+    const params: DefaultWorkflowParams = {
+      ckpt_name: model,
+      width: config.getComfyUIDefaultWidth(),
+      height: config.getComfyUIDefaultHeight(),
+      steps: config.getComfyUIDefaultSteps(),
+      cfg: config.getComfyUIDefaultCfg(),
+      sampler_name: config.getComfyUIDefaultSampler(),
+      scheduler: config.getComfyUIDefaultScheduler(),
+      denoise: config.getComfyUIDefaultDenoise(),
+    };
+
+    const workflow = buildDefaultWorkflow(params);
+    return { workflow, source: 'default', params };
+  }
+
   async generateImage(
     prompt: string,
     requester: string,
