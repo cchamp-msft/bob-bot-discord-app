@@ -42,6 +42,12 @@ export interface KeywordConfig {
   enabled?: boolean;
   /** Whether this keyword is a built-in that cannot be edited or deleted — only toggled on/off. */
   builtin?: boolean;
+  /** When true, use Ollama to evaluate context relevance before including reply-chain history. */
+  contextFilterEnabled?: boolean;
+  /** Minimum number of most-recent context messages to always include (depth counted from newest). Must be >= 1. Defaults to 1. */
+  contextFilterMinDepth?: number;
+  /** Maximum number of context messages eligible for inclusion (depth counted from newest). Defaults to global reply-chain max depth. */
+  contextFilterMaxDepth?: number;
 }
 
 export interface ConfigData {
@@ -89,6 +95,24 @@ class Config {
         }
         if (entry.builtin !== undefined && typeof entry.builtin !== 'boolean') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid builtin — must be a boolean`);
+        }
+        if (entry.contextFilterEnabled !== undefined && typeof entry.contextFilterEnabled !== 'boolean') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid contextFilterEnabled — must be a boolean`);
+        }
+        if (entry.contextFilterMinDepth !== undefined) {
+          if (typeof entry.contextFilterMinDepth !== 'number' || entry.contextFilterMinDepth < 1 || !Number.isInteger(entry.contextFilterMinDepth)) {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid contextFilterMinDepth — must be a positive integer (>= 1)`);
+          }
+        }
+        if (entry.contextFilterMaxDepth !== undefined) {
+          if (typeof entry.contextFilterMaxDepth !== 'number' || entry.contextFilterMaxDepth < 0 || !Number.isInteger(entry.contextFilterMaxDepth)) {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid contextFilterMaxDepth — must be a non-negative integer`);
+          }
+        }
+        if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMaxDepth !== undefined) {
+          if (entry.contextFilterMinDepth > entry.contextFilterMaxDepth) {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has contextFilterMinDepth (${entry.contextFilterMinDepth}) greater than contextFilterMaxDepth (${entry.contextFilterMaxDepth})`);
+          }
         }
       }
 

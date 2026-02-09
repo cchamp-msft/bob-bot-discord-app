@@ -218,6 +218,24 @@ class ConfigWriter {
         if (entry.builtin !== undefined && typeof entry.builtin !== 'boolean') {
           throw new Error(`Keyword "${entry.keyword}" has invalid builtin — must be a boolean`);
         }
+        if (entry.contextFilterEnabled !== undefined && typeof entry.contextFilterEnabled !== 'boolean') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid contextFilterEnabled — must be a boolean`);
+        }
+        if (entry.contextFilterMinDepth !== undefined) {
+          if (typeof entry.contextFilterMinDepth !== 'number' || entry.contextFilterMinDepth < 1 || !Number.isInteger(entry.contextFilterMinDepth)) {
+            throw new Error(`Keyword "${entry.keyword}" has invalid contextFilterMinDepth — must be a positive integer (>= 1)`);
+          }
+        }
+        if (entry.contextFilterMaxDepth !== undefined) {
+          if (typeof entry.contextFilterMaxDepth !== 'number' || entry.contextFilterMaxDepth < 0 || !Number.isInteger(entry.contextFilterMaxDepth)) {
+            throw new Error(`Keyword "${entry.keyword}" has invalid contextFilterMaxDepth — must be a non-negative integer`);
+          }
+        }
+        if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMaxDepth !== undefined) {
+          if (entry.contextFilterMinDepth > entry.contextFilterMaxDepth) {
+            throw new Error(`Keyword "${entry.keyword}" has contextFilterMinDepth (${entry.contextFilterMinDepth}) greater than contextFilterMaxDepth (${entry.contextFilterMaxDepth})`);
+          }
+        }
       }
 
       // Enforce: custom "help" keyword is only allowed when the built-in help keyword is disabled
@@ -243,6 +261,9 @@ class ConfigWriter {
         if (entry.accuweatherMode) clean.accuweatherMode = entry.accuweatherMode;
         if (entry.enabled === false) clean.enabled = false;
         if (entry.builtin) clean.builtin = true;
+        if (entry.contextFilterEnabled) clean.contextFilterEnabled = true;
+        if (entry.contextFilterMinDepth !== undefined) clean.contextFilterMinDepth = entry.contextFilterMinDepth;
+        if (entry.contextFilterMaxDepth !== undefined && entry.contextFilterMaxDepth > 0) clean.contextFilterMaxDepth = entry.contextFilterMaxDepth;
         return clean;
       });
 

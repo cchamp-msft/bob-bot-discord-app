@@ -70,6 +70,10 @@ jest.mock('../src/utils/apiRouter', () => ({
   executeRoutedRequest: jest.fn(),
 }));
 
+jest.mock('../src/utils/contextEvaluator', () => ({
+  evaluateContextWindow: jest.fn().mockImplementation((history) => Promise.resolve(history)),
+}));
+
 import { config } from '../src/utils/config';
 import { classifyIntent, buildAbilitiesContext } from '../src/utils/keywordClassifier';
 import { executeRoutedRequest } from '../src/utils/apiRouter';
@@ -1414,5 +1418,64 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
       'Please include a prompt or question after the keyword!'
     );
     expect(mockRouted).toHaveBeenCalled();
+  });
+});
+
+describe('MessageHandler — Context Filter integration', () => {
+  const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
+  const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
+
+  const weatherKw = {
+    keyword: 'weather',
+    api: 'accuweather' as const,
+    timeout: 60,
+    description: 'Weather',
+    contextFilterEnabled: true,
+    contextFilterMinDepth: 1,
+    contextFilterMaxDepth: 5,
+  };
+
+  function createMentionedMsg(content: string, hasReference = false) {
+    return {
+      author: { id: 'user-1', bot: false, username: 'ctxuser', displayName: 'CtxUser' },
+      content,
+      mentions: { has: () => true },
+      channel: { type: 0 },
+      client: { user: { id: 'bot-123' } },
+      reference: hasReference ? { messageId: 'ref-1' } : null,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn(),
+        attachments: { size: 0 },
+        embeds: [],
+      }),
+      attachments: { size: 0 },
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getKeywords as jest.Mock).mockReturnValue([weatherKw]);
+    (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
+    mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
+  });
+
+  it('should not call evaluateContextWindow when no conversation history (no reply)', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const { classifyIntent, buildAbilitiesContext } = require('../src/utils/keywordClassifier');
+
+    buildAbilitiesContext.mockReturnValue('');
+    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
+
+    // Ollama direct chat response
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Just chatting!' },
+    });
+
+    const msg = createMentionedMsg('<@bot-123> hello there');
+    await messageHandler.handleMessage(msg as any);
+
+    // No reply reference means no history — evaluator should not be called
+    expect(mockEvaluate).not.toHaveBeenCalled();
   });
 });

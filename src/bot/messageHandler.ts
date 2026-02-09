@@ -12,6 +12,7 @@ import { ChatMessage, NFLResponse } from '../types';
 import { chunkText } from '../utils/chunkText';
 import { classifyIntent, buildAbilitiesContext } from '../utils/keywordClassifier';
 import { executeRoutedRequest } from '../utils/apiRouter';
+import { evaluateContextWindow } from '../utils/contextEvaluator';
 import { NFLClient } from '../api/nflClient';
 
 export type { ChatMessage };
@@ -447,6 +448,14 @@ class MessageHandler {
       logger.log('success', 'system', 'TWO-STAGE: No abilities configured — standard Ollama chat');
     }
     if (conversationHistory.length > 0) {
+      // Apply context filter (Ollama-based relevance evaluation) before stage-1 call.
+      // This trims older off-topic messages while always keeping the most recent minDepth.
+      conversationHistory = await evaluateContextWindow(
+        conversationHistory,
+        content,
+        keywordConfig,
+        requester
+      );
       historyWithAbilities.push(...conversationHistory);
     }
 

@@ -313,6 +313,59 @@ In both cases, context is sent to Ollama using the `/api/chat` endpoint with pro
 - Single messages (not replies) work exactly as before — no context overhead
 - Bot responses are sent as **plain text** (not embed blocks) for a conversational feel
 
+### Context Filter (Per-Keyword)
+
+Each keyword can optionally enable an **Ollama-powered context filter** that evaluates how much reply-chain history is relevant before including it. This improves response quality when conversations shift topics.
+
+#### How It Works
+
+1. After the reply chain / DM history is collected, the context filter sends the messages to Ollama along with the current user prompt.
+2. Ollama determines how many of the most recent messages are topically relevant.
+3. The most recent `contextFilterMinDepth` messages are **always included**, even if off-topic — this guarantees a baseline of context.
+4. Ollama may include up to `contextFilterMaxDepth` messages total if they remain on-topic.
+5. If topics diverge significantly, Ollama is instructed to use the most recent topic and transition naturally.
+
+Depth is counted from the **newest** message (newest = depth 1), matching the "prioritize newest to oldest" design.
+
+#### Per-Keyword Configuration
+
+These fields are set per-keyword in `config/keywords.json` or via the configurator UI:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `contextFilterEnabled` | `boolean` | `false` | Enable the Ollama context evaluation filter for this keyword |
+| `contextFilterMinDepth` | `integer` | `1` | Minimum most-recent messages to always include (>= 1) |
+| `contextFilterMaxDepth` | `integer` | Global `REPLY_CHAIN_MAX_DEPTH` | Maximum messages eligible for inclusion |
+
+Example keyword entry:
+```json
+{
+  "keyword": "chat",
+  "api": "ollama",
+  "timeout": 300,
+  "description": "Chat with Ollama AI",
+  "contextFilterEnabled": true,
+  "contextFilterMinDepth": 2,
+  "contextFilterMaxDepth": 8
+}
+```
+
+#### Where the Filter Applies
+
+- **Direct Ollama chat** (two-stage evaluation, stage 1) — filters history before the initial Ollama call.
+- **Final Ollama pass** (for non-Ollama API keywords with `finalOllamaPass: true`) — filters history before the refinement call.
+- If the primary API was already Ollama, the final pass is skipped (no double-filtering).
+
+#### Behavior When Disabled
+
+When `contextFilterEnabled` is `false` (the default), the full collected reply-chain history is passed to Ollama unchanged — identical to pre-filter behavior.
+
+#### Notes
+
+- **System messages** (abilities context, system prompts) are excluded from depth counting and always preserved at the front of the history.
+- **Performance**: Enabling the context filter adds one Ollama evaluation call per request to determine relevance. This is most beneficial for keywords with long reply chains (e.g., `chat`, discussion-style keywords). For short, single-turn interactions the filter adds overhead with little benefit.
+- **Failure behavior**: If the evaluation call fails or returns an unexpected response, the full unfiltered history is used as a graceful fallback — the bot never drops context silently.
+
 ## Two-Stage Evaluation & API Routing
 
 The bot uses a two-stage evaluation flow to intelligently route requests. Keywords define available abilities that Ollama can discover and trigger during conversation.

@@ -380,6 +380,99 @@ describe('ConfigWriter', () => {
       ).rejects.toThrow('invalid builtin');
     });
 
+    it('should accept valid contextFilterEnabled field', async () => {
+      await configWriter.updateKeywords([{ ...validKeyword, contextFilterEnabled: true }]);
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].contextFilterEnabled).toBe(true);
+    });
+
+    it('should reject non-boolean contextFilterEnabled', async () => {
+      await expect(
+        configWriter.updateKeywords([{ ...validKeyword, contextFilterEnabled: 'yes' as any }])
+      ).rejects.toThrow('invalid contextFilterEnabled');
+    });
+
+    it('should accept valid contextFilterMinDepth', async () => {
+      await configWriter.updateKeywords([
+        { ...validKeyword, contextFilterEnabled: true, contextFilterMinDepth: 3 },
+      ]);
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].contextFilterMinDepth).toBe(3);
+    });
+
+    it('should reject contextFilterMinDepth of 0', async () => {
+      await expect(
+        configWriter.updateKeywords([
+          { ...validKeyword, contextFilterEnabled: true, contextFilterMinDepth: 0 },
+        ])
+      ).rejects.toThrow('invalid contextFilterMinDepth');
+    });
+
+    it('should reject negative contextFilterMinDepth', async () => {
+      await expect(
+        configWriter.updateKeywords([
+          { ...validKeyword, contextFilterMinDepth: -1 },
+        ])
+      ).rejects.toThrow('invalid contextFilterMinDepth');
+    });
+
+    it('should reject non-integer contextFilterMinDepth', async () => {
+      await expect(
+        configWriter.updateKeywords([
+          { ...validKeyword, contextFilterMinDepth: 2.5 },
+        ])
+      ).rejects.toThrow('invalid contextFilterMinDepth');
+    });
+
+    it('should accept valid contextFilterMaxDepth', async () => {
+      await configWriter.updateKeywords([
+        { ...validKeyword, contextFilterEnabled: true, contextFilterMaxDepth: 10 },
+      ]);
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].contextFilterMaxDepth).toBe(10);
+    });
+
+    it('should reject negative contextFilterMaxDepth', async () => {
+      await expect(
+        configWriter.updateKeywords([
+          { ...validKeyword, contextFilterMaxDepth: -5 },
+        ])
+      ).rejects.toThrow('invalid contextFilterMaxDepth');
+    });
+
+    it('should reject minDepth > maxDepth', async () => {
+      await expect(
+        configWriter.updateKeywords([
+          { ...validKeyword, contextFilterMinDepth: 5, contextFilterMaxDepth: 3 },
+        ])
+      ).rejects.toThrow('contextFilterMinDepth (5) greater than contextFilterMaxDepth (3)');
+    });
+
+    it('should persist keyword with all context filter fields', async () => {
+      const full = {
+        ...validKeyword,
+        contextFilterEnabled: true,
+        contextFilterMinDepth: 2,
+        contextFilterMaxDepth: 8,
+      };
+      await configWriter.updateKeywords([full]);
+
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0]).toMatchObject({
+        contextFilterEnabled: true,
+        contextFilterMinDepth: 2,
+        contextFilterMaxDepth: 8,
+      });
+    });
+
+    it('should not persist context filter fields when filter is disabled', async () => {
+      await configWriter.updateKeywords([validKeyword]);
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].contextFilterEnabled).toBeUndefined();
+      expect(content.keywords[0].contextFilterMinDepth).toBeUndefined();
+      expect(content.keywords[0].contextFilterMaxDepth).toBeUndefined();
+    });
+
     it('should reject custom help keyword when built-in help is enabled', async () => {
       const builtinHelp = { keyword: 'help', api: 'ollama' as const, timeout: 30, description: 'Help', builtin: true };
       const customHelp = { keyword: 'help', api: 'ollama' as const, timeout: 300, description: 'Custom help' };

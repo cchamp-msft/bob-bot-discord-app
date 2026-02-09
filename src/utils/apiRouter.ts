@@ -5,6 +5,7 @@ import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse } from
 import { accuweatherClient } from '../api/accuweatherClient';
 import { nflClient } from '../api/nflClient';
 import { ChatMessage, NFLResponse } from '../types';
+import { evaluateContextWindow } from './contextEvaluator';
 import {
   StageResult,
   extractStageResult,
@@ -109,6 +110,18 @@ export async function executeRoutedRequest(
 
     logger.log('success', 'system', 'ROUTER: Final Ollama refinement pass');
 
+    // Apply context filter for the final pass
+    let filteredHistory = conversationHistory;
+    if (conversationHistory?.length) {
+      filteredHistory = await evaluateContextWindow(
+        conversationHistory,
+        content,
+        keywordConfig,
+        requester,
+        signal
+      );
+    }
+
     // Build final prompt — use structured AI context for AccuWeather and NFL
     let finalPrompt: string;
     if (keywordConfig.api === 'accuweather') {
@@ -152,7 +165,7 @@ export async function executeRoutedRequest(
           finalPrompt,
           keywordConfig.timeout,
           config.getOllamaFinalPassModel() || undefined,
-          conversationHistory?.length ? conversationHistory : undefined,
+          filteredHistory?.length ? filteredHistory : undefined,
           sig
         ),
       signal

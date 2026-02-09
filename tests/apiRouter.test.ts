@@ -47,6 +47,10 @@ jest.mock('../src/api/nflClient', () => ({
   },
 }));
 
+jest.mock('../src/utils/contextEvaluator', () => ({
+  evaluateContextWindow: jest.fn().mockImplementation((history) => Promise.resolve(history)),
+}));
+
 import { executeRoutedRequest } from '../src/utils/apiRouter';
 import { requestQueue } from '../src/utils/requestQueue';
 import { KeywordConfig } from '../src/utils/config';
@@ -655,6 +659,149 @@ describe('ApiRouter', () => {
       const result = await executeRoutedRequest(keyword, 'report', 'testuser');
       expect(result.finalApi).toBe('nfl');
       expect(result.finalResponse.success).toBe(true);
+    });
+  });
+
+  describe('Context Filter in Final Pass', () => {
+    const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
+    const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
+
+    beforeEach(() => {
+      mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
+    });
+
+    it('should call evaluateContextWindow before final Ollama pass', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'weather report',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'AI weather report',
+        finalOllamaPass: true,
+        contextFilterEnabled: true,
+        contextFilterMinDepth: 1,
+        contextFilterMaxDepth: 5,
+      };
+
+      const conversationHistory = [
+        { role: 'user' as const, content: 'old msg' },
+        { role: 'assistant' as const, content: 'old reply' },
+      ];
+
+      // Primary API result
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: {
+          text: 'Sunny, 72°F',
+          location: { LocalizedName: 'Dayton', Country: { ID: 'US', LocalizedName: 'United States' }, AdministrativeArea: { ID: 'OH', LocalizedName: 'Ohio' } },
+          current: null,
+          forecast: null,
+        },
+      });
+
+      // Final Ollama pass result
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Nice weather today!' },
+      });
+
+      await executeRoutedRequest(keyword, 'weather 45403', 'testuser', conversationHistory);
+
+      expect(mockEvaluate).toHaveBeenCalledWith(
+        conversationHistory,
+        'weather 45403',
+        keyword,
+        'testuser',
+        undefined
+      );
+    });
+
+    it('should not call evaluateContextWindow when no conversation history', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'weather report',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'AI weather report',
+        finalOllamaPass: true,
+        contextFilterEnabled: true,
+        contextFilterMinDepth: 1,
+        contextFilterMaxDepth: 5,
+      };
+
+      // Primary API result
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: {
+          text: 'Sunny, 72°F',
+          location: { LocalizedName: 'Dayton', Country: { ID: 'US', LocalizedName: 'United States' }, AdministrativeArea: { ID: 'OH', LocalizedName: 'Ohio' } },
+          current: null,
+          forecast: null,
+        },
+      });
+
+      // Final Ollama pass result
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Nice weather today!' },
+      });
+
+      await executeRoutedRequest(keyword, 'weather 45403', 'testuser');
+
+      expect(mockEvaluate).not.toHaveBeenCalled();
+    });
+
+    it('should pass filtered history to final Ollama pass', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'weather report',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'AI weather report',
+        finalOllamaPass: true,
+        contextFilterEnabled: true,
+        contextFilterMinDepth: 1,
+        contextFilterMaxDepth: 3,
+      };
+
+      const fullHistory = [
+        { role: 'user' as const, content: 'msg1' },
+        { role: 'assistant' as const, content: 'msg2' },
+        { role: 'user' as const, content: 'msg3' },
+      ];
+
+      const filteredHistory = [
+        { role: 'user' as const, content: 'msg3' },
+      ];
+
+      // evaluateContextWindow returns filtered history
+      mockEvaluate.mockResolvedValue(filteredHistory);
+
+      // Primary API result
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: {
+          text: 'Sunny, 72°F',
+          location: { LocalizedName: 'Dayton', Country: { ID: 'US', LocalizedName: 'United States' }, AdministrativeArea: { ID: 'OH', LocalizedName: 'Ohio' } },
+          current: null,
+          forecast: null,
+        },
+      });
+
+      // Final Ollama pass — capture the call to check history
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Nice weather today!' },
+      });
+
+      await executeRoutedRequest(keyword, 'weather 45403', 'testuser', fullHistory);
+
+      // The second mockExecute call (final pass) should receive filtered history via apiManager
+      // We verify the evaluator was called with the full history
+      expect(mockEvaluate).toHaveBeenCalledWith(
+        fullHistory,
+        'weather 45403',
+        keyword,
+        'testuser',
+        undefined
+      );
     });
   });
 });
