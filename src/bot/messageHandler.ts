@@ -452,6 +452,8 @@ class MessageHandler {
       // This trims older off-topic messages while always keeping the most recent minDepth.
       // System messages are excluded from the result — abilities context is added separately below.
       const preFilterCount = conversationHistory.filter(m => m.role !== 'system').length;
+      logger.log('success', 'system',
+        `TWO-STAGE: Context before eval: ${conversationHistory.length} total (${preFilterCount} non-system)`);
       conversationHistory = await evaluateContextWindow(
         conversationHistory,
         content,
@@ -459,7 +461,7 @@ class MessageHandler {
         requester
       );
       logger.log('success', 'system',
-        `TWO-STAGE: Context-eval applied (${preFilterCount}→${conversationHistory.length} messages)`);
+        `TWO-STAGE: Context after eval: ${conversationHistory.length} messages (system messages excluded)`);
       historyWithAbilities.push(...conversationHistory);
     }
 

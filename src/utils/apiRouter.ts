@@ -113,6 +113,7 @@ export async function executeRoutedRequest(
     // Apply context filter for the final pass
     let filteredHistory = conversationHistory;
     if (conversationHistory?.length) {
+      const preFilterCount = conversationHistory.filter(m => m.role !== 'system').length;
       filteredHistory = await evaluateContextWindow(
         conversationHistory,
         content,
@@ -120,6 +121,8 @@ export async function executeRoutedRequest(
         requester,
         signal
       );
+      logger.log('success', 'system',
+        `ROUTER: Context-eval applied for final pass (${preFilterCount}→${filteredHistory?.length ?? 0} messages)`);
     }
 
     // Build final prompt — use structured AI context for AccuWeather and NFL
