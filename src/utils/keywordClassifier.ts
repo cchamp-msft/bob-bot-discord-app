@@ -82,7 +82,8 @@ export async function classifyIntent(
           requester,
           config.getOllamaModel(),
           [{ role: 'system', content: systemPrompt }],
-          combinedSignal
+          combinedSignal,
+          { includeSystemPrompt: false }
         );
       }
     );

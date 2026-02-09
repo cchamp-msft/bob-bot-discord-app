@@ -380,10 +380,10 @@ describe('ConfigWriter', () => {
       ).rejects.toThrow('invalid builtin');
     });
 
-    it('should accept valid contextFilterEnabled field', async () => {
+    it('should accept but not persist deprecated contextFilterEnabled field', async () => {
       await configWriter.updateKeywords([{ ...validKeyword, contextFilterEnabled: true }]);
       const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].contextFilterEnabled).toBe(true);
+      expect(content.keywords[0].contextFilterEnabled).toBeUndefined();
     });
 
     it('should reject non-boolean contextFilterEnabled', async () => {
@@ -394,7 +394,7 @@ describe('ConfigWriter', () => {
 
     it('should accept valid contextFilterMinDepth', async () => {
       await configWriter.updateKeywords([
-        { ...validKeyword, contextFilterEnabled: true, contextFilterMinDepth: 3 },
+        { ...validKeyword, contextFilterMinDepth: 3 },
       ]);
       const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
       expect(content.keywords[0].contextFilterMinDepth).toBe(3);
@@ -403,7 +403,7 @@ describe('ConfigWriter', () => {
     it('should reject contextFilterMinDepth of 0', async () => {
       await expect(
         configWriter.updateKeywords([
-          { ...validKeyword, contextFilterEnabled: true, contextFilterMinDepth: 0 },
+          { ...validKeyword, contextFilterMinDepth: 0 },
         ])
       ).rejects.toThrow('invalid contextFilterMinDepth');
     });
@@ -426,10 +426,18 @@ describe('ConfigWriter', () => {
 
     it('should accept valid contextFilterMaxDepth', async () => {
       await configWriter.updateKeywords([
-        { ...validKeyword, contextFilterEnabled: true, contextFilterMaxDepth: 10 },
+        { ...validKeyword, contextFilterMaxDepth: 10 },
       ]);
       const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
       expect(content.keywords[0].contextFilterMaxDepth).toBe(10);
+    });
+
+    it('should reject contextFilterMaxDepth of 0', async () => {
+      await expect(
+        configWriter.updateKeywords([
+          { ...validKeyword, contextFilterMaxDepth: 0 },
+        ])
+      ).rejects.toThrow('invalid contextFilterMaxDepth');
     });
 
     it('should reject negative contextFilterMaxDepth', async () => {
@@ -448,10 +456,9 @@ describe('ConfigWriter', () => {
       ).rejects.toThrow('contextFilterMinDepth (5) greater than contextFilterMaxDepth (3)');
     });
 
-    it('should persist keyword with all context filter fields', async () => {
+    it('should persist keyword with context eval depth overrides', async () => {
       const full = {
         ...validKeyword,
-        contextFilterEnabled: true,
         contextFilterMinDepth: 2,
         contextFilterMaxDepth: 8,
       };
@@ -459,13 +466,13 @@ describe('ConfigWriter', () => {
 
       const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
       expect(content.keywords[0]).toMatchObject({
-        contextFilterEnabled: true,
         contextFilterMinDepth: 2,
         contextFilterMaxDepth: 8,
       });
+      expect(content.keywords[0].contextFilterEnabled).toBeUndefined();
     });
 
-    it('should not persist context filter fields when filter is disabled', async () => {
+    it('should not persist depth fields when not set', async () => {
       await configWriter.updateKeywords([validKeyword]);
       const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
       expect(content.keywords[0].contextFilterEnabled).toBeUndefined();

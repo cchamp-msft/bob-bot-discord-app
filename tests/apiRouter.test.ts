@@ -664,7 +664,7 @@ describe('ApiRouter', () => {
     });
   });
 
-  describe('Context Filter in Final Pass', () => {
+  describe('Context Evaluation in Final Pass', () => {
     const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
     const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
 
@@ -679,7 +679,6 @@ describe('ApiRouter', () => {
         timeout: 60,
         description: 'AI weather report',
         finalOllamaPass: true,
-        contextFilterEnabled: true,
         contextFilterMinDepth: 1,
         contextFilterMaxDepth: 5,
       };
@@ -724,7 +723,6 @@ describe('ApiRouter', () => {
         timeout: 60,
         description: 'AI weather report',
         finalOllamaPass: true,
-        contextFilterEnabled: true,
         contextFilterMinDepth: 1,
         contextFilterMaxDepth: 5,
       };
@@ -758,7 +756,6 @@ describe('ApiRouter', () => {
         timeout: 60,
         description: 'AI weather report',
         finalOllamaPass: true,
-        contextFilterEnabled: true,
         contextFilterMinDepth: 1,
         contextFilterMaxDepth: 3,
       };

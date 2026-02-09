@@ -227,8 +227,8 @@ class ConfigWriter {
           }
         }
         if (entry.contextFilterMaxDepth !== undefined) {
-          if (typeof entry.contextFilterMaxDepth !== 'number' || entry.contextFilterMaxDepth < 0 || !Number.isInteger(entry.contextFilterMaxDepth)) {
-            throw new Error(`Keyword "${entry.keyword}" has invalid contextFilterMaxDepth — must be a non-negative integer`);
+          if (typeof entry.contextFilterMaxDepth !== 'number' || entry.contextFilterMaxDepth < 1 || !Number.isInteger(entry.contextFilterMaxDepth)) {
+            throw new Error(`Keyword "${entry.keyword}" has invalid contextFilterMaxDepth — must be a positive integer (>= 1)`);
           }
         }
         if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMaxDepth !== undefined) {
@@ -261,9 +261,10 @@ class ConfigWriter {
         if (entry.accuweatherMode) clean.accuweatherMode = entry.accuweatherMode;
         if (entry.enabled === false) clean.enabled = false;
         if (entry.builtin) clean.builtin = true;
-        if (entry.contextFilterEnabled) clean.contextFilterEnabled = true;
-        if (entry.contextFilterMinDepth !== undefined) clean.contextFilterMinDepth = entry.contextFilterMinDepth;
-        if (entry.contextFilterMaxDepth !== undefined && entry.contextFilterMaxDepth > 0) clean.contextFilterMaxDepth = entry.contextFilterMaxDepth;
+        // contextFilterEnabled is deprecated (context eval is always active);
+        // accepted on input for backward compat but no longer persisted.
+        if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMinDepth >= 1) clean.contextFilterMinDepth = entry.contextFilterMinDepth;
+        if (entry.contextFilterMaxDepth !== undefined && entry.contextFilterMaxDepth >= 1) clean.contextFilterMaxDepth = entry.contextFilterMaxDepth;
         return clean;
       });
 

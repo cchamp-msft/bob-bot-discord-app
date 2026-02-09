@@ -178,7 +178,8 @@ describe('KeywordClassifier', () => {
             content: expect.stringContaining('keyword classifier'),
           }),
         ]),
-        expect.anything() // queue signal or caller signal
+        expect.anything(), // queue signal or caller signal
+        { includeSystemPrompt: false }
       );
     });
 

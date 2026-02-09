@@ -1423,7 +1423,7 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
   });
 });
 
-describe('MessageHandler — Context Filter integration', () => {
+describe('MessageHandler — Context Evaluation integration', () => {
   const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
   const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
 
@@ -1432,7 +1432,6 @@ describe('MessageHandler — Context Filter integration', () => {
     api: 'accuweather' as const,
     timeout: 60,
     description: 'Weather',
-    contextFilterEnabled: true,
     contextFilterMinDepth: 1,
     contextFilterMaxDepth: 5,
   };

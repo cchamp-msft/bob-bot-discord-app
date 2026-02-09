@@ -25,8 +25,6 @@
       "timeout": 300,
       "description": "Ask a question using Ollama",
       "abilityText": "Ask a question using Ollama",
-      "contextFilterEnabled": true,
-      "contextFilterMinDepth": 1,
       "contextFilterMaxDepth": 20
     },
     {
@@ -35,8 +33,6 @@
       "timeout": 300,
       "description": "Chat with Ollama AI",
       "abilityText": "Chat with Ollama AI",
-      "contextFilterEnabled": true,
-      "contextFilterMinDepth": 1,
       "contextFilterMaxDepth": 20
     },
     {
@@ -44,8 +40,6 @@
       "api": "accuweather",
       "timeout": 60,
       "description": "Get current weather conditions and 5-day forecast",
-      "contextFilterEnabled": true,
-      "contextFilterMinDepth": 1,
       "contextFilterMaxDepth": 1
     },
     {
@@ -53,8 +47,6 @@
       "api": "accuweather",
       "timeout": 60,
       "description": "Get 5-day weather forecast",
-      "contextFilterEnabled": true,
-      "contextFilterMinDepth": 1,
       "contextFilterMaxDepth": 1
     },
     {
@@ -62,8 +54,6 @@
       "api": "accuweather",
       "timeout": 60,
       "description": "Get current weather conditions",
-      "contextFilterEnabled": true,
-      "contextFilterMinDepth": 1,
       "contextFilterMaxDepth": 1
     },
     {
@@ -72,8 +62,6 @@
       "timeout": 360,
       "description": "Get an AI-powered opinionated weather report",
       "finalOllamaPass": true,
-      "contextFilterEnabled": true,
-      "contextFilterMinDepth": 1,
       "contextFilterMaxDepth": 1
     },
     {
@@ -135,7 +123,6 @@
       "api": "ollama",
       "timeout": 60,
       "description": "Analyze the context and generate the most relevant assessment based on the context",
-      "contextFilterEnabled": true,
       "contextFilterMinDepth": 20,
       "contextFilterMaxDepth": 20
     }

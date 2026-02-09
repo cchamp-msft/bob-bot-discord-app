@@ -636,7 +636,7 @@
               <th title="Human-readable description; used as ability context when Ability is checked">Description</th>
               <th title="When checked, this keyword's description is included in Ollama's abilities context so it can suggest using this API without the keyword being typed" style="text-align:center">Ability ℹ️</th>
               <th title="When checked, the API result is passed through Ollama for conversational refinement using the global Final Pass Model" style="text-align:center">Final Pass ℹ️</th>
-              <th title="When checked, Ollama evaluates context relevance before including reply-chain history (with min/max depth controls)" style="text-align:center">Context Filter ℹ️</th>
+              <th title="Per-keyword min/max depth overrides for Ollama context evaluation (always active when history exists)" style="text-align:center">Context Eval ℹ️</th>
               <th></th>
             </tr>
           </thead>
@@ -984,9 +984,8 @@
       <td style="text-align:center"><input type="checkbox" class="kw-ability" ${kw?.abilityText ? 'checked' : ''} title="Include this keyword as an ability in Ollama context"></td>
       <td style="text-align:center"><input type="checkbox" class="kw-finalPass" ${kw?.finalOllamaPass ? 'checked' : ''} title="Pass API result through Ollama for conversational refinement"></td>
       <td style="text-align:center">
-        <input type="checkbox" class="kw-ctxFilter" ${kw?.contextFilterEnabled ? 'checked' : ''} onchange="toggleCtxDepth(this)" title="Evaluate context relevance before including reply-chain history">
-        <span class="kw-ctx-depth" style="display:${kw?.contextFilterEnabled ? 'inline' : 'none'}">
-          <input type="number" class="kw-ctxMin" value="${kw?.contextFilterMinDepth ?? 1}" min="1" style="width:50px" title="Min depth (always included)">–<input type="number" class="kw-ctxMax" value="${kw?.contextFilterMaxDepth ?? ''}" min="1" style="width:50px" title="Max depth" placeholder="auto">
+        <span class="kw-ctx-depth">
+          <input type="number" class="kw-ctxMin" value="${kw?.contextFilterMinDepth ?? ''}" min="1" style="width:50px" title="Min depth — always included (default: 1)" placeholder="1">–<input type="number" class="kw-ctxMax" value="${kw?.contextFilterMaxDepth ?? ''}" min="1" style="width:50px" title="Max depth — max messages eligible (default: global reply chain max)" placeholder="auto">
         </span>
       </td>
       <td>${isBuiltin ? '' : '<button class="btn-danger btn-sm" onclick="this.closest(\'tr\').remove();markDirty()">✕</button>'}</td>
@@ -997,12 +996,6 @@
       el.addEventListener('change', markDirty);
     });
     tbody.appendChild(tr);
-  }
-
-  function toggleCtxDepth(checkbox) {
-    const depthSpan = checkbox.closest('td').querySelector('.kw-ctx-depth');
-    depthSpan.style.display = checkbox.checked ? 'inline' : 'none';
-    markDirty();
   }
 
   function collectKeywords() {
@@ -1023,14 +1016,10 @@
       if (isAbility) entry.abilityText = entry.description;
       const finalPass = row.querySelector('.kw-finalPass').checked;
       if (finalPass) entry.finalOllamaPass = true;
-      const ctxFilter = row.querySelector('.kw-ctxFilter').checked;
-      if (ctxFilter) {
-        entry.contextFilterEnabled = true;
-        const minD = parseInt(row.querySelector('.kw-ctxMin').value, 10);
-        const maxD = parseInt(row.querySelector('.kw-ctxMax').value, 10);
-        if (!isNaN(minD) && minD >= 1) entry.contextFilterMinDepth = minD;
-        if (!isNaN(maxD) && maxD >= 0) entry.contextFilterMaxDepth = maxD;
-      }
+      const minD = parseInt(row.querySelector('.kw-ctxMin').value, 10);
+      const maxD = parseInt(row.querySelector('.kw-ctxMax').value, 10);
+      if (!isNaN(minD) && minD >= 1) entry.contextFilterMinDepth = minD;
+      if (!isNaN(maxD) && maxD >= 1) entry.contextFilterMaxDepth = maxD;
       if (isBuiltin) entry.builtin = true;
       if (!isEnabled) entry.enabled = false;
       keywords.push(entry);

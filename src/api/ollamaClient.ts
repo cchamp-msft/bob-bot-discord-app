@@ -94,7 +94,8 @@ class OllamaClient {
     requester: string,
     model?: string,
     conversationHistory?: ChatMessage[],
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    options?: { includeSystemPrompt?: boolean }
   ): Promise<OllamaResponse> {
     const selectedModel = model || config.getOllamaModel();
 
@@ -118,14 +119,17 @@ class OllamaClient {
         `Ollama ${selectedModel}: ${prompt.substring(0, 100)}...`
       );
 
-      const systemPrompt = config.getOllamaSystemPrompt();
-
       // Build messages array for /api/chat
       const messages: ChatMessage[] = [];
 
-      // Add system prompt if configured
-      if (systemPrompt) {
-        messages.push({ role: 'system', content: systemPrompt });
+      // Add global persona/system prompt unless caller opts out.
+      // Internal tool calls (context evaluator, keyword classifier) set
+      // includeSystemPrompt: false so only their own system prompt is used.
+      if (options?.includeSystemPrompt !== false) {
+        const systemPrompt = config.getOllamaSystemPrompt();
+        if (systemPrompt) {
+          messages.push({ role: 'system', content: systemPrompt });
+        }
       }
 
       // Add conversation history from reply chain (if any)

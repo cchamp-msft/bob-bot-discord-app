@@ -371,6 +371,62 @@ describe('Config', () => {
     });
   });
 
+  describe('contextFilterMaxDepth normalization on load', () => {
+    const { config } = require('../src/utils/config');
+    const kwPath = path.join(__dirname, '../config/keywords.json');
+    let originalContent: string;
+
+    beforeEach(() => {
+      originalContent = fs.readFileSync(kwPath, 'utf-8');
+    });
+
+    afterEach(() => {
+      // Restore original keywords.json and reload
+      fs.writeFileSync(kwPath, originalContent);
+      config.reload();
+    });
+
+    it('should normalize contextFilterMaxDepth of 0 to undefined and log a warning', () => {
+      fs.writeFileSync(
+        kwPath,
+        JSON.stringify({
+          keywords: [
+            { keyword: 'testdepth', api: 'ollama', timeout: 30, contextFilterMaxDepth: 0 },
+          ],
+        })
+      );
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      config.reload();
+
+      const kw = config.getKeywordConfig('testdepth');
+      expect(kw).toBeDefined();
+      expect(kw!.contextFilterMaxDepth).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('contextFilterMaxDepth=0 is invalid')
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it('should accept contextFilterMaxDepth >= 1', () => {
+      fs.writeFileSync(
+        kwPath,
+        JSON.stringify({
+          keywords: [
+            { keyword: 'testdepth', api: 'ollama', timeout: 30, contextFilterMaxDepth: 3 },
+          ],
+        })
+      );
+
+      config.reload();
+
+      const kw = config.getKeywordConfig('testdepth');
+      expect(kw).toBeDefined();
+      expect(kw!.contextFilterMaxDepth).toBe(3);
+    });
+  });
+
   describe('default workflow getters', () => {
     const { config } = require('../src/utils/config');
 

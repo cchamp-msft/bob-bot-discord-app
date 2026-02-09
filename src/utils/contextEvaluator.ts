@@ -175,7 +175,8 @@ export async function evaluateContextWindow(
           requester,
           config.getOllamaModel(),
           [{ role: 'system', content: systemPrompt }],
-          combinedSignal
+          combinedSignal,
+          { includeSystemPrompt: false }
         );
       }
     );

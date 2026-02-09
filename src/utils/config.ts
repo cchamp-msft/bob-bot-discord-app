@@ -42,7 +42,10 @@ export interface KeywordConfig {
   enabled?: boolean;
   /** Whether this keyword is a built-in that cannot be edited or deleted — only toggled on/off. */
   builtin?: boolean;
-  /** When true, use Ollama to evaluate context relevance before including reply-chain history. */
+  /**
+   * @deprecated Context evaluation is always active. This field is accepted
+   * for backward compatibility but ignored at runtime. Remove from new configs.
+   */
   contextFilterEnabled?: boolean;
   /** Minimum number of most-recent context messages to always include (depth counted from newest). Must be >= 1. Defaults to 1. */
   contextFilterMinDepth?: number;
@@ -105,8 +108,12 @@ class Config {
           }
         }
         if (entry.contextFilterMaxDepth !== undefined) {
-          if (typeof entry.contextFilterMaxDepth !== 'number' || entry.contextFilterMaxDepth < 0 || !Number.isInteger(entry.contextFilterMaxDepth)) {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid contextFilterMaxDepth — must be a non-negative integer`);
+          if (typeof entry.contextFilterMaxDepth !== 'number' || !Number.isInteger(entry.contextFilterMaxDepth)) {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid contextFilterMaxDepth — must be an integer`);
+          }
+          if (entry.contextFilterMaxDepth < 1) {
+            logger.logWarn('config', `keyword "${entry.keyword}": contextFilterMaxDepth=${entry.contextFilterMaxDepth} is invalid (≥ 1 required) — treating as unset (global default will be used)`);
+            delete entry.contextFilterMaxDepth;
           }
         }
         if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMaxDepth !== undefined) {

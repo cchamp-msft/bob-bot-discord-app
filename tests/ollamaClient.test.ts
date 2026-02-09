@@ -270,6 +270,39 @@ describe('OllamaClient', () => {
       ]);
     });
 
+    it('should skip global system prompt when includeSystemPrompt is false', async () => {
+      (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
+      (config.getOllamaSystemPrompt as jest.Mock).mockReturnValue('You are a helpful bot.');
+
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: { models: [{ name: 'llama2', size: 0, details: {} }] },
+      });
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { message: { content: 'eval result' } },
+      });
+
+      const evalSystemPrompt = [{ role: 'system' as const, content: 'You are an evaluator.' }];
+      const result = await ollamaClient.generate(
+        'evaluate this',
+        'user1',
+        undefined,
+        evalSystemPrompt,
+        undefined,
+        { includeSystemPrompt: false }
+      );
+
+      expect(result.success).toBe(true);
+      const callArgs = mockInstance.post.mock.calls[0][1];
+      // Should NOT include the global system prompt, only the caller-supplied one
+      expect(callArgs.messages).toEqual([
+        { role: 'system', content: 'You are an evaluator.' },
+        { role: 'user', content: 'evaluate this' },
+      ]);
+    });
+
     it('should use explicit model parameter over configured default', async () => {
       (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
 

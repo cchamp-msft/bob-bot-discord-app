@@ -124,7 +124,7 @@ describe('ContextEvaluator', () => {
   });
 
   describe('evaluateContextWindow', () => {
-    it('should always evaluate even when contextFilterEnabled is false', async () => {
+    it('should evaluate even when deprecated contextFilterEnabled is false', async () => {
       const history = makeHistory(5);
       const kw = makeKeyword({ contextFilterEnabled: false });
 
@@ -139,7 +139,7 @@ describe('ContextEvaluator', () => {
       expect(result).toHaveLength(3);
     });
 
-    it('should always evaluate even when contextFilterEnabled is undefined', async () => {
+    it('should evaluate even when deprecated contextFilterEnabled is undefined', async () => {
       const history = makeHistory(5);
       const kw = makeKeyword();
 
