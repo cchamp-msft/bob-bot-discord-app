@@ -31,7 +31,7 @@ jest.mock('../src/utils/requestQueue', () => ({
   },
 }));
 
-import { evaluateContextWindow, buildContextEvalPrompt } from '../src/utils/contextEvaluator';
+import { evaluateContextWindow, buildContextEvalPrompt, parseEvalResponse } from '../src/utils/contextEvaluator';
 import { ollamaClient } from '../src/api/ollamaClient';
 import { config } from '../src/utils/config';
 import { requestQueue } from '../src/utils/requestQueue';
@@ -69,29 +69,91 @@ describe('ContextEvaluator', () => {
     );
   });
 
+  describe('parseEvalResponse', () => {
+    it('should parse a valid JSON array of indices', () => {
+      expect(parseEvalResponse('[1, 3, 5]', 6, 1, 6)).toEqual([1, 3, 5]);
+    });
+
+    it('should enforce minDepth by adding missing newest indices', () => {
+      // minDepth=2 means indices 1 and 2 must be present
+      expect(parseEvalResponse('[3]', 5, 2, 5)).toEqual([1, 2, 3]);
+    });
+
+    it('should enforce maxDepth by dropping oldest (highest) indices', () => {
+      expect(parseEvalResponse('[1, 2, 3, 4, 5]', 5, 1, 3)).toEqual([1, 2, 3]);
+    });
+
+    it('should deduplicate indices', () => {
+      expect(parseEvalResponse('[1, 1, 3, 3]', 5, 1, 5)).toEqual([1, 3]);
+    });
+
+    it('should filter out-of-range indices', () => {
+      expect(parseEvalResponse('[0, 1, 7]', 5, 1, 5)).toEqual([1]);
+    });
+
+    it('should fall back to legacy integer parse', () => {
+      // "3" → include most recent 3 → [1, 2, 3]
+      expect(parseEvalResponse('3', 6, 1, 6)).toEqual([1, 2, 3]);
+    });
+
+    it('should clamp legacy integer to minDepth', () => {
+      expect(parseEvalResponse('0', 5, 2, 5)).toEqual([1, 2]);
+    });
+
+    it('should clamp legacy integer to maxDepth', () => {
+      expect(parseEvalResponse('10', 6, 1, 4)).toEqual([1, 2, 3, 4]);
+    });
+
+    it('should return null for unparseable text', () => {
+      expect(parseEvalResponse('three messages', 5, 1, 5)).toBeNull();
+    });
+
+    it('should return null for empty string', () => {
+      expect(parseEvalResponse('', 5, 1, 5)).toBeNull();
+    });
+
+    it('should handle JSON array with single element', () => {
+      expect(parseEvalResponse('[2]', 5, 1, 5)).toEqual([1, 2]);
+    });
+
+    it('should sort indices ascending', () => {
+      expect(parseEvalResponse('[4, 1, 3]', 5, 1, 5)).toEqual([1, 3, 4]);
+    });
+  });
+
   describe('evaluateContextWindow', () => {
-    it('should return history unchanged when contextFilterEnabled is false', async () => {
+    it('should always evaluate even when contextFilterEnabled is false', async () => {
       const history = makeHistory(5);
       const kw = makeKeyword({ contextFilterEnabled: false });
 
+      mockGenerate.mockResolvedValue({
+        success: true,
+        data: { text: '[1, 2, 3]' },
+      });
+
       const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
 
-      expect(result).toEqual(history);
-      expect(mockExecute).not.toHaveBeenCalled();
+      expect(mockExecute).toHaveBeenCalled();
+      expect(result).toHaveLength(3);
     });
 
-    it('should return history unchanged when contextFilterEnabled is undefined', async () => {
+    it('should always evaluate even when contextFilterEnabled is undefined', async () => {
       const history = makeHistory(5);
       const kw = makeKeyword();
 
+      mockGenerate.mockResolvedValue({
+        success: true,
+        data: { text: '[1, 2]' },
+      });
+
       const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
 
-      expect(result).toEqual(history);
-      expect(mockExecute).not.toHaveBeenCalled();
+      expect(mockExecute).toHaveBeenCalled();
+      expect(result).toHaveLength(2);
     });
 
-    it('should return empty history unchanged even when filter is enabled', async () => {
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+    it('should return empty array for empty history', async () => {
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
 
       const result = await evaluateContextWindow([], 'hello', kw, 'user1');
 
@@ -101,7 +163,7 @@ describe('ContextEvaluator', () => {
 
     it('should return history unchanged when history length <= minDepth', async () => {
       const history = makeHistory(2);
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMinDepth: 3, contextFilterMaxDepth: 5 });
+      const kw = makeKeyword({ contextFilterMinDepth: 3, contextFilterMaxDepth: 5 });
 
       const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
 
@@ -109,11 +171,30 @@ describe('ContextEvaluator', () => {
       expect(mockExecute).not.toHaveBeenCalled();
     });
 
-    it('should call Ollama and filter based on returned depth', async () => {
+    it('should select sparse messages via JSON array response', async () => {
       const history = makeHistory(6);
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMinDepth: 1, contextFilterMaxDepth: 6 });
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 6 });
 
-      // Ollama says include 3 messages
+      // Select indices 1 and 3 (newest and third-newest)
+      mockGenerate.mockResolvedValue({
+        success: true,
+        data: { text: '[1, 3]' },
+      });
+
+      const result = await evaluateContextWindow(history, 'what about topic X?', kw, 'user1');
+
+      // Index 1 = message 6 (newest), index 3 = message 4
+      // Returned in chronological order (oldest→newest)
+      expect(result).toHaveLength(2);
+      expect(result[0].content).toBe('message 4');
+      expect(result[1].content).toBe('message 6');
+    });
+
+    it('should handle legacy integer response (contiguous window)', async () => {
+      const history = makeHistory(6);
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 6 });
+
+      // Ollama says include 3 messages (legacy integer)
       mockGenerate.mockResolvedValue({
         success: true,
         data: { text: '3' },
@@ -121,7 +202,7 @@ describe('ContextEvaluator', () => {
 
       const result = await evaluateContextWindow(history, 'what about topic X?', kw, 'user1');
 
-      // Should include the last 3 messages (oldest→newest order)
+      // Should include the 3 most recent messages in chronological order
       expect(result).toHaveLength(3);
       expect(result[0].content).toBe('message 4');
       expect(result[1].content).toBe('message 5');
@@ -130,7 +211,7 @@ describe('ContextEvaluator', () => {
 
     it('should clamp to minDepth when Ollama returns value below min', async () => {
       const history = makeHistory(6);
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMinDepth: 3, contextFilterMaxDepth: 6 });
+      const kw = makeKeyword({ contextFilterMinDepth: 3, contextFilterMaxDepth: 6 });
 
       // Ollama says include 1, but minDepth is 3
       mockGenerate.mockResolvedValue({
@@ -146,7 +227,7 @@ describe('ContextEvaluator', () => {
 
     it('should clamp to maxDepth when Ollama returns value above max', async () => {
       const history = makeHistory(10);
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
 
       // Ollama says include 8, but maxDepth is 5
       mockGenerate.mockResolvedValue({
@@ -160,9 +241,9 @@ describe('ContextEvaluator', () => {
       expect(result[0].content).toBe('message 6');
     });
 
-    it('should fall back to full history when Ollama returns non-numeric', async () => {
+    it('should fall back to full non-system history when Ollama returns unparseable text', async () => {
       const history = makeHistory(5);
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
 
       mockGenerate.mockResolvedValue({
         success: true,
@@ -174,9 +255,9 @@ describe('ContextEvaluator', () => {
       expect(result).toEqual(history);
     });
 
-    it('should fall back to full history when Ollama request fails', async () => {
+    it('should fall back to full non-system history when Ollama request fails', async () => {
       const history = makeHistory(5);
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
 
       mockGenerate.mockResolvedValue({
         success: false,
@@ -188,9 +269,9 @@ describe('ContextEvaluator', () => {
       expect(result).toEqual(history);
     });
 
-    it('should fall back to full history when requestQueue throws', async () => {
+    it('should fall back to full non-system history when requestQueue throws', async () => {
       const history = makeHistory(5);
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
 
       mockExecute.mockRejectedValue(new Error('Queue timeout'));
 
@@ -199,7 +280,7 @@ describe('ContextEvaluator', () => {
       expect(result).toEqual(history);
     });
 
-    it('should preserve system messages at the front', async () => {
+    it('should exclude system messages from evaluation and return', async () => {
       const history: ChatMessage[] = [
         { role: 'system', content: 'You are helpful.' },
         { role: 'user', content: 'msg 1' },
@@ -207,26 +288,40 @@ describe('ContextEvaluator', () => {
         { role: 'user', content: 'msg 3' },
         { role: 'assistant', content: 'msg 4' },
       ];
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMinDepth: 1, contextFilterMaxDepth: 4 });
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 4 });
 
-      // Ollama says include 2 non-system messages
+      // Select indices 1 and 2 (newest two non-system messages)
       mockGenerate.mockResolvedValue({
         success: true,
-        data: { text: '2' },
+        data: { text: '[1, 2]' },
       });
 
       const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
 
-      // System message + 2 most recent non-system messages
-      expect(result).toHaveLength(3);
-      expect(result[0].role).toBe('system');
-      expect(result[1].content).toBe('msg 3');
-      expect(result[2].content).toBe('msg 4');
+      // No system messages in result, just the 2 selected non-system messages
+      expect(result).toHaveLength(2);
+      expect(result.every(m => m.role !== 'system')).toBe(true);
+      expect(result[0].content).toBe('msg 3');
+      expect(result[1].content).toBe('msg 4');
+    });
+
+    it('should return empty array for history with only system messages', async () => {
+      const history: ChatMessage[] = [
+        { role: 'system', content: 'system msg 1' },
+        { role: 'system', content: 'system msg 2' },
+      ];
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+
+      const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
+
+      // No non-system messages → empty result
+      expect(result).toEqual([]);
+      expect(mockExecute).not.toHaveBeenCalled();
     });
 
     it('should use global maxDepth when contextFilterMaxDepth is not set', async () => {
       const history = makeHistory(15);
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMinDepth: 1 });
+      const kw = makeKeyword({ contextFilterMinDepth: 1 });
       // config.getReplyChainMaxDepth returns 10
 
       // Ollama says include 7
@@ -244,7 +339,7 @@ describe('ContextEvaluator', () => {
 
     it('should default minDepth to 1 when not set', async () => {
       const history = makeHistory(5);
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMaxDepth: 5 });
+      const kw = makeKeyword({ contextFilterMaxDepth: 5 });
 
       // Ollama says include 0
       mockGenerate.mockResolvedValue({
@@ -261,11 +356,11 @@ describe('ContextEvaluator', () => {
 
     it('should use __ctx_eval__ as the queue keyword', async () => {
       const history = makeHistory(5);
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
 
       mockGenerate.mockResolvedValue({
         success: true,
-        data: { text: '3' },
+        data: { text: '[1, 2, 3]' },
       });
 
       await evaluateContextWindow(history, 'hello', kw, 'user1');
@@ -279,18 +374,25 @@ describe('ContextEvaluator', () => {
       );
     });
 
-    it('should handle history with only system messages', async () => {
-      const history: ChatMessage[] = [
-        { role: 'system', content: 'system msg 1' },
-        { role: 'system', content: 'system msg 2' },
-      ];
-      const kw = makeKeyword({ contextFilterEnabled: true, contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+    it('should select sparse non-contiguous messages correctly', async () => {
+      // 6 messages: msg1 (oldest) through msg6 (newest)
+      const history = makeHistory(6);
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 6 });
+
+      // Select indices 1, 4, 6 — newest, 4th newest, 6th newest (oldest)
+      mockGenerate.mockResolvedValue({
+        success: true,
+        data: { text: '[1, 4, 6]' },
+      });
 
       const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
 
-      // No non-system messages, so returns unchanged
-      expect(result).toEqual(history);
-      expect(mockExecute).not.toHaveBeenCalled();
+      // Index 1 = message 6, index 4 = message 3, index 6 = message 1
+      // Returned in chronological order (oldest→newest)
+      expect(result).toHaveLength(3);
+      expect(result[0].content).toBe('message 1');
+      expect(result[1].content).toBe('message 3');
+      expect(result[2].content).toBe('message 6');
     });
   });
 
@@ -298,7 +400,7 @@ describe('ContextEvaluator', () => {
     it('should include min and max depth values', () => {
       const prompt = buildContextEvalPrompt(2, 8);
 
-      expect(prompt).toContain('at least 2 message(s)');
+      expect(prompt).toContain('indices 1 through 2');
       expect(prompt).toContain('up to 8 message(s)');
     });
 
@@ -307,13 +409,19 @@ describe('ContextEvaluator', () => {
 
       expect(prompt).toContain('If messages vary topics too greatly');
       expect(prompt).toContain('most recent topic');
-      expect(prompt).toContain('transition');
     });
 
-    it('should instruct Ollama to respond with only an integer', () => {
+    it('should instruct Ollama to respond with a JSON array', () => {
       const prompt = buildContextEvalPrompt(1, 5);
 
-      expect(prompt).toContain('ONLY a single integer');
+      expect(prompt).toContain('JSON array of integer indices');
+      expect(prompt).toContain('[1, 2, 4]');
+    });
+
+    it('should mention non-contiguous selection', () => {
+      const prompt = buildContextEvalPrompt(1, 5);
+
+      expect(prompt).toContain('non-contiguous');
     });
   });
 });

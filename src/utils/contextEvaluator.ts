@@ -6,23 +6,24 @@ import { ChatMessage } from '../types';
 
 /**
  * Build the system prompt for context evaluation.
- * Instructs Ollama to determine how many recent context messages are relevant
+ * Instructs Ollama to return a JSON array of message indices that are relevant
  * to the current user prompt.
  */
 export function buildContextEvalPrompt(minDepth: number, maxDepth: number): string {
   return [
-    'You are a context relevance evaluator. Your job is to determine how many recent conversation messages are relevant to the current user prompt.',
+    'You are a context relevance evaluator. Your job is to determine which recent conversation messages are relevant to the current user prompt.',
     '',
     'You will be given a list of conversation messages (numbered from most recent to oldest) and the current user prompt.',
-    'Determine how many of the most recent messages should be included as context for responding to the user.',
+    'Determine which messages should be included as context for responding to the user.',
     '',
     'Rules:',
-    `- You MUST include at least ${minDepth} message(s) (the most recent ones are always included).`,
+    `- You MUST always include at least indices 1 through ${minDepth} (the most recent messages).`,
     `- You may include up to ${maxDepth} message(s) total.`,
-    '- Prioritize newest messages over older ones.',
-    '- If messages vary topics too greatly, use the most recent topic, and feel free to transition.',
-    '- Respond with ONLY a single integer — the number of most-recent messages to include.',
-    '- Do not include any explanation, punctuation, or extra text.',
+    '- Prioritize newer messages over older ones — only include older messages when clearly relevant.',
+    '- If messages vary topics too greatly, prefer the most recent topic.',
+    '- You may select non-contiguous messages (e.g. 1, 3, 5) if only specific older messages are relevant.',
+    '- Respond with ONLY a JSON array of integer indices — e.g. [1, 2, 4].',
+    '- Do not include any explanation, punctuation, or extra text outside of the JSON array.',
   ].join('\n');
 }
 
@@ -40,23 +41,80 @@ function formatHistoryForEval(messages: ChatMessage[]): string {
 }
 
 /**
- * Evaluate the conversation history and return a filtered version
- * that respects the keyword's context filter settings.
+ * Parse Ollama's context-eval response into a validated array of 1-based indices.
  *
- * If the keyword does not have context filtering enabled, returns
- * the history unchanged.
+ * Attempts JSON array parse first; falls back to legacy integer parse
+ * (interpreted as "most recent N"). Returns null if both fail.
  *
- * Depth is counted from the newest message (newest = depth 1).
+ * @param raw - Raw model output text.
+ * @param candidateCount - Number of candidate messages shown to the model.
+ * @param minDepth - Minimum required newest indices.
+ * @param maxDepth - Maximum allowed indices.
+ * @returns Sorted array of valid 1-based indices, or null on parse failure.
+ */
+export function parseEvalResponse(
+  raw: string,
+  candidateCount: number,
+  minDepth: number,
+  maxDepth: number
+): number[] | null {
+  const trimmed = raw.trim();
+
+  // ── Attempt 1: JSON array of integers ─────────────────────────
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed) && parsed.every(v => typeof v === 'number' && Number.isInteger(v))) {
+      // Deduplicate and filter to valid range [1, candidateCount]
+      let indices = [...new Set(parsed as number[])].filter(i => i >= 1 && i <= candidateCount);
+
+      // Enforce minDepth: always include 1..minDepth
+      for (let i = 1; i <= Math.min(minDepth, candidateCount); i++) {
+        if (!indices.includes(i)) indices.push(i);
+      }
+
+      // Sort ascending (by index — 1 = newest)
+      indices.sort((a, b) => a - b);
+
+      // Enforce maxDepth: drop the highest indices first (oldest messages)
+      if (indices.length > maxDepth) {
+        indices = indices.slice(0, maxDepth);
+      }
+
+      return indices;
+    }
+  } catch {
+    // Not valid JSON — fall through to legacy integer parse
+  }
+
+  // ── Attempt 2: Legacy integer ("include the most recent N messages") ──
+  const asInt = parseInt(trimmed, 10);
+  if (!isNaN(asInt)) {
+    const count = Math.max(minDepth, Math.min(asInt, maxDepth, candidateCount));
+    return Array.from({ length: count }, (_, i) => i + 1);
+  }
+
+  return null;
+}
+
+/**
+ * Evaluate the conversation history and return a filtered version.
+ *
+ * Context evaluation is always applied when there is history to filter.
+ * System messages (e.g. abilities context) are excluded from evaluation
+ * and are NOT returned — callers attach their own system context after
+ * this function returns.
+ *
+ * Depth is counted from the newest message (newest = index 1).
  * The most recent `minDepth` messages are always included even if
- * Ollama considers them off-topic. Ollama decides how many additional
- * messages (up to `maxDepth`) are relevant.
+ * Ollama considers them off-topic. Ollama returns a JSON array of
+ * indices selecting which messages to keep (sparse selection).
  *
  * @param conversationHistory - Collected history, oldest-to-newest.
  * @param userPrompt - The current user message content.
  * @param keywordConfig - The keyword config (may have context filter settings).
  * @param requester - Username for logging / queue attribution.
  * @param signal - Optional abort signal for timeout coordination.
- * @returns Filtered conversation history (oldest-to-newest).
+ * @returns Filtered conversation history (oldest-to-newest), system messages excluded.
  */
 export async function evaluateContextWindow(
   conversationHistory: ChatMessage[],
@@ -65,17 +123,11 @@ export async function evaluateContextWindow(
   requester: string,
   signal?: AbortSignal
 ): Promise<ChatMessage[]> {
-  // ── Guard: filter disabled or nothing to filter ───────────────
-  if (keywordConfig.contextFilterEnabled !== true) {
-    return conversationHistory;
-  }
-
-  // Skip system messages when counting depth — they're injected, not user context
+  // Exclude system messages entirely — they must not be evaluated or returned
   const nonSystemMessages = conversationHistory.filter(m => m.role !== 'system');
-  const systemMessages = conversationHistory.filter(m => m.role === 'system');
 
   if (nonSystemMessages.length === 0) {
-    return conversationHistory;
+    return [];
   }
 
   const minDepth = keywordConfig.contextFilterMinDepth ?? 1;
@@ -83,7 +135,7 @@ export async function evaluateContextWindow(
 
   // If history is already within minDepth, no filtering needed
   if (nonSystemMessages.length <= minDepth) {
-    return conversationHistory;
+    return nonSystemMessages;
   }
 
   // Candidate window: the last `maxDepth` non-system messages
@@ -92,7 +144,7 @@ export async function evaluateContextWindow(
 
   // If candidate window is within minDepth, keep them all
   if (candidates.length <= minDepth) {
-    return [...systemMessages, ...candidates];
+    return candidates;
   }
 
   // ── Call Ollama to evaluate relevance ─────────────────────────
@@ -127,32 +179,35 @@ export async function evaluateContextWindow(
     if (!response.success || !response.data?.text) {
       logger.logWarn('system',
         `CONTEXT-EVAL: Evaluation failed (${response.error ?? 'no response'}), returning full history`);
-      return conversationHistory;
+      return nonSystemMessages;
     }
 
     const rawResult = response.data.text.trim();
-    const parsed = parseInt(rawResult, 10);
+    const indices = parseEvalResponse(rawResult, candidates.length, minDepth, maxDepth);
 
-    if (isNaN(parsed)) {
+    if (indices === null) {
       logger.logWarn('system',
-        `CONTEXT-EVAL: Ollama returned non-numeric "${rawResult}", returning full history`);
-      return conversationHistory;
+        `CONTEXT-EVAL: Ollama returned unparseable "${rawResult}", returning full history`);
+      return nonSystemMessages;
     }
 
-    // Clamp to [minDepth, maxDepth] and available messages
-    const includeCount = Math.max(minDepth, Math.min(parsed, maxDepth, candidates.length));
-
     logger.log('success', 'system',
-      `CONTEXT-EVAL: Including ${includeCount} of ${candidates.length} context messages`);
+      `CONTEXT-EVAL: Including ${indices.length} of ${candidates.length} context messages (indices: [${indices.join(', ')}])`);
 
-    // Take the last `includeCount` from candidates (preserves oldest→newest order)
-    const filtered = candidates.slice(-includeCount);
+    // Map indices (1=newest) back to candidates (oldest→newest order).
+    // Reverse the candidates to get newest-first, pick by index, then
+    // re-sort into chronological (oldest→newest) order.
+    const reversedCandidates = [...candidates].reverse();
+    const selected = indices.map(i => reversedCandidates[i - 1]);
+    // Restore chronological order by reversing the index-based order:
+    // indices are sorted ascending (1,2,4…) so selected is newest-first;
+    // reversing gives oldest-first.
+    selected.reverse();
 
-    // Re-attach any system messages at the front
-    return [...systemMessages, ...filtered];
+    return selected;
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     logger.logError('system', `CONTEXT-EVAL: Error during evaluation: ${errorMsg}, returning full history`);
-    return conversationHistory;
+    return nonSystemMessages;
   }
 }

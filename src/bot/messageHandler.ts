@@ -450,12 +450,16 @@ class MessageHandler {
     if (conversationHistory.length > 0) {
       // Apply context filter (Ollama-based relevance evaluation) before stage-1 call.
       // This trims older off-topic messages while always keeping the most recent minDepth.
+      // System messages are excluded from the result — abilities context is added separately below.
+      const preFilterCount = conversationHistory.filter(m => m.role !== 'system').length;
       conversationHistory = await evaluateContextWindow(
         conversationHistory,
         content,
         keywordConfig,
         requester
       );
+      logger.log('success', 'system',
+        `TWO-STAGE: Context-eval applied (${preFilterCount}→${conversationHistory.length} messages)`);
       historyWithAbilities.push(...conversationHistory);
     }
 
