@@ -62,20 +62,20 @@ class DiscordManager {
         ],
       });
 
-      logger.log('success', 'system', 'Discord client configured with DirectMessages intent + Channel/Message partials (DM-ready)');
+      logger.log('success', 'system', 'BOT: Discord client configured with DirectMessages intent + Channel/Message partials (DM-ready)');
 
       this.client.once(Events.ClientReady, () => {
         this.status = 'running';
         this.username = this.client?.user?.tag || null;
         this.lastError = null;
-        logger.log('success', 'system', `Bot logged in as ${this.username}`);
+        logger.log('success', 'system', `BOT: Bot logged in as ${this.username}`);
       });
 
       this.client.on('messageCreate', async (message) => {
         try {
           await messageHandler.handleMessage(message);
         } catch (error) {
-          logger.logError('system', `Error handling message: ${error}`);
+          logger.logError('system', `BOT: Error handling message: ${error}`);
         }
       });
 
@@ -85,7 +85,7 @@ class DiscordManager {
             await commandHandler.handleCommand(interaction);
           }
         } catch (error) {
-          logger.logError('system', `Error handling interaction: ${error}`);
+          logger.logError('system', `BOT: Error handling interaction: ${error}`);
           if (interaction.isRepliable()) {
             try {
               if (interaction.replied || interaction.deferred) {
@@ -99,37 +99,37 @@ class DiscordManager {
                 });
               }
             } catch (err) {
-              logger.logError('system', `Failed to send error reply: ${err}`);
+              logger.logError('system', `BOT: Failed to send error reply: ${err}`);
             }
           }
         }
       });
 
       this.client.on('error', (error) => {
-        logger.logError('system', `Discord client error: ${error}`);
+        logger.logError('system', `BOT: Discord client error: ${error}`);
         this.lastError = String(error);
       });
 
       // discord.js v14 shard lifecycle events
       this.client.on(Events.ShardDisconnect, (event, shardId) => {
-        logger.log('success', 'system', `Discord shard ${shardId} disconnected (code ${event.code})`);
+        logger.log('success', 'system', `BOT: Discord shard ${shardId} disconnected (code ${event.code})`);
         this.status = 'stopped';
         this.username = null;
       });
 
       this.client.on(Events.ShardError, (error, shardId) => {
-        logger.logError('system', `Discord shard ${shardId} error: ${error.message}`);
+        logger.logError('system', `BOT: Discord shard ${shardId} error: ${error.message}`);
         this.lastError = error.message;
         this.status = 'error';
       });
 
       this.client.on(Events.ShardReconnecting, (shardId) => {
-        logger.log('success', 'system', `Discord shard ${shardId} reconnecting...`);
+        logger.log('success', 'system', `BOT: Discord shard ${shardId} reconnecting...`);
         this.status = 'connecting';
       });
 
       this.client.on(Events.ShardResume, (shardId, replayedEvents) => {
-        logger.log('success', 'system', `Discord shard ${shardId} resumed (replayed ${replayedEvents} events)`);
+        logger.log('success', 'system', `BOT: Discord shard ${shardId} resumed (replayed ${replayedEvents} events)`);
         this.status = 'running';
         this.username = this.client?.user?.tag || null;
         this.lastError = null;
@@ -142,7 +142,7 @@ class DiscordManager {
       this.status = 'error';
       this.lastError = error instanceof Error ? error.message : String(error);
       this.client = null;
-      logger.logError('system', `Failed to login: ${this.lastError}`);
+      logger.logError('system', `BOT: Failed to login: ${this.lastError}`);
       return { success: false, message: `Login failed: ${this.lastError}` };
     }
   }
@@ -161,11 +161,11 @@ class DiscordManager {
       this.status = 'stopped';
       this.username = null;
       this.lastError = null;
-      logger.log('success', 'system', 'Bot stopped via configurator');
+      logger.log('success', 'system', 'BOT: Bot stopped via configurator');
       return { success: true, message: 'Bot stopped' };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      logger.logError('system', `Error stopping bot: ${msg}`);
+      logger.logError('system', `BOT: Error stopping bot: ${msg}`);
       return { success: false, message: `Error stopping: ${msg}` };
     }
   }

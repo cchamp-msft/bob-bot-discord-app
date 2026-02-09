@@ -55,7 +55,7 @@ export async function executeRoutedRequest(
   const needsFinalPass = keywordConfig.finalOllamaPass === true;
 
   // ── Primary API request ───────────────────────────────────────
-  logger.log('success', 'system', `ROUTER: Executing ${keywordConfig.api} request for "${keywordConfig.keyword}"`);
+  logger.log('success', 'system', `API-ROUTING: Executing ${keywordConfig.api} request for "${keywordConfig.keyword}"`);
 
   let primaryResult: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse;
 
@@ -94,21 +94,21 @@ export async function executeRoutedRequest(
   stages.push(primaryExtracted);
 
   if (!primaryResult.success) {
-    logger.logError('system', `ROUTER: ${keywordConfig.api} request failed: ${primaryResult.error}`);
+    logger.logError('system', `API-ROUTING: ${keywordConfig.api} request failed: ${primaryResult.error}`);
     return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };
   }
 
-  logger.log('success', 'system', `ROUTER: ${keywordConfig.api} request complete`);
+  logger.log('success', 'system', `API-ROUTING: ${keywordConfig.api} request complete`);
 
   // ── Final Ollama pass (if configured) ─────────────────────────
   if (needsFinalPass) {
     // Don't double-pass through Ollama if the primary API was already Ollama
     if (keywordConfig.api === 'ollama') {
-      logger.log('success', 'system', 'ROUTER: Skipping final Ollama pass — primary API was already Ollama');
+      logger.log('success', 'system', 'API-ROUTING: Skipping final Ollama pass — primary API was already Ollama');
       return { finalResponse: primaryResult, finalApi: 'ollama', stages };
     }
 
-    logger.log('success', 'system', 'ROUTER: Final Ollama refinement pass');
+    logger.log('success', 'system', 'API-ROUTING: Final Ollama refinement pass');
 
     // Apply context filter for the final pass
     let filteredHistory = conversationHistory;
@@ -122,7 +122,7 @@ export async function executeRoutedRequest(
         signal
       );
       logger.log('success', 'system',
-        `ROUTER: Context-eval applied for final pass (${preFilterCount}→${filteredHistory?.length ?? 0} messages)`);
+        `API-ROUTING: Context-eval applied for final pass (${preFilterCount}→${filteredHistory?.length ?? 0} messages)`);
     }
 
     // Build final prompt — use structured AI context for AccuWeather and NFL
@@ -178,11 +178,11 @@ export async function executeRoutedRequest(
     stages.push(finalExtracted);
 
     if (!finalResult.success) {
-      logger.logWarn('system', `ROUTER: Final Ollama pass failed: ${finalResult.error} — returning API result`);
+      logger.logWarn('system', `API-ROUTING: Final Ollama pass failed: ${finalResult.error} — returning API result`);
       return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };
     }
 
-    logger.log('success', 'system', 'ROUTER: Final Ollama pass complete');
+    logger.log('success', 'system', 'API-ROUTING: Final Ollama pass complete');
     return { finalResponse: finalResult, finalApi: 'ollama', stages };
   }
 

@@ -17,6 +17,8 @@ jest.mock('../src/utils/logger', () => ({
     logError: jest.fn(),
     logBusy: jest.fn(),
     logTimeout: jest.fn(),
+    logDebug: jest.fn(),
+    logDebugLazy: jest.fn(),
   },
 }));
 

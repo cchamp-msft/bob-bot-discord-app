@@ -245,12 +245,30 @@ class Config {
   }
 
   /**
-   * Whether detailed ability logging is enabled.
-   * When true, the full abilities context sent to Ollama is logged.
+   * Whether global debug logging is enabled.
+   * When true, logs full message content, prompts, and API payloads.
    * Default: false (off).
    */
-  getAbilityLoggingDetailed(): boolean {
+  getDebugLogging(): boolean {
+    return process.env.DEBUG_LOGGING === 'true';
+  }
+
+  /**
+   * Whether detailed ability logging is explicitly configured via env.
+   * Does NOT account for DEBUG_LOGGING override.
+   * Used by PublicConfig/configurator so the UI reflects the raw env value.
+   */
+  getAbilityLoggingConfigured(): boolean {
     return process.env.ABILITY_LOGGING_DETAILED === 'true';
+  }
+
+  /**
+   * Whether detailed ability logging is effectively enabled.
+   * True when either ABILITY_LOGGING_DETAILED or DEBUG_LOGGING is on.
+   * Use this when deciding whether to log abilities content at runtime.
+   */
+  getAbilityLoggingDetailed(): boolean {
+    return this.getAbilityLoggingConfigured() || this.getDebugLogging();
   }
 
   /**
@@ -435,7 +453,8 @@ class Config {
     const prevReplyChainMaxTokens = this.getReplyChainMaxTokens();
     const prevImageResponseIncludeEmbed = this.getImageResponseIncludeEmbed();
     const prevOllamaFinalPassModel = this.getOllamaFinalPassModel();
-    const prevAbilityLogging = this.getAbilityLoggingDetailed();
+    const prevDebugLogging = this.getDebugLogging();
+    const prevAbilityLogging = this.getAbilityLoggingConfigured();
     const prevNflLoggingLevel = this.getNflLoggingLevel();
     const prevNflEndpoint = this.getNflEndpoint();
     const prevNflEnabled = this.getNflEnabled();
@@ -488,7 +507,8 @@ class Config {
     if (this.getReplyChainMaxTokens() !== prevReplyChainMaxTokens) reloaded.push('REPLY_CHAIN_MAX_TOKENS');
     if (this.getImageResponseIncludeEmbed() !== prevImageResponseIncludeEmbed) reloaded.push('IMAGE_RESPONSE_INCLUDE_EMBED');
     if (this.getOllamaFinalPassModel() !== prevOllamaFinalPassModel) reloaded.push('OLLAMA_FINAL_PASS_MODEL');
-    if (this.getAbilityLoggingDetailed() !== prevAbilityLogging) reloaded.push('ABILITY_LOGGING_DETAILED');
+    if (this.getDebugLogging() !== prevDebugLogging) reloaded.push('DEBUG_LOGGING');
+    if (this.getAbilityLoggingConfigured() !== prevAbilityLogging) reloaded.push('ABILITY_LOGGING_DETAILED');
     if (this.getNflLoggingLevel() !== prevNflLoggingLevel) reloaded.push('NFL_LOGGING_LEVEL');
     if (this.getNflEndpoint() !== prevNflEndpoint) reloaded.push('NFL_BASE_URL');
     if (this.getNflEnabled() !== prevNflEnabled) reloaded.push('NFL_ENABLED');
@@ -565,8 +585,9 @@ class Config {
         maxDepth: this.getReplyChainMaxDepth(),
         maxTokens: this.getReplyChainMaxTokens(),
       },
+      debugLogging: this.getDebugLogging(),
       abilityLogging: {
-        detailed: this.getAbilityLoggingDetailed(),
+        detailed: this.getAbilityLoggingConfigured(),
       },
       nflLogging: {
         level: this.getNflLoggingLevel(),

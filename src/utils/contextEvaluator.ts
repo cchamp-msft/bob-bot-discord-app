@@ -32,7 +32,7 @@ export function buildContextEvalPrompt(minDepth: number, maxDepth: number): stri
  * Messages are listed from most recent (1) to oldest (N) so Ollama
  * can reason about recency.
  */
-function formatHistoryForEval(messages: ChatMessage[]): string {
+export function formatHistoryForEval(messages: ChatMessage[]): string {
   // Reverse to show newest first (depth 1 = newest)
   const reversed = [...messages].reverse();
   return reversed
@@ -155,6 +155,10 @@ export async function evaluateContextWindow(
   try {
     logger.log('success', 'system',
       `CONTEXT-EVAL: Evaluating ${candidates.length} messages (min=${minDepth}, max=${maxDepth}) for keyword "${keywordConfig.keyword}"`);
+
+    // DEBUG: log full context-eval prompt
+    logger.logDebug('system', `CONTEXT-EVAL [system prompt]: ${systemPrompt}`);
+    logger.logDebug('system', `CONTEXT-EVAL [eval prompt]: ${evalPrompt}`);
 
     const response: OllamaResponse = await requestQueue.execute(
       'ollama',

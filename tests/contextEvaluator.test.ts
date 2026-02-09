@@ -16,6 +16,8 @@ jest.mock('../src/utils/logger', () => ({
     log: jest.fn(),
     logError: jest.fn(),
     logWarn: jest.fn(),
+    logDebug: jest.fn(),
+    logDebugLazy: jest.fn(),
   },
 }));
 
@@ -31,7 +33,7 @@ jest.mock('../src/utils/requestQueue', () => ({
   },
 }));
 
-import { evaluateContextWindow, buildContextEvalPrompt, parseEvalResponse } from '../src/utils/contextEvaluator';
+import { evaluateContextWindow, buildContextEvalPrompt, parseEvalResponse, formatHistoryForEval } from '../src/utils/contextEvaluator';
 import { ollamaClient } from '../src/api/ollamaClient';
 import { config } from '../src/utils/config';
 import { requestQueue } from '../src/utils/requestQueue';

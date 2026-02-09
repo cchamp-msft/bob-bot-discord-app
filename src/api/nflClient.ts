@@ -881,6 +881,11 @@ export class NFLClient {
       logger.log('success', 'nfl', `NFL: handleRequest keyword="${keyword}" content="${content.length > 80 ? content.substring(0, 80) + '...' : content}"${parsedInfo}`);
     }
 
+    // DEBUG: log full request content
+    if (content.length > 80) {
+      logger.logDebug('nfl', `NFL-REQUEST [full]: keyword="${keyword}" content="${content}"${parsedInfo}`);
+    }
+
     try {
       if (lowerKeyword === 'nfl superbowl report' || lowerKeyword === 'superbowl report') {
         return await this.handleSuperBowlReport(content, signal);
@@ -1133,19 +1138,22 @@ export class NFLClient {
    *   Level 0: length summary only
    *   Level 1: trimmed preview (first 200 chars)
    *   Level 2: full payload
+   *   DEBUG_LOGGING=true overrides to full payload.
    */
   private logResponsePayload(keyword: string, text: string): void {
     const logLevel = config.getNflLoggingLevel();
-    if (logLevel <= 0) {
+    const debugOverride = config.getDebugLogging();
+
+    if (!debugOverride && logLevel <= 0) {
       logger.log('success', 'nfl', `NFL: [${keyword}] response — ${text.length} chars`);
       return;
     }
-    if (logLevel === 1) {
+    if (!debugOverride && logLevel === 1) {
       const preview = text.length > 200 ? text.substring(0, 200) + '...' : text;
       logger.log('success', 'nfl', `NFL: [${keyword}] response (${text.length} chars): ${preview}`);
       return;
     }
-    // Level 2 — full payload
+    // Level 2 or DEBUG override — full payload
     logger.log('success', 'nfl', `NFL: [${keyword}] response (${text.length} chars):\n${text}`);
   }
 

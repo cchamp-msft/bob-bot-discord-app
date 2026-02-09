@@ -417,7 +417,36 @@ The `OLLAMA_FINAL_PASS_MODEL` environment variable (configurable in the configur
 
 ### Ability Logging
 
-The `ABILITY_LOGGING_DETAILED` environment variable (configurable in the configurator) enables verbose logging of the abilities context sent to Ollama during two-stage evaluation. When disabled (default), only a summary count is logged. When enabled, the full abilities text is logged to help debug routing behavior.
+The `ABILITY_LOGGING_DETAILED` environment variable (configurable in the configurator) enables verbose logging of the abilities context sent to Ollama during two-stage evaluation. When disabled (default), only a summary count is logged. When enabled, the full abilities text is logged to help debug routing behavior. This is also automatically enabled when `DEBUG_LOGGING` is active.
+
+### Debug Logging
+
+Set `DEBUG_LOGGING=true` in `.env` to enable comprehensive verbose logging. When enabled, the following are logged in full (hot-reloadable — no restart required):
+
+1. **Messages received** — full message content (normally truncated to 100 chars)
+2. **Messages sent** — full reply content (normally truncated to 200 chars)
+3. **Abilities prompt** — full abilities context sent to Ollama (overrides `ABILITY_LOGGING_DETAILED`)
+4. **Context-eval prompt** — full system prompt and conversation history sent for context evaluation
+5. **API requests** — full request payloads for Ollama, AccuWeather, ComfyUI, and NFL
+6. **API responses** — full response content from all API backends (overrides `NFL_LOGGING_LEVEL`)
+
+Debug log lines are tagged with `[debug]` level and `DEBUG:` prefix for easy filtering. Reply content is always logged — truncated to 200 chars by default, or in full when debug is active.
+
+### Log Prefixes
+
+System logs use consistent prefixes to identify their source:
+
+| Prefix | Source | Description |
+|--------|--------|-------------|
+| `KEYWORD:` | messageHandler | Keyword matching results |
+| `TWO-STAGE:` | messageHandler | Two-stage Ollama evaluation flow |
+| `REPLY-CHAIN:` | messageHandler | Reply chain traversal |
+| `DM-HISTORY:` | messageHandler | DM history collection |
+| `CONTEXT-EVAL:` | contextEvaluator | Context relevance filtering |
+| `API-ROUTING:` | apiRouter | API routing pipeline |
+| `CLASSIFIER:` | keywordClassifier | AI-based keyword classification |
+| `BOT:` | discordManager | Discord bot lifecycle |
+| `HTTP-SERVER:` | httpServer | HTTP server events |
 
 ### Example Flows
 

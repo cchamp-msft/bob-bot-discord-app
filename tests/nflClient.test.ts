@@ -24,6 +24,7 @@ jest.mock('../src/utils/config', () => ({
     getNflEndpoint: jest.fn(() => 'https://site.api.espn.com/apis/site/v2/sports/football/nfl'),
     getNflEnabled: jest.fn(() => true),
     getNflLoggingLevel: jest.fn(() => 1),
+    getDebugLogging: jest.fn(() => false),
   },
 }));
 
@@ -33,6 +34,8 @@ jest.mock('../src/utils/logger', () => ({
     logRequest: jest.fn(),
     logReply: jest.fn(),
     logError: jest.fn(),
+    logDebug: jest.fn(),
+    logDebugLazy: jest.fn(),
   },
 }));
 

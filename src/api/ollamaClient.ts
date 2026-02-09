@@ -142,18 +142,26 @@ class OllamaClient {
         stream: false,
       };
 
+      // DEBUG: log full Ollama request messages
+      logger.logDebugLazy(requester, () => `OLLAMA-REQUEST: model=${selectedModel}, messages=${JSON.stringify(messages, null, 2)}`);
+
       const response = await this.client.post('/api/chat', requestBody, signal ? { signal } : undefined);
 
       if (response.status === 200 && response.data.message?.content) {
+        const responseText = response.data.message.content;
+
         logger.logReply(
           requester,
           `Ollama response received for prompt: ${prompt.substring(0, 50)}...`
         );
 
+        // DEBUG: log full Ollama response text
+        logger.logDebug(requester, `OLLAMA-RESPONSE: ${responseText}`);
+
         return {
           success: true,
           data: {
-            text: response.data.message.content,
+            text: responseText,
           },
         };
       }

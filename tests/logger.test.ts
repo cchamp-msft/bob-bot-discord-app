@@ -254,4 +254,179 @@ describe('Logger', () => {
       expect(lines).toHaveLength(5);
     });
   });
+
+  describe('logReply with content', () => {
+    it('should log truncated reply content by default (no DEBUG)', () => {
+      const longContent = 'a'.repeat(300);
+      logger.logReply('alice', 'Ollama response sent: 300 characters', longContent);
+
+      const content = readLatestLog();
+      const lines = content.trim().split('\n');
+      // First line: normal REPLY log, second line: truncated content
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toContain('REPLY: Ollama response sent: 300 characters');
+      expect(lines[1]).toContain('REPLY [content]: ' + 'a'.repeat(200) + '...');
+    });
+
+    it('should log short reply content without truncation', () => {
+      logger.logReply('bob', 'Ollama response sent: 50 characters', 'short reply');
+
+      const content = readLatestLog();
+      const lines = content.trim().split('\n');
+      expect(lines).toHaveLength(2);
+      expect(lines[1]).toContain('REPLY [content]: short reply');
+      expect(lines[1]).not.toContain('...');
+    });
+
+    it('should not log content line when replyContent is omitted', () => {
+      logger.logReply('carol', 'ComfyUI response sent: 2 images');
+
+      const content = readLatestLog();
+      const lines = content.trim().split('\n');
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain('REPLY: ComfyUI response sent: 2 images');
+    });
+
+    it('should log full reply content when DEBUG_LOGGING is enabled', () => {
+      process.env.DEBUG_LOGGING = 'true';
+      try {
+        const longContent = 'b'.repeat(500);
+        logger.logReply('dave', 'response info', longContent);
+
+        const content = readLatestLog();
+        expect(content).toContain('REPLY [full]: ' + 'b'.repeat(500));
+        expect(content).not.toContain('REPLY [content]:');
+      } finally {
+        delete process.env.DEBUG_LOGGING;
+      }
+    });
+  });
+
+  describe('logDebug', () => {
+    it('should not write when DEBUG_LOGGING is not set', () => {
+      delete process.env.DEBUG_LOGGING;
+      logger.logDebug('alice', 'secret debug info');
+
+      const logFile = (logger as any).getLogFilePath();
+      const exists = fs.existsSync(logFile);
+      // No file should be created since nothing was logged
+      expect(exists).toBe(false);
+    });
+
+    it('should write debug log when DEBUG_LOGGING is true', () => {
+      process.env.DEBUG_LOGGING = 'true';
+      try {
+        logger.logDebug('alice', 'debug info here');
+
+        const content = readLatestLog();
+        expect(content).toContain('[debug]');
+        expect(content).toContain('DEBUG: debug info here');
+      } finally {
+        delete process.env.DEBUG_LOGGING;
+      }
+    });
+  });
+
+  describe('logIncoming with DEBUG', () => {
+    it('should log full content when DEBUG enabled and content is long', () => {
+      process.env.DEBUG_LOGGING = 'true';
+      try {
+        const longMsg = 'x'.repeat(200);
+        logger.logIncoming('user1', '12345', 'DM', null, longMsg);
+
+        const content = readLatestLog();
+        const lines = content.trim().split('\n');
+        // Normal truncated line + debug full line
+        expect(lines.length).toBeGreaterThanOrEqual(2);
+        expect(lines[0]).toContain('x'.repeat(100) + '...');
+        expect(lines[1]).toContain('INCOMING [full]:');
+        expect(lines[1]).toContain('x'.repeat(200));
+      } finally {
+        delete process.env.DEBUG_LOGGING;
+      }
+    });
+
+    it('should not log debug line for short content even with DEBUG enabled', () => {
+      process.env.DEBUG_LOGGING = 'true';
+      try {
+        logger.logIncoming('user1', '12345', 'DM', null, 'short msg');
+
+        const content = readLatestLog();
+        const lines = content.trim().split('\n');
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).toContain('"short msg"');
+      } finally {
+        delete process.env.DEBUG_LOGGING;
+      }
+    });
+  });
+
+  describe('debug log level mapping', () => {
+    it('should map debug status to debug level', () => {
+      process.env.DEBUG_LOGGING = 'true';
+      try {
+        logger.log('debug', 'user', 'test debug');
+
+        const content = readLatestLog();
+        expect(content).toContain('[debug] [debug]');
+      } finally {
+        delete process.env.DEBUG_LOGGING;
+      }
+    });
+  });
+
+  describe('logDebugLazy', () => {
+    it('should not call builder when DEBUG_LOGGING is off', () => {
+      delete process.env.DEBUG_LOGGING;
+      const builder = jest.fn(() => 'expensive string');
+      logger.logDebugLazy('alice', builder);
+
+      expect(builder).not.toHaveBeenCalled();
+      const logFile = (logger as any).getLogFilePath();
+      expect(fs.existsSync(logFile)).toBe(false);
+    });
+
+    it('should call builder and log when DEBUG_LOGGING is true', () => {
+      process.env.DEBUG_LOGGING = 'true';
+      try {
+        const builder = jest.fn(() => 'lazy debug data');
+        logger.logDebugLazy('bob', builder);
+
+        expect(builder).toHaveBeenCalledTimes(1);
+        const content = readLatestLog();
+        expect(content).toContain('[debug]');
+        expect(content).toContain('DEBUG: lazy debug data');
+      } finally {
+        delete process.env.DEBUG_LOGGING;
+      }
+    });
+  });
+
+  describe('logReply with empty-string content', () => {
+    it('should log content line for empty-string replyContent', () => {
+      logger.logReply('eve', 'Response sent: 0 characters', '');
+
+      const content = readLatestLog();
+      const lines = content.trim().split('\n');
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toContain('REPLY: Response sent: 0 characters');
+      expect(lines[1]).toContain('REPLY [content]:');
+    });
+  });
+
+  describe('isDebugEnabled', () => {
+    it('should return false when DEBUG_LOGGING is not set', () => {
+      delete process.env.DEBUG_LOGGING;
+      expect(logger.isDebugEnabled()).toBe(false);
+    });
+
+    it('should return true when DEBUG_LOGGING is true', () => {
+      process.env.DEBUG_LOGGING = 'true';
+      try {
+        expect(logger.isDebugEnabled()).toBe(true);
+      } finally {
+        delete process.env.DEBUG_LOGGING;
+      }
+    });
+  });
 });

@@ -597,6 +597,9 @@ class ComfyUIClient {
       }).join(', ');
       logger.log('success', requester, `ComfyUI workflow nodes: [${nodeSummary}]`);
 
+      // DEBUG: log full ComfyUI workflow submission
+      logger.logDebugLazy(requester, () => `COMFYUI-REQUEST: prompt="${prompt}", workflow=${JSON.stringify(workflowData, null, 2)}`);
+
       // Ensure WebSocket is connected before submitting prompt
       // This provides a proper client context to prevent tqdm stderr issues
       let wsConnected = false;
@@ -764,6 +767,9 @@ class ComfyUIClient {
         requester,
         `ComfyUI generation completed for prompt: ${prompt.substring(0, 50)}... (${images.length} image(s))`
       );
+
+      // DEBUG: log full image URLs
+      logger.logDebugLazy(requester, () => `COMFYUI-RESPONSE: ${images.length} image(s): ${JSON.stringify(images)}`);
 
       return {
         success: true,

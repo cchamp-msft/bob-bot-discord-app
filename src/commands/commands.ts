@@ -251,7 +251,7 @@ class AskCommand extends BaseCommand {
       await interaction.followUp({ content: chunks[i], ephemeral: true });
     }
 
-    logger.logReply(requester, `Ollama response sent: ${text.length} characters`);
+    logger.logReply(requester, `Ollama response sent: ${text.length} characters`, text);
   }
 }
 
@@ -342,7 +342,7 @@ class WeatherCommand extends BaseCommand {
       await interaction.followUp({ content: chunks[i], ephemeral: true });
     }
 
-    logger.logReply(requester, `Weather response sent: ${text.length} characters`);
+    logger.logReply(requester, `Weather response sent: ${text.length} characters`, text);
   }
 }
 

@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-export type LogLevel = 'info' | 'warn' | 'error';
-export type LogStatus = 'success' | 'error' | 'warn' | 'busy' | 'timeout';
+export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
+export type LogStatus = 'success' | 'error' | 'warn' | 'busy' | 'timeout' | 'debug';
 
 interface LogEntry {
   timestamp: string;
@@ -39,6 +39,7 @@ class Logger {
       case 'warn': return 'warn';
       case 'busy': return 'warn';
       case 'timeout': return 'warn';
+      case 'debug': return 'debug';
     }
   }
 
@@ -83,6 +84,14 @@ class Logger {
     this.log('success', requester, `REQUEST: ${messageContent}`);
   }
 
+  /**
+   * Check whether debug logging is enabled.
+   * Reads process.env directly to avoid circular dependency with config.
+   */
+  isDebugEnabled(): boolean {
+    return process.env.DEBUG_LOGGING === 'true';
+  }
+
   logIncoming(
     username: string,
     userId: string,
@@ -93,6 +102,11 @@ class Logger {
     const location = guildName ? `Guild: ${guildName}` : 'DM';
     const preview = content.length > 100 ? content.substring(0, 100) + '...' : content;
     this.log('success', username, `INCOMING: (${userId}) (${location}) [${channelType}] "${preview}"`);
+
+    // DEBUG: log full message content when enabled and truncated
+    if (this.isDebugEnabled() && content.length > 100) {
+      this.logDebug(username, `INCOMING [full]: "${content}"`);
+    }
   }
 
   logIgnored(username: string, reason: string): void {
@@ -104,8 +118,38 @@ class Logger {
     this.log('success', username, `USING_DEFAULT: No keyword found, defaulting to Ollama for: "${preview}"`);
   }
 
-  logReply(requester: string, messageContent: string): void {
+  logReply(requester: string, messageContent: string, replyContent?: string): void {
     this.log('success', requester, `REPLY: ${messageContent}`);
+
+    // Log reply content: truncated by default, full when DEBUG enabled
+    if (replyContent !== undefined) {
+      if (this.isDebugEnabled()) {
+        this.logDebug(requester, `REPLY [full]: ${replyContent}`);
+      } else {
+        const truncated = replyContent.length > 200
+          ? replyContent.substring(0, 200) + '...'
+          : replyContent;
+        this.log('success', requester, `REPLY [content]: ${truncated}`);
+      }
+    }
+  }
+
+  /**
+   * Log a debug-level message. Only written when DEBUG_LOGGING is enabled.
+   */
+  logDebug(requester: string, data: string): void {
+    if (!this.isDebugEnabled()) return;
+    this.log('debug', requester, `DEBUG: ${data}`);
+  }
+
+  /**
+   * Log a debug-level message using a lazy builder function.
+   * The builder is only called when DEBUG_LOGGING is enabled,
+   * avoiding expensive operations (e.g. JSON.stringify) when debug is off.
+   */
+  logDebugLazy(requester: string, build: () => string): void {
+    if (!this.isDebugEnabled()) return;
+    this.log('debug', requester, `DEBUG: ${build()}`);
   }
 
   logError(requester: string, error: string): void {

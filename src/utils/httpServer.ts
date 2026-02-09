@@ -404,8 +404,8 @@ class HttpServer {
 
   start(): void {
     this.server = this.app.listen(this.port, () => {
-      logger.log('success', 'system', `HTTP server listening on http://localhost:${this.port}`);
-      logger.log('success', 'system', `Configurator: http://localhost:${this.port}/configurator`);
+      logger.log('success', 'system', `HTTP-SERVER: Listening on http://localhost:${this.port}`);
+      logger.log('success', 'system', `HTTP-SERVER: Configurator: http://localhost:${this.port}/configurator`);
     });
   }
 
@@ -424,7 +424,7 @@ class HttpServer {
         if (err) {
           reject(err);
         } else {
-          logger.log('success', 'system', 'HTTP server stopped');
+          logger.log('success', 'system', 'HTTP-SERVER: Stopped');
           resolve();
         }
       });

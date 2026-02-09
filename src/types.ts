@@ -330,6 +330,7 @@ export interface PublicConfig {
     maxDepth: number;
     maxTokens: number;
   };
+  debugLogging: boolean;
   abilityLogging: {
     detailed: boolean;
   };

@@ -265,7 +265,7 @@ class MessageHandler {
 
       // Circular reference protection
       if (visited.has(refId)) {
-        logger.log('success', 'system', `REPLY_CHAIN: Circular reference detected at message ${refId}, stopping`);
+        logger.log('success', 'system', `REPLY-CHAIN: Circular reference detected at message ${refId}, stopping`);
         break;
       }
       visited.add(refId);
@@ -287,7 +287,7 @@ class MessageHandler {
           const prefixLen = isBot ? 0 : ((referenced.member?.displayName ?? referenced.author.username).length + 2);
           const entryLen = refContent.length + prefixLen;
           if (totalChars + entryLen > maxTotalChars) {
-            logger.log('success', 'system', `REPLY_CHAIN: Character limit reached (${totalChars}/${maxTotalChars}), stopping at depth ${depth}`);
+            logger.log('success', 'system', `REPLY-CHAIN: Character limit reached (${totalChars}/${maxTotalChars}), stopping at depth ${depth}`);
             break;
           }
           totalChars += entryLen;
@@ -305,13 +305,13 @@ class MessageHandler {
         current = referenced;
       } catch (error) {
         // Message deleted or inaccessible — stop traversal gracefully
-        logger.log('success', 'system', `REPLY_CHAIN: Could not fetch message ${refId} (deleted or inaccessible), stopping at depth ${depth}`);
+        logger.log('success', 'system', `REPLY-CHAIN: Could not fetch message ${refId} (deleted or inaccessible), stopping at depth ${depth}`);
         break;
       }
     }
 
     if (chain.length > 0) {
-      logger.log('success', 'system', `REPLY_CHAIN: Collected ${chain.length} message(s) of context`);
+      logger.log('success', 'system', `REPLY-CHAIN: Collected ${chain.length} message(s) of context`);
     }
 
     // Also count the current message author for multi-user detection
@@ -370,7 +370,7 @@ class MessageHandler {
 
         // Check character budget
         if (totalChars + content.length > maxTotalChars) {
-          logger.log('success', 'system', `DM_HISTORY: Character limit reached (${totalChars}/${maxTotalChars}), stopping`);
+          logger.log('success', 'system', `DM-HISTORY: Character limit reached (${totalChars}/${maxTotalChars}), stopping`);
           break;
         }
         totalChars += content.length;
@@ -380,12 +380,12 @@ class MessageHandler {
       }
 
       if (chain.length > 0) {
-        logger.log('success', 'system', `DM_HISTORY: Collected ${chain.length} message(s) of context`);
+        logger.log('success', 'system', `DM-HISTORY: Collected ${chain.length} message(s) of context`);
       }
 
       return chain;
     } catch (error) {
-      logger.logError('system', `DM_HISTORY: Failed to fetch DM history: ${error}`);
+      logger.logError('system', `DM-HISTORY: Failed to fetch DM history: ${error}`);
       return [];
     }
   }
@@ -727,7 +727,8 @@ class MessageHandler {
 
     logger.logReply(
       requester,
-      `Ollama response sent: ${text.length} characters`
+      `Ollama response sent: ${text.length} characters`,
+      text
     );
   }
 
@@ -753,7 +754,8 @@ class MessageHandler {
 
     logger.logReply(
       requester,
-      `AccuWeather response sent: ${text.length} characters`
+      `AccuWeather response sent: ${text.length} characters`,
+      text
     );
   }
 
@@ -779,7 +781,8 @@ class MessageHandler {
 
     logger.logReply(
       requester,
-      `NFL response sent: ${text.length} characters`
+      `NFL response sent: ${text.length} characters`,
+      text
     );
   }
 }
