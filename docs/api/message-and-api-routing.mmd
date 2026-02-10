@@ -1,0 +1,130 @@
+flowchart TD
+    subgraph Discord["Discord (External)"]
+        A["👤 User sends:<br/><code>@BobBot weather report for Seattle</code>"]
+    end
+
+    subgraph DiscordManager["discordManager.ts — Event Listener"]
+        B["client.on('messageCreate')<br/>→ messageHandler.handleMessage(message)"]
+    end
+
+    subgraph MessageHandler["messageHandler.ts — handleMessage()"]
+        C["Strip @mention → content = <b>'weather report for Seattle'</b>"]
+        D["Collect conversation history<br/><code>collectReplyChain()</code> or <code>collectDmHistory()</code>"]
+        E{"<b>findKeyword(content)</b><br/>Regex match at start of message?<br/><i>sorted longest-first</i>"}
+
+        E1["✅ Match: <b>'weather report'</b><br/>(wins over 'weather' — longer match)<br/><code>api: 'accuweather'</code><br/><code>finalOllamaPass: true</code>"]
+        E2["❌ No regex match<br/><i>(would enter two-stage path)</i>"]
+
+        F{"<code>apiKeywordMatched?</code><br/>keywordConfig.api !== 'ollama'?"}
+        G["✅ Yes — <b>Direct API routing path</b>"]
+        H["❌ No — <b>Two-stage evaluation path</b><br/><code>executeWithTwoStageEvaluation()</code>"]
+
+        I["Strip keyword from content<br/><code>stripKeyword()</code><br/>content = <b>'for Seattle'</b>"]
+        J["Reply: ⏳ Processing your request..."]
+    end
+
+    subgraph APIRouter["apiRouter.ts — executeRoutedRequest()"]
+        K["Receive: keywordConfig, content, requester, history"]
+        L["Check: <code>needsFinalPass = keywordConfig.finalOllamaPass</code><br/>→ <b>true</b>"]
+
+        subgraph PrimaryAPI["Stage 1: Primary API Request"]
+            M["<code>requestQueue.execute('accuweather', ...)</code>"]
+            N["<code>apiManager.executeRequest('accuweather', ...)</code><br/>mode = keywordConfig.accuweatherMode"]
+            O["AccuWeather API call<br/>→ Returns weather data for Seattle"]
+            P["<code>extractStageResult('accuweather', result)</code><br/>→ stages.push(primaryExtracted)"]
+        end
+
+        Q{"Primary API success?"}
+        Q1["❌ Return error RoutedResult"]
+        Q2["✅ Success — check finalOllamaPass"]
+
+        R{"<code>needsFinalPass && api !== 'ollama'?</code>"}
+        R1["Skip — primary was already Ollama"]
+
+        subgraph FinalPass["Stage 2: Final Ollama Refinement Pass"]
+            S["<code>evaluateContextWindow()</code><br/>Filter conversation history for relevance"]
+            T["Build <code>&lt;external_data&gt;</code> block:<br/><code>formatAccuWeatherExternalData(location, data)</code><br/>→ <code>&lt;accuweather_data source='weather' location='Seattle'&gt;</code>"]
+            U["<code>assembleReprompt()</code><br/>System: persona only <i>(NO abilities/keyword rules)</i><br/>User: <code>&lt;conversation_history&gt;</code> + <code>&lt;external_data&gt;</code> + <code>&lt;current_question&gt;</code>"]
+            V["<code>requestQueue.execute('ollama', ...)</code><br/>→ <code>apiManager.executeRequest('ollama', ...)</code><br/>model = OLLAMA_FINAL_PASS_MODEL or default"]
+            W["Ollama generates conversational weather report<br/>using real AccuWeather data as context"]
+        end
+
+        X["Return <b>RoutedResult</b><br/><code>{ finalResponse, finalApi: 'ollama', stages }</code>"]
+    end
+
+    subgraph Dispatch["messageHandler.ts — dispatchResponse()"]
+        Y{"Switch on <code>finalApi</code>"}
+        Y1["<code>handleComfyUIResponse()</code>"]
+        Y2["<code>handleOllamaResponse()</code> ✅ <i>(our path)</i>"]
+        Y3["<code>handleAccuWeatherResponse()</code>"]
+        Y4["<code>handleNFLResponse()</code>"]
+    end
+
+    subgraph Response["messageHandler.ts — handleOllamaResponse()"]
+        Z["<code>chunkText(text)</code><br/>Split into Discord-safe chunks"]
+        Z1["<code>processingMessage.edit(chunks[0])</code><br/>Replace ⏳ with first chunk"]
+        Z2["<code>channel.send(chunks[i])</code><br/>Send overflow chunks as follow-ups"]
+        Z3["<code>logger.logReply()</code>"]
+    end
+
+    subgraph TwoStage["messageHandler.ts — executeWithTwoStageEvaluation()<br/><i>(alternate path — shown for completeness)</i>"]
+        TS1["<code>evaluateContextWindow()</code> — filter history"]
+        TS2["<code>assemblePrompt()</code><br/>System: persona + abilities + keyword rules<br/>User: XML-tagged prompt with <code>&lt;thinking_and_output_rules&gt;</code>"]
+        TS3["<code>requestQueue.execute('ollama', ...)</code><br/>Ollama responds with abilities awareness"]
+        TS4{"<code>parseFirstLineKeyword()</code><br/>First line = exact keyword?"}
+        TS5["✅ Keyword found → <code>executeRoutedRequest()</code>"]
+        TS6["❌ No first-line match"]
+        TS7{"<code>classifyIntent()</code><br/>AI fallback classifier"}
+        TS8["✅ API keyword matched → <code>executeRoutedRequest()</code>"]
+        TS9["❌ No API intent → return Ollama response as-is"]
+    end
+
+    A --> B --> C --> D --> E
+    E -->|"'weather report' matches regex"| E1
+    E -->|"e.g. 'is it going to rain?'"| E2
+    E1 --> F
+    F -->|"accuweather ≠ ollama"| G
+    F -->|"api = ollama or no match"| H
+    G --> I --> J --> K
+    K --> L --> M --> N --> O --> P --> Q
+    Q -->|"fail"| Q1
+    Q -->|"success"| Q2 --> R
+    R -->|"true ✅"| S --> T --> U --> V --> W --> X
+    R -->|"primary was ollama"| R1
+    X --> Y
+    Y -->|"comfyui"| Y1
+    Y -->|"ollama"| Y2
+    Y -->|"accuweather"| Y3
+    Y -->|"nfl"| Y4
+    Y2 --> Z --> Z1 --> Z2 --> Z3
+
+    H --> TS1 --> TS2 --> TS3 --> TS4
+    TS4 -->|"yes"| TS5
+    TS4 -->|"no"| TS6 --> TS7
+    TS7 -->|"API keyword"| TS8
+    TS7 -->|"no match"| TS9
+
+    E2 --> H
+
+    style A fill:#5865F2,color:#fff
+    style E fill:#f9a825,color:#000
+    style F fill:#f9a825,color:#000
+    style Q fill:#f9a825,color:#000
+    style R fill:#f9a825,color:#000
+    style TS4 fill:#f9a825,color:#000
+    style TS7 fill:#f9a825,color:#000
+    style E1 fill:#4caf50,color:#fff
+    style G fill:#4caf50,color:#fff
+    style W fill:#4caf50,color:#fff
+    style X fill:#4caf50,color:#fff
+    style Z3 fill:#4caf50,color:#fff
+    style Q1 fill:#f44336,color:#fff
+    style Discord fill:#5865F222
+    style DiscordManager fill:#7289DA22
+    style MessageHandler fill:#43b58122
+    style APIRouter fill:#ff980022
+    style PrimaryAPI fill:#2196F322
+    style FinalPass fill:#9c27b022
+    style Dispatch fill:#60768822
+    style Response fill:#00968822
+    style TwoStage fill:#78909c22
