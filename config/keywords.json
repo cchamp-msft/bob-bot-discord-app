@@ -65,58 +65,20 @@
       "contextFilterMaxDepth": 1
     },
     {
-      "keyword": "nfl superbowl report",
-      "api": "nfl",
-      "timeout": 60,
-      "description": "Get an AI-enhanced Super Bowl assessment with game data and news",
-      "finalOllamaPass": true
-    },
-    {
-      "keyword": "superbowl report",
-      "api": "nfl",
-      "timeout": 60,
-      "description": "Get an AI-enhanced Super Bowl assessment with game data and news",
-      "finalOllamaPass": true
-    },
-    {
-      "keyword": "superbowl",
-      "api": "nfl",
-      "timeout": 30,
-      "description": "Get current Super Bowl game status and score",
-      "abilityText": "Get current Super Bowl game status and score"
-    },
-    {
       "keyword": "nfl scores",
       "api": "nfl",
       "timeout": 30,
-      "description": "Get all current NFL game scores"
-    },
-    {
-      "keyword": "nfl score",
-      "api": "nfl",
-      "timeout": 30,
-      "description": "Get a specific NFL team's game score (e.g. 'nfl score chiefs')"
-    },
-    {
-      "keyword": "nfl news report",
-      "api": "nfl",
-      "timeout": 60,
-      "description": "Get an AI-enhanced NFL news report",
-      "finalOllamaPass": true
+      "description": "Get current NFL game scores. Optionally provide a date (YYYYMMDD or YYYY-MM-DD) to look up scores for a specific date; otherwise returns the most recent scoreboard.",
+      "abilityText": "Get NFL game scores — optionally specify a date (e.g. 'nfl scores 20260208') for that day's games, otherwise returns the current/most recent scoreboard",
+      "allowEmptyContent": true
     },
     {
       "keyword": "nfl news",
       "api": "nfl",
       "timeout": 30,
-      "description": "Get latest NFL news headlines"
-    },
-    {
-      "keyword": "nfl",
-      "api": "nfl",
-      "timeout": 60,
-      "description": "Get NFL game information, enhanced with live data",
-      "abilityText": "Get NFL game information, enhanced with live data",
-      "finalOllamaPass": true
+      "description": "Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl news chiefs').",
+      "abilityText": "Get NFL news headlines — optionally add a filter word to narrow articles (e.g. 'nfl news draft')",
+      "allowEmptyContent": true
     },
     {
       "keyword": "analyze",

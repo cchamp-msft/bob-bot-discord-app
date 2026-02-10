@@ -12,7 +12,6 @@ jest.mock('../src/utils/config', () => ({
     getAccuWeatherEndpoint: jest.fn(() => 'https://dataservice.accuweather.com'),
     getAccuWeatherApiKey: jest.fn(() => ''),
     getAccuWeatherDefaultLocation: jest.fn(() => ''),
-    getSuperBowlReportPrompt: jest.fn(() => 'Provide an intelligent, comprehensive assessment of the current Super Bowl based on the data above. Include context from the news articles to enrich the analysis. Be insightful and conversational.'),
     getKeywords: jest.fn(() => []),
   },
 }));
@@ -42,12 +41,6 @@ jest.mock('../src/api', () => ({
 jest.mock('../src/api/accuweatherClient', () => ({
   accuweatherClient: {
     formatWeatherContextForAI: jest.fn(() => '--- WEATHER DATA ---'),
-  },
-}));
-
-jest.mock('../src/api/nflClient', () => ({
-  nflClient: {
-    handleRequest: jest.fn(),
   },
 }));
 
@@ -547,43 +540,43 @@ describe('ApiRouter', () => {
       return mockApiExecute.mock.calls[0][2] as string;
     }
 
-    it('should wrap generic "nfl" final-pass with <espn_data source="nfl"> XML tags', async () => {
+    it('should wrap "nfl scores" final-pass with <espn_data source="nfl-scores"> XML tags', async () => {
       const keyword: KeywordConfig = {
-        keyword: 'nfl',
+        keyword: 'nfl scores',
         api: 'nfl',
         timeout: 60,
-        description: 'NFL chat',
+        description: 'NFL scores',
         finalOllamaPass: true,
       };
 
       const prompt = await captureNflFinalPrompt(keyword, 'NFL Scores - Current Week\nChiefs 14 - Ravens 10', 'who is winning?');
-      expect(prompt).toContain('<espn_data source="nfl">');
+      expect(prompt).toContain('<espn_data source="nfl-scores">');
       expect(prompt).toContain('</espn_data>');
       expect(prompt).toContain('<external_data>');
       expect(prompt).toContain('</external_data>');
     });
 
-    it('should wrap "nfl news report" final-pass with <espn_data source="nfl-news"> XML tags', async () => {
+    it('should wrap "nfl news" final-pass with <espn_data source="nfl-news"> XML tags', async () => {
       const keyword: KeywordConfig = {
-        keyword: 'nfl news report',
+        keyword: 'nfl news',
         api: 'nfl',
         timeout: 60,
-        description: 'NFL news report',
+        description: 'NFL news',
         finalOllamaPass: true,
       };
 
       const prompt = await captureNflFinalPrompt(keyword, 'NFL News Headlines\n- Chiefs sign free agent', 'give me the latest');
       expect(prompt).toContain('<espn_data source="nfl-news">');
       expect(prompt).toContain('</espn_data>');
-      expect(prompt).not.toContain('source="nfl"');
+      expect(prompt).not.toContain('source="nfl-scores"');
     });
 
     it('should include user question in <current_question> XML block', async () => {
       const keyword: KeywordConfig = {
-        keyword: 'nfl',
+        keyword: 'nfl scores',
         api: 'nfl',
         timeout: 60,
-        description: 'NFL chat',
+        description: 'NFL scores',
         finalOllamaPass: true,
       };
 
@@ -593,81 +586,18 @@ describe('ApiRouter', () => {
       expect(prompt).toContain('</current_question>');
     });
 
-    it('should wrap "nfl superbowl report" with <espn_data source="superbowl"> XML tags', async () => {
+    it('should fall back to NFL result when final pass fails', async () => {
       const keyword: KeywordConfig = {
-        keyword: 'nfl superbowl report',
+        keyword: 'nfl scores',
         api: 'nfl',
         timeout: 60,
-        description: 'Super Bowl report',
-        finalOllamaPass: true,
-      };
-
-      const prompt = await captureNflFinalPrompt(keyword, 'Super Bowl Game Status\nSF vs KC', 'tell me about the super bowl');
-      expect(prompt).toContain('<espn_data source="superbowl">');
-      expect(prompt).toContain('</espn_data>');
-      expect(prompt).toContain('<external_data>');
-    });
-
-    it('should wrap "superbowl report" with <espn_data source="superbowl"> XML tags', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'superbowl report',
-        api: 'nfl',
-        timeout: 60,
-        description: 'Super Bowl report',
-        finalOllamaPass: true,
-      };
-
-      const prompt = await captureNflFinalPrompt(keyword, 'Super Bowl Game Status\nSF vs KC', 'give me a report');
-      expect(prompt).toContain('<espn_data source="superbowl">');
-      expect(prompt).toContain('</espn_data>');
-    });
-
-    it('should pass configurable superbowl report prompt via system content', async () => {
-      const { config } = require('../src/utils/config');
-      (config.getSuperBowlReportPrompt as jest.Mock).mockReturnValueOnce('Custom super bowl instruction.');
-
-      const keyword: KeywordConfig = {
-        keyword: 'nfl superbowl report',
-        api: 'nfl',
-        timeout: 60,
-        description: 'Super Bowl report',
-        finalOllamaPass: true,
-      };
-
-      // Primary NFL result
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: { text: 'SB data', games: [] },
-      });
-
-      // Final Ollama pass — capture apiManager call args
-      mockApiExecute.mockResolvedValue({ success: true, data: { text: 'AI response' } } as any);
-      mockExecute.mockImplementationOnce(async (_api, _req, _label, _timeout, callback) => {
-        await callback(undefined as any);
-        return { success: true, data: { text: 'AI response' } };
-      });
-
-      await executeRoutedRequest(keyword, 'report', 'testuser');
-
-      // The system content is the 6th arg (conversationHistory) first element
-      const historyArg = mockApiExecute.mock.calls[0][5] as Array<{ role: string; content: string }>;
-      expect(historyArg).toBeDefined();
-      expect(historyArg[0].role).toBe('system');
-      expect(historyArg[0].content).toContain('Custom super bowl instruction.');
-    });
-
-    it('should fall back to NFL result when superbowl report final pass fails', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'nfl superbowl report',
-        api: 'nfl',
-        timeout: 60,
-        description: 'Super Bowl report',
+        description: 'NFL scores',
         finalOllamaPass: true,
       };
 
       mockExecute.mockResolvedValueOnce({
         success: true,
-        data: { text: 'Super Bowl data', games: [] },
+        data: { text: 'NFL data', games: [] },
       });
 
       mockExecute.mockResolvedValueOnce({

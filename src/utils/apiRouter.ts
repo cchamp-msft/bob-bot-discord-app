@@ -3,7 +3,6 @@ import { logger } from './logger';
 import { requestQueue } from './requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse } from '../api';
 import { accuweatherClient } from '../api/accuweatherClient';
-import { nflClient } from '../api/nflClient';
 import { ChatMessage, NFLResponse } from '../types';
 import { evaluateContextWindow } from './contextEvaluator';
 import {
@@ -64,36 +63,26 @@ export async function executeRoutedRequest(
 
   let primaryResult: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse;
 
-  if (keywordConfig.api === 'nfl') {
-    // NFL requests bypass the generic apiManager and use the NFL client directly
-    primaryResult = await requestQueue.execute(
-      'nfl',
-      requester,
-      keywordConfig.keyword,
-      keywordConfig.timeout,
-      (sig) => nflClient.handleRequest(content, keywordConfig.keyword, sig),
-      signal
-    ) as NFLResponse;
-  } else {
-    primaryResult = await requestQueue.execute(
-      keywordConfig.api,
-      requester,
-      keywordConfig.keyword,
-      keywordConfig.timeout,
-      (sig) =>
-        apiManager.executeRequest(
-          keywordConfig.api as 'comfyui' | 'ollama' | 'accuweather',
-          requester,
-          content,
-          keywordConfig.timeout,
-          undefined,
-          conversationHistory?.length ? conversationHistory : undefined,
-          sig,
-          keywordConfig.accuweatherMode
-        ),
-      signal
-    ) as ComfyUIResponse | OllamaResponse | AccuWeatherResponse;
-  }
+  primaryResult = await requestQueue.execute(
+    keywordConfig.api,
+    requester,
+    keywordConfig.keyword,
+    keywordConfig.timeout,
+    (sig) =>
+      apiManager.executeRequest(
+        keywordConfig.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl',
+        requester,
+        content,
+        keywordConfig.timeout,
+        undefined,
+        conversationHistory?.length ? conversationHistory : undefined,
+        sig,
+        keywordConfig.accuweatherMode,
+        undefined,
+        keywordConfig.keyword
+      ),
+    signal
+  ) as ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse;
 
   const primaryExtracted = extractStageResult(keywordConfig.api, primaryResult);
   stages.push(primaryExtracted);
@@ -160,13 +149,7 @@ export async function executeRoutedRequest(
       externalData: externalDataBlock,
     });
 
-    // Append per-keyword instruction if available (e.g. Super Bowl report prompt)
-    const lowerKw = keywordConfig.keyword.toLowerCase();
-    const isSuperBowlReport = lowerKw.includes('superbowl') && lowerKw.includes('report');
-    let finalSystemContent = reprompt.systemContent;
-    if (isSuperBowlReport) {
-      finalSystemContent += '\n\n' + config.getSuperBowlReportPrompt();
-    }
+    const finalSystemContent = reprompt.systemContent;
 
     const finalResult = await requestQueue.execute(
       'ollama',

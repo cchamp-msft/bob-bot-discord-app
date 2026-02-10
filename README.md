@@ -10,7 +10,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ ComfyUI integration for image generation (WebSocket-based with HTTP polling fallback)
 - ✅ Ollama integration for AI text generation
 - ✅ AccuWeather integration for real-time weather data (current conditions + 5-day forecast)
-- ✅ **NFL game data** — live scores, weekly schedules, team lookups, Super Bowl tracking, and news via ESPN
+- ✅ **NFL game data** — live scores and news via ESPN, with optional date-based lookups and news filtering
 - ✅ Serial request processing with max 1 concurrent per API
 - ✅ Configurable per-keyword timeouts (default: 300s)
 - ✅ Smart file handling (attachments for small files, URL links for large)
@@ -36,7 +36,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **Weather→AI routing** — weather data piped through Ollama for AI-powered weather reports via `finalOllamaPass`
 - ✅ **Global final-pass model** — configurable Ollama model for all final-pass refinements
 - ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
-- ✅ **NFL commands** — `nfl scores`, `nfl score <team>`, `superbowl`, `superbowl report`, `nfl superbowl report`, `nfl news`, `nfl news report`, and `nfl` (AI-enhanced) keywords
+- ✅ **NFL commands** — `nfl scores` (current or date-specific) and `nfl news` (with optional keyword filter)
 
 ## Project Structure
 
@@ -118,7 +118,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`, `NFL_SUPERBOWL_REPORT_PROMPT`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`
 
 ### Running the Bot
 
@@ -177,7 +177,7 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **Connection Status**: Live indicator showing stopped / connecting / running / error
 - **API Endpoints**: Configure ComfyUI/Ollama/AccuWeather/NFL URLs with live connection testing
 - **AccuWeather**: API key (write-only), default location, endpoint configuration, and test connection with location resolution
-- **NFL**: Enabled toggle, endpoint configuration, Super Bowl report prompt, and test connection (no API key needed — ESPN public API)
+- **NFL**: Enabled toggle, endpoint configuration, and test connection (no API key needed — ESPN public API)
 - **Ollama Model Selection**: Test connection auto-discovers available models; select and save desired model
 - **Ollama System Prompt**: Configurable system prompt sets the bot's personality; reset-to-default button included
 - **ComfyUI Workflow Upload**: Upload a workflow JSON file with `%prompt%` placeholder validation
@@ -199,7 +199,6 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - Ollama system prompt
 - AccuWeather API key and default location
 - NFL enabled state
-- NFL Super Bowl report prompt
 - Default workflow parameters (model, size, steps, sampler, scheduler, denoise)
 - Error message and rate limit
 - Reply chain settings (enabled, max depth, max tokens)
@@ -408,8 +407,7 @@ Extended fields in `config/keywords.json`:
 |-------|------|-------------|
 | `abilityText` | `string` | Human-readable description of what this API can do, included in Ollama’s abilities context. In the configurator, this is set automatically from the Description field when the Ability checkbox is checked. |
 | `finalOllamaPass` | `boolean` | Pass the API result through Ollama for conversational refinement using the global final-pass model |
-| `accuweatherMode` | `'current' \| 'forecast' \| 'full'` | AccuWeather data scope: current conditions only, 5-day forecast only, or both (default: `full`) |
-
+| `accuweatherMode` | `'current' \| 'forecast' \| 'full'` | AccuWeather data scope: current conditions only, 5-day forecast only, or both (default: `full`) || `allowEmptyContent` | `boolean` | When `true`, the keyword works without additional user text (e.g. `nfl scores` with no date). When `false` or absent, the bot prompts the user to include content after the keyword. |
 ### Global Final-Pass Model
 
 The `OLLAMA_FINAL_PASS_MODEL` environment variable (configurable in the configurator) specifies which Ollama model to use for all final-pass refinements. If not set, the default `OLLAMA_MODEL` is used.
@@ -526,7 +524,7 @@ The bot integrates with [AccuWeather](https://developer.accuweather.com) for rea
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ACCUWEATHER_API_KEY` | Yes | API key from AccuWeather Developer Portal |
-| `ACCUWEATHER_DEFAULT_LOCATION` | No | Default location when user doesn't specify one (city name, zip code, or AccuWeather location key) |
+| `ACCUWEATHER_DEFAULT_LOCATION` | No | Default location for the `/weather` slash command when no location is specified. Keyword-based weather commands always require a location (e.g. `weather Seattle`). |
 | `ACCUWEATHER_ENDPOINT` | No | Base URL override (default: `https://dataservice.accuweather.com`) |
 
 #### Location Resolution
@@ -540,18 +538,20 @@ When a user says "weather in Seattle", the bot extracts "Seattle", resolves it v
 
 #### Weather Keywords
 
-Four default weather keywords are configured in `config/keywords.json`:
+Four default weather keywords are configured in `config/keywords.json`. All require a location parameter:
 
 | Keyword | Mode | Behavior |
 |---------|------|----------|
-| `weather` | full | Direct weather report (current + forecast) |
-| `forecast` | forecast | Direct 5-day forecast only |
-| `conditions` | current | Direct current conditions only |
-| `weather report` | full | Weather data routed through Ollama for AI-powered report |
+| `weather <location>` | full | Direct weather report (current + forecast) |
+| `forecast <location>` | forecast | Direct 5-day forecast only |
+| `conditions <location>` | current | Direct current conditions only |
+| `weather report <location>` | full | Weather data routed through Ollama for AI-powered report |
+
+> **Note:** Unlike the `/weather` slash command which falls back to `ACCUWEATHER_DEFAULT_LOCATION`, keyword-based weather commands require a location. Sending just `weather` with no location will prompt the user to include a query.
 
 #### Weather Slash Command
 
-The `/weather` command supports two optional parameters:
+The `/weather` slash command supports two optional parameters. When no location is specified, it falls back to `ACCUWEATHER_DEFAULT_LOCATION`:
 
 ```
 /weather                          # Default location, full report
@@ -567,7 +567,7 @@ The `/weather` command supports two optional parameters:
 
 ### NFL Game Data
 
-The bot integrates with [ESPN's public API](https://site.api.espn.com/apis/site/v2/sports/football/nfl) for NFL game scores, schedules, Super Bowl data, and news. No API key is required.
+The bot integrates with [ESPN's public API](https://site.api.espn.com/apis/site/v2/sports/football/nfl) for NFL game scores and news. No API key is required.
 
 #### Environment Variables
 
@@ -578,42 +578,38 @@ The bot integrates with [ESPN's public API](https://site.api.espn.com/apis/site/
 
 #### NFL Keywords
 
-Four default NFL keywords are configured in `config/keywords.json`:
+Two NFL keywords are configured in `config/keywords.json`:
 
 | Keyword | Behavior |
 |---------|----------|
-| `superbowl` | Shows current/last Super Bowl game with detailed info |
-| `nfl scores` | Lists all games for the current week, or a specific week if specified (e.g., `nfl scores week 4 2025`) |
-| `nfl score` | Shows score for a specific team (e.g., `nfl score chiefs`), supports historical lookups (e.g., `nfl score chiefs week 4 2025`) |
-| `nfl news` | Shows the 5 latest NFL news headlines from ESPN |
-| `nfl news report` | Fetches 11 news articles and passes through Ollama for an AI-enhanced news summary |
-| `nfl` | Fetches current week data and passes through Ollama for AI-enhanced responses; supports historical week queries |
+| `nfl scores` | Lists all games for the current week. Supports date lookups: `nfl scores 20260208` or `nfl scores 2026-02-08` |
+| `nfl news` | Shows the latest NFL news headlines. Supports keyword filtering: `nfl news chiefs` |
 
-#### Historical Week Queries
+Both keywords have `allowEmptyContent: true`, so they work without additional text.
 
-All NFL keywords support explicit season/week lookups:
-- `nfl scores week 4 2025` — scores for 2025 Week 4
-- `nfl scores 2025 week 4` — same, alternate order
-- `nfl score chiefs week 4 2025` — Chiefs game from 2025 Week 4
-- `nfl who won week 10` — Week 10 of the current season (AI-enhanced)
+#### Date-Based Score Lookups
 
-When an explicit week is requested, the bot uses ESPN's week/season query parameters. Current-week queries use the default scoreboard endpoint.
+Use `YYYYMMDD` or `YYYY-MM-DD` format to look up scores for a specific date:
+- `nfl scores 20260208` — scores for games on February 8, 2026
+- `nfl scores 2026-02-08` — same, with dashes
+
+When no date is provided, the current week's scoreboard is shown.
+
+#### News Filtering
+
+Add a search term after `nfl news` to filter articles by headline or description:
+- `nfl news chiefs` — only articles mentioning "chiefs"
+- `nfl news trade` — only articles mentioning "trade"
+
+Without a filter, the 5 most recent articles are shown.
 
 #### Endpoint Selection
 
 | Query type | ESPN Endpoint | Cache TTL |
 |-----------|---------------|----------|
-| Current week (no explicit week) | `/scoreboard` | 60s live, 300s final |
-| Explicit week/season | `/scoreboard?season=Y&week=N&seasontype=T` | 60s live, 300s final |
+| Current week (no date) | `/scoreboard` | 60s live, 300s final |
+| Specific date | `/scoreboard?dates=YYYYMMDD` | 60s live, 300s final |
 | News | `/news` | 300s |
-
-#### Team Resolution
-
-The bot supports multiple team name formats:
-- **Nicknames**: `chiefs`, `eagles`, `niners`, `pats`
-- **City names**: `kansas city`, `philadelphia`, `green bay`
-- **Abbreviations**: `KC`, `PHI`, `GB`, `SF`
-- **Informal**: `philly`, `bucs`, `jags`
 
 ### @mention Usage
 
@@ -624,11 +620,9 @@ Mention the bot with a keyword and prompt:
 @BobBot weather in Seattle
 @BobBot forecast for 90210
 @BobBot nfl scores
-@BobBot nfl score chiefs
-@BobBot superbowl
+@BobBot nfl scores 20260208
 @BobBot nfl news
-@BobBot nfl news report
-@BobBot nfl who is favored to win the super bowl?
+@BobBot nfl news chiefs
 ```
 
 The bot replies inline — the initial "Processing" message is edited in-place with the final response. You can also DM the bot directly without needing an @mention.

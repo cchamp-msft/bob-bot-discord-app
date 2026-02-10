@@ -22,7 +22,7 @@ jest.mock('../src/utils/config', () => ({
         finalOllamaPass: true,
       },
       {
-        keyword: 'nfl',
+        keyword: 'nfl scores',
         api: 'nfl',
         timeout: 60,
         description: 'Get NFL game information',
@@ -30,11 +30,11 @@ jest.mock('../src/utils/config', () => ({
         finalOllamaPass: true,
       },
       {
-        keyword: 'superbowl',
+        keyword: 'nfl news',
         api: 'nfl',
         timeout: 30,
-        description: 'Get current Super Bowl game status and score',
-        abilityText: 'Get current Super Bowl game status and score',
+        description: 'Get current NFL news headlines',
+        abilityText: 'Get current NFL news headlines',
       },
       {
         keyword: 'generate',
@@ -65,9 +65,6 @@ jest.mock('../src/utils/config', () => ({
     ]),
     getOllamaSystemPrompt: jest.fn(
       () => 'You are Bob. Rude but helpful Discord bot.'
-    ),
-    getSuperBowlReportPrompt: jest.fn(
-      () => 'Provide a comprehensive Super Bowl assessment.'
     ),
   },
 }));
@@ -109,10 +106,10 @@ describe('PromptBuilder', () => {
       const routable = getRoutableKeywords();
       const names = routable.map(k => k.keyword);
 
-      // Included: weather, weather report, nfl, superbowl, generate
+      // Included: weather, weather report, nfl scores, nfl news, generate
       expect(names).toContain('weather');
-      expect(names).toContain('nfl');
-      expect(names).toContain('superbowl');
+      expect(names).toContain('nfl scores');
+      expect(names).toContain('nfl news');
       expect(names).toContain('generate');
 
       // Excluded: chat (ollama), help (builtin), disabled_kw (enabled: false)
@@ -186,7 +183,7 @@ describe('PromptBuilder', () => {
     it('should include external_data when provided', () => {
       const content = buildUserContent({
         userMessage: 'Tell me about the game',
-        externalData: '<espn_data source="nfl">\nChiefs 38 – Seahawks 31\n</espn_data>',
+        externalData: '<espn_data source="nfl-scores">\nChiefs 38 – Seahawks 31\n</espn_data>',
       });
 
       expect(content).toContain('<external_data>');
@@ -222,7 +219,8 @@ describe('PromptBuilder', () => {
 
       expect(content).toContain('weather');
       expect(content).toContain('nfl');
-      expect(content).toContain('superbowl');
+      expect(content).toContain('nfl scores');
+      expect(content).toContain('nfl news');
     });
   });
 
@@ -299,9 +297,9 @@ describe('PromptBuilder', () => {
 
   describe('parseFirstLineKeyword', () => {
     it('should match exact keyword on first line', () => {
-      const result = parseFirstLineKeyword('nfl');
+      const result = parseFirstLineKeyword('nfl scores');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('nfl');
+      expect(result.keywordConfig?.keyword).toBe('nfl scores');
     });
 
     it('should match keyword with trailing whitespace', () => {
@@ -311,21 +309,21 @@ describe('PromptBuilder', () => {
     });
 
     it('should match keyword with trailing punctuation', () => {
-      const result = parseFirstLineKeyword('superbowl.');
+      const result = parseFirstLineKeyword('nfl scores.');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('superbowl');
+      expect(result.keywordConfig?.keyword).toBe('nfl scores');
     });
 
     it('should match keyword case-insensitively', () => {
-      const result = parseFirstLineKeyword('NFL');
+      const result = parseFirstLineKeyword('NFL SCORES');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('nfl');
+      expect(result.keywordConfig?.keyword).toBe('nfl scores');
     });
 
     it('should take only first line when keyword + junk after', () => {
-      const result = parseFirstLineKeyword('nfl\nlol why ask me');
+      const result = parseFirstLineKeyword('nfl scores\nlol why ask me');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('nfl');
+      expect(result.keywordConfig?.keyword).toBe('nfl scores');
     });
 
     it('should prefer longest keyword match (weather report over weather)', () => {
@@ -382,9 +380,9 @@ describe('PromptBuilder', () => {
     });
 
     it('should match keyword preceded by a dash bullet marker', () => {
-      const result = parseFirstLineKeyword('- nfl');
+      const result = parseFirstLineKeyword('- nfl scores');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('nfl');
+      expect(result.keywordConfig?.keyword).toBe('nfl scores');
     });
 
     it('should match keyword preceded by an asterisk bullet marker', () => {
@@ -394,9 +392,9 @@ describe('PromptBuilder', () => {
     });
 
     it('should match keyword preceded by a bullet character', () => {
-      const result = parseFirstLineKeyword('\u2022 superbowl');
+      const result = parseFirstLineKeyword('\u2022 nfl news');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('superbowl');
+      expect(result.keywordConfig?.keyword).toBe('nfl news');
     });
   });
 
@@ -412,19 +410,14 @@ describe('PromptBuilder', () => {
   });
 
   describe('formatNFLExternalData', () => {
-    it('should use "superbowl" source for superbowl keywords', () => {
-      const result = formatNFLExternalData('superbowl report', 'Chiefs 38 – Seahawks 31');
-      expect(result).toContain('source="superbowl"');
+    it('should use "nfl-scores" source for scores keywords', () => {
+      const result = formatNFLExternalData('nfl scores', 'Chiefs 38 \u2013 Seahawks 31');
+      expect(result).toContain('source="nfl-scores"');
     });
 
     it('should use "nfl-news" source for news keywords', () => {
       const result = formatNFLExternalData('nfl news', 'Top headlines...');
       expect(result).toContain('source="nfl-news"');
-    });
-
-    it('should use "nfl" source for generic nfl keywords', () => {
-      const result = formatNFLExternalData('nfl', 'Game data...');
-      expect(result).toContain('source="nfl"');
     });
   });
 

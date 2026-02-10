@@ -1385,9 +1385,9 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (config.getKeywords as jest.Mock).mockReturnValue([
-      { keyword: 'nfl scores', api: 'nfl', timeout: 30, description: 'All scores' },
-      { keyword: 'nfl score', api: 'nfl', timeout: 30, description: 'Team score' },
-      { keyword: 'superbowl', api: 'nfl', timeout: 30, description: 'Super Bowl' },
+      { keyword: 'nfl scores', api: 'nfl', timeout: 30, description: 'All scores', allowEmptyContent: true },
+      { keyword: 'nfl news', api: 'nfl', timeout: 30, description: 'NFL news', allowEmptyContent: true },
+      { keyword: 'generate', api: 'comfyui', timeout: 60, description: 'Generate image' },
     ]);
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
       .mockResolvedValue({ keywordConfig: null, wasClassified: false });
@@ -1414,9 +1414,9 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
     expect(mockRouted).toHaveBeenCalled();
   });
 
-  it('should still reject empty content for "nfl score" (requires team parameter)', async () => {
+  it('should still reject empty content for keywords without allowEmptyContent', async () => {
     const { logger } = require('../src/utils/logger');
-    const msg = createDmMessage('nfl score');
+    const msg = createDmMessage('generate');
     await messageHandler.handleMessage(msg);
 
     // Should show the "please include a prompt" message
@@ -1426,15 +1426,15 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
     expect(logger.logIgnored).toHaveBeenCalled();
   });
 
-  it('should NOT reply with empty-content error for "superbowl" with no extra text', async () => {
+  it('should NOT reply with empty-content error for "nfl news" with no extra text', async () => {
     const mockRouted = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
     mockRouted.mockResolvedValueOnce({
-      finalResponse: { success: true, data: { text: '🏈 **Super Bowl** 🏈' } },
+      finalResponse: { success: true, data: { text: '📰 **NFL News**\n\nStory 1' } },
       finalApi: 'nfl',
       stages: [],
     });
 
-    const msg = createDmMessage('superbowl');
+    const msg = createDmMessage('nfl news');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).not.toHaveBeenCalledWith(

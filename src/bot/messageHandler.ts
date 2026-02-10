@@ -13,7 +13,6 @@ import { chunkText } from '../utils/chunkText';
 import { classifyIntent } from '../utils/keywordClassifier';
 import { executeRoutedRequest } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
-import { NFLClient } from '../api/nflClient';
 import { assemblePrompt, parseFirstLineKeyword } from '../utils/promptBuilder';
 
 export type { ChatMessage };
@@ -153,10 +152,9 @@ class MessageHandler {
     }
 
     if (!content) {
-      // Some keywords (e.g. "nfl scores", "superbowl") work without extra content.
+      // Some keywords (e.g. "nfl scores", "nfl news") work without extra content.
       // For those, use the keyword itself as the content so the request proceeds.
-      const keywordAllowsEmpty =
-        (keywordConfig.api === 'nfl' && NFLClient.allowsEmptyContent(keywordConfig.keyword));
+      const keywordAllowsEmpty = keywordConfig.allowEmptyContent === true;
 
       if (keywordAllowsEmpty) {
         content = keywordConfig.keyword;

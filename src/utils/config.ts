@@ -13,7 +13,7 @@ dotenv.config();
  * these from the raw file and replace process.env with the decoded
  * value so the rest of the app sees human-readable text.
  */
-const ESCAPED_ENV_KEYS = ['OLLAMA_SYSTEM_PROMPT', 'ERROR_MESSAGE', 'NFL_SUPERBOWL_REPORT_PROMPT'];
+const ESCAPED_ENV_KEYS = ['OLLAMA_SYSTEM_PROMPT', 'ERROR_MESSAGE'];
 
 function normalizeEscapedEnvVars(): void {
   const envPath = path.join(__dirname, '../../.env');
@@ -36,6 +36,8 @@ export interface KeywordConfig {
   abilityText?: string;
   /** When true, pass the API result back through Ollama for conversational refinement. */
   finalOllamaPass?: boolean;
+  /** When true, this keyword can be invoked with no additional user content (e.g. 'nfl scores' alone). */
+  allowEmptyContent?: boolean;
   /** AccuWeather data mode: which data to fetch. Only used when api is 'accuweather'. */
   accuweatherMode?: 'current' | 'forecast' | 'full';
   /** Whether this keyword is currently enabled. Defaults to true when omitted. */
@@ -89,6 +91,9 @@ class Config {
         }
         if (entry.finalOllamaPass !== undefined && typeof entry.finalOllamaPass !== 'boolean') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid finalOllamaPass — must be a boolean`);
+        }
+        if (entry.allowEmptyContent !== undefined && typeof entry.allowEmptyContent !== 'boolean') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid allowEmptyContent — must be a boolean`);
         }
         if (entry.accuweatherMode !== undefined && entry.accuweatherMode !== 'current' && entry.accuweatherMode !== 'forecast' && entry.accuweatherMode !== 'full') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid accuweatherMode "${entry.accuweatherMode}" — must be "current", "forecast", or "full"`);
@@ -227,17 +232,7 @@ class Config {
     return process.env.ERROR_MESSAGE || "I'm experiencing technical difficulties. Please try again later.";
   }
 
-  /**
-   * Custom prompt used for the Super Bowl report final Ollama pass.
-   * Configurable via the configurator UI.
-   */
-  getSuperBowlReportPrompt(): string {
-    const val = process.env.NFL_SUPERBOWL_REPORT_PROMPT;
-    if (val === undefined) {
-      return 'Provide an intelligent, comprehensive assessment of the current Super Bowl based on the data above. Include context from the news articles to enrich the analysis. Be insightful and conversational.';
-    }
-    return val;
-  }
+
 
   getErrorRateLimitMinutes(): number {
     return this.parseIntEnv('ERROR_RATE_LIMIT_MINUTES', 60);
@@ -465,7 +460,6 @@ class Config {
     const prevNflLoggingLevel = this.getNflLoggingLevel();
     const prevNflEndpoint = this.getNflEndpoint();
     const prevNflEnabled = this.getNflEnabled();
-    const prevSuperBowlReportPrompt = this.getSuperBowlReportPrompt();
     const prevDefaultModel = this.getComfyUIDefaultModel();
     const prevDefaultWidth = this.getComfyUIDefaultWidth();
     const prevDefaultHeight = this.getComfyUIDefaultHeight();
@@ -519,7 +513,6 @@ class Config {
     if (this.getNflLoggingLevel() !== prevNflLoggingLevel) reloaded.push('NFL_LOGGING_LEVEL');
     if (this.getNflEndpoint() !== prevNflEndpoint) reloaded.push('NFL_BASE_URL');
     if (this.getNflEnabled() !== prevNflEnabled) reloaded.push('NFL_ENABLED');
-    if (this.getSuperBowlReportPrompt() !== prevSuperBowlReportPrompt) reloaded.push('NFL_SUPERBOWL_REPORT_PROMPT');
     if (this.getComfyUIDefaultModel() !== prevDefaultModel) reloaded.push('COMFYUI_DEFAULT_MODEL');
     if (this.getComfyUIDefaultWidth() !== prevDefaultWidth) reloaded.push('COMFYUI_DEFAULT_WIDTH');
     if (this.getComfyUIDefaultHeight() !== prevDefaultHeight) reloaded.push('COMFYUI_DEFAULT_HEIGHT');
@@ -561,7 +554,6 @@ class Config {
         accuweatherApiKeyConfigured: !!this.getAccuWeatherApiKey(),
         nfl: this.getNflEndpoint(),
         nflEnabled: this.getNflEnabled(),
-        nflSuperBowlReportPrompt: this.getSuperBowlReportPrompt(),
       },
       defaultWorkflow: {
         model: this.getComfyUIDefaultModel(),

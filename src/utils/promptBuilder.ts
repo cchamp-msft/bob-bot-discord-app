@@ -261,9 +261,7 @@ export function formatNFLExternalData(
   nflDataText: string
 ): string {
   const lowerKw = keyword.toLowerCase();
-  const source = lowerKw.includes('superbowl') ? 'superbowl'
-    : lowerKw.includes('news') ? 'nfl-news'
-    : 'nfl';
+  const source = lowerKw.includes('news') ? 'nfl-news' : 'nfl-scores';
   return `<espn_data source="${source}">\n${nflDataText}\n</espn_data>`;
 }
 

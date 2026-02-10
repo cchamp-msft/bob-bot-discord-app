@@ -15,7 +15,7 @@ export interface OllamaRequestOptions {
 
 class ApiManager {
   async executeRequest(
-    api: 'comfyui' | 'ollama' | 'accuweather' | 'external',
+    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'external',
     requester: string,
     data: string,
     _timeout: number,
@@ -23,12 +23,16 @@ class ApiManager {
     conversationHistory?: ChatMessage[],
     signal?: AbortSignal,
     accuweatherMode?: 'current' | 'forecast' | 'full',
-    ollamaOptions?: OllamaRequestOptions
-  ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse> {
+    ollamaOptions?: OllamaRequestOptions,
+    /** NFL keyword — required when api is 'nfl'. */
+    nflKeyword?: string
+  ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse> {
     if (api === 'comfyui') {
       return await comfyuiClient.generateImage(data, requester, signal, _timeout);
     } else if (api === 'accuweather') {
       return await accuweatherClient.getWeather(data, requester, accuweatherMode || 'full');
+    } else if (api === 'nfl') {
+      return await nflClient.handleRequest(data, nflKeyword || 'nfl scores', signal);
     } else if (api === 'external') {
       // Stub for future external API integrations
       throw new Error('External API routing is not yet implemented');
