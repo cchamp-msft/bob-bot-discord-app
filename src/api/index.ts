@@ -7,6 +7,12 @@ import { ChatMessage, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse,
 
 export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult };
 
+/** Options forwarded to ollamaClient.generate() when api === 'ollama'. */
+export interface OllamaRequestOptions {
+  /** When false, skip the global persona system prompt (caller supplies its own). */
+  includeSystemPrompt?: boolean;
+}
+
 class ApiManager {
   async executeRequest(
     api: 'comfyui' | 'ollama' | 'accuweather' | 'external',
@@ -16,7 +22,8 @@ class ApiManager {
     model?: string,
     conversationHistory?: ChatMessage[],
     signal?: AbortSignal,
-    accuweatherMode?: 'current' | 'forecast' | 'full'
+    accuweatherMode?: 'current' | 'forecast' | 'full',
+    ollamaOptions?: OllamaRequestOptions
   ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse> {
     if (api === 'comfyui') {
       return await comfyuiClient.generateImage(data, requester, signal, _timeout);
@@ -26,7 +33,7 @@ class ApiManager {
       // Stub for future external API integrations
       throw new Error('External API routing is not yet implemented');
     } else {
-      return await ollamaClient.generate(data, requester, model || config.getOllamaModel(), conversationHistory, signal);
+      return await ollamaClient.generate(data, requester, model || config.getOllamaModel(), conversationHistory, signal, ollamaOptions);
     }
   }
 

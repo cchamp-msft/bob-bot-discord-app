@@ -68,6 +68,18 @@ jest.mock('../src/utils/keywordClassifier', () => ({
   buildAbilitiesContext: jest.fn().mockReturnValue(''),
 }));
 
+jest.mock('../src/utils/promptBuilder', () => ({
+  assemblePrompt: jest.fn(({ userMessage }: any) => ({
+    systemContent: 'You are Bob. Rude but helpful.',
+    userContent: `<conversation_history>\n</conversation_history>\n\n<current_question>\n${userMessage}\n</current_question>`,
+    messages: [
+      { role: 'system', content: 'You are Bob. Rude but helpful.' },
+      { role: 'user', content: `<conversation_history>\n</conversation_history>\n\n<current_question>\n${userMessage}\n</current_question>` },
+    ],
+  })),
+  parseFirstLineKeyword: jest.fn(() => ({ keywordConfig: null, parsedLine: '', matched: false })),
+}));
+
 jest.mock('../src/utils/apiRouter', () => ({
   executeRoutedRequest: jest.fn(),
 }));
@@ -79,6 +91,7 @@ jest.mock('../src/utils/contextEvaluator', () => ({
 import { config } from '../src/utils/config';
 import { classifyIntent, buildAbilitiesContext } from '../src/utils/keywordClassifier';
 import { executeRoutedRequest } from '../src/utils/apiRouter';
+import { assemblePrompt, parseFirstLineKeyword } from '../src/utils/promptBuilder';
 
 // We need to test the rate-limit behavior. The MessageHandler class is not
 // exported directly, but the singleton is. We can access its private method.
@@ -714,8 +727,8 @@ describe('MessageHandler built-in help keyword handling', () => {
 
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
       .mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    (buildAbilitiesContext as jest.MockedFunction<typeof buildAbilitiesContext>)
-      .mockReturnValue('');
+    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
 
     const msg = createMentionedMessage('<@bot-123> help');
     await messageHandler.handleMessage(msg);
@@ -1083,7 +1096,7 @@ describe('MessageHandler first-word keyword routing', () => {
 describe('MessageHandler two-stage evaluation', () => {
   const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
-  const mockBuildAbilitiesContext = buildAbilitiesContext as jest.MockedFunction<typeof buildAbilitiesContext>;
+  const mockParseFirstLineKeyword = parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>;
 
   function createMentionedMessage(content: string): any {
     const botUserId = 'bot-123';
@@ -1111,7 +1124,7 @@ describe('MessageHandler two-stage evaluation', () => {
     jest.clearAllMocks();
     (config.getKeywords as jest.Mock).mockReturnValue([]);
     mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    mockBuildAbilitiesContext.mockReturnValue('You have abilities: check weather');
+    mockParseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
   });
 
   it('should call Ollama then classify response, routing to API on match', async () => {
@@ -1206,11 +1219,9 @@ describe('MessageHandler two-stage evaluation', () => {
     expect(mockExecuteRoutedRequest).not.toHaveBeenCalled();
   });
 
-  it('should include abilities context in Ollama call', async () => {
+  it('should use XML prompt via assemblePrompt for Ollama call', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const { apiManager } = require('../src/api');
-
-    mockBuildAbilitiesContext.mockReturnValue('You have access to: check weather');
 
     requestQueue.execute.mockImplementation(
       (_api: any, _req: any, _kw: any, _to: any, executor: any) =>
@@ -1225,21 +1236,31 @@ describe('MessageHandler two-stage evaluation', () => {
     const msg = createMentionedMessage('<@bot-123> hello');
     await messageHandler.handleMessage(msg);
 
-    // apiManager.executeRequest should have been called with conversation history
-    // that includes the abilities context as a system message
+    // assemblePrompt should have been called
+    const mockAssemblePrompt = assemblePrompt as jest.MockedFunction<typeof assemblePrompt>;
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userMessage: 'hello',
+      })
+    );
+
+    // apiManager.executeRequest should have been called with system content
+    // from the assembled prompt, and includeSystemPrompt: false
     expect(apiManager.executeRequest).toHaveBeenCalledWith(
       'ollama',
       'testuser',
-      'hello',
+      expect.stringContaining('<current_question>'),
       expect.any(Number),
       undefined,
       expect.arrayContaining([
         expect.objectContaining({
           role: 'system',
-          content: 'You have access to: check weather',
+          content: expect.any(String),
         }),
       ]),
-      expect.anything()
+      expect.anything(),
+      undefined,
+      { includeSystemPrompt: false }
     );
   });
 });
@@ -1276,8 +1297,8 @@ describe('MessageHandler DM handling', () => {
     (config.getKeywords as jest.Mock).mockReturnValue([]);
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
       .mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    (buildAbilitiesContext as jest.MockedFunction<typeof buildAbilitiesContext>)
-      .mockReturnValue('');
+    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
   });
 
   it('should accept DM messages without mentions or replies', async () => {
@@ -1370,8 +1391,8 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
     ]);
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
       .mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    (buildAbilitiesContext as jest.MockedFunction<typeof buildAbilitiesContext>)
-      .mockReturnValue('');
+    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
   });
 
   it('should NOT reply with empty-content error for "nfl scores" with no extra text', async () => {
@@ -1462,10 +1483,11 @@ describe('MessageHandler — Context Evaluation integration', () => {
 
   it('should not call evaluateContextWindow when no conversation history (no reply)', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
-    const { classifyIntent, buildAbilitiesContext } = require('../src/utils/keywordClassifier');
+    const { classifyIntent } = require('../src/utils/keywordClassifier');
+    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
 
-    buildAbilitiesContext.mockReturnValue('');
     classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
 
     // Ollama direct chat response
     requestQueue.execute.mockResolvedValueOnce({

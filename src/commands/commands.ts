@@ -10,6 +10,7 @@ import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse } from
 import { logger } from '../utils/logger';
 import { chunkText } from '../utils/chunkText';
 import { fileHandler } from '../utils/fileHandler';
+import { buildAskPrompt } from '../utils/promptBuilder';
 
 export abstract class BaseCommand {
   abstract data: SharedSlashCommand;
@@ -202,14 +203,22 @@ class AskCommand extends BaseCommand {
     });
 
     try {
-      // Execute through the queue (handles locking + timeout)
+      // Build the XML-tagged single-string prompt for /ask
+      const askPrompt = buildAskPrompt(question);
+
+      // Execute through the queue (handles locking + timeout).
+      // The persona is embedded in the <system> XML tag inside the prompt,
+      // so includeSystemPrompt: false prevents a duplicate system message.
       const timeout = this.getTimeout('ask');
       const apiResult = await requestQueue.execute<OllamaResponse>(
         'ollama',
         requester,
         'ask',
         timeout,
-        (signal) => apiManager.executeRequest('ollama', requester, question, timeout, model, undefined, signal) as Promise<OllamaResponse>
+        (signal) => apiManager.executeRequest(
+          'ollama', requester, askPrompt, timeout, model, undefined, signal,
+          undefined, { includeSystemPrompt: false }
+        ) as Promise<OllamaResponse>
       );
 
       if (!apiResult.success) {

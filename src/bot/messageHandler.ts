@@ -10,10 +10,11 @@ import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse } from
 import { fileHandler } from '../utils/fileHandler';
 import { ChatMessage, NFLResponse } from '../types';
 import { chunkText } from '../utils/chunkText';
-import { classifyIntent, buildAbilitiesContext } from '../utils/keywordClassifier';
+import { classifyIntent } from '../utils/keywordClassifier';
 import { executeRoutedRequest } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
 import { NFLClient } from '../api/nflClient';
+import { assemblePrompt, parseFirstLineKeyword } from '../utils/promptBuilder';
 
 export type { ChatMessage };
 
@@ -416,10 +417,12 @@ class MessageHandler {
 
   /**
    * Execute the two-stage evaluation flow:
-   * 1. Call Ollama with abilities context so it knows what APIs are available
-   * 2. Classify Ollama's response for non-Ollama API keywords
-   * 3. If a non-Ollama API keyword is found, execute that API with optional final pass
-   * 4. Otherwise return Ollama's response as the final answer
+   * 1. Build XML-tagged prompt with abilities context and conversation history
+   * 2. Call Ollama — model outputs either a keyword-only line or a normal answer
+   * 3. Parse the first non-empty line for an exact keyword match
+   * 4. If keyword matched → route to API via executeRoutedRequest
+   * 5. If no keyword matched → fall back to classifyIntent (legacy classifier)
+   * 6. If still no match → return Ollama's response as the final answer
    */
   private async executeWithTwoStageEvaluation(
     content: string,
@@ -430,42 +433,43 @@ class MessageHandler {
   ): Promise<void> {
     const timeout = keywordConfig.timeout || config.getDefaultTimeout();
 
-    // Build conversation history with abilities context for Ollama
-    const abilitiesContext = buildAbilitiesContext();
-    const historyWithAbilities: ChatMessage[] = [];
-    if (abilitiesContext) {
-      historyWithAbilities.push({ role: 'system', content: abilitiesContext });
-
-      // Log abilities passed to the model (detailed logging opt-in)
-      if (config.getAbilityLoggingDetailed()) {
-        logger.log('success', 'system', `TWO-STAGE: Abilities context passed to model:\n${abilitiesContext}`);
-      } else {
-        // Always log a summary count
-        const abilityCount = (abilitiesContext.match(/^- /gm) || []).length;
-        logger.log('success', 'system', `TWO-STAGE: ${abilityCount} ability/abilities passed to model`);
-      }
-    } else {
-      logger.log('success', 'system', 'TWO-STAGE: No abilities configured — standard Ollama chat');
-    }
+    // Apply context filter (Ollama-based relevance evaluation) before building the prompt.
+    let filteredHistory = conversationHistory;
     if (conversationHistory.length > 0) {
-      // Apply context filter (Ollama-based relevance evaluation) before stage-1 call.
-      // This trims older off-topic messages while always keeping the most recent minDepth.
-      // System messages are excluded from the result — abilities context is added separately below.
       const preFilterCount = conversationHistory.filter(m => m.role !== 'system').length;
       logger.log('success', 'system',
         `TWO-STAGE: Context before eval: ${conversationHistory.length} total (${preFilterCount} non-system)`);
-      conversationHistory = await evaluateContextWindow(
+      filteredHistory = await evaluateContextWindow(
         conversationHistory,
         content,
         keywordConfig,
         requester
       );
       logger.log('success', 'system',
-        `TWO-STAGE: Context after eval: ${conversationHistory.length} messages (system messages excluded)`);
-      historyWithAbilities.push(...conversationHistory);
+        `TWO-STAGE: Context after eval: ${filteredHistory.length} messages (system messages excluded)`);
     }
 
-    // Stage 1: Call Ollama with abilities context
+    // Build the XML-tagged prompt with abilities context
+    const assembled = assemblePrompt({
+      userMessage: content,
+      conversationHistory: filteredHistory,
+    });
+
+    // Log abilities summary
+    const abilityCount = (assembled.systemContent.match(/^- /gm) || []).length;
+    if (abilityCount > 0) {
+      if (config.getAbilityLoggingDetailed()) {
+        logger.log('success', 'system', `TWO-STAGE: Abilities context passed to model:\n${assembled.systemContent}`);
+      } else {
+        logger.log('success', 'system', `TWO-STAGE: ${abilityCount} ability/abilities passed to model`);
+      }
+    } else {
+      logger.log('success', 'system', 'TWO-STAGE: No abilities configured — standard Ollama chat');
+    }
+
+    // Stage 1: Call Ollama with the XML-tagged prompt.
+    // System content from assemblePrompt replaces the global persona;
+    // includeSystemPrompt: false prevents OllamaClient from duplicating it.
     const ollamaResult = await requestQueue.execute(
       'ollama',
       requester,
@@ -475,11 +479,13 @@ class MessageHandler {
         apiManager.executeRequest(
           'ollama',
           requester,
-          content,
+          assembled.userContent,
           timeout,
           undefined,
-          historyWithAbilities.length > 0 ? historyWithAbilities : undefined,
-          signal
+          [{ role: 'system', content: assembled.systemContent }],
+          signal,
+          undefined,
+          { includeSystemPrompt: false }
         )
     ) as OllamaResponse;
 
@@ -488,22 +494,46 @@ class MessageHandler {
       return;
     }
 
-    // Stage 2: Classify Ollama's response for API keywords
     const ollamaText = ollamaResult.data?.text;
+
+    // Stage 2a: Parse first line for an exact keyword match (primary routing signal)
     if (ollamaText) {
+      const parseResult = parseFirstLineKeyword(ollamaText);
+
+      if (parseResult.matched && parseResult.keywordConfig) {
+        logger.log('success', 'system',
+          `TWO-STAGE: First-line keyword match "${parseResult.keywordConfig.keyword}" — executing ${parseResult.keywordConfig.api} API`);
+
+        const apiResult = await executeRoutedRequest(
+          parseResult.keywordConfig,
+          content,
+          requester,
+          filteredHistory.length > 0 ? filteredHistory : undefined
+        );
+
+        await this.dispatchResponse(
+          apiResult.finalResponse,
+          apiResult.finalApi,
+          processingMessage,
+          requester
+        );
+        return;
+      }
+
+      // Stage 2b: Fallback — use AI classifier on the model output only if
+      // first-line parse did not match. This handles edge cases where the model
+      // embeds keywords mid-response or uses unexpected formatting.
       const secondClassification = await classifyIntent(ollamaText, requester);
 
       if (secondClassification.keywordConfig && secondClassification.keywordConfig.api !== 'ollama') {
         logger.log('success', 'system',
-          `TWO-STAGE: Ollama response classified as "${secondClassification.keywordConfig.keyword}" — executing ${secondClassification.keywordConfig.api} API`);
+          `TWO-STAGE: Fallback classifier matched "${secondClassification.keywordConfig.keyword}" — executing ${secondClassification.keywordConfig.api} API`);
 
-
-        // Execute the matched API with optional final Ollama pass
         const apiResult = await executeRoutedRequest(
           secondClassification.keywordConfig,
           content,
           requester,
-          conversationHistory.length > 0 ? conversationHistory : undefined
+          filteredHistory.length > 0 ? filteredHistory : undefined
         );
 
         await this.dispatchResponse(
@@ -516,7 +546,7 @@ class MessageHandler {
       }
     }
 
-    // No API keyword found in Ollama's response — use it as-is
+    // No API keyword found — use Ollama response as-is
     logger.log('success', 'system', 'TWO-STAGE: No API intent detected in Ollama response — returning as direct chat');
     await this.dispatchResponse(ollamaResult, 'ollama', processingMessage, requester);
   }

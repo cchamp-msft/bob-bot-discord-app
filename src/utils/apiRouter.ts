@@ -9,8 +9,13 @@ import { evaluateContextWindow } from './contextEvaluator';
 import {
   StageResult,
   extractStageResult,
-  buildFinalPassPrompt,
 } from './responseTransformer';
+import {
+  assembleReprompt,
+  formatAccuWeatherExternalData,
+  formatNFLExternalData,
+  formatGenericExternalData,
+} from './promptBuilder';
 
 /**
  * Result of a routed (potentially multi-stage) API pipeline.
@@ -125,8 +130,8 @@ export async function executeRoutedRequest(
         `API-ROUTING: Context-eval applied for final pass (${preFilterCount}→${filteredHistory?.length ?? 0} messages)`);
     }
 
-    // Build final prompt — use structured AI context for AccuWeather and NFL
-    let finalPrompt: string;
+    // Build final prompt — format API data as <external_data> using XML template
+    let externalDataBlock: string;
     if (keywordConfig.api === 'accuweather') {
       const awResponse = primaryResult as AccuWeatherResponse;
       const locationName = awResponse.data?.location
@@ -137,23 +142,30 @@ export async function executeRoutedRequest(
         awResponse.data?.current ?? null,
         awResponse.data?.forecast ?? null
       );
-      finalPrompt = `${aiContext}\n\nUser request: ${content}\n\nPlease provide a helpful, conversational response based on the weather data above. Be concise and natural.`;
+      externalDataBlock = formatAccuWeatherExternalData(locationName, aiContext);
     } else if (keywordConfig.api === 'nfl') {
       const nflResponse = primaryResult as NFLResponse;
       const nflData = nflResponse.data?.text ?? 'No NFL data available.';
-      const lowerKw = keywordConfig.keyword.toLowerCase();
-      const isSuperBowlReport = lowerKw.includes('superbowl') && lowerKw.includes('report');
-      const isNewsKeyword = lowerKw.includes('news');
-      const openTag = isSuperBowlReport ? '[NFL Super Bowl Report Data]'
-        : isNewsKeyword ? '[NFL News Data]' : '[NFL Game Data]';
-      const closeTag = isSuperBowlReport ? '[End NFL Super Bowl Report Data]'
-        : isNewsKeyword ? '[End NFL News Data]' : '[End NFL Game Data]';
-      const instruction = isSuperBowlReport
-        ? config.getSuperBowlReportPrompt()
-        : 'Please provide a helpful, conversational response based on the NFL data above. Be concise and natural.';
-      finalPrompt = `${openTag}\n${nflData}\n${closeTag}\n\nUser request: ${content}\n\n${instruction}`;
+      externalDataBlock = formatNFLExternalData(keywordConfig.keyword, nflData);
     } else {
-      finalPrompt = buildFinalPassPrompt(content, primaryExtracted);
+      const genericText = primaryExtracted.text ?? 'No data available.';
+      externalDataBlock = formatGenericExternalData(keywordConfig.api, genericText);
+    }
+
+    // Build the reprompt using the standard XML template with external data.
+    // System prompt excludes keyword-routing rules to prevent infinite loops.
+    const reprompt = assembleReprompt({
+      userMessage: content,
+      conversationHistory: filteredHistory,
+      externalData: externalDataBlock,
+    });
+
+    // Append per-keyword instruction if available (e.g. Super Bowl report prompt)
+    const lowerKw = keywordConfig.keyword.toLowerCase();
+    const isSuperBowlReport = lowerKw.includes('superbowl') && lowerKw.includes('report');
+    let finalSystemContent = reprompt.systemContent;
+    if (isSuperBowlReport) {
+      finalSystemContent += '\n\n' + config.getSuperBowlReportPrompt();
     }
 
     const finalResult = await requestQueue.execute(
@@ -165,11 +177,13 @@ export async function executeRoutedRequest(
         apiManager.executeRequest(
           'ollama',
           requester,
-          finalPrompt,
+          reprompt.userContent,
           keywordConfig.timeout,
           config.getOllamaFinalPassModel() || undefined,
-          filteredHistory?.length ? filteredHistory : undefined,
-          sig
+          [{ role: 'system', content: finalSystemContent }],
+          sig,
+          undefined,
+          { includeSystemPrompt: false }
         ),
       signal
     ) as OllamaResponse;
