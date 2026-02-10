@@ -156,6 +156,31 @@ const WIDGET_NAME_MAP: Record<string, string[]> = {
 };
 
 /**
+ * Node class_types that produce output (images/video).
+ * Used by hasOutputNode() to pre-flight-validate workflows before submission.
+ */
+const OUTPUT_NODE_TYPES = new Set([
+  'SaveImage',
+  'PreviewImage',
+  'SaveAnimatedWEBP',
+  'SaveAnimatedPNG',
+]);
+
+/**
+ * Check whether a parsed API-format workflow contains at least one output node.
+ * Returns true if any node's class_type is in OUTPUT_NODE_TYPES.
+ */
+export function hasOutputNode(workflow: Record<string, unknown>): boolean {
+  for (const node of Object.values(workflow)) {
+    const classType = (node as Record<string, unknown>)?.class_type;
+    if (typeof classType === 'string' && OUTPUT_NODE_TYPES.has(classType)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Parameters for the default workflow builder.
  */
 export interface DefaultWorkflowParams {
@@ -625,6 +650,13 @@ class ComfyUIClient {
       // Parse the substituted workflow to send as the prompt object
       const workflowData = JSON.parse(substitutedWorkflow);
 
+      // Pre-flight: reject workflows with no output nodes before submitting
+      if (!hasOutputNode(workflowData)) {
+        const errorMsg = 'Workflow has no output node (e.g. SaveImage, PreviewImage). ComfyUI requires at least one output node to produce results.';
+        logger.logError(requester, errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
       // Log node summary for debugging workflow issues
       const nodeIds = Object.keys(workflowData);
       const nodeSummary = nodeIds.map(id => {
@@ -677,12 +709,26 @@ class ComfyUIClient {
       }
 
       if (submitResponse.status !== 200 || !submitResponse.data?.prompt_id) {
+        // Check top-level error field first (prompt_no_outputs, prompt_outputs_failed_validation, etc.)
+        const topError = submitResponse.data?.error;
+        if (topError) {
+          const errorType = topError.type ?? 'unknown';
+          const errorMessage = topError.message ?? JSON.stringify(topError);
+          const errorMsg = `ComfyUI prompt validation failed [${errorType}]: ${errorMessage}`;
+          logger.logError(requester, errorMsg);
+          return { success: false, error: errorMsg };
+        }
+
+        // Check node-level errors
         const nodeErrors = submitResponse.data?.node_errors;
         if (nodeErrors && Object.keys(nodeErrors).length > 0) {
           const errorMsg = `ComfyUI workflow errors: ${JSON.stringify(nodeErrors)}`;
           logger.logError(requester, errorMsg);
           return { success: false, error: errorMsg };
         }
+
+        // Generic fallback — log full response for diagnostics
+        logger.logError(requester, `ComfyUI unexpected prompt response: ${JSON.stringify(submitResponse.data)}`);
         return { success: false, error: 'Failed to submit prompt to ComfyUI' };
       }
 

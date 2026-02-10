@@ -68,7 +68,7 @@ jest.mock('../src/utils/logger', () => ({
 
 // Import after mocks — singleton captures mockInstance
 import { comfyuiClient } from '../src/api/comfyuiClient';
-import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow } from '../src/api/comfyuiClient';
+import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode } from '../src/api/comfyuiClient';
 import { config } from '../src/utils/config';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -220,6 +220,33 @@ describe('ComfyUIClient', () => {
     it('should return false when only nodes or only links present', () => {
       expect(isUIFormat({ nodes: [] })).toBe(false);
       expect(isUIFormat({ links: [] })).toBe(false);
+    });
+  });
+
+  describe('hasOutputNode', () => {
+    it('should return true for workflows with SaveImage node', () => {
+      expect(hasOutputNode({
+        '1': { class_type: 'KSampler', inputs: {} },
+        '7': { class_type: 'SaveImage', inputs: {} },
+      })).toBe(true);
+    });
+
+    it('should return true for workflows with PreviewImage node', () => {
+      expect(hasOutputNode({
+        '1': { class_type: 'KSampler', inputs: {} },
+        '7': { class_type: 'PreviewImage', inputs: {} },
+      })).toBe(true);
+    });
+
+    it('should return false for workflows without any output node', () => {
+      expect(hasOutputNode({
+        '1': { class_type: 'KSampler', inputs: {} },
+        '2': { class_type: 'CLIPTextEncode', inputs: {} },
+      })).toBe(false);
+    });
+
+    it('should return false for empty workflows', () => {
+      expect(hasOutputNode({})).toBe(false);
     });
   });
 
@@ -407,7 +434,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should substitute %prompt%, submit, poll history, and return image URLs', async () => {
-      const workflow = '{"3": {"inputs": {"text": "%prompt%"}}}';
+      const workflow = '{"3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}, "7": {"class_type": "SaveImage", "inputs": {}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       mockSuccessfulGeneration([{ filename: 'sunset_001.png', subfolder: '', type: 'output' }]);
@@ -420,14 +447,14 @@ describe('ComfyUIClient', () => {
 
       // Verify substitution in POST body
       const sentBody = mockInstance.post.mock.calls[0][1];
-      expect(sentBody.prompt).toEqual({ '3': { inputs: { text: 'a beautiful sunset' } } });
+      expect(sentBody.prompt['3'].inputs.text).toBe('a beautiful sunset');
       // client_id is now a UUID for WebSocket session tracking (not the Discord user)
       expect(sentBody.client_id).toBeDefined();
       expect(typeof sentBody.client_id).toBe('string');
     });
 
     it('should substitute all %prompt% occurrences', async () => {
-      const workflow = '{"pos": "%prompt%", "title": "Job: %prompt%"}';
+      const workflow = '{"1": {"class_type": "SaveImage", "inputs": {"pos": "%prompt%", "title": "Job: %prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       mockSuccessfulGeneration();
@@ -435,12 +462,12 @@ describe('ComfyUIClient', () => {
       await comfyuiClient.generateImage('cat', 'user1');
 
       const sentBody = mockInstance.post.mock.calls[0][1];
-      expect(sentBody.prompt.pos).toBe('cat');
-      expect(sentBody.prompt.title).toBe('Job: cat');
+      expect(sentBody.prompt['1'].inputs.pos).toBe('cat');
+      expect(sentBody.prompt['1'].inputs.title).toBe('Job: cat');
     });
 
     it('should JSON-escape prompts with quotes and backslashes', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"1": {"class_type": "SaveImage", "inputs": {}}, "2": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       mockSuccessfulGeneration();
@@ -448,11 +475,11 @@ describe('ComfyUIClient', () => {
       await comfyuiClient.generateImage('say "hello" with back\\slash', 'user1');
 
       const sentBody = mockInstance.post.mock.calls[0][1];
-      expect(sentBody.prompt.inputs.text).toBe('say "hello" with back\\slash');
+      expect(sentBody.prompt['2'].inputs.text).toBe('say "hello" with back\\slash');
     });
 
     it('should return failure when prompt submit returns node_errors', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"3": {"class_type": "SaveImage", "inputs": {}}, "5": {"class_type": "KSampler", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       mockInstance.post.mockResolvedValue({
@@ -470,7 +497,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should extract error details from ComfyUI HTTP 500 response', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       // Axios throws on non-2xx with a response property
@@ -489,7 +516,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should include remediation hint in HTTP 500 error message', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       const axiosError = new Error('Request failed with status code 500') as any;
@@ -507,6 +534,7 @@ describe('ComfyUIClient', () => {
         nodes: [
           { id: 6, type: 'CLIPTextEncode', inputs: [{ name: 'clip', link: 1 }], widgets_values: ['%prompt%'] },
           { id: 10, type: 'CheckpointLoaderSimple', inputs: [], widgets_values: ['model.safetensors'] },
+          { id: 11, type: 'SaveImage', inputs: [], widgets_values: ['BobBot'] },
         ],
         links: [[1, 10, 1, 6, 0, 'CLIP']],
       });
@@ -527,7 +555,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should handle network error on prompt submit gracefully', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       mockInstance.post.mockRejectedValue(new Error('Connection refused'));
@@ -539,7 +567,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should collect images from multiple output nodes', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       const promptId = 'multi-node-id';
@@ -571,7 +599,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should return error when workflow produces empty outputs', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       const promptId = 'empty-output-id';
@@ -604,7 +632,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should return error when ComfyUI execution status is error', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       const promptId = 'exec-error-id';
@@ -651,7 +679,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should poll when WS completes but history is not immediately available', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       const promptId = 'ws-done-history-miss';
@@ -703,7 +731,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should fall back to polling when WebSocket connection fails', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       const promptId = 'ws-fail-prompt';
@@ -738,7 +766,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should fall back to polling when WebSocket disconnects during wait', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       const promptId = 'ws-close-prompt';
@@ -778,7 +806,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should pass timeoutSeconds to waitForExecution when provided', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       mockSuccessfulGeneration();
@@ -793,7 +821,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should use default timeout when timeoutSeconds is not provided', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       mockSuccessfulGeneration();
@@ -807,7 +835,7 @@ describe('ComfyUIClient', () => {
       );
     });
     it('should fall back to polling when WebSocket wait times out', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       const promptId = 'ws-timeout-prompt';
@@ -848,7 +876,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should NOT fall back to polling on ComfyUI execution error', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       const promptId = 'exec-error-prompt';
@@ -876,7 +904,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should return abort-specific error when generation is aborted', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       const promptId = 'abort-prompt';
@@ -903,8 +931,63 @@ describe('ComfyUIClient', () => {
       expect(mockInstance.get).not.toHaveBeenCalled();
     });
 
+    it('should reject workflow with no output nodes before submitting to ComfyUI', async () => {
+      // Workflow has a KSampler but no SaveImage/PreviewImage
+      const workflow = '{"5": {"class_type": "KSampler", "inputs": {"text": "%prompt%"}}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('no output node');
+      // Should NOT have attempted to submit to ComfyUI
+      expect(mockInstance.post).not.toHaveBeenCalled();
+    });
+
+    it('should surface top-level error from ComfyUI prompt response', async () => {
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {"images": "%prompt%"}}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: {
+          error: {
+            type: 'prompt_no_outputs',
+            message: 'Prompt has no outputs',
+          },
+          node_errors: {},
+        },
+      });
+
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('prompt_no_outputs');
+      expect(result.error).toContain('Prompt has no outputs');
+    });
+
+    it('should log full response on generic submit failure', async () => {
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {"images": "%prompt%"}}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { something_unexpected: true },
+      });
+
+      const { logger } = require('../src/utils/logger');
+      const result = await comfyuiClient.generateImage('test', 'user1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Failed to submit prompt to ComfyUI');
+      expect(logger.logError).toHaveBeenCalledWith(
+        'user1',
+        expect.stringContaining('unexpected prompt response')
+      );
+    });
+
     it('should pass executionTimeoutMs to polling fallback on no-WS path', async () => {
-      const workflow = '{"inputs": {"text": "%prompt%"}}';
+      const workflow = '{"7": {"class_type": "SaveImage", "inputs": {}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
 
       const promptId = 'poll-timeout-prompt';
@@ -1351,7 +1434,7 @@ describe('ComfyUIClient', () => {
     });
 
     it('should prefer custom workflow over default', async () => {
-      const customWorkflow = '{"3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}}';
+      const customWorkflow = '{"3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}, "7": {"class_type": "SaveImage", "inputs": {}}}';
       (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(customWorkflow);
       (config.getComfyUIDefaultModel as jest.Mock).mockReturnValue('test_model.safetensors');
 
