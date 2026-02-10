@@ -535,6 +535,34 @@
       </div>
     </section>
 
+    <!-- SerpAPI Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">SerpAPI (Google Search)</h2>
+      <div class="body">
+        <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
+          Get a free API key at <a href="https://serpapi.com/" target="_blank" style="color:var(--accent)">serpapi.com</a>.
+          Provides Google Search results including AI Overview, Knowledge Graph, and organic results.
+          Use keywords <code style="color:var(--accent)">search</code> or <code style="color:var(--accent)">second opinion</code>.
+        </p>
+        <div class="field">
+          <label>API Key <span class="note">write-only — never displayed</span></label>
+          <div class="field-row">
+            <div class="field">
+              <input type="password" id="serpapi_api_key" placeholder="Paste SerpAPI key" autocomplete="off">
+            </div>
+            <div class="field tiny">
+              <button class="btn-test btn-sm" onclick="testConnection('serpapi')">Test</button>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Endpoint <span class="note">override only if using a proxy</span></label>
+          <input type="text" id="serpapi_endpoint" data-env="SERPAPI_ENDPOINT" placeholder="https://serpapi.com">
+        </div>
+        <div id="serpapiTestResult" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
+      </div>
+    </section>
+
     <!-- Error Handling Section -->
     <section>
       <h2 onclick="toggleSection(this)">Error Handling</h2>
@@ -901,6 +929,12 @@
       document.getElementById('nfl_enabled').value = cfg.apis.nflEnabled ? 'true' : 'false';
       document.getElementById('nfl_endpoint').value = cfg.apis.nfl || '';
 
+      // Populate SerpAPI fields
+      document.getElementById('serpapi_endpoint').value = cfg.apis.serpapi || '';
+      document.getElementById('serpapi_api_key').value = '';
+      document.getElementById('serpapi_api_key').placeholder =
+        cfg.apis.serpapiApiKeyConfigured ? 'API key configured ✓ — paste new value to change' : 'Paste SerpAPI key';
+
       // Populate NFL logging level
       const nflLogLevel = document.getElementById('nfl_logging_level');
       nflLogLevel.value = String(cfg.nflLogging?.level ?? 1);
@@ -982,6 +1016,7 @@
         <option value="ollama" ${kw?.api === 'ollama' ? 'selected' : ''}>ollama</option>
         <option value="accuweather" ${kw?.api === 'accuweather' ? 'selected' : ''}>accuweather</option>
         <option value="nfl" ${kw?.api === 'nfl' ? 'selected' : ''}>nfl</option>
+        <option value="serpapi" ${kw?.api === 'serpapi' ? 'selected' : ''}>serpapi</option>
       </select></td>
       <td><input type="number" class="kw-timeout" value="${kw?.timeout || 300}" style="width:70px"></td>
       <td><input type="text" class="kw-desc" value="${esc(kw?.description || '')}" placeholder="description"></td>
@@ -1063,6 +1098,13 @@
         env['ACCUWEATHER_API_KEY'] = awKeyVal;
       }
 
+      // Include SerpAPI key only if user typed a new value (write-only field)
+      const serpKeyInput = document.getElementById('serpapi_api_key');
+      const serpKeyVal = serpKeyInput.value.trim();
+      if (serpKeyVal) {
+        env['SERPAPI_API_KEY'] = serpKeyVal;
+      }
+
       // Collect keywords
       const keywords = collectKeywords();
 
@@ -1084,6 +1126,11 @@
         if (awKeyVal) {
           awKeyInput.value = '';
           awKeyInput.placeholder = 'API key configured ✓ — paste new value to change';
+        }
+        // Clear the SerpAPI key input after successful save
+        if (serpKeyVal) {
+          serpKeyInput.value = '';
+          serpKeyInput.placeholder = 'API key configured ✓ — paste new value to change';
         }
         saveMsg.textContent = result.messages.join(' | ');
         saveMsg.className = 'msg ok';
@@ -1187,6 +1234,12 @@
           const resultEl = document.getElementById('nflTestResult');
           resultEl.innerHTML = '<span style="color:var(--ok)">✓ API key valid. NFL data available.</span>';
         }
+
+        // For SerpAPI, show success status
+        if (api === 'serpapi') {
+          const resultEl = document.getElementById('serpapiTestResult');
+          resultEl.innerHTML = '<span style="color:var(--ok)">✓ API key valid. SerpAPI is reachable.</span>';
+        }
       } else {
         conLog(`  ✗ ${api} at ${data.endpoint} is not reachable`, 'err');
         if (data.error) conLog(`    ${data.error}`, 'err');
@@ -1197,6 +1250,10 @@
         }
         if (api === 'nfl') {
           const resultEl = document.getElementById('nflTestResult');
+          resultEl.innerHTML = `<span style="color:var(--err)">✗ ${data.error || 'Connection failed'}</span>`;
+        }
+        if (api === 'serpapi') {
+          const resultEl = document.getElementById('serpapiTestResult');
           resultEl.innerHTML = `<span style="color:var(--err)">✗ ${data.error || 'Connection failed'}</span>`;
         }
       }

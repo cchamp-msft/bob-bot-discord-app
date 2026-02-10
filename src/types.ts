@@ -5,7 +5,7 @@ export interface ChatMessage {
 }
 
 /** Recognized API backend identifiers. */
-export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl';
+export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
 
 // ── AccuWeather response types ─────────────────────────────────
 
@@ -281,6 +281,24 @@ export interface NFLHealthResult {
   error?: string;
 }
 
+// ── SerpAPI response types ──────────────────────────────────────
+
+/** SerpAPI response structure returned by serpApiClient. */
+export interface SerpApiResponse {
+  success: boolean;
+  data?: {
+    text: string;
+    raw?: unknown;
+  };
+  error?: string;
+}
+
+/** Health-check result for SerpAPI connectivity test. */
+export interface SerpApiHealthResult {
+  healthy: boolean;
+  error?: string;
+}
+
 /** Safe (no secrets) config snapshot returned by GET /api/config. */
 export interface PublicConfig {
   discord: {
@@ -300,6 +318,8 @@ export interface PublicConfig {
     accuweatherApiKeyConfigured: boolean;
     nfl: string;
     nflEnabled: boolean;
+    serpapi: string;
+    serpapiApiKeyConfigured: boolean;
   };
   defaultWorkflow: {
     model: string;

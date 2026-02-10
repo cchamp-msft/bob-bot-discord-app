@@ -50,6 +50,8 @@ jest.mock('../src/utils/config', () => ({
     getAccuWeatherDefaultLocation: jest.fn(() => ''),
     getNflEndpoint: jest.fn(() => 'https://site.api.espn.com/apis/site/v2/sports/football/nfl'),
     getNflEnabled: jest.fn(() => false),
+    getSerpApiEndpoint: jest.fn(() => 'https://serpapi.com'),
+    getSerpApiKey: jest.fn(() => ''),
   },
 }));
 

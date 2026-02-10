@@ -90,6 +90,7 @@ import {
   formatAccuWeatherExternalData,
   formatNFLExternalData,
   formatGenericExternalData,
+  formatSerpApiExternalData,
   escapeXmlContent,
 } from '../src/utils/promptBuilder';
 import { config } from '../src/utils/config';
@@ -426,6 +427,31 @@ describe('PromptBuilder', () => {
       const result = formatGenericExternalData('comfyui', 'Image generated');
       expect(result).toContain('<api_data source="comfyui">');
       expect(result).toContain('</api_data>');
+    });
+  });
+
+  // ── formatSerpApiExternalData ────────────────────────────────────
+
+  describe('formatSerpApiExternalData', () => {
+    it('should wrap in search_data tag with query', () => {
+      const result = formatSerpApiExternalData('what is TypeScript', '<organic_results />');
+      expect(result).toContain('<search_data source="serpapi" query="what is TypeScript">');
+      expect(result).toContain('</search_data>');
+      expect(result).toContain('<organic_results />');
+    });
+
+    it('should escape XML special characters in query attribute', () => {
+      const result = formatSerpApiExternalData('a < b & c > d', 'content');
+      expect(result).toContain('query="a &lt; b &amp; c &gt; d"');
+      // Raw angle brackets should not appear unescaped in the query attribute
+      expect(result).not.toMatch(/query="[^"]*[<>][^"]*"/);
+    });
+
+    it('should escape injection attempts in query', () => {
+      const result = formatSerpApiExternalData('"><injected_tag>', 'content');
+      expect(result).toContain('&quot;');
+      expect(result).toContain('&lt;injected_tag&gt;');
+      expect(result).not.toContain('<injected_tag>');
     });
   });
 

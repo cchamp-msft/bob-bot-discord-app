@@ -1,8 +1,9 @@
 import { config, KeywordConfig } from './config';
 import { logger } from './logger';
 import { requestQueue } from './requestQueue';
-import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse } from '../api';
+import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { accuweatherClient } from '../api/accuweatherClient';
+import { serpApiClient } from '../api/serpApiClient';
 import { ChatMessage, NFLResponse } from '../types';
 import { evaluateContextWindow } from './contextEvaluator';
 import {
@@ -13,6 +14,7 @@ import {
   assembleReprompt,
   formatAccuWeatherExternalData,
   formatNFLExternalData,
+  formatSerpApiExternalData,
   formatGenericExternalData,
 } from './promptBuilder';
 
@@ -21,9 +23,9 @@ import {
  */
 export interface RoutedResult {
   /** The final API response to present to the user. */
-  finalResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse;
+  finalResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse;
   /** The API type that produced the final response (for handler dispatch). */
-  finalApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl';
+  finalApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
   /** Intermediate stage results (for debugging/logging). */
   stages: StageResult[];
 }
@@ -61,7 +63,7 @@ export async function executeRoutedRequest(
   // ── Primary API request ───────────────────────────────────────
   logger.log('success', 'system', `API-ROUTING: Executing ${keywordConfig.api} request for "${keywordConfig.keyword}"`);
 
-  let primaryResult: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse;
+  let primaryResult: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse;
 
   primaryResult = await requestQueue.execute(
     keywordConfig.api,
@@ -70,7 +72,7 @@ export async function executeRoutedRequest(
     keywordConfig.timeout,
     (sig) =>
       apiManager.executeRequest(
-        keywordConfig.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl',
+        keywordConfig.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi',
         requester,
         content,
         keywordConfig.timeout,
@@ -82,7 +84,7 @@ export async function executeRoutedRequest(
         keywordConfig.keyword
       ),
     signal
-  ) as ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse;
+  ) as ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse;
 
   const primaryExtracted = extractStageResult(keywordConfig.api, primaryResult);
   stages.push(primaryExtracted);
@@ -136,6 +138,13 @@ export async function executeRoutedRequest(
       const nflResponse = primaryResult as NFLResponse;
       const nflData = nflResponse.data?.text ?? 'No NFL data available.';
       externalDataBlock = formatNFLExternalData(keywordConfig.keyword, nflData);
+    } else if (keywordConfig.api === 'serpapi') {
+      const serpResponse = primaryResult as SerpApiResponse;
+      const rawData = serpResponse.data?.raw;
+      const searchContext = rawData
+        ? serpApiClient.formatSearchContextForAI(rawData as Parameters<typeof serpApiClient.formatSearchContextForAI>[0], content)
+        : serpResponse.data?.text ?? 'No search data available.';
+      externalDataBlock = formatSerpApiExternalData(content, searchContext);
     } else {
       const genericText = primaryExtracted.text ?? 'No data available.';
       externalDataBlock = formatGenericExternalData(keywordConfig.api, genericText);

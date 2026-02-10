@@ -192,8 +192,8 @@ class ConfigWriter {
         }
         keywordNames.add(normalized);
 
-        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather' && entry.api !== 'nfl') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", or "nfl"`);
+        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather' && entry.api !== 'nfl' && entry.api !== 'serpapi') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", "nfl", or "serpapi"`);
         }
         if (typeof entry.timeout !== 'number' || entry.timeout <= 0) {
           throw new Error(`Keyword "${entry.keyword}" has invalid timeout — must be a positive number`);
@@ -258,6 +258,7 @@ class ConfigWriter {
         };
         if (entry.abilityText) clean.abilityText = entry.abilityText;
         if (entry.finalOllamaPass) clean.finalOllamaPass = entry.finalOllamaPass;
+        if (entry.allowEmptyContent) clean.allowEmptyContent = entry.allowEmptyContent;
         if (entry.accuweatherMode) clean.accuweatherMode = entry.accuweatherMode;
         if (entry.enabled === false) clean.enabled = false;
         if (entry.builtin) clean.builtin = true;

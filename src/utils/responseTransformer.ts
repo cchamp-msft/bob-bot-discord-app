@@ -1,19 +1,19 @@
 import { ComfyUIResponse } from '../api/comfyuiClient';
 import { OllamaResponse } from '../api/ollamaClient';
-import { AccuWeatherResponse, NFLResponse } from '../types';
+import { AccuWeatherResponse, NFLResponse, SerpApiResponse } from '../types';
 
 /**
  * Unified result from any API stage in a routed pipeline.
  */
 export interface StageResult {
   /** The type of API that produced this result. */
-  sourceApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'external';
+  sourceApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'external';
   /** Extracted text content (from Ollama, AccuWeather, NFL, or future text-based APIs). */
   text?: string;
   /** Extracted image URLs (from ComfyUI). */
   images?: string[];
   /** The raw API response for final handling. */
-  rawResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse;
+  rawResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse;
 }
 
 /**
@@ -66,11 +66,22 @@ export function extractFromNFL(response: NFLResponse): StageResult {
 }
 
 /**
+ * Extract usable text content from a SerpAPI response.
+ */
+export function extractFromSerpApi(response: SerpApiResponse): StageResult {
+  return {
+    sourceApi: 'serpapi',
+    text: response.data?.text ?? undefined,
+    rawResponse: response,
+  };
+}
+
+/**
  * Extract a StageResult from any API response based on the API type.
  */
 export function extractStageResult(
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl',
-  response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi',
+  response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse
 ): StageResult {
   if (api === 'comfyui') {
     return extractFromComfyUI(response as ComfyUIResponse);
@@ -80,6 +91,9 @@ export function extractStageResult(
   }
   if (api === 'nfl') {
     return extractFromNFL(response as NFLResponse);
+  }
+  if (api === 'serpapi') {
+    return extractFromSerpApi(response as SerpApiResponse);
   }
   return extractFromOllama(response as OllamaResponse);
 }
@@ -110,6 +124,12 @@ export function buildFinalPassPrompt(
   } else if (stageResult.sourceApi === 'accuweather') {
     if (stageResult.text) {
       parts.push(`The following weather data was retrieved from AccuWeather:`);
+      parts.push('');
+      parts.push(stageResult.text);
+    }
+  } else if (stageResult.sourceApi === 'serpapi') {
+    if (stageResult.text) {
+      parts.push(`The following search results were retrieved from Google:`);
       parts.push('');
       parts.push(stageResult.text);
     }

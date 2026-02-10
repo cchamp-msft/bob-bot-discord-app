@@ -68,9 +68,9 @@ class HttpServer {
 
     // GET test API connectivity
     this.app.get('/api/config/test-connection/:api', localhostOnly, async (req, res) => {
-      const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl';
-      if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather' && api !== 'nfl') {
-        res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", "accuweather", or "nfl"' });
+      const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
+      if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather' && api !== 'nfl' && api !== 'serpapi') {
+        res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", "accuweather", "nfl", or "serpapi"' });
         return;
       }
 
@@ -104,6 +104,15 @@ class HttpServer {
             logger.log('success', 'configurator', `Connection test: nfl — OK`);
           } else {
             logger.logError('configurator', `Connection test: nfl — FAILED${result.error ? ': ' + result.error : ''}`);
+          }
+          res.json({ api, endpoint, healthy: result.healthy, error: result.error });
+        } else if (api === 'serpapi') {
+          const result = await apiManager.testSerpApiConnection();
+          const endpoint = config.getApiEndpoint('serpapi');
+          if (result.healthy) {
+            logger.log('success', 'configurator', `Connection test: serpapi — OK`);
+          } else {
+            logger.logError('configurator', `Connection test: serpapi — FAILED${result.error ? ': ' + result.error : ''}`);
           }
           res.json({ api, endpoint, healthy: result.healthy, error: result.error });
         } else {
@@ -316,7 +325,7 @@ class HttpServer {
         // Update .env values if provided
         if (env && typeof env === 'object') {
           // Build a safe list of key names for logging (never log token values)
-          const sensitiveKeys = ['DISCORD_TOKEN', 'ACCUWEATHER_API_KEY'];
+          const sensitiveKeys = ['DISCORD_TOKEN', 'ACCUWEATHER_API_KEY', 'SERPAPI_API_KEY'];
           const safeKeyNames = Object.keys(env).map(k =>
             sensitiveKeys.includes(k) ? `${k} (changed)` : k
           );

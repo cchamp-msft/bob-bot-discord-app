@@ -87,6 +87,22 @@
       "description": "Analyze the context and generate the most relevant assessment based on the context",
       "contextFilterMinDepth": 20,
       "contextFilterMaxDepth": 20
+    },
+    {
+      "keyword": "search",
+      "api": "serpapi",
+      "timeout": 60,
+      "description": "Search the web for current information using Google",
+      "abilityText": "search the web for current information using 'search'",
+      "finalOllamaPass": true,
+      "contextFilterMaxDepth": 1
+    },
+    {
+      "keyword": "second opinion",
+      "api": "serpapi",
+      "timeout": 60,
+      "description": "Get a second opinion by searching the web using Google",
+      "abilityText": "get a second opinion by searching the web using 'second opinion'"
     }
   ]
 }

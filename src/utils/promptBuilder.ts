@@ -59,16 +59,14 @@ export interface KeywordParseResult {
 
 /**
  * Get the list of keywords that represent routable external abilities.
- * Excludes Ollama-only keywords, disabled keywords, built-in keywords,
- * and the "search" keyword (not yet implemented).
+ * Excludes Ollama-only keywords, disabled keywords, and built-in keywords.
  */
 export function getRoutableKeywords(overrides?: KeywordConfig[]): KeywordConfig[] {
   const keywords = overrides ?? config.getKeywords();
   return keywords.filter(k =>
     k.enabled !== false &&
     !k.builtin &&
-    k.api !== 'ollama' &&
-    k.keyword.toLowerCase() !== 'search'
+    k.api !== 'ollama'
   );
 }
 
@@ -273,6 +271,17 @@ export function formatGenericExternalData(
   text: string
 ): string {
   return `<api_data source="${sourceApi}">\n${text}\n</api_data>`;
+}
+
+/**
+ * Wrap SerpAPI search result text in an <external_data> sub-tag.
+ */
+export function formatSerpApiExternalData(
+  query: string,
+  searchContextXml: string
+): string {
+  const escapedQuery = escapeXmlContent(query).replace(/"/g, '&quot;');
+  return `<search_data source="serpapi" query="${escapedQuery}">\n${searchContextXml}\n</search_data>`;
 }
 
 // ── First-line keyword parser ────────────────────────────────────

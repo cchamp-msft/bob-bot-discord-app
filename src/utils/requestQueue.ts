@@ -1,7 +1,7 @@
 import { logger } from './logger';
 
 interface QueueEntry<T = unknown> {
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl';
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
   requester: string;
   keyword: string;
   timeout: number;
@@ -17,42 +17,49 @@ class RequestQueue {
   private ollamaActive: boolean = false;
   private accuweatherActive: boolean = false;
   private nflActive: boolean = false;
+  private serpapiActive: boolean = false;
   private comfyuiQueue: QueueEntry[] = [];
   private ollamaQueue: QueueEntry[] = [];
   private accuweatherQueue: QueueEntry[] = [];
   private nflQueue: QueueEntry[] = [];
+  private serpapiQueue: QueueEntry[] = [];
 
-  isApiAvailable(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl'): boolean {
+  isApiAvailable(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi'): boolean {
     if (api === 'comfyui') return !this.comfyuiActive;
     if (api === 'accuweather') return !this.accuweatherActive;
     if (api === 'nfl') return !this.nflActive;
+    if (api === 'serpapi') return !this.serpapiActive;
     return !this.ollamaActive;
   }
 
   /** Number of pending (waiting) entries for an API. */
-  pending(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl'): number {
+  pending(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi'): number {
     if (api === 'comfyui') return this.comfyuiQueue.length;
     if (api === 'accuweather') return this.accuweatherQueue.length;
     if (api === 'nfl') return this.nflQueue.length;
+    if (api === 'serpapi') return this.serpapiQueue.length;
     return this.ollamaQueue.length;
   }
 
-  private setActive(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl', active: boolean): void {
+  private setActive(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi', active: boolean): void {
     if (api === 'comfyui') {
       this.comfyuiActive = active;
     } else if (api === 'accuweather') {
       this.accuweatherActive = active;
     } else if (api === 'nfl') {
       this.nflActive = active;
+    } else if (api === 'serpapi') {
+      this.serpapiActive = active;
     } else {
       this.ollamaActive = active;
     }
   }
 
-  private getQueue(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl'): QueueEntry[] {
+  private getQueue(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi'): QueueEntry[] {
     if (api === 'comfyui') return this.comfyuiQueue;
     if (api === 'accuweather') return this.accuweatherQueue;
     if (api === 'nfl') return this.nflQueue;
+    if (api === 'serpapi') return this.serpapiQueue;
     return this.ollamaQueue;
   }
 
@@ -65,7 +72,7 @@ class RequestQueue {
    * cooperative callers can stop work early.
    */
   execute<T>(
-    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl',
+    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi',
     requester: string,
     keyword: string,
     timeout: number,
@@ -96,7 +103,7 @@ class RequestQueue {
   /**
    * Drain the queue for a given API — runs entries one at a time.
    */
-  private async drain(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl'): Promise<void> {
+  private async drain(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi'): Promise<void> {
     const queue = this.getQueue(api);
 
     while (queue.length > 0) {

@@ -29,7 +29,7 @@ normalizeEscapedEnvVars();
 
 export interface KeywordConfig {
   keyword: string;
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl';
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
   timeout: number;
   description: string;
   /** Human-readable description of this keyword's API ability, provided to Ollama as context so it can suggest using this API when relevant. */
@@ -80,8 +80,8 @@ class Config {
         if (!entry.keyword || typeof entry.keyword !== 'string') {
           throw new Error(`keywords.json: invalid keyword entry — missing "keyword" string`);
         }
-        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather' && entry.api !== 'nfl') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", or "nfl"`);
+        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather' && entry.api !== 'nfl' && entry.api !== 'serpapi') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", "nfl", or "serpapi"`);
         }
         if (typeof entry.timeout !== 'number' || entry.timeout <= 0) {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid timeout — must be a positive number`);
@@ -193,6 +193,16 @@ class Config {
 
   getNflEnabled(): boolean {
     return process.env.NFL_ENABLED !== 'false';
+  }
+
+  // ── SerpAPI configuration ────────────────────────────────
+
+  getSerpApiKey(): string {
+    return process.env.SERPAPI_API_KEY || '';
+  }
+
+  getSerpApiEndpoint(): string {
+    return process.env.SERPAPI_ENDPOINT || 'https://serpapi.com';
   }
 
   getHttpPort(): number {
@@ -429,10 +439,11 @@ class Config {
     return parsed;
   }
 
-  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl'): string {
+  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi'): string {
     if (api === 'comfyui') return this.getComfyUIEndpoint();
     if (api === 'accuweather') return this.getAccuWeatherEndpoint();
     if (api === 'nfl') return this.getNflEndpoint();
+    if (api === 'serpapi') return this.getSerpApiEndpoint();
     return this.getOllamaEndpoint();
   }
 
@@ -472,6 +483,8 @@ class Config {
     const prevNflLoggingLevel = this.getNflLoggingLevel();
     const prevNflEndpoint = this.getNflEndpoint();
     const prevNflEnabled = this.getNflEnabled();
+    const prevSerpApiKey = this.getSerpApiKey();
+    const prevSerpApiEndpoint = this.getSerpApiEndpoint();
     const prevFinalPassPrompt = this.getOllamaFinalPassPrompt();
     const prevDefaultModel = this.getComfyUIDefaultModel();
     const prevDefaultWidth = this.getComfyUIDefaultWidth();
@@ -526,6 +539,8 @@ class Config {
     if (this.getNflLoggingLevel() !== prevNflLoggingLevel) reloaded.push('NFL_LOGGING_LEVEL');
     if (this.getNflEndpoint() !== prevNflEndpoint) reloaded.push('NFL_BASE_URL');
     if (this.getNflEnabled() !== prevNflEnabled) reloaded.push('NFL_ENABLED');
+    if (this.getSerpApiKey() !== prevSerpApiKey) reloaded.push('SERPAPI_API_KEY');
+    if (this.getSerpApiEndpoint() !== prevSerpApiEndpoint) reloaded.push('SERPAPI_ENDPOINT');
     if (this.getOllamaFinalPassPrompt() !== prevFinalPassPrompt) reloaded.push('OLLAMA_FINAL_PASS_PROMPT');
     if (this.getComfyUIDefaultModel() !== prevDefaultModel) reloaded.push('COMFYUI_DEFAULT_MODEL');
     if (this.getComfyUIDefaultWidth() !== prevDefaultWidth) reloaded.push('COMFYUI_DEFAULT_WIDTH');
@@ -569,6 +584,8 @@ class Config {
         accuweatherApiKeyConfigured: !!this.getAccuWeatherApiKey(),
         nfl: this.getNflEndpoint(),
         nflEnabled: this.getNflEnabled(),
+        serpapi: this.getSerpApiEndpoint(),
+        serpapiApiKeyConfigured: !!this.getSerpApiKey(),
       },
       defaultWorkflow: {
         model: this.getComfyUIDefaultModel(),

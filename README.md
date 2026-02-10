@@ -1,6 +1,6 @@
 # Bob Bot - Discord AI Integration
 
-A Discord bot that monitors @mentions and DMs, routes keyword-matched requests to ComfyUI, Ollama, AccuWeather, and ESPN NFL APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
+A Discord bot that monitors @mentions and DMs, routes keyword-matched requests to ComfyUI, Ollama, AccuWeather, ESPN NFL, and SerpAPI (Google Search) APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
 
 ## Features
 
@@ -37,6 +37,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **Global final-pass model** — configurable Ollama model for all final-pass refinements
 - ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
 - ✅ **NFL commands** — `nfl scores` (current or date-specific) and `nfl news` (with optional keyword filter)
+- ✅ **Web search** — Google Search via SerpAPI with AI Overview support, routed through `search` and `second opinion` keywords
 
 ## Project Structure
 
@@ -53,6 +54,7 @@ src/
 │   ├── index.ts          # API manager
 │   ├── accuweatherClient.ts # AccuWeather API client (weather data)
 │   ├── nflClient.ts      # ESPN NFL API client (scores, schedules, news)
+│   ├── serpApiClient.ts   # SerpAPI client (Google Search + AI Overview)
 │   ├── comfyuiClient.ts  # ComfyUI API client (workflow execution)
 │   ├── comfyuiWebSocket.ts # ComfyUI WebSocket manager (real-time execution tracking)
 │   └── ollamaClient.ts   # Ollama API client
@@ -96,6 +98,7 @@ outputs/
 - ComfyUI instance (optional, for image generation)
 - Ollama instance (optional, for text generation)
 - AccuWeather API key (optional, for weather data — free tier at [developer.accuweather.com](https://developer.accuweather.com))
+- SerpAPI key (optional, for web search — free tier at [serpapi.com](https://serpapi.com))
 - No API key required for NFL data (ESPN public API)
 
 ### Installation
@@ -118,7 +121,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`, `SERPAPI_API_KEY`, `SERPAPI_ENDPOINT`
 
 ### Running the Bot
 

@@ -13,6 +13,8 @@ jest.mock('../src/utils/config', () => ({
     getAccuWeatherApiKey: jest.fn(() => ''),
     getAccuWeatherDefaultLocation: jest.fn(() => ''),
     getKeywords: jest.fn(() => []),
+    getSerpApiEndpoint: jest.fn(() => 'https://serpapi.com'),
+    getSerpApiKey: jest.fn(() => ''),
   },
 }));
 
