@@ -13,7 +13,7 @@ dotenv.config();
  * these from the raw file and replace process.env with the decoded
  * value so the rest of the app sees human-readable text.
  */
-const ESCAPED_ENV_KEYS = ['OLLAMA_SYSTEM_PROMPT', 'ERROR_MESSAGE'];
+const ESCAPED_ENV_KEYS = ['OLLAMA_SYSTEM_PROMPT', 'ERROR_MESSAGE', 'OLLAMA_FINAL_PASS_PROMPT'];
 
 function normalizeEscapedEnvVars(): void {
   const envPath = path.join(__dirname, '../../.env');
@@ -247,6 +247,18 @@ class Config {
   }
 
   /**
+   * Instruction appended to the system content for every final Ollama pass.
+   * Configurable via the configurator UI. Clear to disable.
+   */
+  getOllamaFinalPassPrompt(): string {
+    const val = process.env.OLLAMA_FINAL_PASS_PROMPT;
+    if (val === undefined) {
+      return 'Keeping in character, review the incoming data and provide an opinionated response.';
+    }
+    return val;
+  }
+
+  /**
    * Whether global debug logging is enabled.
    * When true, logs full message content, prompts, and API payloads.
    * Default: false (off).
@@ -460,6 +472,7 @@ class Config {
     const prevNflLoggingLevel = this.getNflLoggingLevel();
     const prevNflEndpoint = this.getNflEndpoint();
     const prevNflEnabled = this.getNflEnabled();
+    const prevFinalPassPrompt = this.getOllamaFinalPassPrompt();
     const prevDefaultModel = this.getComfyUIDefaultModel();
     const prevDefaultWidth = this.getComfyUIDefaultWidth();
     const prevDefaultHeight = this.getComfyUIDefaultHeight();
@@ -513,6 +526,7 @@ class Config {
     if (this.getNflLoggingLevel() !== prevNflLoggingLevel) reloaded.push('NFL_LOGGING_LEVEL');
     if (this.getNflEndpoint() !== prevNflEndpoint) reloaded.push('NFL_BASE_URL');
     if (this.getNflEnabled() !== prevNflEnabled) reloaded.push('NFL_ENABLED');
+    if (this.getOllamaFinalPassPrompt() !== prevFinalPassPrompt) reloaded.push('OLLAMA_FINAL_PASS_PROMPT');
     if (this.getComfyUIDefaultModel() !== prevDefaultModel) reloaded.push('COMFYUI_DEFAULT_MODEL');
     if (this.getComfyUIDefaultWidth() !== prevDefaultWidth) reloaded.push('COMFYUI_DEFAULT_WIDTH');
     if (this.getComfyUIDefaultHeight() !== prevDefaultHeight) reloaded.push('COMFYUI_DEFAULT_HEIGHT');
@@ -548,6 +562,7 @@ class Config {
         ollamaModel: this.getOllamaModel(),
         ollamaFinalPassModel: this.getOllamaFinalPassModel(),
         ollamaSystemPrompt: this.getOllamaSystemPrompt(),
+        ollamaFinalPassPrompt: this.getOllamaFinalPassPrompt(),
         comfyuiWorkflowConfigured: this.hasComfyUIWorkflow(),
         accuweather: this.getAccuWeatherEndpoint(),
         accuweatherDefaultLocation: this.getAccuWeatherDefaultLocation(),

@@ -440,7 +440,7 @@
             <button class="btn-sm" style="margin-left:8px;font-size:0.85em;vertical-align:middle" onclick="resetSystemPrompt()">Reset to Default</button>
           </label>
           <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
-            This prompt is sent with every Ollama request to set context and personality. Leave empty to use raw model behavior with no system context.
+            When set, this prompt is included as the system message in all conversational Ollama responses, shaping the bot's tone and personality. Internal AI processes (keyword routing, context evaluation) always skip this prompt. Leave empty to send no system message — the model responds based on its training defaults.
           </p>
           <textarea id="ollama_system_prompt" data-env="OLLAMA_SYSTEM_PROMPT" rows="4" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9em;font-family:inherit;resize:vertical" placeholder="You are a helpful Discord bot assistant. Be friendly and helpful by default, but match the user's tone when appropriate—if someone is being snarky or playful, feel free to respond in kind. Always prioritize being useful and respectful."></textarea>
         </div>
@@ -457,6 +457,11 @@
           <select id="ollama_final_pass_model" data-env="OLLAMA_FINAL_PASS_MODEL" onchange="markDirty()">
             <option value="">— use default model —</option>
           </select>
+        </div>
+        <div class="field">
+          <label>Final Pass Prompt <span class="note">AI instruction appended to every final pass refinement</span></label>
+          <textarea id="ollama_final_pass_prompt" data-env="OLLAMA_FINAL_PASS_PROMPT" rows="3" placeholder="Keeping in character, review the incoming data and provide an opinionated response."></textarea>
+          <button type="button" class="btn small" onclick="document.getElementById('ollama_final_pass_prompt').value='';markDirty();" title="Clear to use default prompt">Reset to Default</button>
         </div>
         <div class="field narrow">
           <label title="When enabled, the full abilities context sent to Ollama is logged in the status console">Detailed Ability Logging ℹ️</label>
@@ -881,6 +886,9 @@
       if (cfg.apis.ollamaSystemPrompt) {
         systemPromptEl.value = cfg.apis.ollamaSystemPrompt;
       }
+
+      // Populate Ollama final pass prompt
+      document.getElementById('ollama_final_pass_prompt').value = cfg.apis.ollamaFinalPassPrompt || '';
 
       // Populate AccuWeather fields
       document.getElementById('accuweather_default_location').value = cfg.apis.accuweatherDefaultLocation || '';
