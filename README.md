@@ -486,9 +486,9 @@ The `/ask` slash command also accepts an optional `model` parameter to override 
 
 ComfyUI uses workflow JSON files to define generation pipelines. There are two ways to configure a workflow:
 
-#### Option 1: Default Workflow (Recommended for Getting Started)
+#### Option 1: Default Workflow and Sampler Overrides (Recommended for Getting Started)
 
-The configurator includes a **Default Workflow Settings** section that generates a basic text-to-image workflow from configurable parameters:
+The configurator includes a **Workflow Settings** section that generates a basic text-to-image workflow from configurable parameters. The sampler parameters also act as overrides when a custom workflow is used (see Option 2).
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -500,6 +500,8 @@ The configurator includes a **Default Workflow Settings** section that generates
 | `COMFYUI_DEFAULT_SAMPLER` | `euler_ancestral` | Sampler algorithm |
 | `COMFYUI_DEFAULT_SCHEDULER` | `beta` | Noise scheduler |
 | `COMFYUI_DEFAULT_DENOISE` | `0.88` | Denoise strength (0–1.0) |
+
+> **Scope:** `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, and `COMFYUI_DEFAULT_HEIGHT` apply only to the default workflow (they configure `CheckpointLoaderSimple` and `EmptyLatentImage` nodes). The remaining five parameters are also applied as sampler overrides to custom uploaded workflows (see below).
 
 Click **Discover Options** in the configurator to populate dropdowns with available checkpoints, samplers, and schedulers from your connected ComfyUI instance.
 
@@ -519,6 +521,8 @@ Upload a workflow JSON file through the configurator for full control:
 When a Discord user triggers image generation, all occurrences of `%prompt%` in the workflow are replaced with the user's prompt text, and the resulting workflow is submitted to ComfyUI's `/api/prompt` endpoint.
 
 The workflow is stored in `.config/comfyui-workflow.json`.
+
+**KSampler Override:** When a custom workflow contains one or more `KSampler` nodes (node `class_type` must be exactly `KSampler`), the bot automatically overrides their `steps`, `cfg`, `sampler_name`, `scheduler`, and `denoise` inputs using the values from the Workflow Settings section. The existing `seed` in the uploaded workflow is preserved. Nodes with other class types (e.g. `KSamplerAdvanced`) are not affected.
 
 **Workflow Precedence:** If a custom workflow is uploaded, it always takes priority over the default workflow. Remove the custom workflow via the configurator to revert to default workflow settings.
 

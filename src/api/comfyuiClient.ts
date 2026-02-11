@@ -283,6 +283,37 @@ export function buildDefaultWorkflow(params: DefaultWorkflowParams): Record<stri
   };
 }
 
+/**
+ * Applies sampler override settings to all KSampler nodes in a parsed API-format
+ * workflow object. Only nodes with class_type === 'KSampler' are patched.
+ * Returns the number of KSampler nodes that were overridden.
+ */
+function applySamplerOverrides(
+  workflow: Record<string, unknown>,
+  overrides: {
+    steps: number;
+    cfg: number;
+    sampler_name: string;
+    scheduler: string;
+    denoise: number;
+  }
+): number {
+  let count = 0;
+  for (const nodeId of Object.keys(workflow)) {
+    const node = workflow[nodeId] as Record<string, unknown>;
+    if (node.class_type === 'KSampler') {
+      const inputs = node.inputs as Record<string, unknown>;
+      inputs.steps = overrides.steps;
+      inputs.cfg = overrides.cfg;
+      inputs.sampler_name = overrides.sampler_name;
+      inputs.scheduler = overrides.scheduler;
+      inputs.denoise = overrides.denoise;
+      count++;
+    }
+  }
+  return count;
+}
+
 /** Delay helper for polling loops. */
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -649,6 +680,26 @@ class ComfyUIClient {
 
       // Parse the substituted workflow to send as the prompt object
       const workflowData = JSON.parse(substitutedWorkflow);
+
+      // Apply sampler overrides to custom workflow KSampler nodes
+      if (!usingDefault) {
+        const patchedCount = applySamplerOverrides(workflowData as Record<string, unknown>, {
+          steps:        config.getComfyUIDefaultSteps(),
+          cfg:          config.getComfyUIDefaultCfg(),
+          sampler_name: config.getComfyUIDefaultSampler(),
+          scheduler:    config.getComfyUIDefaultScheduler(),
+          denoise:      config.getComfyUIDefaultDenoise(),
+        });
+        if (patchedCount > 0) {
+          logger.log(
+            'success',
+            requester,
+            `Applied sampler overrides to ${patchedCount} KSampler node(s): ` +
+            `sampler=${config.getComfyUIDefaultSampler()}, scheduler=${config.getComfyUIDefaultScheduler()}, ` +
+            `steps=${config.getComfyUIDefaultSteps()}, cfg=${config.getComfyUIDefaultCfg()}, denoise=${config.getComfyUIDefaultDenoise()}`
+          );
+        }
+      }
 
       // Pre-flight: reject workflows with no output nodes before submitting
       if (!hasOutputNode(workflowData)) {

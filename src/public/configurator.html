@@ -326,12 +326,13 @@
         <!-- Default Workflow Settings -->
         <div style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-            <label style="display:block;font-size:0.9em;font-weight:600;margin:0">Default Workflow Settings</label>
+            <label style="display:block;font-size:0.9em;font-weight:600;margin:0">Workflow Settings</label>
             <button class="btn-sm" style="font-size:0.78em" onclick="discoverComfyUIOptions()">Discover Options</button>
           </div>
           <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
             Configure a basic text-to-image workflow that will be used when no custom workflow is uploaded.
             Click <strong>Discover Options</strong> after testing the ComfyUI connection to populate dropdowns with available models, samplers, and schedulers.
+            <br><em>Sampler Override:</em> Steps, CFG, Sampler, Scheduler, and Denoise are also applied as overrides to any uploaded workflow that contains <code>KSampler</code> nodes. Checkpoint Model, Width, and Height only apply to the default workflow. Other sampler node types (e.g. <code>KSamplerAdvanced</code>) are not affected.
           </p>
           <div id="defaultWorkflowInfo" style="font-size:0.78em;padding:6px 10px;border-radius:4px;margin-bottom:10px;display:none"></div>
 
@@ -390,7 +391,7 @@
           </div>
 
           <div style="margin-top:8px;display:flex;align-items:center;gap:10px">
-            <button class="btn-sm" onclick="saveDefaultWorkflow()">Save Default Workflow</button>
+            <button class="btn-sm" onclick="saveDefaultWorkflow()">Save Workflow Settings</button>
             <span id="dwSaveStatus" style="font-size:0.8em;color:var(--text-dim)"></span>
           </div>
         </div>
