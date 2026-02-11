@@ -12,7 +12,14 @@ jest.mock('../src/utils/config', () => ({
         api: 'accuweather',
         timeout: 60,
         description: 'Get current weather conditions and 5-day forecast',
-        abilityText: 'Get current weather conditions and 5-day forecast',
+        abilityText: 'Current conditions and 5-day forecast.',
+        abilityWhen: 'User asks about weather.',
+        abilityInputs: {
+          mode: 'explicit',
+          required: ['location'],
+          validation: 'Must be a city name or postal code. Use the configured default location if the user did not specify one.',
+          examples: ['weather Dallas', 'weather 90210'],
+        },
       },
       {
         keyword: 'weather report',
@@ -27,6 +34,13 @@ jest.mock('../src/utils/config', () => ({
         timeout: 60,
         description: 'Get NFL game information',
         abilityText: 'Get NFL game information, enhanced with live data',
+        abilityWhen: 'User asks about NFL scores or game results.',
+        abilityInputs: {
+          mode: 'mixed',
+          optional: ['date'],
+          inferFrom: ['current_message'],
+          validation: 'Date must be YYYYMMDD or YYYY-MM-DD. If omitted, returns the most recent scoreboard.',
+        },
         finalOllamaPass: true,
       },
       {
@@ -41,6 +55,13 @@ jest.mock('../src/utils/config', () => ({
         api: 'comfyui',
         timeout: 600,
         description: 'Generate image using ComfyUI',
+        abilityText: 'Generate an image via ComfyUI.',
+        abilityWhen: 'User wants an image generated.',
+        abilityInputs: {
+          mode: 'implicit',
+          inferFrom: ['reply_target', 'current_message'],
+          examples: ['generate a sunset over mountains'],
+        },
       },
       {
         keyword: 'chat',
@@ -132,14 +153,64 @@ describe('PromptBuilder', () => {
   // ── buildSystemPrompt ──────────────────────────────────────────
 
   describe('buildSystemPrompt', () => {
-    it('should include persona and abilities block', () => {
+    it('should include persona and structured abilities block', () => {
       const prompt = buildSystemPrompt();
 
       expect(prompt).toContain('You are Bob');
       expect(prompt).toContain('Available external abilities');
-      expect(prompt).toContain('weather');
-      expect(prompt).toContain('nfl');
+      // Structured format: keyword, What, When, Inputs
+      expect(prompt).toContain('- weather');
+      expect(prompt).toContain('  What: Current conditions and 5-day forecast.');
+      expect(prompt).toContain('  When: User asks about weather.');
+      expect(prompt).toContain('  Inputs: Explicit.');
+      expect(prompt).toContain('    Required: location.');
       expect(prompt).toContain('Rules – follow exactly');
+    });
+
+    it('should render implicit inputs for generate keyword', () => {
+      const prompt = buildSystemPrompt();
+
+      expect(prompt).toContain('- generate');
+      expect(prompt).toContain('  What: Generate an image via ComfyUI.');
+      expect(prompt).toContain('  When: User wants an image generated.');
+      expect(prompt).toContain('  Inputs: Implicit.');
+      expect(prompt).toContain('    Infer from: reply target, current message.');
+    });
+
+    it('should render mixed inputs with optional params for nfl scores', () => {
+      const prompt = buildSystemPrompt();
+
+      expect(prompt).toContain('- nfl scores');
+      expect(prompt).toContain('  Inputs: Mixed.');
+      expect(prompt).toContain('    Optional: date.');
+      expect(prompt).toContain('    Infer from: current message.');
+      expect(prompt).toContain('    Validation:');
+    });
+
+    it('should render default explicit fallback for keywords without abilityInputs', () => {
+      const prompt = buildSystemPrompt();
+
+      // nfl news has no abilityInputs — should get default fallback
+      expect(prompt).toContain('- nfl news');
+      expect(prompt).toContain('    Use the user\'s current message content as input.');
+    });
+
+    it('should include clarification rule in rules block', () => {
+      const prompt = buildSystemPrompt();
+
+      expect(prompt).toContain('If an ability requires parameters and you cannot infer them from context, ask a brief clarifying question');
+    });
+
+    it('should render examples when provided', () => {
+      const prompt = buildSystemPrompt();
+
+      expect(prompt).toContain('    Examples: "weather Dallas", "weather 90210".');
+    });
+
+    it('should render validation constraints', () => {
+      const prompt = buildSystemPrompt();
+
+      expect(prompt).toContain('    Validation: Must be a city name or postal code.');
     });
 
     it('should skip abilities and rules when no routable keywords', () => {

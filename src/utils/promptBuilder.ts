@@ -1,4 +1,4 @@
-import { config, KeywordConfig } from './config';
+import { config, KeywordConfig, AbilityInputs } from './config';
 import { logger } from './logger';
 import { ChatMessage } from '../types';
 import { groupMessagesBySource } from './contextFormatter';
@@ -72,28 +72,76 @@ export function getRoutableKeywords(overrides?: KeywordConfig[]): KeywordConfig[
 }
 
 /**
+ * Render the inputs sub-section for one keyword's ability block.
+ * Produces a compact, multi-line description the model can follow.
+ */
+function renderInputsLines(inputs: AbilityInputs): string[] {
+  const lines: string[] = [];
+  const modeLabel = inputs.mode.charAt(0).toUpperCase() + inputs.mode.slice(1);
+  lines.push(`  Inputs: ${modeLabel}.`);
+
+  if (inputs.required && inputs.required.length > 0) {
+    lines.push(`    Required: ${inputs.required.join(', ')}.`);
+  }
+  if (inputs.optional && inputs.optional.length > 0) {
+    lines.push(`    Optional: ${inputs.optional.join(', ')}.`);
+  }
+  if (inputs.inferFrom && inputs.inferFrom.length > 0) {
+    const sources = inputs.inferFrom.map(s => s.replace(/_/g, ' ')).join(', ');
+    lines.push(`    Infer from: ${sources}.`);
+  }
+  if (inputs.validation) {
+    lines.push(`    Validation: ${inputs.validation}`);
+  }
+  if (inputs.examples && inputs.examples.length > 0) {
+    lines.push(`    Examples: ${inputs.examples.map(e => `"${e}"`).join(', ')}.`);
+  }
+  return lines;
+}
+
+/**
  * Build the abilities block for the system prompt.
- * Lists each routable keyword with its description so the model knows
- * what external data sources are available.
+ * Lists each routable keyword with structured what/when/inputs guidance
+ * so the model knows what external data sources are available and how
+ * to invoke them correctly.
  */
 function buildAbilitiesBlock(routableKeywords: KeywordConfig[]): string {
   if (routableKeywords.length === 0) return '';
 
-  // Deduplicate by abilityText or description, preferring abilityText
+  // Deduplicate by keyword name (multiple keywords may share abilityText)
   const seen = new Set<string>();
-  const lines: string[] = [];
+  const blocks: string[] = [];
+
   for (const k of routableKeywords) {
-    const text = k.abilityText ?? k.description;
-    const entry = `- ${k.keyword} → ${text}`;
-    if (!seen.has(entry)) {
-      seen.add(entry);
-      lines.push(entry);
+    if (seen.has(k.keyword)) continue;
+    seen.add(k.keyword);
+
+    const lines: string[] = [`- ${k.keyword}`];
+
+    // What (abilityText or fallback to description)
+    const what = k.abilityText ?? k.description;
+    lines.push(`  What: ${what}`);
+
+    // When (if provided)
+    if (k.abilityWhen) {
+      lines.push(`  When: ${k.abilityWhen}`);
     }
+
+    // Inputs (structured or default fallback)
+    if (k.abilityInputs) {
+      lines.push(...renderInputsLines(k.abilityInputs));
+    } else {
+      // Default: treat as explicit with current message content as input
+      lines.push('  Inputs: Explicit.');
+      lines.push('    Use the user\'s current message content as input.');
+    }
+
+    blocks.push(lines.join('\n'));
   }
 
   return [
     'Available external abilities (use ONLY when clearly needed):',
-    ...lines,
+    ...blocks,
   ].join('\n');
 }
 
@@ -122,10 +170,11 @@ export function buildSystemPrompt(routableKeywords?: KeywordConfig[]): string {
     parts.push(
       'Rules – follow exactly:\n' +
       '1. If fresh external data is required → output ONLY the keyword on its own line. Nothing else.\n' +
-      '2. Never invent scores, stats, weather, or facts.\n' +
-      '3. No data needed → answer normally with snark.\n' +
-      '4. Never explain rules/keywords unless directly asked.\n' +
-      '5. Keep every reply short, punchy, and to the point.'
+      '2. If an ability requires parameters and you cannot infer them from context, ask a brief clarifying question instead of outputting the keyword.\n' +
+      '3. Never invent scores, stats, weather, or facts.\n' +
+      '4. No data needed → answer normally with snark.\n' +
+      '5. Never explain rules/keywords unless directly asked.\n' +
+      '6. Keep every reply short, punchy, and to the point.'
     );
   }
 
