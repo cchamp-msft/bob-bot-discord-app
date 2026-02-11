@@ -69,7 +69,7 @@
       "api": "nfl",
       "timeout": 30,
       "description": "Get current NFL game scores. Optionally provide a date (YYYYMMDD or YYYY-MM-DD) to look up scores for a specific date; otherwise returns the most recent scoreboard.",
-      "abilityText": "Get NFL game scores — optionally specify a date (e.g. 'nfl scores 20260208') for that day's games, otherwise returns the current/most recent scoreboard",
+      "abilityText": "Get current NFL game scores. Optionally provide a date (YYYYMMDD or YYYY-MM-DD) to look up scores for a specific date; otherwise returns the most recent scoreboard.",
       "allowEmptyContent": true,
       "finalOllamaPass": true
     },
@@ -78,7 +78,7 @@
       "api": "nfl",
       "timeout": 30,
       "description": "Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl news chiefs').",
-      "abilityText": "Get NFL news headlines — optionally add a filter word to narrow articles (e.g. 'nfl news draft')",
+      "abilityText": "Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl news chiefs').",
       "allowEmptyContent": true,
       "finalOllamaPass": true
     },
@@ -95,9 +95,9 @@
       "api": "serpapi",
       "timeout": 60,
       "description": "Search the web for current information using Google",
-      "abilityText": "search the web for current information using 'search'",
-      "finalOllamaPass": true,
+      "abilityText": "Search the web for current information using Google",
       "allowEmptyContent": true,
+      "finalOllamaPass": true,
       "contextFilterMaxDepth": 1
     },
     {
@@ -105,7 +105,7 @@
       "api": "serpapi",
       "timeout": 60,
       "description": "Get a second opinion by searching the web using Google",
-      "abilityText": "get a second opinion by searching the web using 'second opinion'",
+      "abilityText": "Get a second opinion by searching the web using Google",
       "allowEmptyContent": true
     }
   ]
