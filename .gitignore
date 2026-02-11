@@ -8,5 +8,6 @@ outputs/
 .config/
 .idea/
 .vscode/
+.work/
 *.swp
 *.swo
