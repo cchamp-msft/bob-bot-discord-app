@@ -27,6 +27,22 @@ function normalizeEscapedEnvVars(): void {
 
 normalizeEscapedEnvVars();
 
+/** Structured guidance for how a keyword's inputs are inferred and validated. */
+export interface AbilityInputs {
+  /** How inputs are provided: 'implicit' (inferred from context), 'explicit' (user must provide), 'mixed' (some inferred, some required). */
+  mode: 'implicit' | 'explicit' | 'mixed';
+  /** Required input descriptions (e.g., "location", "query"). */
+  required?: string[];
+  /** Optional input descriptions. */
+  optional?: string[];
+  /** Allowed inference sources (e.g., "reply_target", "current_message", "recent_user_message"). */
+  inferFrom?: string[];
+  /** Plain-language validation constraints (e.g., "date must be YYYY-MM-DD or YYYYMMDD"). */
+  validation?: string;
+  /** 1–2 short usage examples. */
+  examples?: string[];
+}
+
 export interface KeywordConfig {
   keyword: string;
   api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
@@ -34,6 +50,10 @@ export interface KeywordConfig {
   description: string;
   /** Human-readable description of this keyword's API ability, provided to Ollama as context so it can suggest using this API when relevant. */
   abilityText?: string;
+  /** Model-facing: when to use this ability (e.g., "User wants an image generated"). */
+  abilityWhen?: string;
+  /** Model-facing: structured input inference/validation guidance. */
+  abilityInputs?: AbilityInputs;
   /** When true, pass the API result back through Ollama for conversational refinement. */
   finalOllamaPass?: boolean;
   /** When true, this keyword can be invoked with no additional user content (e.g. 'nfl scores' alone). */
@@ -88,6 +108,34 @@ class Config {
         }
         if (entry.abilityText !== undefined && typeof entry.abilityText !== 'string') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityText — must be a string`);
+        }
+        if (entry.abilityWhen !== undefined && typeof entry.abilityWhen !== 'string') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityWhen — must be a string`);
+        }
+        if (entry.abilityInputs !== undefined) {
+          const ai = entry.abilityInputs;
+          if (typeof ai !== 'object' || ai === null || Array.isArray(ai)) {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs — must be an object`);
+          }
+          const validModes = ['implicit', 'explicit', 'mixed'];
+          if (!validModes.includes(ai.mode)) {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs.mode "${ai.mode}" — must be "implicit", "explicit", or "mixed"`);
+          }
+          if (ai.required !== undefined && (!Array.isArray(ai.required) || !ai.required.every((s: unknown) => typeof s === 'string'))) {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs.required — must be an array of strings`);
+          }
+          if (ai.optional !== undefined && (!Array.isArray(ai.optional) || !ai.optional.every((s: unknown) => typeof s === 'string'))) {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs.optional — must be an array of strings`);
+          }
+          if (ai.inferFrom !== undefined && (!Array.isArray(ai.inferFrom) || !ai.inferFrom.every((s: unknown) => typeof s === 'string'))) {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs.inferFrom — must be an array of strings`);
+          }
+          if (ai.validation !== undefined && typeof ai.validation !== 'string') {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs.validation — must be a string`);
+          }
+          if (ai.examples !== undefined && (!Array.isArray(ai.examples) || !ai.examples.every((s: unknown) => typeof s === 'string'))) {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs.examples — must be an array of strings`);
+          }
         }
         if (entry.finalOllamaPass !== undefined && typeof entry.finalOllamaPass !== 'boolean') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid finalOllamaPass — must be a boolean`);

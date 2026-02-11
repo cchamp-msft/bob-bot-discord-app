@@ -371,6 +371,170 @@ describe('Config', () => {
     });
   });
 
+  describe('abilityWhen and abilityInputs validation', () => {
+    const { config } = require('../src/utils/config');
+    const kwPath = path.join(__dirname, '../config/keywords.json');
+    let originalContent: string;
+
+    beforeEach(() => {
+      originalContent = fs.readFileSync(kwPath, 'utf-8');
+    });
+
+    afterEach(() => {
+      fs.writeFileSync(kwPath, originalContent);
+      config.reload();
+    });
+
+    it('should accept valid abilityWhen string', () => {
+      fs.writeFileSync(
+        kwPath,
+        JSON.stringify({
+          keywords: [
+            { keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test', abilityWhen: 'User asks for test data' },
+          ],
+        })
+      );
+      config.reload();
+      const kw = config.getKeywordConfig('testkw');
+      expect(kw).toBeDefined();
+      expect(kw!.abilityWhen).toBe('User asks for test data');
+    });
+
+    it('should reject non-string abilityWhen', () => {
+      fs.writeFileSync(
+        kwPath,
+        JSON.stringify({
+          keywords: [
+            { keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test', abilityWhen: 42 },
+          ],
+        })
+      );
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      config.reload();
+      // Should fail to load (keywords empty due to validation error)
+      expect(config.getKeywordConfig('testkw')).toBeUndefined();
+      warnSpy.mockRestore();
+    });
+
+    it('should accept valid abilityInputs with all fields', () => {
+      fs.writeFileSync(
+        kwPath,
+        JSON.stringify({
+          keywords: [
+            {
+              keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test',
+              abilityInputs: {
+                mode: 'explicit',
+                required: ['location'],
+                optional: ['date'],
+                inferFrom: ['current_message'],
+                validation: 'location must be a city',
+                examples: ['testkw Dallas'],
+              },
+            },
+          ],
+        })
+      );
+      config.reload();
+      const kw = config.getKeywordConfig('testkw');
+      expect(kw).toBeDefined();
+      expect(kw!.abilityInputs).toBeDefined();
+      expect(kw!.abilityInputs!.mode).toBe('explicit');
+      expect(kw!.abilityInputs!.required).toEqual(['location']);
+      expect(kw!.abilityInputs!.optional).toEqual(['date']);
+      expect(kw!.abilityInputs!.inferFrom).toEqual(['current_message']);
+      expect(kw!.abilityInputs!.validation).toBe('location must be a city');
+      expect(kw!.abilityInputs!.examples).toEqual(['testkw Dallas']);
+    });
+
+    it('should accept abilityInputs with only mode (minimal)', () => {
+      fs.writeFileSync(
+        kwPath,
+        JSON.stringify({
+          keywords: [
+            {
+              keyword: 'testkw', api: 'comfyui', timeout: 30, description: 'test',
+              abilityInputs: { mode: 'implicit' },
+            },
+          ],
+        })
+      );
+      config.reload();
+      const kw = config.getKeywordConfig('testkw');
+      expect(kw).toBeDefined();
+      expect(kw!.abilityInputs!.mode).toBe('implicit');
+    });
+
+    it('should reject abilityInputs with invalid mode', () => {
+      fs.writeFileSync(
+        kwPath,
+        JSON.stringify({
+          keywords: [
+            {
+              keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test',
+              abilityInputs: { mode: 'auto' },
+            },
+          ],
+        })
+      );
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      config.reload();
+      expect(config.getKeywordConfig('testkw')).toBeUndefined();
+      warnSpy.mockRestore();
+    });
+
+    it('should reject abilityInputs when required is not an array of strings', () => {
+      fs.writeFileSync(
+        kwPath,
+        JSON.stringify({
+          keywords: [
+            {
+              keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test',
+              abilityInputs: { mode: 'explicit', required: [42] },
+            },
+          ],
+        })
+      );
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      config.reload();
+      expect(config.getKeywordConfig('testkw')).toBeUndefined();
+      warnSpy.mockRestore();
+    });
+
+    it('should reject non-object abilityInputs', () => {
+      fs.writeFileSync(
+        kwPath,
+        JSON.stringify({
+          keywords: [
+            { keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test', abilityInputs: 'bad' },
+          ],
+        })
+      );
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      config.reload();
+      expect(config.getKeywordConfig('testkw')).toBeUndefined();
+      warnSpy.mockRestore();
+    });
+
+    it('should reject abilityInputs when validation is not a string', () => {
+      fs.writeFileSync(
+        kwPath,
+        JSON.stringify({
+          keywords: [
+            {
+              keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test',
+              abilityInputs: { mode: 'explicit', validation: 123 },
+            },
+          ],
+        })
+      );
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      config.reload();
+      expect(config.getKeywordConfig('testkw')).toBeUndefined();
+      warnSpy.mockRestore();
+    });
+  });
+
   describe('contextFilterMaxDepth normalization on load', () => {
     const { config } = require('../src/utils/config');
     const kwPath = path.join(__dirname, '../config/keywords.json');
