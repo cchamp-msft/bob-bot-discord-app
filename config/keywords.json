@@ -17,6 +17,7 @@
       "abilityInputs": {
         "mode": "implicit",
         "inferFrom": ["reply_target", "current_message"],
+        "validation": "Use the reply target text if present; otherwise use descriptive text from the current message. If no usable image prompt text can be inferred, ask the user what they want generated.",
         "examples": ["generate a sunset over mountains", "(as a reply) generate"]
       }
     },
@@ -30,6 +31,7 @@
       "abilityInputs": {
         "mode": "implicit",
         "inferFrom": ["reply_target", "current_message"],
+        "validation": "Use the reply target text if present; otherwise use descriptive text from the current message. If no usable image prompt text can be inferred, ask the user what they want generated.",
         "examples": ["imagine a sunset over mountains", "(as a reply) imagine"]
       }
     },
