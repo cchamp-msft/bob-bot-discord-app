@@ -217,7 +217,34 @@ describe('Config', () => {
       delete process.env.REPLY_CHAIN_MAX_DEPTH;
       delete process.env.REPLY_CHAIN_MAX_TOKENS;
       const pub = config.getPublicConfig();
-      expect(pub.replyChain).toEqual({ enabled: true, maxDepth: 10, maxTokens: 16000 });
+      expect(pub.replyChain).toEqual({ enabled: true, maxDepth: 30, maxTokens: 16000 });
+    });
+  });
+
+  describe('allowBotInteractions config', () => {
+    const { config } = require('../src/utils/config');
+
+    it('getAllowBotInteractions should default to false when env not set', () => {
+      delete process.env.ALLOW_BOT_INTERACTIONS;
+      expect(config.getAllowBotInteractions()).toBe(false);
+    });
+
+    it('getAllowBotInteractions should return true when env is "true"', () => {
+      process.env.ALLOW_BOT_INTERACTIONS = 'true';
+      expect(config.getAllowBotInteractions()).toBe(true);
+    });
+
+    it('getAllowBotInteractions should return false for any value other than "true"', () => {
+      process.env.ALLOW_BOT_INTERACTIONS = 'false';
+      expect(config.getAllowBotInteractions()).toBe(false);
+      process.env.ALLOW_BOT_INTERACTIONS = '1';
+      expect(config.getAllowBotInteractions()).toBe(false);
+    });
+
+    it('getPublicConfig should include allowBotInteractions', () => {
+      process.env.ALLOW_BOT_INTERACTIONS = 'true';
+      const pub = config.getPublicConfig();
+      expect(pub.allowBotInteractions).toBe(true);
     });
   });
 
@@ -241,9 +268,9 @@ describe('Config', () => {
       expect(config.getReplyChainEnabled()).toBe(true);
     });
 
-    it('getReplyChainMaxDepth should default to 10 when env not set', () => {
+    it('getReplyChainMaxDepth should default to 30 when env not set', () => {
       delete process.env.REPLY_CHAIN_MAX_DEPTH;
-      expect(config.getReplyChainMaxDepth()).toBe(10);
+      expect(config.getReplyChainMaxDepth()).toBe(30);
     });
 
     it('getReplyChainMaxDepth should parse valid int', () => {

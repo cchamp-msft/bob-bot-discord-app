@@ -136,13 +136,16 @@ export function buildSystemPrompt(routableKeywords?: KeywordConfig[]): string {
 /**
  * Format conversation history into the <conversation_history> XML block.
  * Input messages should be oldest-to-newest (as returned by contextEvaluator).
+ * When context metadata is present, a subtle source marker is appended to
+ * the speaker label (e.g. "User (reply):", "Bob (channel):").
  */
 function formatConversationHistory(history: ChatMessage[]): string {
   if (!history || history.length === 0) return '';
 
   const lines = history.map(msg => {
     const label = msg.role === 'assistant' ? 'Bob' : 'User';
-    return `${label}: ${escapeXmlContent(msg.content)}`;
+    const sourceTag = msg.contextSource ? ` (${msg.contextSource})` : '';
+    return `${label}${sourceTag}: ${escapeXmlContent(msg.content)}`;
   });
 
   return lines.join('\n');

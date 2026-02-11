@@ -307,6 +307,14 @@ class Config {
   }
 
   /**
+   * Whether the bot responds to messages from other bots and includes
+   * their messages in context history. Default: false.
+   */
+  getAllowBotInteractions(): boolean {
+    return process.env.ALLOW_BOT_INTERACTIONS === 'true';
+  }
+
+  /**
    * Whether reply chain context collection is enabled.
    * When true, the bot traverses Discord reply chains to build
    * conversation history for Ollama chat requests.
@@ -316,11 +324,11 @@ class Config {
   }
 
   /**
-   * Maximum number of messages to traverse in a reply chain.
-   * Deeper chains are truncated at this limit. Default: 10.
+   * Maximum number of messages to traverse in a reply chain or channel history.
+   * Deeper chains are truncated at this limit. Default: 30.
    */
   getReplyChainMaxDepth(): number {
-    const raw = this.parseIntEnv('REPLY_CHAIN_MAX_DEPTH', 10);
+    const raw = this.parseIntEnv('REPLY_CHAIN_MAX_DEPTH', 30);
     return Math.max(1, Math.min(raw, 50));
   }
 
@@ -473,6 +481,7 @@ class Config {
     const prevErrorMsg = this.getErrorMessage();
     const prevErrorRate = this.getErrorRateLimitMinutes();
     const prevMaxAttach = this.getMaxAttachments();
+    const prevAllowBotInteractions = this.getAllowBotInteractions();
     const prevReplyChainEnabled = this.getReplyChainEnabled();
     const prevReplyChainMaxDepth = this.getReplyChainMaxDepth();
     const prevReplyChainMaxTokens = this.getReplyChainMaxTokens();
@@ -529,6 +538,7 @@ class Config {
     if (this.getErrorMessage() !== prevErrorMsg) reloaded.push('ERROR_MESSAGE');
     if (this.getErrorRateLimitMinutes() !== prevErrorRate) reloaded.push('ERROR_RATE_LIMIT_MINUTES');
     if (this.getMaxAttachments() !== prevMaxAttach) reloaded.push('MAX_ATTACHMENTS');
+    if (this.getAllowBotInteractions() !== prevAllowBotInteractions) reloaded.push('ALLOW_BOT_INTERACTIONS');
     if (this.getReplyChainEnabled() !== prevReplyChainEnabled) reloaded.push('REPLY_CHAIN_ENABLED');
     if (this.getReplyChainMaxDepth() !== prevReplyChainMaxDepth) reloaded.push('REPLY_CHAIN_MAX_DEPTH');
     if (this.getReplyChainMaxTokens() !== prevReplyChainMaxTokens) reloaded.push('REPLY_CHAIN_MAX_TOKENS');
@@ -611,6 +621,7 @@ class Config {
         maxAttachments: this.getMaxAttachments(),
       },
       keywords: this.getKeywords(),
+      allowBotInteractions: this.getAllowBotInteractions(),
       replyChain: {
         enabled: this.getReplyChainEnabled(),
         maxDepth: this.getReplyChainMaxDepth(),

@@ -121,7 +121,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`, `SERPAPI_API_KEY`, `SERPAPI_ENDPOINT`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `ALLOW_BOT_INTERACTIONS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`, `SERPAPI_API_KEY`, `SERPAPI_ENDPOINT`
 
 ### Running the Bot
 
@@ -274,22 +274,27 @@ When generating an OAuth2 invite link, include these **Bot Permissions**:
 - **Embed Links** — send ComfyUI response embeds
 - **Use Slash Commands** — register and respond to `/generate` and `/ask`
 
-## Reply Chain Context & DM History
+## Reply Chain Context, Channel Context & DM History
 
-The bot provides conversation context to Ollama in two ways:
+The bot provides conversation context to Ollama in three ways:
 
-- **Server (guild) messages**: When a user replies to a previous message, the bot traverses the Discord reply chain to build conversation history.
+- **Server (guild) messages — reply chain**: When a user replies to a previous message, the bot traverses the Discord reply chain to build **primary** conversation history.
+- **Server (guild) messages — channel context**: Recent channel (or thread) messages are always collected as **secondary** context for guild interactions, even without a reply chain.
 - **DMs**: Recent DM channel messages are included automatically as context — no explicit replies are needed. DM conversations flow naturally.
 
-In both cases, context is sent to Ollama using the `/api/chat` endpoint with proper role-based messages (`user` / `assistant`), enabling multi-turn conversations.
+Primary (reply chain) and secondary (channel) context are collated into one chronological history. Reply-chain messages are de-duplicated from channel context and tagged with priority metadata so the model can weight them more heavily. The cumulative depth budget applies across both sources — primary messages fill first, then secondary fills remaining slots.
+
+In all cases, context is sent to Ollama using the `/api/chat` endpoint with proper role-based messages (`user` / `assistant`), enabling multi-turn conversations.
 
 ### How It Works
 
-**Server (reply chain)**:
-1. User sends a message that replies to a previous bot response
-2. Bot traverses `message.reference` links up the chain (up to max depth)
-3. Each message in the chain is tagged as `user` or `assistant` based on the author
-4. The full conversation is sent to Ollama’s chat API with the system prompt
+**Server (reply chain + channel context)**:
+1. User sends a message that @mentions the bot or replies to a previous bot response
+2. If replying, the bot traverses `message.reference` links up the chain (primary context)
+3. The bot also fetches recent messages from the channel/thread (secondary context)
+4. Both sources are collated: de-duplicated by message ID and sorted chronologically
+5. Each message is tagged as `user` or `assistant` based on the author, with a context-source marker (reply, channel, thread)
+6. The collated conversation is sent to Ollama's chat API with the system prompt
 
 **DMs (automatic history)**:
 1. User sends a DM to the bot
@@ -301,31 +306,36 @@ In both cases, context is sent to Ollama using the `/api/chat` endpoint with pro
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REPLY_CHAIN_ENABLED` | `true` | Set to `false` to disable reply chain traversal and DM history |
-| `REPLY_CHAIN_MAX_DEPTH` | `10` | Maximum messages to traverse (1–50) |
+| `REPLY_CHAIN_ENABLED` | `true` | Set to `false` to disable reply chain traversal, channel context, and DM history |
+| `REPLY_CHAIN_MAX_DEPTH` | `30` | Maximum messages to collect across all context sources (1–50) |
 | `REPLY_CHAIN_MAX_TOKENS` | `16000` | Character budget for collected context (1,000–128,000) |
+| `ALLOW_BOT_INTERACTIONS` | `false` | When `true`, the bot responds to messages from other bots and includes their messages in context history |
 
 ### Behavior Notes
 
-- Reply chain traversal for **Ollama** builds multi-turn conversation history
-- **DMs** automatically include recent channel messages as context (same depth/token limits apply)
+- Reply chain traversal for **Ollama** builds multi-turn conversation history (primary context)
+- **Channel context** is always collected for guild interactions — @mentions without replies still receive recent channel history
+- Primary (reply chain) messages fill the depth budget first; secondary (channel) messages fill remaining slots
+- When context exceeds depth or character budgets, the **newest** messages are kept (oldest context is dropped first)
+- Messages are tagged with context source (`reply`, `channel`, `thread`, `dm`) in the prompt so the model understands their origin
+- **DMs** automatically include recent DM channel messages as context (same depth/token limits apply, tagged as `dm`, no guild channel-context feature)
+- **Other bots** are excluded from context history by default — set `ALLOW_BOT_INTERACTIONS=true` to include them and allow the bot to respond to other bots' messages
 - **ComfyUI** image generation uses single-level reply context — the replied-to message content is prepended to the prompt
 - Routing keywords (e.g., "generate", "imagine") are stripped from the prompt before submission to the image model
 - Deleted or inaccessible messages in the chain are skipped gracefully
 - Circular references are detected and traversal stops
-- Single messages (not replies) work exactly as before — no context overhead
 - Bot responses are sent as **plain text** (not embed blocks) for a conversational feel
 
 ### Context Evaluation (Always Active)
 
 The bot includes an **Ollama-powered context evaluator** that automatically determines how much reply-chain history is relevant before including it. This improves response quality when conversations shift topics.
 
-Context evaluation runs whenever there is reply-chain or DM history — no per-keyword toggle is needed. Individual keywords may optionally override the default depth settings.
+Context evaluation runs whenever there is reply-chain, channel, or DM history — no per-keyword toggle is needed. Individual keywords may optionally override the default depth settings.
 
 #### How It Works
 
-1. After the reply chain / DM history is collected, the context evaluator sends the messages to Ollama along with the current user prompt.
-2. Ollama determines which of the most recent messages are topically relevant.
+1. After the reply chain / channel / DM history is collected and collated, the context evaluator sends the messages to Ollama along with the current user prompt.
+2. Ollama determines which of the most recent messages are topically relevant. Messages tagged as primary (reply chain / thread) are signaled as higher-importance.
 3. The most recent `contextFilterMinDepth` messages are **always included**, even if off-topic — this guarantees a baseline of context.
 4. Ollama may include up to `contextFilterMaxDepth` messages total if they remain on-topic.
 5. If topics diverge significantly, Ollama is instructed to use the most recent topic and transition naturally.

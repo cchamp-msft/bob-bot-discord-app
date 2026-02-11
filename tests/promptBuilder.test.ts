@@ -223,6 +223,33 @@ describe('PromptBuilder', () => {
       expect(content).toContain('nfl scores');
       expect(content).toContain('nfl news');
     });
+
+    it('should include context-source markers when metadata is present', () => {
+      const content = buildUserContent({
+        userMessage: 'What happened?',
+        conversationHistory: [
+          { role: 'user', content: 'Earlier msg', contextSource: 'channel' as const },
+          { role: 'assistant', content: 'Bot reply', contextSource: 'reply' as const },
+          { role: 'user', content: 'Thread msg', contextSource: 'thread' as const },
+        ],
+      });
+
+      expect(content).toContain('User (channel): Earlier msg');
+      expect(content).toContain('Bob (reply): Bot reply');
+      expect(content).toContain('User (thread): Thread msg');
+    });
+
+    it('should not include source markers when metadata is absent', () => {
+      const content = buildUserContent({
+        userMessage: 'Hello',
+        conversationHistory: [
+          { role: 'user', content: 'Plain msg' },
+        ],
+      });
+
+      expect(content).toContain('User: Plain msg');
+      expect(content).not.toContain('User (');
+    });
   });
 
   // ── assemblePrompt ─────────────────────────────────────────────

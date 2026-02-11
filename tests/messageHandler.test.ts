@@ -34,6 +34,7 @@ jest.mock('../src/utils/config', () => ({
     getNflEndpoint: jest.fn(() => 'https://site.api.espn.com/apis/site/v2/sports/football/nfl'),
     getNflEnabled: jest.fn(() => true),
     getNflLoggingLevel: jest.fn(() => 0),
+    getAllowBotInteractions: jest.fn(() => false),
   },
 }));
 
@@ -369,13 +370,15 @@ describe('MessageHandler shouldRespond — guild reply to bot', () => {
       client: { user: { id: botUserId } },
       channel: {
         type: opts.isDM ? 1 : 0, // 1 = DM, 0 = GuildText
-        messages: { cache: channelMessages },
+        isThread: () => false,
+        messages: { cache: channelMessages, fetch: jest.fn().mockResolvedValue(new Map()) },
         send: jest.fn(),
       },
       guild: opts.isDM ? null : { name: 'TestGuild' },
       mentions: { has: jest.fn(() => opts.isMentioned ?? false) },
       reference: opts.reference ?? null,
       content: opts.content ?? 'hello bot',
+      id: 'guild-msg-1',
       reply: jest.fn().mockResolvedValue({
         edit: jest.fn().mockResolvedValue(undefined),
         channel: { send: jest.fn() },
@@ -437,7 +440,8 @@ describe('MessageHandler Discord mention stripping', () => {
       client: { user: { id: botUserId } },
       channel: {
         type: 0, // GuildText
-        messages: { cache: new Map() },
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
         send: jest.fn(),
       },
       guild: { name: 'TestGuild' },
@@ -682,7 +686,8 @@ describe('MessageHandler built-in help keyword handling', () => {
       client: { user: { id: botUserId } },
       channel: {
         type: 0,
-        messages: { cache: new Map() },
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
         send: jest.fn(),
       },
       guild: { name: 'TestGuild' },
@@ -907,7 +912,8 @@ describe('MessageHandler reply-only-keyword for comfyui', () => {
       client: { user: { id: botUserId } },
       channel: {
         type: 0, // GuildText
-        messages: { cache: new Map() },
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
         send: jest.fn(),
       },
       guild: { name: 'TestGuild' },
@@ -963,7 +969,8 @@ describe('MessageHandler first-word keyword routing', () => {
       client: { user: { id: botUserId } },
       channel: {
         type: 0,
-        messages: { cache: new Map() },
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
         send: jest.fn(),
       },
       guild: { name: 'TestGuild' },
@@ -1105,7 +1112,8 @@ describe('MessageHandler two-stage evaluation', () => {
       client: { user: { id: botUserId } },
       channel: {
         type: 0,
-        messages: { cache: new Map() },
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
         send: jest.fn(),
       },
       guild: { name: 'TestGuild' },
@@ -1462,7 +1470,14 @@ describe('MessageHandler — Context Evaluation integration', () => {
       author: { id: 'user-1', bot: false, username: 'ctxuser', displayName: 'CtxUser' },
       content,
       mentions: { has: () => true },
-      channel: { type: 0 },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: {
+          cache: new Map(),
+          fetch: jest.fn().mockResolvedValue(new Map()),
+        },
+      },
       client: { user: { id: 'bot-123' } },
       reference: hasReference ? { messageId: 'ref-1' } : null,
       reply: jest.fn().mockResolvedValue({
@@ -1471,6 +1486,8 @@ describe('MessageHandler — Context Evaluation integration', () => {
         embeds: [],
       }),
       attachments: { size: 0 },
+      id: 'ctx-msg-1',
+      fetchReference: jest.fn(),
     };
   }
 
@@ -1481,7 +1498,7 @@ describe('MessageHandler — Context Evaluation integration', () => {
     mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
   });
 
-  it('should not call evaluateContextWindow when no conversation history (no reply)', async () => {
+  it('should not call evaluateContextWindow when channel history is empty and no reply', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const { classifyIntent } = require('../src/utils/keywordClassifier');
     const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
@@ -1496,9 +1513,1057 @@ describe('MessageHandler — Context Evaluation integration', () => {
     });
 
     const msg = createMentionedMsg('<@bot-123> hello there');
+    // channel.messages.fetch returns empty — no channel context
     await messageHandler.handleMessage(msg as any);
 
-    // No reply reference means no history — evaluator should not be called
+    // Empty channel history means no history — evaluator should not be called
     expect(mockEvaluate).not.toHaveBeenCalled();
+  });
+
+  it('should call evaluateContextWindow when channel history is non-empty (guild mention, no reply)', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const { classifyIntent } = require('../src/utils/keywordClassifier');
+    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+
+    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Chatting with context!' },
+    });
+
+    const msg = createMentionedMsg('<@bot-123> hello there');
+
+    // Channel has prior messages
+    const channelHistory = new Map([
+      ['ch-1', {
+        id: 'ch-1',
+        content: 'Earlier channel message',
+        author: { id: 'user-2', bot: false, username: 'other' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+    msg.channel.messages.fetch.mockResolvedValue(channelHistory);
+
+    await messageHandler.handleMessage(msg as any);
+
+    // Channel history was collected → evaluator should be called
+    expect(mockEvaluate).toHaveBeenCalled();
+  });
+});
+
+describe('MessageHandler collectChannelHistory', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getReplyChainMaxDepth as jest.Mock).mockReturnValue(30);
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
+  });
+
+  function createGuildMsg(
+    channelMessages: Map<string, any>,
+    isThread = false
+  ): any {
+    return {
+      id: 'current-msg',
+      content: 'test',
+      author: { id: 'user-1', bot: false, username: 'testuser' },
+      client: { user: { id: 'bot-id' } },
+      channel: {
+        type: 0,
+        isThread: () => isThread,
+        messages: {
+          cache: new Map(),
+          fetch: jest.fn().mockResolvedValue(channelMessages),
+        },
+      },
+      member: null,
+    };
+  }
+
+  it('should collect channel messages as secondary context', async () => {
+    // Discord returns messages newest-first
+    const messages = new Map([
+      ['msg-2', {
+        id: 'msg-2',
+        content: 'Bot reply',
+        author: { id: 'bot-id', bot: true, username: 'bot' },
+        member: null,
+        createdTimestamp: 2000,
+      }],
+      ['msg-1', {
+        id: 'msg-1',
+        content: 'Hello from user',
+        author: { id: 'user-2', bot: false, username: 'alice' },
+        member: { displayName: 'Alice' },
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createGuildMsg(messages);
+    const result = await messageHandler.collectChannelHistory(msg);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].contextPriority).toBe('secondary');
+    expect(result[0].contextSource).toBe('channel');
+    expect(result[0].discordMessageId).toBe('msg-1');
+    expect(result[1].role).toBe('assistant');
+  });
+
+  it('should tag thread messages with contextSource "thread"', async () => {
+    const messages = new Map([
+      ['msg-1', {
+        id: 'msg-1',
+        content: 'Thread msg',
+        author: { id: 'user-2', bot: false, username: 'alice' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createGuildMsg(messages, true);
+    const result = await messageHandler.collectChannelHistory(msg);
+
+    expect(result[0].contextSource).toBe('thread');
+  });
+
+  it('should skip processing messages', async () => {
+    const messages = new Map([
+      ['msg-1', {
+        id: 'msg-1',
+        content: '⏳ Processing your request...',
+        author: { id: 'bot-id', bot: true, username: 'bot' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+      ['msg-2', {
+        id: 'msg-2',
+        content: 'Real message',
+        author: { id: 'user-2', bot: false, username: 'alice' },
+        member: null,
+        createdTimestamp: 2000,
+      }],
+    ]);
+
+    const msg = createGuildMsg(messages);
+    const result = await messageHandler.collectChannelHistory(msg);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toContain('Real message');
+  });
+
+  it('should prefix display names for multi-user channels', async () => {
+    // Discord returns messages newest-first
+    const messages = new Map([
+      ['msg-2', {
+        id: 'msg-2',
+        content: 'Second user msg',
+        author: { id: 'user-3', bot: false, username: 'charlie' },
+        member: { displayName: 'Charlie' },
+        createdTimestamp: 2000,
+      }],
+      ['msg-1', {
+        id: 'msg-1',
+        content: 'First user msg',
+        author: { id: 'user-2', bot: false, username: 'alice' },
+        member: { displayName: 'Alice' },
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createGuildMsg(messages);
+    const result = await messageHandler.collectChannelHistory(msg);
+
+    expect(result[0].content).toBe('Alice: First user msg');
+    expect(result[1].content).toBe('Charlie: Second user msg');
+  });
+
+  it('should return empty array when fetch fails', async () => {
+    const msg = createGuildMsg(new Map());
+    msg.channel.messages.fetch.mockRejectedValue(new Error('No permission'));
+
+    const result = await messageHandler.collectChannelHistory(msg);
+    expect(result).toEqual([]);
+  });
+
+  it('should respect character budget, keeping newest messages', async () => {
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(20);
+    // Discord returns messages newest-first in the Map
+    const messages = new Map([
+      ['msg-2', {
+        id: 'msg-2',
+        content: 'Short',
+        author: { id: 'user-2', bot: false, username: 'alice' },
+        member: null,
+        createdTimestamp: 2000,
+      }],
+      ['msg-1', {
+        id: 'msg-1',
+        content: 'This message is way too long to fit in the budget',
+        author: { id: 'user-2', bot: false, username: 'alice' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createGuildMsg(messages);
+    const result = await messageHandler.collectChannelHistory(msg);
+
+    // Newest message (msg-2) should survive; oldest (msg-1) dropped to fit budget
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe('alice: Short');
+    expect(result[0].discordMessageId).toBe('msg-2');
+  });
+});
+
+describe('MessageHandler collateGuildContext', () => {
+  it('should merge primary and secondary, deduplicating by messageId', () => {
+    const primary = [
+      { role: 'user' as const, content: 'reply msg', contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'msg-1', createdAtMs: 1000 },
+    ];
+    const secondary = [
+      { role: 'user' as const, content: 'reply msg dupe', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 'msg-1', createdAtMs: 1000 },
+      { role: 'assistant' as const, content: 'bot reply', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 'msg-2', createdAtMs: 2000 },
+    ];
+
+    const result = messageHandler.collateGuildContext(primary, secondary, 30, 16000);
+
+    // msg-1 should appear only once (from primary)
+    expect(result).toHaveLength(2);
+    expect(result[0].content).toBe('reply msg');
+    expect(result[0].contextPriority).toBe('primary');
+    expect(result[1].discordMessageId).toBe('msg-2');
+  });
+
+  it('should enforce maxDepth, prioritizing primary', () => {
+    const primary = [
+      { role: 'user' as const, content: 'p1', contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p1', createdAtMs: 1000 },
+      { role: 'user' as const, content: 'p2', contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p2', createdAtMs: 2000 },
+    ];
+    const secondary = [
+      { role: 'user' as const, content: 's1', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 's1', createdAtMs: 500 },
+      { role: 'user' as const, content: 's2', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 's2', createdAtMs: 3000 },
+    ];
+
+    // maxDepth = 3: all 2 primary + 1 secondary
+    const result = messageHandler.collateGuildContext(primary, secondary, 3, 16000);
+
+    expect(result).toHaveLength(3);
+    // All primary should be present
+    expect(result.filter(m => m.contextPriority === 'primary')).toHaveLength(2);
+  });
+
+  it('should sort collated result chronologically', () => {
+    const primary = [
+      { role: 'user' as const, content: 'p1', contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p1', createdAtMs: 3000 },
+    ];
+    const secondary = [
+      { role: 'user' as const, content: 's1', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 's1', createdAtMs: 1000 },
+      { role: 'user' as const, content: 's2', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 's2', createdAtMs: 5000 },
+    ];
+
+    const result = messageHandler.collateGuildContext(primary, secondary, 30, 16000);
+
+    expect(result[0].createdAtMs).toBe(1000);
+    expect(result[1].createdAtMs).toBe(3000);
+    expect(result[2].createdAtMs).toBe(5000);
+  });
+
+  it('should work with only secondary context (no reply chain)', () => {
+    const secondary = [
+      { role: 'user' as const, content: 's1', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 's1', createdAtMs: 1000 },
+      { role: 'assistant' as const, content: 's2', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 's2', createdAtMs: 2000 },
+    ];
+
+    const result = messageHandler.collateGuildContext([], secondary, 30, 16000);
+
+    expect(result).toHaveLength(2);
+    expect(result.every(m => m.contextPriority === 'secondary')).toBe(true);
+  });
+});
+
+describe('MessageHandler collectChannelHistory — parameterized depth', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getReplyChainMaxDepth as jest.Mock).mockReturnValue(30);
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
+  });
+
+  function createGuildMsg(
+    channelMessages: Map<string, any>,
+    isThread = false
+  ): any {
+    return {
+      id: 'current-msg',
+      content: 'test',
+      author: { id: 'user-1', bot: false, username: 'testuser' },
+      client: { user: { id: 'bot-id' } },
+      channel: {
+        type: 0,
+        isThread: () => isThread,
+        messages: {
+          cache: new Map(),
+          fetch: jest.fn().mockResolvedValue(channelMessages),
+        },
+      },
+      member: null,
+    };
+  }
+
+  it('should use passed maxDepth instead of global config', async () => {
+    const messages = new Map([
+      ['msg-1', {
+        id: 'msg-1',
+        content: 'Hello',
+        author: { id: 'user-2', bot: false, username: 'alice' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createGuildMsg(messages);
+    await messageHandler.collectChannelHistory(msg, 5, 16000);
+
+    // fetch should use the passed maxDepth (5 + 1 = 6), not global (30 + 1 = 31)
+    expect(msg.channel.messages.fetch).toHaveBeenCalledWith({
+      limit: 6,
+      before: 'current-msg',
+    });
+  });
+
+  it('should fall back to global config when no params passed', async () => {
+    const messages = new Map();
+    const msg = createGuildMsg(messages);
+    await messageHandler.collectChannelHistory(msg);
+
+    expect(msg.channel.messages.fetch).toHaveBeenCalledWith({
+      limit: 31, // global 30 + 1
+      before: 'current-msg',
+    });
+  });
+});
+
+describe('MessageHandler guild context — maxContextDepth = min(keyword, global)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
+    (config.getReplyChainMaxDepth as jest.Mock).mockReturnValue(30);
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
+  });
+
+  it('should cap collated context at min(keywordMax, globalMax)', async () => {
+    // Keyword has contextFilterMaxDepth = 5, global = 30 → effective = 5
+    const kw = {
+      keyword: 'chat',
+      api: 'ollama' as const,
+      timeout: 300,
+      description: 'Chat',
+      contextFilterMaxDepth: 5,
+    };
+    (config.getKeywords as jest.Mock).mockReturnValue([kw]);
+
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const { classifyIntent } = require('../src/utils/keywordClassifier');
+    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+    const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
+    const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
+
+    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Response!' },
+    });
+
+    // Create 10 channel messages — more than the keyword max of 5
+    const channelMessages = new Map(
+      Array.from({ length: 10 }, (_, i) => [
+        `ch-${i}`,
+        {
+          id: `ch-${i}`,
+          content: `Channel message ${i}`,
+          author: { id: 'user-2', bot: false, username: 'other' },
+          member: null,
+          createdTimestamp: (i + 1) * 1000,
+        },
+      ])
+    );
+
+    const msg = {
+      author: { id: 'user-1', bot: false, username: 'testuser', displayName: 'TestUser' },
+      content: '<@bot-123> chat hello',
+      mentions: { has: () => true },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: {
+          cache: new Map(),
+          fetch: jest.fn().mockResolvedValue(channelMessages),
+        },
+        send: jest.fn(),
+      },
+      client: { user: { id: 'bot-123' } },
+      reference: null,
+      id: 'trigger-msg',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+        attachments: { size: 0 },
+        embeds: [],
+      }),
+      attachments: { size: 0 },
+      fetchReference: jest.fn(),
+      guild: { name: 'TestGuild' },
+    };
+
+    await messageHandler.handleMessage(msg as any);
+
+    // The evaluator should have been called with at most 5 messages
+    if (mockEvaluate.mock.calls.length > 0) {
+      const historyArg = mockEvaluate.mock.calls[0][0];
+      expect(historyArg.length).toBeLessThanOrEqual(5);
+    }
+
+    // channel.messages.fetch should use keyword max (5+1=6), not global (30+1=31)
+    expect(msg.channel.messages.fetch).toHaveBeenCalledWith({
+      limit: 6,
+      before: 'trigger-msg',
+    });
+  });
+});
+
+describe('MessageHandler thread-primary promotion', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
+    (config.getReplyChainMaxDepth as jest.Mock).mockReturnValue(30);
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
+  });
+
+  it('should promote thread history to primary when no reply chain exists', async () => {
+    const kw = {
+      keyword: 'chat',
+      api: 'ollama' as const,
+      timeout: 300,
+      description: 'Chat',
+    };
+    (config.getKeywords as jest.Mock).mockReturnValue([kw]);
+
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const { classifyIntent } = require('../src/utils/keywordClassifier');
+    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+    const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
+    const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
+
+    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Thread reply!' },
+    });
+
+    const threadMessages = new Map([
+      ['t-1', {
+        id: 't-1',
+        content: 'Thread message one',
+        author: { id: 'user-2', bot: false, username: 'alice' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+      ['t-2', {
+        id: 't-2',
+        content: 'Thread message two',
+        author: { id: 'bot-123', bot: true, username: 'bot' },
+        member: null,
+        createdTimestamp: 2000,
+      }],
+    ]);
+
+    const msg = {
+      author: { id: 'user-1', bot: false, username: 'testuser', displayName: 'TestUser' },
+      content: '<@bot-123> hello thread',
+      mentions: { has: () => true },
+      channel: {
+        type: 0,
+        isThread: () => true,
+        messages: {
+          cache: new Map(),
+          fetch: jest.fn().mockResolvedValue(threadMessages),
+        },
+        send: jest.fn(),
+      },
+      client: { user: { id: 'bot-123' } },
+      reference: null, // No reply chain
+      id: 'thread-trigger',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+        attachments: { size: 0 },
+        embeds: [],
+      }),
+      attachments: { size: 0 },
+      fetchReference: jest.fn(),
+      guild: { name: 'TestGuild' },
+    };
+
+    await messageHandler.handleMessage(msg as any);
+
+    // Evaluator should have been called with thread messages promoted to primary
+    expect(mockEvaluate).toHaveBeenCalled();
+    const historyArg = mockEvaluate.mock.calls[0][0];
+    expect(historyArg.length).toBeGreaterThan(0);
+
+    // All messages should be primary (thread promotion)
+    const allPrimary = historyArg.every((m: any) => m.contextPriority === 'primary');
+    expect(allPrimary).toBe(true);
+
+    // contextSource should still be 'thread'
+    const allThread = historyArg.every((m: any) => m.contextSource === 'thread');
+    expect(allThread).toBe(true);
+  });
+
+  it('should NOT promote channel history to primary when in a non-thread channel', async () => {
+    const kw = {
+      keyword: 'chat',
+      api: 'ollama' as const,
+      timeout: 300,
+      description: 'Chat',
+    };
+    (config.getKeywords as jest.Mock).mockReturnValue([kw]);
+
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const { classifyIntent } = require('../src/utils/keywordClassifier');
+    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+    const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
+    const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
+
+    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Channel reply!' },
+    });
+
+    const channelMessages = new Map([
+      ['c-1', {
+        id: 'c-1',
+        content: 'Channel message',
+        author: { id: 'user-2', bot: false, username: 'alice' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = {
+      author: { id: 'user-1', bot: false, username: 'testuser', displayName: 'TestUser' },
+      content: '<@bot-123> hello channel',
+      mentions: { has: () => true },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: {
+          cache: new Map(),
+          fetch: jest.fn().mockResolvedValue(channelMessages),
+        },
+        send: jest.fn(),
+      },
+      client: { user: { id: 'bot-123' } },
+      reference: null,
+      id: 'channel-trigger',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+        attachments: { size: 0 },
+        embeds: [],
+      }),
+      attachments: { size: 0 },
+      fetchReference: jest.fn(),
+      guild: { name: 'TestGuild' },
+    };
+
+    await messageHandler.handleMessage(msg as any);
+
+    expect(mockEvaluate).toHaveBeenCalled();
+    const historyArg = mockEvaluate.mock.calls[0][0];
+    expect(historyArg.length).toBeGreaterThan(0);
+
+    // All messages should remain secondary (not a thread)
+    const allSecondary = historyArg.every((m: any) => m.contextPriority === 'secondary');
+    expect(allSecondary).toBe(true);
+  });
+});
+
+// ── New tests: keep-newest truncation, bot-interaction gating, DM metadata ──
+
+describe('MessageHandler collateGuildContext — keep-newest under depth budget', () => {
+  it('should keep newest primary messages when primary exceeds maxDepth', () => {
+    const primary = Array.from({ length: 5 }, (_, i) => ({
+      role: 'user' as const,
+      content: `p${i}`,
+      contextPriority: 'primary' as const,
+      contextSource: 'reply' as const,
+      discordMessageId: `p${i}`,
+      createdAtMs: (i + 1) * 1000,
+    }));
+    const secondary: any[] = [];
+
+    // maxDepth = 3 — should keep p2, p3, p4 (newest)
+    const result = messageHandler.collateGuildContext(primary, secondary, 3, 16000);
+
+    expect(result).toHaveLength(3);
+    expect(result[0].discordMessageId).toBe('p2');
+    expect(result[1].discordMessageId).toBe('p3');
+    expect(result[2].discordMessageId).toBe('p4');
+  });
+
+  it('should keep newest secondary messages when secondary exceeds remaining depth', () => {
+    const primary = [
+      { role: 'user' as const, content: 'p0', contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p0', createdAtMs: 1000 },
+    ];
+    const secondary = Array.from({ length: 5 }, (_, i) => ({
+      role: 'user' as const,
+      content: `s${i}`,
+      contextPriority: 'secondary' as const,
+      contextSource: 'channel' as const,
+      discordMessageId: `s${i}`,
+      createdAtMs: (i + 2) * 1000,
+    }));
+
+    // maxDepth = 3 → 1 primary + 2 secondary (newest: s3, s4)
+    const result = messageHandler.collateGuildContext(primary, secondary, 3, 16000);
+
+    expect(result).toHaveLength(3);
+    expect(result.filter(m => m.contextPriority === 'primary')).toHaveLength(1);
+    const secIds = result.filter(m => m.contextPriority === 'secondary').map(m => m.discordMessageId);
+    expect(secIds).toEqual(['s3', 's4']);
+  });
+
+  it('should keep newest primary when char budget is exceeded', () => {
+    const primary = [
+      { role: 'user' as const, content: 'A'.repeat(100), contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p0', createdAtMs: 1000 },
+      { role: 'user' as const, content: 'B'.repeat(100), contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p1', createdAtMs: 2000 },
+      { role: 'user' as const, content: 'C'.repeat(100), contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p2', createdAtMs: 3000 },
+    ];
+
+    // char budget 200 → only newest 2 fit (B + C = 200)
+    const result = messageHandler.collateGuildContext(primary, [], 30, 200);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].discordMessageId).toBe('p1');
+    expect(result[1].discordMessageId).toBe('p2');
+  });
+});
+
+describe('MessageHandler collectDmHistory — keep-newest and dm metadata', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getReplyChainMaxDepth as jest.Mock).mockReturnValue(10);
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
+  });
+
+  function createDmMsg(channelMessages: Map<string, any>): any {
+    return {
+      id: 'current-dm',
+      content: 'test dm',
+      author: { id: 'user-1', bot: false, username: 'testuser' },
+      client: { user: { id: 'bot-id' } },
+      channel: {
+        type: 1,
+        messages: {
+          fetch: jest.fn().mockResolvedValue(channelMessages),
+        },
+      },
+    };
+  }
+
+  it('should tag DM messages with contextSource "dm" and contextPriority "primary"', async () => {
+    const messages = new Map([
+      ['dm-1', {
+        id: 'dm-1',
+        content: 'Hello bot',
+        author: { id: 'user-1', bot: false, username: 'testuser' },
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createDmMsg(messages);
+    const result = await messageHandler.collectDmHistory(msg);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].contextSource).toBe('dm');
+    expect(result[0].contextPriority).toBe('primary');
+  });
+
+  it('should keep newest messages when char budget is exceeded', async () => {
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(30);
+
+    // oldest-first after reverse: dm-1 (20 chars), dm-2 (20 chars) — budget 30
+    const messages = new Map([
+      ['dm-2', {
+        id: 'dm-2',
+        content: 'B'.repeat(20),
+        author: { id: 'user-1', bot: false, username: 'testuser' },
+        createdTimestamp: 2000,
+      }],
+      ['dm-1', {
+        id: 'dm-1',
+        content: 'A'.repeat(20),
+        author: { id: 'user-1', bot: false, username: 'testuser' },
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createDmMsg(messages);
+    const result = await messageHandler.collectDmHistory(msg);
+
+    // Only the newest (dm-2) should survive — 20 chars fits within 30
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe('B'.repeat(20));
+  });
+});
+
+describe('MessageHandler collectDmHistory — ALLOW_BOT_INTERACTIONS filtering', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getReplyChainMaxDepth as jest.Mock).mockReturnValue(10);
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
+  });
+
+  function createDmMsg(channelMessages: Map<string, any>): any {
+    return {
+      id: 'current-dm',
+      content: 'test dm',
+      author: { id: 'user-1', bot: false, username: 'testuser' },
+      client: { user: { id: 'bot-id' } },
+      channel: {
+        type: 1,
+        messages: {
+          fetch: jest.fn().mockResolvedValue(channelMessages),
+        },
+      },
+    };
+  }
+
+  it('should skip other bot messages in DM history when ALLOW_BOT_INTERACTIONS is false', async () => {
+    (config.getAllowBotInteractions as jest.Mock).mockReturnValue(false);
+
+    const messages = new Map([
+      ['dm-2', {
+        id: 'dm-2',
+        content: 'Other bot says hi',
+        author: { id: 'other-bot', bot: true, username: 'otherbot' },
+        createdTimestamp: 2000,
+      }],
+      ['dm-1', {
+        id: 'dm-1',
+        content: 'Human message',
+        author: { id: 'user-1', bot: false, username: 'testuser' },
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createDmMsg(messages);
+    const result = await messageHandler.collectDmHistory(msg);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe('Human message');
+  });
+
+  it('should include other bot messages in DM history when ALLOW_BOT_INTERACTIONS is true', async () => {
+    (config.getAllowBotInteractions as jest.Mock).mockReturnValue(true);
+
+    const messages = new Map([
+      ['dm-2', {
+        id: 'dm-2',
+        content: 'Other bot says hi',
+        author: { id: 'other-bot', bot: true, username: 'otherbot' },
+        createdTimestamp: 2000,
+      }],
+      ['dm-1', {
+        id: 'dm-1',
+        content: 'Human message',
+        author: { id: 'user-1', bot: false, username: 'testuser' },
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createDmMsg(messages);
+    const result = await messageHandler.collectDmHistory(msg);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it('should always include this bot messages in DM history regardless of ALLOW_BOT_INTERACTIONS', async () => {
+    (config.getAllowBotInteractions as jest.Mock).mockReturnValue(false);
+
+    const messages = new Map([
+      ['dm-1', {
+        id: 'dm-1',
+        content: 'Bot own reply',
+        author: { id: 'bot-id', bot: true, username: 'bot' },
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createDmMsg(messages);
+    const result = await messageHandler.collectDmHistory(msg);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe('assistant');
+  });
+});
+
+describe('MessageHandler collectChannelHistory — keep-newest under char budget', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getReplyChainMaxDepth as jest.Mock).mockReturnValue(30);
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
+    (config.getAllowBotInteractions as jest.Mock).mockReturnValue(false);
+  });
+
+  function createGuildMsg(
+    channelMessages: Map<string, any>,
+    isThread = false
+  ): any {
+    return {
+      id: 'current-msg',
+      content: 'test',
+      author: { id: 'user-1', bot: false, username: 'testuser' },
+      client: { user: { id: 'bot-id' } },
+      channel: {
+        type: 0,
+        isThread: () => isThread,
+        messages: {
+          cache: new Map(),
+          fetch: jest.fn().mockResolvedValue(channelMessages),
+        },
+      },
+      member: null,
+    };
+  }
+
+  it('should keep newest messages when char budget is exceeded (drop oldest)', async () => {
+    // Budget: 30 chars. Two messages: 'A'.repeat(20) oldest, 'B'.repeat(20) newest.
+    // Total 40 > 30, so oldest should be dropped.
+    const messages = new Map([
+      ['msg-2', {
+        id: 'msg-2',
+        content: 'B'.repeat(20),
+        author: { id: 'user-1', bot: false, username: 'testuser' },
+        member: null,
+        createdTimestamp: 2000,
+      }],
+      ['msg-1', {
+        id: 'msg-1',
+        content: 'A'.repeat(20),
+        author: { id: 'user-1', bot: false, username: 'testuser' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createGuildMsg(messages);
+    const result = await messageHandler.collectChannelHistory(msg, 30, 30);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe('B'.repeat(20));
+    expect(result[0].discordMessageId).toBe('msg-2');
+  });
+});
+
+describe('MessageHandler collectChannelHistory — bot message filtering', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getReplyChainMaxDepth as jest.Mock).mockReturnValue(30);
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
+  });
+
+  function createGuildMsg(channelMessages: Map<string, any>): any {
+    return {
+      id: 'current-msg',
+      content: 'test',
+      author: { id: 'user-1', bot: false, username: 'testuser' },
+      client: { user: { id: 'bot-id' } },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: {
+          cache: new Map(),
+          fetch: jest.fn().mockResolvedValue(channelMessages),
+        },
+      },
+      member: null,
+    };
+  }
+
+  it('should skip other bot messages when ALLOW_BOT_INTERACTIONS is false', async () => {
+    (config.getAllowBotInteractions as jest.Mock).mockReturnValue(false);
+
+    const messages = new Map([
+      ['msg-2', {
+        id: 'msg-2',
+        content: 'Other bot says hi',
+        author: { id: 'other-bot', bot: true, username: 'otherbot' },
+        member: null,
+        createdTimestamp: 2000,
+      }],
+      ['msg-1', {
+        id: 'msg-1',
+        content: 'Human message',
+        author: { id: 'user-2', bot: false, username: 'alice' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createGuildMsg(messages);
+    const result = await messageHandler.collectChannelHistory(msg);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toContain('Human message');
+  });
+
+  it('should include other bot messages when ALLOW_BOT_INTERACTIONS is true', async () => {
+    (config.getAllowBotInteractions as jest.Mock).mockReturnValue(true);
+
+    const messages = new Map([
+      ['msg-2', {
+        id: 'msg-2',
+        content: 'Other bot says hi',
+        author: { id: 'other-bot', bot: true, username: 'otherbot' },
+        member: null,
+        createdTimestamp: 2000,
+      }],
+      ['msg-1', {
+        id: 'msg-1',
+        content: 'Human message',
+        author: { id: 'user-2', bot: false, username: 'alice' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createGuildMsg(messages);
+    const result = await messageHandler.collectChannelHistory(msg);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it('should always include this bot messages regardless of ALLOW_BOT_INTERACTIONS', async () => {
+    (config.getAllowBotInteractions as jest.Mock).mockReturnValue(false);
+
+    const messages = new Map([
+      ['msg-1', {
+        id: 'msg-1',
+        content: 'Bot own reply',
+        author: { id: 'bot-id', bot: true, username: 'bot' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+
+    const msg = createGuildMsg(messages);
+    const result = await messageHandler.collectChannelHistory(msg);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe('assistant');
+  });
+});
+
+describe('MessageHandler handleMessage — ALLOW_BOT_INTERACTIONS gating', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
+    (config.getReplyChainMaxDepth as jest.Mock).mockReturnValue(10);
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
+  });
+
+  it('should ignore other bot messages when ALLOW_BOT_INTERACTIONS is false', async () => {
+    (config.getAllowBotInteractions as jest.Mock).mockReturnValue(false);
+
+    const msg = {
+      author: { id: 'other-bot', bot: true, username: 'otherbot' },
+      content: '<@bot-123> hello',
+      mentions: { has: () => true },
+      channel: { type: 0, isThread: () => false, messages: { cache: new Map(), fetch: jest.fn() } },
+      client: { user: { id: 'bot-123' } },
+      reference: null,
+      id: 'bot-msg',
+      reply: jest.fn(),
+      guild: { name: 'TestGuild' },
+    };
+
+    await messageHandler.handleMessage(msg as any);
+
+    // Should not have replied (message ignored)
+    expect(msg.reply).not.toHaveBeenCalled();
+  });
+
+  it('should process other bot messages when ALLOW_BOT_INTERACTIONS is true', async () => {
+    (config.getAllowBotInteractions as jest.Mock).mockReturnValue(true);
+    (config.getKeywords as jest.Mock).mockReturnValue([]);
+
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const { classifyIntent } = require('../src/utils/keywordClassifier');
+    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+
+    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Reply to bot!' },
+    });
+
+    const msg = {
+      author: { id: 'other-bot', bot: true, username: 'otherbot' },
+      content: '<@bot-123> hello from bot',
+      mentions: { has: () => true },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      client: { user: { id: 'bot-123' } },
+      reference: null,
+      id: 'bot-msg',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      guild: { name: 'TestGuild' },
+    };
+
+    await messageHandler.handleMessage(msg as any);
+
+    // Should have processed the message (reply called for processing indicator)
+    expect(msg.reply).toHaveBeenCalled();
+  });
+
+  it('should never respond to own messages even when ALLOW_BOT_INTERACTIONS is true', async () => {
+    (config.getAllowBotInteractions as jest.Mock).mockReturnValue(true);
+
+    const msg = {
+      author: { id: 'bot-123', bot: true, username: 'self-bot' },
+      content: 'My own message',
+      mentions: { has: () => true },
+      channel: { type: 0, isThread: () => false },
+      client: { user: { id: 'bot-123' } },
+      reference: null,
+      id: 'self-msg',
+      reply: jest.fn(),
+      guild: { name: 'TestGuild' },
+    };
+
+    await messageHandler.handleMessage(msg as any);
+
+    expect(msg.reply).not.toHaveBeenCalled();
   });
 });

@@ -33,7 +33,7 @@
       "timeout": 300,
       "description": "Chat with Ollama AI",
       "abilityText": "Chat with Ollama AI",
-      "contextFilterMaxDepth": 20
+      "contextFilterMaxDepth": 30
     },
     {
       "keyword": "weather",

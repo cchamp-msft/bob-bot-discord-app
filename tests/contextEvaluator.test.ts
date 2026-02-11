@@ -324,7 +324,7 @@ describe('ContextEvaluator', () => {
     it('should use global maxDepth when contextFilterMaxDepth is not set', async () => {
       const history = makeHistory(15);
       const kw = makeKeyword({ contextFilterMinDepth: 1 });
-      // config.getReplyChainMaxDepth returns 10
+      // config.getReplyChainMaxDepth returns 10 (mocked default)
 
       // Ollama says include 7
       mockGenerate.mockResolvedValue({
@@ -334,7 +334,7 @@ describe('ContextEvaluator', () => {
 
       const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
 
-      // Should get 7 messages from the candidate window of 10
+      // Should get 7 messages from the candidate window of 10 (mock default)
       expect(result).toHaveLength(7);
       expect(result[0].content).toBe('message 9');
     });
@@ -424,6 +424,92 @@ describe('ContextEvaluator', () => {
       const prompt = buildContextEvalPrompt(1, 5);
 
       expect(prompt).toContain('non-contiguous');
+    });
+
+    it('should mention primary/reply and secondary/channel priority tags', () => {
+      const prompt = buildContextEvalPrompt(1, 5);
+
+      expect(prompt).toContain('[primary/reply]');
+      expect(prompt).toContain('[secondary/channel]');
+    });
+  });
+
+  describe('formatHistoryForEval — priority tags', () => {
+    it('should include priority/source tags when metadata is present', () => {
+      const history: ChatMessage[] = [
+        { role: 'user', content: 'channel msg', contextPriority: 'secondary', contextSource: 'channel' },
+        { role: 'assistant', content: 'reply msg', contextPriority: 'primary', contextSource: 'reply' },
+      ];
+
+      const formatted = formatHistoryForEval(history);
+
+      // Newest first: reply msg is index [1], channel msg is index [2]
+      expect(formatted).toContain('[1] (assistant) [primary/reply]: reply msg');
+      expect(formatted).toContain('[2] (user) [secondary/channel]: channel msg');
+    });
+
+    it('should omit tags when metadata is absent', () => {
+      const history: ChatMessage[] = [
+        { role: 'user', content: 'plain msg' },
+      ];
+
+      const formatted = formatHistoryForEval(history);
+
+      expect(formatted).toBe('[1] (user): plain msg');
+    });
+  });
+
+  describe('evaluateContextWindow — priority-aware candidate selection', () => {
+    it('should prioritize primary messages in candidate window', async () => {
+      // 10 messages: 3 primary (reply-chain) + 7 secondary (channel)
+      const history: ChatMessage[] = [
+        ...Array.from({ length: 7 }, (_, i) => ({
+          role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: `channel ${i + 1}`,
+          contextPriority: 'secondary' as const,
+          contextSource: 'channel' as const,
+          createdAtMs: (i + 1) * 1000,
+        })),
+        ...Array.from({ length: 3 }, (_, i) => ({
+          role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: `reply ${i + 1}`,
+          contextPriority: 'primary' as const,
+          contextSource: 'reply' as const,
+          createdAtMs: (i + 8) * 1000,
+        })),
+      ];
+
+      // maxDepth=5 means candidate window is 5 slots
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+
+      // Ollama selects all 5 candidates
+      mockGenerate.mockResolvedValue({
+        success: true,
+        data: { text: '[1, 2, 3, 4, 5]' },
+      });
+
+      const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
+
+      // All 3 primary messages should be in the candidate window
+      const primaryInResult = result.filter(m => m.contextPriority === 'primary');
+      expect(primaryInResult).toHaveLength(3);
+    });
+
+    it('should work correctly with no priority metadata (backwards compatible)', async () => {
+      const history = makeHistory(6);
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 4 });
+
+      mockGenerate.mockResolvedValue({
+        success: true,
+        data: { text: '[1, 2]' },
+      });
+
+      const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
+
+      expect(result).toHaveLength(2);
+      // Should be most recent 2
+      expect(result[0].content).toBe('message 5');
+      expect(result[1].content).toBe('message 6');
     });
   });
 });

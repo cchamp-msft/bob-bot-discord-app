@@ -2,6 +2,14 @@
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  /** Priority used when collating channel + reply-chain context in guilds. */
+  contextPriority?: 'primary' | 'secondary';
+  /** How this message was sourced. */
+  contextSource?: 'reply' | 'channel' | 'thread' | 'dm';
+  /** Discord message snowflake — used for deduplication when merging contexts. */
+  discordMessageId?: string;
+  /** Message creation timestamp (ms) — used for stable chronological merge. */
+  createdAtMs?: number;
 }
 
 /** Recognized API backend identifiers. */
@@ -345,6 +353,7 @@ export interface PublicConfig {
     maxAttachments: number;
   };
   keywords: import('./utils/config').KeywordConfig[];
+  allowBotInteractions: boolean;
   replyChain: {
     enabled: boolean;
     maxDepth: number;

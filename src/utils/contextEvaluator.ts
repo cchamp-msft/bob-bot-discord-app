@@ -20,6 +20,7 @@ export function buildContextEvalPrompt(minDepth: number, maxDepth: number): stri
     `- You MUST always include at least indices 1 through ${minDepth} (the most recent messages).`,
     `- You may include up to ${maxDepth} message(s) total.`,
     '- Prioritize newer messages over older ones — only include older messages when clearly relevant.',
+    '- Messages tagged [primary/reply] or [primary/thread] are from a direct reply chain or thread and are generally more important than [secondary/channel] messages.',
     '- If messages vary topics too greatly, prefer the most recent topic.',
     '- You may select non-contiguous messages (e.g. 1, 3, 5) if only specific older messages are relevant.',
     '- Respond with ONLY a JSON array of integer indices — e.g. [1, 2, 4].',
@@ -30,13 +31,21 @@ export function buildContextEvalPrompt(minDepth: number, maxDepth: number): stri
 /**
  * Format conversation history for the evaluator prompt.
  * Messages are listed from most recent (1) to oldest (N) so Ollama
- * can reason about recency.
+ * can reason about recency.  When context-priority metadata is present,
+ * a subtle tag is appended so the evaluator can weight primary (reply
+ * chain / thread) messages higher than secondary (channel) messages.
  */
 export function formatHistoryForEval(messages: ChatMessage[]): string {
   // Reverse to show newest first (depth 1 = newest)
   const reversed = [...messages].reverse();
   return reversed
-    .map((msg, i) => `[${i + 1}] (${msg.role}): ${msg.content}`)
+    .map((msg, i) => {
+      let tag = '';
+      if (msg.contextPriority && msg.contextSource) {
+        tag = ` [${msg.contextPriority}/${msg.contextSource}]`;
+      }
+      return `[${i + 1}] (${msg.role})${tag}: ${msg.content}`;
+    })
     .join('\n');
 }
 
@@ -138,9 +147,31 @@ export async function evaluateContextWindow(
     return nonSystemMessages;
   }
 
-  // Candidate window: the last `maxDepth` non-system messages
+  // Build the candidate window (up to maxDepth) with priority awareness:
+  //   1. Take most-recent primary messages first (reply/thread).
+  //   2. Fill remaining slots with most-recent secondary messages.
+  //   3. Re-sort into chronological (oldest→newest) order.
   const candidateCount = Math.min(maxDepth, nonSystemMessages.length);
-  const candidates = nonSystemMessages.slice(-candidateCount);
+  let candidates: ChatMessage[];
+
+  const hasPriority = nonSystemMessages.some(m => m.contextPriority);
+  if (hasPriority) {
+    const primaryMsgs = nonSystemMessages.filter(m => m.contextPriority === 'primary');
+    const secondaryMsgs = nonSystemMessages.filter(m => m.contextPriority !== 'primary');
+    // Take newest primary first, then newest secondary, up to candidateCount
+    const selectedPrimary = primaryMsgs.slice(-candidateCount);
+    const remainingSlots = candidateCount - selectedPrimary.length;
+    const selectedSecondary = remainingSlots > 0 ? secondaryMsgs.slice(-remainingSlots) : [];
+    candidates = [...selectedPrimary, ...selectedSecondary];
+    // Re-sort chronologically
+    candidates.sort((a, b) => {
+      const ta = a.createdAtMs ?? 0;
+      const tb = b.createdAtMs ?? 0;
+      return ta - tb;
+    });
+  } else {
+    candidates = nonSystemMessages.slice(-candidateCount);
+  }
 
   // If candidate window is within minDepth, keep them all
   if (candidates.length <= minDepth) {
