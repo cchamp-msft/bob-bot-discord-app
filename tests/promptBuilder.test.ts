@@ -224,7 +224,7 @@ describe('PromptBuilder', () => {
       expect(content).toContain('nfl news');
     });
 
-    it('should include context-source markers when metadata is present', () => {
+    it('should include grouped context-source blocks when metadata is present', () => {
       const content = buildUserContent({
         userMessage: 'What happened?',
         conversationHistory: [
@@ -234,21 +234,28 @@ describe('PromptBuilder', () => {
         ],
       });
 
-      expect(content).toContain('User (channel): Earlier msg');
-      expect(content).toContain('Bob (reply): Bot reply');
-      expect(content).toContain('User (thread): Thread msg');
+      expect(content).toContain('<context source="channel">');
+      expect(content).toContain('User: Earlier msg');
+      expect(content).toContain('<context source="reply">');
+      expect(content).toContain('Bob: Bot reply');
+      expect(content).toContain('<context source="thread">');
+      expect(content).toContain('User: Thread msg');
+      expect(content).toContain('</context>');
     });
 
-    it('should not include source markers when metadata is absent', () => {
+    it('should wrap single-source messages in a context block', () => {
       const content = buildUserContent({
         userMessage: 'Hello',
         conversationHistory: [
-          { role: 'user', content: 'Plain msg' },
+          { role: 'user', content: 'Msg 1', contextSource: 'dm' as const },
+          { role: 'assistant', content: 'Msg 2', contextSource: 'dm' as const },
         ],
       });
 
-      expect(content).toContain('User: Plain msg');
-      expect(content).not.toContain('User (');
+      expect(content).toContain('<context source="dm">');
+      expect(content).toContain('User: Msg 1');
+      expect(content).toContain('Bob: Msg 2');
+      expect(content).toContain('</context>');
     });
   });
 

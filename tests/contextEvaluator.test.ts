@@ -426,26 +426,26 @@ describe('ContextEvaluator', () => {
       expect(prompt).toContain('non-contiguous');
     });
 
-    it('should mention primary/reply and secondary/channel priority tags', () => {
+    it('should mention reply and channel source tags', () => {
       const prompt = buildContextEvalPrompt(1, 5);
 
-      expect(prompt).toContain('[primary/reply]');
-      expect(prompt).toContain('[secondary/channel]');
+      expect(prompt).toContain('[reply]');
+      expect(prompt).toContain('[channel]');
     });
   });
 
-  describe('formatHistoryForEval — priority tags', () => {
-    it('should include priority/source tags when metadata is present', () => {
+  describe('formatHistoryForEval — source tags', () => {
+    it('should include source tags when metadata is present', () => {
       const history: ChatMessage[] = [
-        { role: 'user', content: 'channel msg', contextPriority: 'secondary', contextSource: 'channel' },
-        { role: 'assistant', content: 'reply msg', contextPriority: 'primary', contextSource: 'reply' },
+        { role: 'user', content: 'channel msg', contextSource: 'channel' },
+        { role: 'assistant', content: 'reply msg', contextSource: 'reply' },
       ];
 
       const formatted = formatHistoryForEval(history);
 
       // Newest first: reply msg is index [1], channel msg is index [2]
-      expect(formatted).toContain('[1] (assistant) [primary/reply]: reply msg');
-      expect(formatted).toContain('[2] (user) [secondary/channel]: channel msg');
+      expect(formatted).toContain('[1] (assistant) [reply]: reply msg');
+      expect(formatted).toContain('[2] (user) [channel]: channel msg');
     });
 
     it('should omit tags when metadata is absent', () => {
@@ -459,21 +459,19 @@ describe('ContextEvaluator', () => {
     });
   });
 
-  describe('evaluateContextWindow — priority-aware candidate selection', () => {
-    it('should prioritize primary messages in candidate window', async () => {
-      // 10 messages: 3 primary (reply-chain) + 7 secondary (channel)
+  describe('evaluateContextWindow — source-aware candidate selection', () => {
+    it('should prioritize reply/thread messages in candidate window', async () => {
+      // 10 messages: 3 reply (direct) + 7 channel (ambient)
       const history: ChatMessage[] = [
         ...Array.from({ length: 7 }, (_, i) => ({
           role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
           content: `channel ${i + 1}`,
-          contextPriority: 'secondary' as const,
           contextSource: 'channel' as const,
           createdAtMs: (i + 1) * 1000,
         })),
         ...Array.from({ length: 3 }, (_, i) => ({
           role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
           content: `reply ${i + 1}`,
-          contextPriority: 'primary' as const,
           contextSource: 'reply' as const,
           createdAtMs: (i + 8) * 1000,
         })),
@@ -490,12 +488,12 @@ describe('ContextEvaluator', () => {
 
       const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
 
-      // All 3 primary messages should be in the candidate window
-      const primaryInResult = result.filter(m => m.contextPriority === 'primary');
-      expect(primaryInResult).toHaveLength(3);
+      // All 3 reply messages should be in the candidate window
+      const replyInResult = result.filter(m => m.contextSource === 'reply');
+      expect(replyInResult).toHaveLength(3);
     });
 
-    it('should work correctly with no priority metadata (backwards compatible)', async () => {
+    it('should work correctly with no source metadata (backwards compatible)', async () => {
       const history = makeHistory(6);
       const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 4 });
 

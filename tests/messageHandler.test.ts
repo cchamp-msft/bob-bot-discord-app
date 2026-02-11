@@ -1582,7 +1582,7 @@ describe('MessageHandler collectChannelHistory', () => {
     };
   }
 
-  it('should collect channel messages as secondary context', async () => {
+  it('should collect channel messages with source context', async () => {
     // Discord returns messages newest-first
     const messages = new Map([
       ['msg-2', {
@@ -1605,7 +1605,6 @@ describe('MessageHandler collectChannelHistory', () => {
     const result = await messageHandler.collectChannelHistory(msg);
 
     expect(result).toHaveLength(2);
-    expect(result[0].contextPriority).toBe('secondary');
     expect(result[0].contextSource).toBe('channel');
     expect(result[0].discordMessageId).toBe('msg-1');
     expect(result[1].role).toBe('assistant');
@@ -1718,68 +1717,68 @@ describe('MessageHandler collectChannelHistory', () => {
 });
 
 describe('MessageHandler collateGuildContext', () => {
-  it('should merge primary and secondary, deduplicating by messageId', () => {
-    const primary = [
-      { role: 'user' as const, content: 'reply msg', contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'msg-1', createdAtMs: 1000 },
+  it('should merge reply and channel context, deduplicating by messageId', () => {
+    const replyContext = [
+      { role: 'user' as const, content: 'reply msg', contextSource: 'reply' as const, discordMessageId: 'msg-1', createdAtMs: 1000 },
     ];
-    const secondary = [
-      { role: 'user' as const, content: 'reply msg dupe', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 'msg-1', createdAtMs: 1000 },
-      { role: 'assistant' as const, content: 'bot reply', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 'msg-2', createdAtMs: 2000 },
+    const channelContext = [
+      { role: 'user' as const, content: 'reply msg dupe', contextSource: 'channel' as const, discordMessageId: 'msg-1', createdAtMs: 1000 },
+      { role: 'assistant' as const, content: 'bot reply', contextSource: 'channel' as const, discordMessageId: 'msg-2', createdAtMs: 2000 },
     ];
 
-    const result = messageHandler.collateGuildContext(primary, secondary, 30, 16000);
+    const result = messageHandler.collateGuildContext(replyContext, channelContext, 30, 16000);
 
-    // msg-1 should appear only once (from primary)
+    // msg-1 should appear only once (from reply context)
     expect(result).toHaveLength(2);
     expect(result[0].content).toBe('reply msg');
-    expect(result[0].contextPriority).toBe('primary');
+    expect(result[0].contextSource).toBe('reply');
     expect(result[1].discordMessageId).toBe('msg-2');
   });
 
-  it('should enforce maxDepth, prioritizing primary', () => {
-    const primary = [
-      { role: 'user' as const, content: 'p1', contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p1', createdAtMs: 1000 },
-      { role: 'user' as const, content: 'p2', contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p2', createdAtMs: 2000 },
+  it('should enforce maxDepth, prioritizing reply/thread context', () => {
+    const replyContext = [
+      { role: 'user' as const, content: 'p1', contextSource: 'reply' as const, discordMessageId: 'p1', createdAtMs: 1000 },
+      { role: 'user' as const, content: 'p2', contextSource: 'reply' as const, discordMessageId: 'p2', createdAtMs: 2000 },
     ];
-    const secondary = [
-      { role: 'user' as const, content: 's1', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 's1', createdAtMs: 500 },
-      { role: 'user' as const, content: 's2', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 's2', createdAtMs: 3000 },
+    const channelContext = [
+      { role: 'user' as const, content: 's1', contextSource: 'channel' as const, discordMessageId: 's1', createdAtMs: 500 },
+      { role: 'user' as const, content: 's2', contextSource: 'channel' as const, discordMessageId: 's2', createdAtMs: 3000 },
     ];
 
-    // maxDepth = 3: all 2 primary + 1 secondary
-    const result = messageHandler.collateGuildContext(primary, secondary, 3, 16000);
+    // maxDepth = 3: all 2 reply + 1 channel
+    const result = messageHandler.collateGuildContext(replyContext, channelContext, 3, 16000);
 
     expect(result).toHaveLength(3);
-    // All primary should be present
-    expect(result.filter(m => m.contextPriority === 'primary')).toHaveLength(2);
+    // All reply context should be present
+    expect(result.filter(m => m.contextSource === 'reply')).toHaveLength(2);
   });
 
   it('should sort collated result chronologically', () => {
-    const primary = [
-      { role: 'user' as const, content: 'p1', contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p1', createdAtMs: 3000 },
+    const replyContext = [
+      { role: 'user' as const, content: 'p1', contextSource: 'reply' as const, discordMessageId: 'p1', createdAtMs: 3000 },
     ];
-    const secondary = [
-      { role: 'user' as const, content: 's1', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 's1', createdAtMs: 1000 },
-      { role: 'user' as const, content: 's2', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 's2', createdAtMs: 5000 },
+    const channelContext = [
+      { role: 'user' as const, content: 's1', contextSource: 'channel' as const, discordMessageId: 's1', createdAtMs: 1000 },
+      { role: 'user' as const, content: 's2', contextSource: 'channel' as const, discordMessageId: 's2', createdAtMs: 5000 },
     ];
 
-    const result = messageHandler.collateGuildContext(primary, secondary, 30, 16000);
+    const result = messageHandler.collateGuildContext(replyContext, channelContext, 30, 16000);
 
     expect(result[0].createdAtMs).toBe(1000);
     expect(result[1].createdAtMs).toBe(3000);
     expect(result[2].createdAtMs).toBe(5000);
   });
 
-  it('should work with only secondary context (no reply chain)', () => {
-    const secondary = [
-      { role: 'user' as const, content: 's1', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 's1', createdAtMs: 1000 },
-      { role: 'assistant' as const, content: 's2', contextPriority: 'secondary' as const, contextSource: 'channel' as const, discordMessageId: 's2', createdAtMs: 2000 },
+  it('should work with only channel context (no reply chain)', () => {
+    const channelContext = [
+      { role: 'user' as const, content: 's1', contextSource: 'channel' as const, discordMessageId: 's1', createdAtMs: 1000 },
+      { role: 'assistant' as const, content: 's2', contextSource: 'channel' as const, discordMessageId: 's2', createdAtMs: 2000 },
     ];
 
-    const result = messageHandler.collateGuildContext([], secondary, 30, 16000);
+    const result = messageHandler.collateGuildContext([], channelContext, 30, 16000);
 
     expect(result).toHaveLength(2);
-    expect(result.every(m => m.contextPriority === 'secondary')).toBe(true);
+    expect(result.every(m => m.contextSource === 'channel')).toBe(true);
   });
 });
 
@@ -1935,7 +1934,7 @@ describe('MessageHandler guild context — maxContextDepth = min(keyword, global
   });
 });
 
-describe('MessageHandler thread-primary promotion', () => {
+describe('MessageHandler thread source promotion', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
@@ -2013,16 +2012,12 @@ describe('MessageHandler thread-primary promotion', () => {
 
     await messageHandler.handleMessage(msg as any);
 
-    // Evaluator should have been called with thread messages promoted to primary
+    // Evaluator should have been called with thread-promoted messages
     expect(mockEvaluate).toHaveBeenCalled();
     const historyArg = mockEvaluate.mock.calls[0][0];
     expect(historyArg.length).toBeGreaterThan(0);
 
-    // All messages should be primary (thread promotion)
-    const allPrimary = historyArg.every((m: any) => m.contextPriority === 'primary');
-    expect(allPrimary).toBe(true);
-
-    // contextSource should still be 'thread'
+    // All messages should have thread source (thread promotion)
     const allThread = historyArg.every((m: any) => m.contextSource === 'thread');
     expect(allThread).toBe(true);
   });
@@ -2094,28 +2089,27 @@ describe('MessageHandler thread-primary promotion', () => {
     const historyArg = mockEvaluate.mock.calls[0][0];
     expect(historyArg.length).toBeGreaterThan(0);
 
-    // All messages should remain secondary (not a thread)
-    const allSecondary = historyArg.every((m: any) => m.contextPriority === 'secondary');
-    expect(allSecondary).toBe(true);
+    // All messages should remain channel source (not a thread)
+    const allChannel = historyArg.every((m: any) => m.contextSource === 'channel');
+    expect(allChannel).toBe(true);
   });
 });
 
 // ── New tests: keep-newest truncation, bot-interaction gating, DM metadata ──
 
 describe('MessageHandler collateGuildContext — keep-newest under depth budget', () => {
-  it('should keep newest primary messages when primary exceeds maxDepth', () => {
-    const primary = Array.from({ length: 5 }, (_, i) => ({
+  it('should keep newest reply messages when reply context exceeds maxDepth', () => {
+    const replyContext = Array.from({ length: 5 }, (_, i) => ({
       role: 'user' as const,
       content: `p${i}`,
-      contextPriority: 'primary' as const,
       contextSource: 'reply' as const,
       discordMessageId: `p${i}`,
       createdAtMs: (i + 1) * 1000,
     }));
-    const secondary: any[] = [];
+    const channelContext: any[] = [];
 
     // maxDepth = 3 — should keep p2, p3, p4 (newest)
-    const result = messageHandler.collateGuildContext(primary, secondary, 3, 16000);
+    const result = messageHandler.collateGuildContext(replyContext, channelContext, 3, 16000);
 
     expect(result).toHaveLength(3);
     expect(result[0].discordMessageId).toBe('p2');
@@ -2123,37 +2117,36 @@ describe('MessageHandler collateGuildContext — keep-newest under depth budget'
     expect(result[2].discordMessageId).toBe('p4');
   });
 
-  it('should keep newest secondary messages when secondary exceeds remaining depth', () => {
-    const primary = [
-      { role: 'user' as const, content: 'p0', contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p0', createdAtMs: 1000 },
+  it('should keep newest channel messages when channel exceeds remaining depth', () => {
+    const replyContext = [
+      { role: 'user' as const, content: 'p0', contextSource: 'reply' as const, discordMessageId: 'p0', createdAtMs: 1000 },
     ];
-    const secondary = Array.from({ length: 5 }, (_, i) => ({
+    const channelContext = Array.from({ length: 5 }, (_, i) => ({
       role: 'user' as const,
       content: `s${i}`,
-      contextPriority: 'secondary' as const,
       contextSource: 'channel' as const,
       discordMessageId: `s${i}`,
       createdAtMs: (i + 2) * 1000,
     }));
 
-    // maxDepth = 3 → 1 primary + 2 secondary (newest: s3, s4)
-    const result = messageHandler.collateGuildContext(primary, secondary, 3, 16000);
+    // maxDepth = 3 → 1 reply + 2 channel (newest: s3, s4)
+    const result = messageHandler.collateGuildContext(replyContext, channelContext, 3, 16000);
 
     expect(result).toHaveLength(3);
-    expect(result.filter(m => m.contextPriority === 'primary')).toHaveLength(1);
-    const secIds = result.filter(m => m.contextPriority === 'secondary').map(m => m.discordMessageId);
-    expect(secIds).toEqual(['s3', 's4']);
+    expect(result.filter(m => m.contextSource === 'reply')).toHaveLength(1);
+    const chIds = result.filter(m => m.contextSource === 'channel').map(m => m.discordMessageId);
+    expect(chIds).toEqual(['s3', 's4']);
   });
 
-  it('should keep newest primary when char budget is exceeded', () => {
-    const primary = [
-      { role: 'user' as const, content: 'A'.repeat(100), contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p0', createdAtMs: 1000 },
-      { role: 'user' as const, content: 'B'.repeat(100), contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p1', createdAtMs: 2000 },
-      { role: 'user' as const, content: 'C'.repeat(100), contextPriority: 'primary' as const, contextSource: 'reply' as const, discordMessageId: 'p2', createdAtMs: 3000 },
+  it('should keep newest reply context when char budget is exceeded', () => {
+    const replyContext = [
+      { role: 'user' as const, content: 'A'.repeat(100), contextSource: 'reply' as const, discordMessageId: 'p0', createdAtMs: 1000 },
+      { role: 'user' as const, content: 'B'.repeat(100), contextSource: 'reply' as const, discordMessageId: 'p1', createdAtMs: 2000 },
+      { role: 'user' as const, content: 'C'.repeat(100), contextSource: 'reply' as const, discordMessageId: 'p2', createdAtMs: 3000 },
     ];
 
     // char budget 200 → only newest 2 fit (B + C = 200)
-    const result = messageHandler.collateGuildContext(primary, [], 30, 200);
+    const result = messageHandler.collateGuildContext(replyContext, [], 30, 200);
 
     expect(result).toHaveLength(2);
     expect(result[0].discordMessageId).toBe('p1');
@@ -2183,7 +2176,7 @@ describe('MessageHandler collectDmHistory — keep-newest and dm metadata', () =
     };
   }
 
-  it('should tag DM messages with contextSource "dm" and contextPriority "primary"', async () => {
+  it('should tag DM messages with contextSource "dm"', async () => {
     const messages = new Map([
       ['dm-1', {
         id: 'dm-1',
@@ -2198,7 +2191,6 @@ describe('MessageHandler collectDmHistory — keep-newest and dm metadata', () =
 
     expect(result).toHaveLength(1);
     expect(result[0].contextSource).toBe('dm');
-    expect(result[0].contextPriority).toBe('primary');
   });
 
   it('should keep newest messages when char budget is exceeded', async () => {

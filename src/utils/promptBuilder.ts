@@ -1,6 +1,7 @@
 import { config, KeywordConfig } from './config';
 import { logger } from './logger';
 import { ChatMessage } from '../types';
+import { groupMessagesBySource } from './contextFormatter';
 
 // ── XML sanitization ─────────────────────────────────────────────
 
@@ -136,19 +137,27 @@ export function buildSystemPrompt(routableKeywords?: KeywordConfig[]): string {
 /**
  * Format conversation history into the <conversation_history> XML block.
  * Input messages should be oldest-to-newest (as returned by contextEvaluator).
- * When context metadata is present, a subtle source marker is appended to
- * the speaker label (e.g. "User (reply):", "Bob (channel):").
+ * Messages are grouped by contextSource (reply, thread, channel, dm) into
+ * separate <context source="..."> blocks so the model can clearly see
+ * where each piece of conversation originated.
+ * Messages without a contextSource are placed in a generic block.
  */
 function formatConversationHistory(history: ChatMessage[]): string {
   if (!history || history.length === 0) return '';
 
-  const lines = history.map(msg => {
-    const label = msg.role === 'assistant' ? 'Bob' : 'User';
-    const sourceTag = msg.contextSource ? ` (${msg.contextSource})` : '';
-    return `${label}${sourceTag}: ${escapeXmlContent(msg.content)}`;
-  });
+  const groups = groupMessagesBySource(history);
 
-  return lines.join('\n');
+  // Always emit grouped blocks so every source is uniformly marked
+  const blocks: string[] = [];
+  for (const [source, msgs] of groups) {
+    const lines = msgs.map(msg => {
+      const label = msg.role === 'assistant' ? 'Bob' : 'User';
+      return `${label}: ${escapeXmlContent(msg.content)}`;
+    });
+    blocks.push(`<context source="${source}">\n${lines.join('\n')}\n</context>`);
+  }
+
+  return blocks.join('\n');
 }
 
 // ── XML user content builder ─────────────────────────────────────

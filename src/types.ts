@@ -2,8 +2,6 @@
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
-  /** Priority used when collating channel + reply-chain context in guilds. */
-  contextPriority?: 'primary' | 'secondary';
   /** How this message was sourced. */
   contextSource?: 'reply' | 'channel' | 'thread' | 'dm';
   /** Discord message snowflake — used for deduplication when merging contexts. */

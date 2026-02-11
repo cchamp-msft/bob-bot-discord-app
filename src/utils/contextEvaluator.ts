@@ -3,6 +3,7 @@ import { logger } from './logger';
 import { ollamaClient, OllamaResponse } from '../api/ollamaClient';
 import { requestQueue } from './requestQueue';
 import { ChatMessage } from '../types';
+import { formatSourceTag } from './contextFormatter';
 
 /**
  * Build the system prompt for context evaluation.
@@ -20,7 +21,7 @@ export function buildContextEvalPrompt(minDepth: number, maxDepth: number): stri
     `- You MUST always include at least indices 1 through ${minDepth} (the most recent messages).`,
     `- You may include up to ${maxDepth} message(s) total.`,
     '- Prioritize newer messages over older ones — only include older messages when clearly relevant.',
-    '- Messages tagged [primary/reply] or [primary/thread] are from a direct reply chain or thread and are generally more important than [secondary/channel] messages.',
+    '- Messages tagged [reply] or [thread] are from a direct reply chain or thread and are generally more relevant than [channel] messages.',
     '- If messages vary topics too greatly, prefer the most recent topic.',
     '- You may select non-contiguous messages (e.g. 1, 3, 5) if only specific older messages are relevant.',
     '- Respond with ONLY a JSON array of integer indices — e.g. [1, 2, 4].',
@@ -31,19 +32,16 @@ export function buildContextEvalPrompt(minDepth: number, maxDepth: number): stri
 /**
  * Format conversation history for the evaluator prompt.
  * Messages are listed from most recent (1) to oldest (N) so Ollama
- * can reason about recency.  When context-priority metadata is present,
- * a subtle tag is appended so the evaluator can weight primary (reply
- * chain / thread) messages higher than secondary (channel) messages.
+ * can reason about recency.  When contextSource metadata is present,
+ * a subtle tag is appended so the evaluator can weight reply/thread
+ * messages higher than ambient channel messages.
  */
 export function formatHistoryForEval(messages: ChatMessage[]): string {
   // Reverse to show newest first (depth 1 = newest)
   const reversed = [...messages].reverse();
   return reversed
     .map((msg, i) => {
-      let tag = '';
-      if (msg.contextPriority && msg.contextSource) {
-        tag = ` [${msg.contextPriority}/${msg.contextSource}]`;
-      }
+      const tag = formatSourceTag(msg);
       return `[${i + 1}] (${msg.role})${tag}: ${msg.content}`;
     })
     .join('\n');
@@ -147,22 +145,22 @@ export async function evaluateContextWindow(
     return nonSystemMessages;
   }
 
-  // Build the candidate window (up to maxDepth) with priority awareness:
-  //   1. Take most-recent primary messages first (reply/thread).
-  //   2. Fill remaining slots with most-recent secondary messages.
+  // Build the candidate window (up to maxDepth) with source awareness:
+  //   1. Take most-recent reply/thread messages first (direct conversation).
+  //   2. Fill remaining slots with most-recent channel/dm messages.
   //   3. Re-sort into chronological (oldest→newest) order.
   const candidateCount = Math.min(maxDepth, nonSystemMessages.length);
   let candidates: ChatMessage[];
 
-  const hasPriority = nonSystemMessages.some(m => m.contextPriority);
-  if (hasPriority) {
-    const primaryMsgs = nonSystemMessages.filter(m => m.contextPriority === 'primary');
-    const secondaryMsgs = nonSystemMessages.filter(m => m.contextPriority !== 'primary');
-    // Take newest primary first, then newest secondary, up to candidateCount
-    const selectedPrimary = primaryMsgs.slice(-candidateCount);
-    const remainingSlots = candidateCount - selectedPrimary.length;
-    const selectedSecondary = remainingSlots > 0 ? secondaryMsgs.slice(-remainingSlots) : [];
-    candidates = [...selectedPrimary, ...selectedSecondary];
+  const hasSource = nonSystemMessages.some(m => m.contextSource);
+  if (hasSource) {
+    const directMsgs = nonSystemMessages.filter(m => m.contextSource === 'reply' || m.contextSource === 'thread');
+    const ambientMsgs = nonSystemMessages.filter(m => m.contextSource !== 'reply' && m.contextSource !== 'thread');
+    // Take newest direct (reply/thread) first, then newest ambient, up to candidateCount
+    const selectedDirect = directMsgs.slice(-candidateCount);
+    const remainingSlots = candidateCount - selectedDirect.length;
+    const selectedAmbient = remainingSlots > 0 ? ambientMsgs.slice(-remainingSlots) : [];
+    candidates = [...selectedDirect, ...selectedAmbient];
     // Re-sort chronologically
     candidates.sort((a, b) => {
       const ta = a.createdAtMs ?? 0;

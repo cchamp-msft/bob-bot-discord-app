@@ -179,7 +179,7 @@ class MessageHandler {
         // DMs: collect recent DM channel history (no guild channel-context feature)
         conversationHistory = await this.collectDmHistory(message);
       } else {
-        // Guild: collect reply chain (primary) + channel history (secondary)
+        // Guild: collect reply chain + channel history
         const keywordMax = keywordConfig.contextFilterMaxDepth ?? config.getReplyChainMaxDepth();
         const globalMax = config.getReplyChainMaxDepth();
         const maxContextDepth = Math.min(keywordMax, globalMax);
@@ -193,10 +193,10 @@ class MessageHandler {
         // Always collect channel context for guild messages
         const channelHistory = await this.collectChannelHistory(message, maxContextDepth, maxTotalChars);
 
-        // When in a thread with no reply chain, promote thread history to primary
+        // When in a thread with no reply chain, promote thread source
         if (replyChain.length === 0 && message.channel.isThread()) {
           for (const msg of channelHistory) {
-            msg.contextPriority = 'primary';
+            msg.contextSource = 'thread';
           }
         }
 
@@ -278,7 +278,7 @@ class MessageHandler {
    * Does NOT include the current message — only prior context.
    *
    * Each returned message carries metadata:
-   *   contextPriority = 'primary', contextSource = 'reply',
+   *   contextSource = 'reply',
    *   discordMessageId, createdAtMs.
    */
   async collectReplyChain(message: Message): Promise<ChatMessage[]> {
@@ -367,7 +367,6 @@ class MessageHandler {
       return {
         role: entry.role,
         content,
-        contextPriority: 'primary' as const,
         contextSource: 'reply' as const,
         discordMessageId: entry.id,
         createdAtMs: entry.createdAt,
@@ -427,7 +426,6 @@ class MessageHandler {
           role,
           content,
           contextSource: 'dm',
-          contextPriority: 'primary',
         });
       }
 
@@ -456,7 +454,7 @@ class MessageHandler {
   }
 
   /**
-   * Collect recent channel (or thread) messages as secondary context.
+   * Collect recent channel (or thread) messages as ambient context.
    * Similar to collectDmHistory but tags each message with channel
    * metadata and supports multi-user display-name attribution.
    * Does NOT include the current message.
@@ -540,7 +538,6 @@ class MessageHandler {
         chain.push({
           role,
           content,
-          contextPriority: 'secondary',
           contextSource,
           discordMessageId: msg.id,
           createdAtMs: msg.createdTimestamp,
@@ -566,70 +563,70 @@ class MessageHandler {
   }
 
   /**
-   * Collate primary (reply-chain) and secondary (channel) context into one
-   * chronological history. De-duplicates by discordMessageId. Primary
-   * messages fill first; secondary fills remaining slots up to maxDepth.
+   * Collate reply-chain and channel/thread context into one
+   * chronological history. De-duplicates by discordMessageId. Reply/thread
+   * messages fill first; channel messages fill remaining slots up to maxDepth.
    * When either budget (depth or chars) is exceeded, the **newest** messages
    * are kept (dropped from the oldest side). The result is sorted oldest→newest.
    */
   collateGuildContext(
-    primary: ChatMessage[],
-    secondary: ChatMessage[],
+    replyContext: ChatMessage[],
+    channelContext: ChatMessage[],
     maxDepth: number,
     maxTotalChars: number
   ): ChatMessage[] {
     const seen = new Set<string>();
     let totalChars = 0;
 
-    // Collect all primary (newest-first so we keep the tail when trimming)
-    const allPrimary: ChatMessage[] = [];
-    for (let i = primary.length - 1; i >= 0; i--) {
-      const msg = primary[i];
+    // Collect all reply/thread context (newest-first so we keep the tail when trimming)
+    const allDirect: ChatMessage[] = [];
+    for (let i = replyContext.length - 1; i >= 0; i--) {
+      const msg = replyContext[i];
       if (msg.discordMessageId) seen.add(msg.discordMessageId);
-      allPrimary.push(msg);
+      allDirect.push(msg);
     }
 
-    // Trim primary to depth budget, keeping newest
-    while (allPrimary.length > maxDepth) allPrimary.pop();
+    // Trim direct context to depth budget, keeping newest
+    while (allDirect.length > maxDepth) allDirect.pop();
 
-    // Trim primary to char budget, dropping oldest (end of reversed array)
-    while (allPrimary.length > 0) {
-      const candidateChars = allPrimary.reduce((sum, m) => sum + m.content.length, 0);
+    // Trim direct context to char budget, dropping oldest (end of reversed array)
+    while (allDirect.length > 0) {
+      const candidateChars = allDirect.reduce((sum, m) => sum + m.content.length, 0);
       if (candidateChars <= maxTotalChars) {
         totalChars = candidateChars;
         break;
       }
-      allPrimary.pop(); // drop oldest
+      allDirect.pop(); // drop oldest
     }
 
     // Restore chronological order
-    allPrimary.reverse();
+    allDirect.reverse();
 
-    const remainingDepth = maxDepth - allPrimary.length;
+    const remainingDepth = maxDepth - allDirect.length;
     const remainingChars = maxTotalChars - totalChars;
 
-    // Collect secondary candidates (newest-first), skipping duplicates
-    const secCandidates: ChatMessage[] = [];
-    for (let i = secondary.length - 1; i >= 0; i--) {
-      const msg = secondary[i];
+    // Collect channel candidates (newest-first), skipping duplicates
+    const chCandidates: ChatMessage[] = [];
+    for (let i = channelContext.length - 1; i >= 0; i--) {
+      const msg = channelContext[i];
       if (msg.discordMessageId && seen.has(msg.discordMessageId)) continue;
       if (msg.discordMessageId) seen.add(msg.discordMessageId);
-      secCandidates.push(msg);
+      chCandidates.push(msg);
     }
 
-    // Trim secondary to remaining budgets, keeping newest
-    while (secCandidates.length > remainingDepth) secCandidates.pop();
+    // Trim channel to remaining budgets, keeping newest
+    while (chCandidates.length > remainingDepth) chCandidates.pop();
 
-    let secChars = 0;
-    while (secCandidates.length > 0) {
-      secChars = secCandidates.reduce((sum, m) => sum + m.content.length, 0);
-      if (secChars <= remainingChars) break;
-      secCandidates.pop(); // drop oldest
+    let chChars = 0;
+    while (chCandidates.length > 0) {
+      chChars = chCandidates.reduce((sum, m) => sum + m.content.length, 0);
+      if (chChars <= remainingChars) break;
+      chCandidates.pop(); // drop oldest
     }
 
-    secCandidates.reverse(); // restore chronological order
+    chCandidates.reverse(); // restore chronological order
 
-    const result = [...allPrimary, ...secCandidates];
+    const result = [...allDirect, ...chCandidates];
 
     // Sort chronologically (oldest first) using createdAtMs when available
     result.sort((a, b) => {
@@ -638,9 +635,9 @@ class MessageHandler {
       return ta - tb;
     });
 
-    if (primary.length > 0 && secondary.length > 0) {
+    if (replyContext.length > 0 && channelContext.length > 0) {
       logger.log('success', 'system',
-        `CONTEXT-COLLATE: ${primary.length} primary + ${secondary.length} secondary → ${result.length} collated (max ${maxDepth})`);
+        `CONTEXT-COLLATE: ${replyContext.length} reply/thread + ${channelContext.length} channel → ${result.length} collated (max ${maxDepth})`);
     }
 
     return result;
