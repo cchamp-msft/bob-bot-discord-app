@@ -48,6 +48,42 @@ export function formatHistoryForEval(messages: ChatMessage[]): string {
 }
 
 /**
+ * Extract the first JSON array substring from raw model output.
+ *
+ * Handles common model formatting quirks:
+ * - Code fences: ```json\n[1, 2]\n```
+ * - Leading/trailing commentary: "Selected: [1, 2]"
+ * - Trailing commas inside the array: [1, 2,]
+ *
+ * Returns the extracted substring ready for JSON.parse, or null if
+ * no bracket-delimited array is found.
+ */
+export function extractJsonArray(text: string): string | null {
+  // Strip code fences (```json ... ``` or ``` ... ```)
+  const fencePattern = /```(?:json)?\s*([\s\S]*?)```/i;
+  const fenceMatch = text.match(fencePattern);
+  const cleaned = fenceMatch ? fenceMatch[1].trim() : text;
+
+  // Find the first '[' and its matching ']'
+  const start = cleaned.indexOf('[');
+  if (start === -1) return null;
+
+  let depth = 0;
+  for (let i = start; i < cleaned.length; i++) {
+    if (cleaned[i] === '[') depth++;
+    else if (cleaned[i] === ']') depth--;
+    if (depth === 0) {
+      let candidate = cleaned.slice(start, i + 1);
+      // Remove trailing commas before closing bracket: [1, 2,] → [1, 2]
+      candidate = candidate.replace(/,\s*]/, ']');
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Parse Ollama's context-eval response into a validated array of 1-based indices.
  *
  * Attempts JSON array parse first; falls back to legacy integer parse
@@ -68,29 +104,35 @@ export function parseEvalResponse(
   const trimmed = raw.trim();
 
   // ── Attempt 1: JSON array of integers ─────────────────────────
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (Array.isArray(parsed) && parsed.every(v => typeof v === 'number' && Number.isInteger(v))) {
-      // Deduplicate and filter to valid range [1, candidateCount]
-      let indices = [...new Set(parsed as number[])].filter(i => i >= 1 && i <= candidateCount);
+  // Try strict JSON.parse first, then fall back to extracting the first
+  // JSON array substring. Models sometimes wrap the array in code fences,
+  // trailing commas, or leading commentary.
+  const jsonCandidate = extractJsonArray(trimmed);
+  if (jsonCandidate !== null) {
+    try {
+      const parsed = JSON.parse(jsonCandidate);
+      if (Array.isArray(parsed) && parsed.every(v => typeof v === 'number' && Number.isInteger(v))) {
+        // Deduplicate and filter to valid range [1, candidateCount]
+        let indices = [...new Set(parsed as number[])].filter(i => i >= 1 && i <= candidateCount);
 
-      // Enforce minDepth: always include 1..minDepth
-      for (let i = 1; i <= Math.min(minDepth, candidateCount); i++) {
-        if (!indices.includes(i)) indices.push(i);
+        // Enforce minDepth: always include 1..minDepth
+        for (let i = 1; i <= Math.min(minDepth, candidateCount); i++) {
+          if (!indices.includes(i)) indices.push(i);
+        }
+
+        // Sort ascending (by index — 1 = newest)
+        indices.sort((a, b) => a - b);
+
+        // Enforce maxDepth: drop the highest indices first (oldest messages)
+        if (indices.length > maxDepth) {
+          indices = indices.slice(0, maxDepth);
+        }
+
+        return indices;
       }
-
-      // Sort ascending (by index — 1 = newest)
-      indices.sort((a, b) => a - b);
-
-      // Enforce maxDepth: drop the highest indices first (oldest messages)
-      if (indices.length > maxDepth) {
-        indices = indices.slice(0, maxDepth);
-      }
-
-      return indices;
+    } catch {
+      // Extracted substring wasn't valid JSON — fall through
     }
-  } catch {
-    // Not valid JSON — fall through to legacy integer parse
   }
 
   // ── Attempt 2: Legacy integer ("include the most recent N messages") ──

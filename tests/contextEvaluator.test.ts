@@ -33,7 +33,7 @@ jest.mock('../src/utils/requestQueue', () => ({
   },
 }));
 
-import { evaluateContextWindow, buildContextEvalPrompt, parseEvalResponse, formatHistoryForEval } from '../src/utils/contextEvaluator';
+import { evaluateContextWindow, buildContextEvalPrompt, parseEvalResponse, formatHistoryForEval, extractJsonArray } from '../src/utils/contextEvaluator';
 import { ollamaClient } from '../src/api/ollamaClient';
 import { config } from '../src/utils/config';
 import { requestQueue } from '../src/utils/requestQueue';
@@ -120,6 +120,70 @@ describe('ContextEvaluator', () => {
 
     it('should sort indices ascending', () => {
       expect(parseEvalResponse('[4, 1, 3]', 5, 1, 5)).toEqual([1, 3, 4]);
+    });
+
+    it('should parse array wrapped in code fences', () => {
+      expect(parseEvalResponse('```json\n[1, 2]\n```', 5, 1, 5)).toEqual([1, 2]);
+    });
+
+    it('should parse array wrapped in plain code fences', () => {
+      expect(parseEvalResponse('```\n[1, 3]\n```', 5, 1, 5)).toEqual([1, 3]);
+    });
+
+    it('should parse array with leading commentary', () => {
+      expect(parseEvalResponse('Selected: [1, 2]', 5, 1, 5)).toEqual([1, 2]);
+    });
+
+    it('should parse array with trailing commentary', () => {
+      expect(parseEvalResponse('[1, 2, 4] - these are the relevant indices', 5, 1, 5)).toEqual([1, 2, 4]);
+    });
+
+    it('should handle trailing comma inside array', () => {
+      expect(parseEvalResponse('[1, 2,]', 5, 1, 5)).toEqual([1, 2]);
+    });
+
+    it('should reject array containing non-integer values', () => {
+      // Strings in the array → not all numbers → falls through to legacy parse which also fails
+      expect(parseEvalResponse('[1, "2", 3]', 5, 1, 5)).toBeNull();
+    });
+
+    it('should reject array containing float values', () => {
+      expect(parseEvalResponse('[1, 2.5, 3]', 5, 1, 5)).toBeNull();
+    });
+  });
+
+  describe('extractJsonArray', () => {
+    it('should extract a plain JSON array', () => {
+      expect(extractJsonArray('[1, 2, 3]')).toBe('[1, 2, 3]');
+    });
+
+    it('should extract from code fences', () => {
+      expect(extractJsonArray('```json\n[1, 2]\n```')).toBe('[1, 2]');
+    });
+
+    it('should extract from plain code fences', () => {
+      expect(extractJsonArray('```\n[3, 4]\n```')).toBe('[3, 4]');
+    });
+
+    it('should extract first array when preceded by text', () => {
+      expect(extractJsonArray('Here are the indices: [1, 5]')).toBe('[1, 5]');
+    });
+
+    it('should remove trailing comma', () => {
+      expect(extractJsonArray('[1, 2,]')).toBe('[1, 2]');
+    });
+
+    it('should return null when no array is found', () => {
+      expect(extractJsonArray('no array here')).toBeNull();
+    });
+
+    it('should return null for empty string', () => {
+      expect(extractJsonArray('')).toBeNull();
+    });
+
+    it('should handle nested brackets gracefully', () => {
+      // Should extract the first balanced array
+      expect(extractJsonArray('[[1, 2], 3]')).toBe('[[1, 2], 3]');
     });
   });
 
