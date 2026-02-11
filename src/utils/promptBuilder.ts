@@ -247,10 +247,12 @@ export function buildUserContent(options: PromptBuildOptions): string {
       '\n<thinking_and_output_rules>\n' +
       'Step-by-step (think silently, do not output this thinking):\n' +
       '1. Read the current question carefully.\n' +
-      `2. Does it clearly need fresh external data (scores, rosters, live stats, weather)? → Yes → output ONLY the keyword (one of: ${keywordList}) on its own line and stop.\n` +
-      '3. No data needed? → Give a short, snarky, helpful answer in character.\n' +
-      '4. Always roast the user lightly.\n' +
-      '5. Output format reminder: keyword = single line only. Normal answer = normal text.\n' +
+      `2. Does it clearly need fresh external data (scores, rosters, live stats, weather)? → Yes → check if the ability's required inputs are present or can be inferred per the ability description above.\n` +
+      `3. Inputs satisfied? → output ONLY the keyword (one of: ${keywordList}) on its own line and stop.\n` +
+      '4. Inputs missing and cannot be inferred? → ask a brief clarifying question instead of outputting the keyword.\n' +
+      '5. No data needed? → Give a short, snarky, helpful answer in character.\n' +
+      '6. Always roast the user lightly.\n' +
+      '7. Output format reminder: keyword = single line only. Normal answer = normal text.\n' +
       '</thinking_and_output_rules>'
     );
   }

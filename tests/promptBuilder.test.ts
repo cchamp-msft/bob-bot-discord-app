@@ -60,6 +60,7 @@ jest.mock('../src/utils/config', () => ({
         abilityInputs: {
           mode: 'implicit',
           inferFrom: ['reply_target', 'current_message'],
+          validation: 'Use the reply target text if present; otherwise use descriptive text from the current message. If no usable image prompt text can be inferred, ask the user what they want generated.',
           examples: ['generate a sunset over mountains'],
         },
       },
@@ -175,6 +176,7 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('  When: User wants an image generated.');
       expect(prompt).toContain('  Inputs: Implicit.');
       expect(prompt).toContain('    Infer from: reply target, current message.');
+      expect(prompt).toContain('    Validation: Use the reply target text if present;');
     });
 
     it('should render mixed inputs with optional params for nfl scores', () => {
@@ -293,6 +295,17 @@ describe('PromptBuilder', () => {
       expect(content).toContain('nfl');
       expect(content).toContain('nfl scores');
       expect(content).toContain('nfl news');
+    });
+
+    it('should include clarification steps in thinking_and_output_rules', () => {
+      const content = buildUserContent({
+        userMessage: 'test',
+      });
+
+      expect(content).toContain('check if the ability\'s required inputs are present or can be inferred');
+      expect(content).toContain('Inputs satisfied?');
+      expect(content).toContain('Inputs missing and cannot be inferred?');
+      expect(content).toContain('ask a brief clarifying question instead of outputting the keyword');
     });
 
     it('should include grouped context-source blocks when metadata is present', () => {
