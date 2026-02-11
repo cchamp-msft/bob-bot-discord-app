@@ -432,9 +432,12 @@ class HttpServer {
   }
 
   start(): void {
-    this.server = this.app.listen(this.port, () => {
-      logger.log('success', 'system', `HTTP-SERVER: Listening on http://localhost:${this.port}`);
-      logger.log('success', 'system', `HTTP-SERVER: Configurator: http://localhost:${this.port}/configurator`);
+    const host = (process.env.HTTP_HOST || '').trim() || '127.0.0.1';
+    const displayHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host;
+
+    this.server = this.app.listen(this.port, host, () => {
+      logger.log('success', 'system', `HTTP-SERVER: Listening on http://${displayHost}:${this.port}`);
+      logger.log('success', 'system', `HTTP-SERVER: Configurator: http://${displayHost}:${this.port}/configurator`);
     });
   }
 
