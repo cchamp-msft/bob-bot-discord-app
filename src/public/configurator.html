@@ -569,6 +569,10 @@
             <label>Country <span class="note">gl — limits AI Overview availability</span></label>
             <input type="text" id="serpapi_gl" data-env="SERPAPI_GL" placeholder="us">
           </div>
+          <div class="field">
+            <label>Location <span class="note">optional location hint (e.g. Austin,Texas)</span></label>
+            <input type="text" id="serpapi_location" data-env="SERPAPI_LOCATION" placeholder="United States">
+          </div>
         </div>
         <div id="serpapiTestResult" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
       </div>
@@ -944,6 +948,7 @@
       document.getElementById('serpapi_endpoint').value = cfg.apis.serpapi || '';
       document.getElementById('serpapi_hl').value = cfg.apis.serpapiHl ?? 'en';
       document.getElementById('serpapi_gl').value = cfg.apis.serpapiGl ?? 'us';
+      document.getElementById('serpapi_location').value = cfg.apis.serpapiLocation || '';
       document.getElementById('serpapi_api_key').value = '';
       document.getElementById('serpapi_api_key').placeholder =
         cfg.apis.serpapiApiKeyConfigured ? 'API key configured ✓ — paste new value to change' : 'Paste SerpAPI key';

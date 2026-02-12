@@ -330,6 +330,7 @@ export interface PublicConfig {
     serpapiApiKeyConfigured: boolean;
     serpapiHl: string;
     serpapiGl: string;
+    serpapiLocation: string;
   };
   defaultWorkflow: {
     model: string;

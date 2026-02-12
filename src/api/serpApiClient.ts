@@ -159,8 +159,10 @@ class SerpApiClient {
     // AI Overview is mainly returned for hl=en with limited gl values.
     const hl = config.getSerpApiHl();
     const gl = config.getSerpApiGl();
+    const location = config.getSerpApiLocation();
     if (hl) params.hl = hl;
     if (gl) params.gl = gl;
+    if (location) params.location = location;
 
     const response = await this.client.get('/search', {
       params,

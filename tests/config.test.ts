@@ -102,6 +102,16 @@ describe('Config', () => {
       expect(config.getClientId()).toBe('');
       if (saved) process.env.DISCORD_CLIENT_ID = saved;
     });
+
+    it('getSerpApiLocation should return empty string when unset', () => {
+      delete process.env.SERPAPI_LOCATION;
+      expect(config.getSerpApiLocation()).toBe('');
+    });
+
+    it('getSerpApiLocation should return env value when set', () => {
+      process.env.SERPAPI_LOCATION = 'Austin,Texas';
+      expect(config.getSerpApiLocation()).toBe('Austin,Texas');
+    });
   });
 
   describe('parseIntEnv (via public getters)', () => {
@@ -210,6 +220,12 @@ describe('Config', () => {
       expect(pub).toHaveProperty('keywords');
       expect(pub).toHaveProperty('replyChain');
       expect(pub).toHaveProperty('imageResponse');
+    });
+
+    it('should include serpapiLocation in public config', () => {
+      process.env.SERPAPI_LOCATION = 'United States';
+      const pub = config.getPublicConfig();
+      expect(pub.apis.serpapiLocation).toBe('United States');
     });
 
     it('should include replyChain enabled, maxDepth, and maxTokens', () => {

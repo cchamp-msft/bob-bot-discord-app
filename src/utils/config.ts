@@ -304,6 +304,15 @@ class Config {
     return val === undefined ? 'us' : val;
   }
 
+  /**
+   * Optional location hint for SerpAPI Google Search requests.
+   * Example: "United States" or "Austin,Texas".
+   * Empty string means omitted.
+   */
+  getSerpApiLocation(): string {
+    return process.env.SERPAPI_LOCATION || '';
+  }
+
   getHttpPort(): number {
     return this.parseIntEnv('HTTP_PORT', 3000);
   }
@@ -634,6 +643,7 @@ class Config {
     const prevSerpApiEndpoint = this.getSerpApiEndpoint();
     const prevSerpApiHl = this.getSerpApiHl();
     const prevSerpApiGl = this.getSerpApiGl();
+    const prevSerpApiLocation = this.getSerpApiLocation();
     const prevFinalPassPrompt = this.getOllamaFinalPassPrompt();
     const prevAbilityRetryEnabled = this.getAbilityRetryEnabled();
     const prevAbilityRetryMaxRetries = this.getAbilityRetryMaxRetries();
@@ -697,6 +707,7 @@ class Config {
     if (this.getSerpApiEndpoint() !== prevSerpApiEndpoint) reloaded.push('SERPAPI_ENDPOINT');
     if (this.getSerpApiHl() !== prevSerpApiHl) reloaded.push('SERPAPI_HL');
     if (this.getSerpApiGl() !== prevSerpApiGl) reloaded.push('SERPAPI_GL');
+    if (this.getSerpApiLocation() !== prevSerpApiLocation) reloaded.push('SERPAPI_LOCATION');
     if (this.getOllamaFinalPassPrompt() !== prevFinalPassPrompt) reloaded.push('OLLAMA_FINAL_PASS_PROMPT');
     if (this.getAbilityRetryEnabled() !== prevAbilityRetryEnabled) reloaded.push('ABILITY_RETRY_ENABLED');
     if (this.getAbilityRetryMaxRetries() !== prevAbilityRetryMaxRetries) reloaded.push('ABILITY_RETRY_MAX_RETRIES');
@@ -748,6 +759,7 @@ class Config {
         serpapiApiKeyConfigured: !!this.getSerpApiKey(),
         serpapiHl: this.getSerpApiHl(),
         serpapiGl: this.getSerpApiGl(),
+        serpapiLocation: this.getSerpApiLocation(),
       },
       defaultWorkflow: {
         model: this.getComfyUIDefaultModel(),

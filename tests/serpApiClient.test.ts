@@ -27,6 +27,7 @@ jest.mock('../src/utils/config', () => ({
     getSerpApiKey: jest.fn(() => 'test-serpapi-key'),
     getSerpApiHl: jest.fn(() => 'en'),
     getSerpApiGl: jest.fn(() => 'us'),
+    getSerpApiLocation: jest.fn(() => ''),
   },
 }));
 
@@ -173,6 +174,26 @@ describe('SerpApiClient', () => {
       });
     });
 
+    it('should include location when SERPAPI_LOCATION is set', async () => {
+      (config.getSerpApiLocation as jest.Mock).mockReturnValueOnce('Austin,Texas');
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
+
+      await serpApiClient.handleRequest('my query', 'search');
+
+      expect(mockInstance.get).toHaveBeenCalledWith('/search', {
+        params: {
+          engine: 'google',
+          q: 'my query',
+          api_key: 'test-serpapi-key',
+          num: 5,
+          hl: 'en',
+          gl: 'us',
+          location: 'Austin,Texas',
+        },
+        signal: undefined,
+      });
+    });
+
     it('should omit hl/gl when set to empty string', async () => {
       (config.getSerpApiHl as jest.Mock).mockReturnValueOnce('');
       (config.getSerpApiGl as jest.Mock).mockReturnValueOnce('');
@@ -183,6 +204,16 @@ describe('SerpApiClient', () => {
       const params = mockInstance.get.mock.calls[0][1].params;
       expect(params).not.toHaveProperty('hl');
       expect(params).not.toHaveProperty('gl');
+    });
+
+    it('should omit location when SERPAPI_LOCATION is empty', async () => {
+      (config.getSerpApiLocation as jest.Mock).mockReturnValueOnce('');
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
+
+      await serpApiClient.handleRequest('my query', 'search');
+
+      const params = mockInstance.get.mock.calls[0][1].params;
+      expect(params).not.toHaveProperty('location');
     });
 
     it('should forward AbortSignal to axios', async () => {
