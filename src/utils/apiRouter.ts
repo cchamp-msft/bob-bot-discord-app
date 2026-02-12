@@ -220,7 +220,7 @@ export async function executeRoutedRequest(
             requester,
             userPrompt,
             keywordConfig.timeout,
-            retryModel || undefined,
+            retryModel,
             [{ role: 'system', content: systemPrompt }],
             sig,
             undefined,

@@ -246,23 +246,22 @@ class ConfigWriter {
           throw new Error(`Keyword "${entry.keyword}" has invalid enabled — must be a boolean`);
         }
         if (entry.retry !== undefined) {
-          const r = entry.retry as unknown;
+          const r: KeywordConfig['retry'] = entry.retry;
           if (typeof r !== 'object' || r === null || Array.isArray(r)) {
             throw new Error(`Keyword "${entry.keyword}" has invalid retry — must be an object`);
           }
-          if ((r as any).enabled !== undefined && typeof (r as any).enabled !== 'boolean') {
+          if (r.enabled !== undefined && typeof r.enabled !== 'boolean') {
             throw new Error(`Keyword "${entry.keyword}" has invalid retry.enabled — must be a boolean`);
           }
-          if ((r as any).maxRetries !== undefined) {
-            const mr = (r as any).maxRetries;
-            if (typeof mr !== 'number' || !Number.isInteger(mr) || mr < 0 || mr > 10) {
+          if (r.maxRetries !== undefined) {
+            if (typeof r.maxRetries !== 'number' || !Number.isInteger(r.maxRetries) || r.maxRetries < 0 || r.maxRetries > 10) {
               throw new Error(`Keyword "${entry.keyword}" has invalid retry.maxRetries — must be an integer between 0 and 10`);
             }
           }
-          if ((r as any).model !== undefined && typeof (r as any).model !== 'string') {
+          if (r.model !== undefined && typeof r.model !== 'string') {
             throw new Error(`Keyword "${entry.keyword}" has invalid retry.model — must be a string`);
           }
-          if ((r as any).prompt !== undefined && typeof (r as any).prompt !== 'string') {
+          if (r.prompt !== undefined && typeof r.prompt !== 'string') {
             throw new Error(`Keyword "${entry.keyword}" has invalid retry.prompt — must be a string`);
           }
         }

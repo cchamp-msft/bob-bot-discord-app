@@ -161,6 +161,91 @@ describe('ApiRouter', () => {
       // stages: primary fail + (refine+attempt)*2
       expect(result.stages).toHaveLength(5);
     });
+
+    it('should not trigger retry for non-retryable failure (non-AccuWeather)', async () => {
+      (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
+      (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
+
+      const keyword: KeywordConfig = {
+        keyword: 'generate',
+        api: 'comfyui',
+        timeout: 300,
+        description: 'Generate image',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'ComfyUI is down',
+      });
+
+      const result = await executeRoutedRequest(keyword, 'a sunset', 'testuser');
+
+      expect(result.finalResponse.success).toBe(false);
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+      expect(result.stages).toHaveLength(1);
+    });
+
+    it('should abort retries when refinement returns empty input', async () => {
+      (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
+      (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
+
+      const keyword: KeywordConfig = {
+        keyword: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      // Primary AccuWeather fails
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Could not find location "xyz". Try a different city name or zip code.',
+      });
+
+      // Ollama refinement returns empty string
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: '   ' },
+      });
+
+      const result = await executeRoutedRequest(keyword, 'xyz', 'testuser');
+
+      expect(result.finalResponse.success).toBe(false);
+      // Only primary + refine, no second AccuWeather attempt
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+      expect(result.stages).toHaveLength(2);
+    });
+
+    it('should abort retries when refinement repeats the same input', async () => {
+      (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
+      (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
+
+      const keyword: KeywordConfig = {
+        keyword: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      // Primary AccuWeather fails
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Could not find location "foo". Try a different city name or zip code.',
+      });
+
+      // Ollama refinement returns same input as original
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'foo' },
+      });
+
+      const result = await executeRoutedRequest(keyword, 'foo', 'testuser');
+
+      expect(result.finalResponse.success).toBe(false);
+      // Only primary + refine, no second AccuWeather attempt
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+      expect(result.stages).toHaveLength(2);
+    });
   });
 
   describe('executeRoutedRequest — single stage (no final pass)', () => {
