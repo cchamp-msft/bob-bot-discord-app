@@ -734,6 +734,21 @@ If no output is being returned and upon checking ComfyUI logs you see an excepti
 - **HTTP port**: Requires full process restart
 - Check the configurator's status console for reload confirmation
 
+### SerpAPI / AI Overview ("second opinion") issues
+- **Enable debug logging** (`LOG_LEVEL=debug`) to see request/response diagnostics tagged `[serpapi]`
+- **Request shape** — look for `SERPAPI REQUEST:` lines showing `engine`, `q`, `hl`, `gl`, `location`, and redacted `api_key` (`***`)
+- **Response markers** — look for `SERPAPI RESPONSE:` lines showing `status`, `ai_overview` classification (`page_token`, `inline(N blocks)`, `error: …`, `empty`, or `absent`), and organic result count
+- **AIO follow-up** — when a `page_token` is present, the bot issues a second request using `engine=google_ai_overview`. Look for `AIO-FOLLOWUP REQUEST:` and `AIO-FOLLOWUP RESPONSE:` debug lines
+- **Common causes of missing AI Overviews:**
+  - **Locale mismatch** — AI Overview is mainly available for `hl=en` with certain `gl` values (e.g. `us`). Set `SERPAPI_HL` and `SERPAPI_GL` in your `.env`
+  - `SERPAPI_LOCATION` can improve AIO eligibility on the initial search, but it is **not sent** on the AI Overview follow-up call (the follow-up inherits locale from the original search)
+  - **Niche or policy-restricted queries** — Google may simply not generate an AI Overview; this is upstream unavailability, not a configuration problem
+  - **Token expiry** — the `page_token` for AIO follow-up expires within ~1 minute; if the bot or SerpAPI is slow, the follow-up may silently return no data
+- **Distinguishing upstream unavailability from config issues:**
+  - If debug logs show `ai_overview=absent` consistently across many queries including common factual ones (`"what is TypeScript"`, `"weather in New York"`), the issue is likely locale configuration
+  - If only niche or ambiguous queries return `absent`, that is expected upstream behavior
+  - If logs show `ai_overview=error: …`, the error message from Google/SerpAPI indicates a policy or rate-limit issue
+
 ## Contributing
 
 Contributions are welcome! Please submit pull requests with improvements.
