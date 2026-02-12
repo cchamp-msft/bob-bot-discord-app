@@ -5,8 +5,7 @@
       "api": "ollama",
       "timeout": 120,
       "description": "Explain what the bot can help with and how to use each capability",
-      "builtin": true,
-      "allowEmptyContent": true
+      "builtin": true
     },
     {
       "keyword": "generate",
