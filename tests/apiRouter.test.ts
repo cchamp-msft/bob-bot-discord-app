@@ -19,6 +19,7 @@ jest.mock('../src/utils/config', () => ({
     getAbilityRetryMaxRetries: jest.fn(() => 2),
     getAbilityRetryModel: jest.fn(() => 'llama2'),
     getAbilityRetryPrompt: jest.fn(() => 'Refine the parameters. Return ONLY the refined parameters.'),
+    getOllamaFinalPassPrompt: jest.fn(() => ''),
   },
 }));
 
@@ -85,6 +86,7 @@ describe('ApiRouter', () => {
       mockExecute.mockResolvedValueOnce({
         success: false,
         error: 'Could not find location "asdfasdf". Try a different city name or zip code.',
+        errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
       });
 
       // 2) Ollama refinement returns a better location
@@ -127,6 +129,7 @@ describe('ApiRouter', () => {
       mockExecute.mockResolvedValueOnce({
         success: false,
         error: 'Could not find location "q". Try a different city name or zip code.',
+        errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
       });
 
       // Retry 1 refinement
@@ -139,6 +142,7 @@ describe('ApiRouter', () => {
       mockExecute.mockResolvedValueOnce({
         success: false,
         error: 'Could not find location "Springfield". Try a different city name or zip code.',
+        errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
       });
 
       // Retry 2 refinement
@@ -151,6 +155,7 @@ describe('ApiRouter', () => {
       mockExecute.mockResolvedValueOnce({
         success: false,
         error: 'Could not find location "Springfield, IL". Try a different city name or zip code.',
+        errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
       });
 
       const result = await executeRoutedRequest(keyword, 'q', 'testuser');
@@ -200,6 +205,7 @@ describe('ApiRouter', () => {
       mockExecute.mockResolvedValueOnce({
         success: false,
         error: 'Could not find location "xyz". Try a different city name or zip code.',
+        errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
       });
 
       // Ollama refinement returns empty string
@@ -231,6 +237,7 @@ describe('ApiRouter', () => {
       mockExecute.mockResolvedValueOnce({
         success: false,
         error: 'Could not find location "foo". Try a different city name or zip code.',
+        errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
       });
 
       // Ollama refinement returns same input as original
@@ -245,6 +252,227 @@ describe('ApiRouter', () => {
       // Only primary + refine, no second AccuWeather attempt
       expect(mockExecute).toHaveBeenCalledTimes(2);
       expect(result.stages).toHaveLength(2);
+    });
+
+    it('should treat case-different refinement as duplicate and abort', async () => {
+      (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
+      (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
+
+      const keyword: KeywordConfig = {
+        keyword: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Could not find location "Seattle". Try a different city name or zip code.',
+        errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
+      });
+
+      // Ollama returns same string with different case
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'seattle' },
+      });
+
+      const result = await executeRoutedRequest(keyword, 'Seattle', 'testuser');
+
+      expect(result.finalResponse.success).toBe(false);
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+      expect(result.stages).toHaveLength(2);
+    });
+
+    it('should trigger retry on ACCUWEATHER_NO_LOCATION error code', async () => {
+      (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
+      (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
+
+      const keyword: KeywordConfig = {
+        keyword: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      // Primary fails with "no location" error code
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'No location specified and no default location configured.',
+        errorCode: 'ACCUWEATHER_NO_LOCATION',
+      });
+
+      // Ollama refines
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Denver, CO' },
+      });
+
+      // Retry succeeds
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Sunny, 55°F' },
+      });
+
+      const result = await executeRoutedRequest(keyword, '', 'testuser');
+
+      expect(result.finalResponse.success).toBe(true);
+      expect(mockExecute).toHaveBeenCalledTimes(3);
+      expect(result.stages).toHaveLength(3);
+    });
+
+    it('should respect per-keyword retry.enabled=false override', async () => {
+      // Global retry is on, but keyword override disables it
+      (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
+      (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
+
+      const keyword: KeywordConfig = {
+        keyword: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+        retry: { enabled: false },
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Could not find location "xyz".',
+        errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
+      });
+
+      const result = await executeRoutedRequest(keyword, 'xyz', 'testuser');
+
+      expect(result.finalResponse.success).toBe(false);
+      // No retries attempted
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+      expect(result.stages).toHaveLength(1);
+    });
+
+    it('should respect per-keyword retry.maxRetries=1 override', async () => {
+      (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
+      (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(5);
+
+      const keyword: KeywordConfig = {
+        keyword: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+        retry: { maxRetries: 1 },
+      };
+
+      // Primary fails
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Could not find location "x".',
+        errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
+      });
+
+      // Retry 1: refine
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Portland, OR' },
+      });
+
+      // Retry 1: still fails
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Could not find location "Portland, OR".',
+        errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
+      });
+
+      const result = await executeRoutedRequest(keyword, 'x', 'testuser');
+
+      expect(result.finalResponse.success).toBe(false);
+      // 1 primary + 1 refine + 1 retry = 3 (not 5 from global maxRetries)
+      expect(mockExecute).toHaveBeenCalledTimes(3);
+      expect(result.stages).toHaveLength(3);
+    });
+
+    it('should not retry when error has no errorCode', async () => {
+      (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
+      (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
+
+      const keyword: KeywordConfig = {
+        keyword: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      // Failure without a structured errorCode (e.g., network error)
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Failed to fetch current conditions for Seattle, WA.',
+      });
+
+      const result = await executeRoutedRequest(keyword, 'weather Seattle', 'testuser');
+
+      expect(result.finalResponse.success).toBe(false);
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('executeRoutedRequest — final-pass prompt wiring', () => {
+    it('should include OLLAMA_FINAL_PASS_PROMPT in final-pass system content', async () => {
+      (config.getOllamaFinalPassPrompt as jest.Mock).mockReturnValue('Be extra opinionated.');
+
+      const keyword: KeywordConfig = {
+        keyword: 'nfl scores',
+        api: 'nfl',
+        timeout: 60,
+        description: 'NFL scores',
+        finalOllamaPass: true,
+      };
+
+      mockApiExecute.mockResolvedValue({ success: true, data: { text: 'AI response' } } as any);
+
+      // Primary NFL result
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Chiefs 21 - Ravens 14', games: [] },
+      });
+
+      // Final Ollama pass — capture the callback to inspect args
+      mockExecute.mockImplementationOnce(async (_api, _req, _label, _timeout, callback) => {
+        await callback(undefined as any);
+        return { success: true, data: { text: 'AI response' } };
+      });
+
+      await executeRoutedRequest(keyword, 'who won?', 'testuser');
+
+      // The system content passed to apiManager should include the final-pass prompt
+      const systemMessages = mockApiExecute.mock.calls[0][5] as Array<{ role: string; content: string }>;
+      expect(systemMessages[0].content).toContain('Be extra opinionated.');
+    });
+
+    it('should not append empty final-pass prompt to system content', async () => {
+      (config.getOllamaFinalPassPrompt as jest.Mock).mockReturnValue('');
+
+      const keyword: KeywordConfig = {
+        keyword: 'nfl scores',
+        api: 'nfl',
+        timeout: 60,
+        description: 'NFL scores',
+        finalOllamaPass: true,
+      };
+
+      mockApiExecute.mockResolvedValue({ success: true, data: { text: 'AI response' } } as any);
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Chiefs 21 - Ravens 14', games: [] },
+      });
+
+      mockExecute.mockImplementationOnce(async (_api, _req, _label, _timeout, callback) => {
+        await callback(undefined as any);
+        return { success: true, data: { text: 'AI response' } };
+      });
+
+      await executeRoutedRequest(keyword, 'who won?', 'testuser');
+
+      const systemMessages = mockApiExecute.mock.calls[0][5] as Array<{ role: string; content: string }>;
+      // Should be persona only, no trailing newlines from empty prompt
+      expect(systemMessages[0].content).not.toContain('\n\n');
     });
   });
 

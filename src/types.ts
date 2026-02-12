@@ -81,6 +81,8 @@ export interface AccuWeatherResponse {
     forecast?: AccuWeatherForecastResponse;
   };
   error?: string;
+  /** Structured error code for programmatic retry gating. */
+  errorCode?: string;
 }
 
 /** Result of an AccuWeather health/connection test. */

@@ -12,6 +12,7 @@ import {
 } from './responseTransformer';
 import {
   assembleReprompt,
+  escapeXmlContent,
   formatAccuWeatherExternalData,
   formatNFLExternalData,
   formatSerpApiExternalData,
@@ -31,17 +32,24 @@ function stripWrappingQuotes(text: string): string {
   return t;
 }
 
-function shouldRetryAbility(keywordConfig: KeywordConfig, result: { success: boolean; error?: string }): boolean {
+/**
+ * Structured error codes emitted by API clients for retry gating.
+ * Using codes instead of substring matching prevents silent breakage
+ * when error text is reworded.
+ */
+export const RETRYABLE_ERROR_CODES = {
+  ACCUWEATHER_NO_LOCATION: 'ACCUWEATHER_NO_LOCATION',
+  ACCUWEATHER_UNKNOWN_LOCATION: 'ACCUWEATHER_UNKNOWN_LOCATION',
+} as const;
+
+export type RetryableErrorCode = typeof RETRYABLE_ERROR_CODES[keyof typeof RETRYABLE_ERROR_CODES];
+
+/** Set of error codes that qualify for parameter-refinement retry. */
+const RETRYABLE_CODES: ReadonlySet<string> = new Set(Object.values(RETRYABLE_ERROR_CODES));
+
+function shouldRetryAbility(_keywordConfig: KeywordConfig, result: { success: boolean; errorCode?: string }): boolean {
   if (result.success) return false;
-  const err = (result.error ?? '').toLowerCase();
-
-  // Initial scope: structured parameter failures for AccuWeather location resolution.
-  if (keywordConfig.api === 'accuweather') {
-    if (err.includes('no location specified')) return true;
-    if (err.includes('could not find location')) return true;
-  }
-
-  return false;
+  return RETRYABLE_CODES.has(result.errorCode ?? '');
 }
 
 function renderAbilityInputsForPrompt(keywordConfig: KeywordConfig): string {
@@ -105,9 +113,9 @@ function buildRetryUserPrompt(args: {
     renderAbilityInputsForPrompt(keywordConfig),
     '</ability_context>',
     '',
-    `<original_user_input>${originalContent}</original_user_input>`,
-    `<last_attempt_input>${lastAttemptContent}</last_attempt_input>`,
-    `<error>${error}</error>`,
+    `<original_user_input>${escapeXmlContent(originalContent)}</original_user_input>`,
+    `<last_attempt_input>${escapeXmlContent(lastAttemptContent)}</last_attempt_input>`,
+    `<error>${escapeXmlContent(error)}</error>`,
     '',
     tail,
   ].join('\n');
@@ -161,7 +169,7 @@ export async function executeRoutedRequest(
   const apiType = keywordConfig.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
   const originalContent = content;
   let attemptContent = content;
-  const attemptedInputs = new Set<string>([attemptContent.trim()]);
+  const attemptedInputs = new Set<string>([attemptContent.trim().toLowerCase()]);
 
   const effectiveRetryEnabled = (keywordConfig.retry?.enabled ?? config.getAbilityRetryEnabled()) === true;
   const effectiveMaxRetries = keywordConfig.retry?.maxRetries ?? config.getAbilityRetryMaxRetries();
@@ -243,14 +251,14 @@ export async function executeRoutedRequest(
         break;
       }
 
-      if (attemptedInputs.has(refined.trim())) {
+      if (attemptedInputs.has(refined.trim().toLowerCase())) {
         logger.logWarn('system', `API-ROUTING: Retry refinement repeated a prior input (attempt ${attempt}); aborting retries`);
         break;
       }
-      attemptedInputs.add(refined.trim());
+      attemptedInputs.add(refined.trim().toLowerCase());
 
       attemptContent = refined;
-      logger.log('success', 'system', `API-ROUTING: Retry attempt ${attempt} for ${keywordConfig.api} with refined input: "${attemptContent}"`);
+      logger.logDebug('system', `API-ROUTING: Retry attempt ${attempt} for ${keywordConfig.api} with refined input: "${attemptContent}"`);
 
       primaryResult = await runAbility(`:retry:${attempt}`, attemptContent);
       primaryExtracted = extractStageResult(keywordConfig.api, primaryResult);
@@ -337,7 +345,12 @@ export async function executeRoutedRequest(
       externalData: externalDataBlock,
     });
 
-    const finalSystemContent = reprompt.systemContent;
+    // Append final-pass prompt to persona so OLLAMA_FINAL_PASS_PROMPT
+    // actually affects the model's behavior.
+    const finalPassPrompt = config.getOllamaFinalPassPrompt();
+    const finalSystemContent = finalPassPrompt
+      ? `${reprompt.systemContent}\n\n${finalPassPrompt}`
+      : reprompt.systemContent;
 
     const finalResult = await requestQueue.execute(
       'ollama',

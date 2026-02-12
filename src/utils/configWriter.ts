@@ -313,7 +313,16 @@ class ConfigWriter {
         if (entry.allowEmptyContent) clean.allowEmptyContent = entry.allowEmptyContent;
         if (entry.accuweatherMode) clean.accuweatherMode = entry.accuweatherMode;
         if (entry.enabled === false) clean.enabled = false;
-        if (entry.retry) clean.retry = entry.retry;
+        if (entry.retry) {
+          // Whitelist known retry keys to prevent config drift from unknown properties.
+          const r = entry.retry;
+          const cleanRetry: KeywordConfig['retry'] = {};
+          if (r.enabled !== undefined) cleanRetry.enabled = r.enabled;
+          if (r.maxRetries !== undefined) cleanRetry.maxRetries = r.maxRetries;
+          if (r.model !== undefined) cleanRetry.model = r.model;
+          if (r.prompt !== undefined) cleanRetry.prompt = r.prompt;
+          if (Object.keys(cleanRetry).length > 0) clean.retry = cleanRetry;
+        }
         if (entry.builtin) clean.builtin = true;
         // contextFilterEnabled is deprecated (context eval is always active);
         // accepted on input for backward compat but no longer persisted.

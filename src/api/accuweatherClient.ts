@@ -318,7 +318,7 @@ class AccuWeatherClient {
     // Extract location from prompt, or fall back to default
     const locationInput = this.extractLocation(prompt) || config.getAccuWeatherDefaultLocation();
     if (!locationInput) {
-      return { success: false, error: 'No location specified and no default location configured. Please provide a location or set a default in the configurator.' };
+      return { success: false, error: 'No location specified and no default location configured. Please provide a location or set a default in the configurator.', errorCode: 'ACCUWEATHER_NO_LOCATION' };
     }
 
     logger.logRequest(requester, `AccuWeather ${mode}: resolving location "${locationInput}"`);
@@ -326,7 +326,7 @@ class AccuWeatherClient {
     // Resolve to AccuWeather location
     const location = await this.resolveLocation(locationInput);
     if (!location) {
-      return { success: false, error: `Could not find location "${locationInput}". Try a different city name or zip code.` };
+      return { success: false, error: `Could not find location "${locationInput}". Try a different city name or zip code.`, errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION' };
     }
 
     const locationName = `${location.LocalizedName}, ${location.AdministrativeArea.ID}, ${location.Country.LocalizedName}`;
