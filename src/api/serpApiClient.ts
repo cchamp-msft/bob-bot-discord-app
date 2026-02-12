@@ -57,6 +57,10 @@ interface SerpApiAIOverview {
   references?: SerpApiAIOverviewReference[];
   /** Token to fetch full AI Overview via the google_ai_overview engine. Expires within 1 minute. */
   page_token?: string;
+  /** Error message returned by SerpAPI when the AI Overview could not be generated. */
+  error?: string;
+  /** Debug link to the SerpAPI result page (useful for diagnosing overview failures). */
+  serpapi_link?: string;
 }
 
 interface SerpApiSearchResponse {
@@ -229,8 +233,13 @@ class SerpApiClient {
 
     // If we only have the header line, no AI Overview was found
     if (parts.length <= 1) {
-      parts.push(`⚠️ Google did not return an AI Overview for this query.`);
+      if (data.ai_overview?.error) {
+        parts.push(`⚠️ Google AI Overview returned an error: ${data.ai_overview.error}`);
+      } else {
+        parts.push(`⚠️ Google did not return an AI Overview for this query.`);
+      }
       parts.push(`This can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.`);
+      parts.push(`AI Overview availability is locale-dependent — ensure **SERPAPI_HL** and **SERPAPI_GL** are set (e.g. \`en\`/\`us\`).`);
       parts.push(`💡 *Tip: Try rephrasing your query or using the **search** keyword for full results.*`);
     }
 

@@ -408,6 +408,30 @@ describe('SerpApiClient', () => {
       expect(text).toContain('Some overview text.');
       expect(text).not.toContain('📚 **Sources:**');
     });
+
+    it('should surface ai_overview.error in fallback message', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        ai_overview: {
+          error: 'Content policy restriction',
+        },
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'restricted query');
+
+      expect(text).toContain('⚠️ Google AI Overview returned an error: Content policy restriction');
+      expect(text).toContain('SERPAPI_HL');
+      expect(text).not.toContain('🤖 **Google AI Overview:**');
+    });
+
+    it('should show generic fallback with locale guidance when no overview and no error', () => {
+      const text = serpApiClient.formatAIOverviewOnly(minimalSearchResponse as any, 'obscure');
+
+      expect(text).toContain('⚠️ Google did not return an AI Overview');
+      expect(text).toContain('SERPAPI_HL');
+      expect(text).toContain('SERPAPI_GL');
+      expect(text).toContain('search');
+    });
   });
 
   // ── handleRequest with "second opinion" keyword ───────────────
@@ -441,6 +465,73 @@ describe('SerpApiClient', () => {
       expect(result.success).toBe(true);
       expect(result.data!.text).toContain('🔎 **Search results for:**');
       expect(result.data!.text).toContain('📄 **Top Results:**');
+    });
+
+    it('should merge full AI Overview via page_token and format as AI-Overview-only for "second opinion"', async () => {
+      const searchDataWithToken = {
+        ...minimalSearchResponse,
+        ai_overview: {
+          text_blocks: [{ snippet: 'Inline overview' }],
+          page_token: 'token_for_second_opinion',
+        },
+      };
+      const fullOverview = {
+        ai_overview: {
+          text_blocks: [
+            { type: 'paragraph', snippet: 'Full AI Overview from follow-up.' },
+          ],
+          references: [{ title: 'Source', link: 'https://source.example.com' }],
+        },
+      };
+      mockInstance.get
+        .mockResolvedValueOnce({ status: 200, data: searchDataWithToken })
+        .mockResolvedValueOnce({ status: 200, data: fullOverview });
+
+      const result = await serpApiClient.handleRequest('test topic', 'second opinion');
+
+      expect(mockInstance.get).toHaveBeenCalledTimes(2);
+      expect(mockInstance.get).toHaveBeenNthCalledWith(2, '/search', expect.objectContaining({
+        params: expect.objectContaining({ engine: 'google_ai_overview', page_token: 'token_for_second_opinion' }),
+      }));
+      expect(result.success).toBe(true);
+      expect(result.data!.text).toContain('🔎 **Second opinion for:**');
+      expect(result.data!.text).toContain('Full AI Overview from follow-up.');
+      expect(result.data!.text).toContain('📚 **Sources:**');
+      expect(result.data!.text).toContain('[Source](https://source.example.com)');
+      // Should NOT contain organic/answer-box content
+      expect(result.data!.text).not.toContain('📄 **Top Results:**');
+    });
+
+    it('should show AI Overview error message when ai_overview.error is present', async () => {
+      const errorOverviewResponse = {
+        search_metadata: { status: 'Success' },
+        search_parameters: { q: 'restricted topic' },
+        ai_overview: {
+          error: 'AI Overview is not available for this query.',
+        },
+        organic_results: [
+          { position: 1, title: 'Result', link: 'https://example.com', snippet: 'A snippet.' },
+        ],
+      };
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: errorOverviewResponse });
+
+      const result = await serpApiClient.handleRequest('restricted topic', 'second opinion');
+
+      expect(result.success).toBe(true);
+      expect(result.data!.text).toContain('⚠️ Google AI Overview returned an error');
+      expect(result.data!.text).toContain('AI Overview is not available for this query.');
+      expect(result.data!.text).toContain('SERPAPI_HL');
+      expect(result.data!.text).toContain('SERPAPI_GL');
+    });
+
+    it('should include locale guidance in fallback when no AI Overview is available', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
+
+      const result = await serpApiClient.handleRequest('obscure topic', 'second opinion');
+
+      expect(result.success).toBe(true);
+      expect(result.data!.text).toContain('SERPAPI_HL');
+      expect(result.data!.text).toContain('SERPAPI_GL');
     });
   });
 

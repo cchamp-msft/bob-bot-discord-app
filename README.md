@@ -37,7 +37,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **Global final-pass model** — configurable Ollama model for all final-pass refinements
 - ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
 - ✅ **NFL commands** — `nfl scores` (current or date-specific) and `nfl news` (with optional keyword filter)
-- ✅ **Web search** — Google Search via SerpAPI with AI Overview support; `search` returns full results, `second opinion` returns only Google's AI Overview
+- ✅ **Web search** — Google Search via SerpAPI with AI Overview support; `search` returns full results, `second opinion` returns only Google's AI Overview (AI Overview availability is locale-dependent — configure `SERPAPI_HL`/`SERPAPI_GL`, defaults: `en`/`us`)
 
 ## Project Structure
 
