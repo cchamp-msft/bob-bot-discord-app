@@ -546,6 +546,7 @@ describe('MessageHandler findKeyword (start-anchored)', () => {
   const weatherKw = { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Weather' };
   const weatherReportKw = { keyword: 'weather report', api: 'accuweather', timeout: 360, description: 'Weather report', finalOllamaPass: true };
   const generateKw = { keyword: 'generate', api: 'comfyui', timeout: 600, description: 'Generate image' };
+  const helpKw = { keyword: 'help', api: 'ollama', timeout: 30, description: 'Help', builtin: true, allowEmptyContent: true };
   const chatKw = { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat' };
 
   afterEach(() => jest.restoreAllMocks());
@@ -623,28 +624,40 @@ describe('MessageHandler findKeyword (start-anchored)', () => {
     const result = (messageHandler as any).findKeyword('weather 45403');
     expect(result).toBe(weatherKw);
   });
+
+  it('should match standalone help keyword', () => {
+    setKeywords([helpKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('help');
+    expect(result).toBe(helpKw);
+  });
+
+  it('should NOT match help keyword when followed by more text', () => {
+    setKeywords([helpKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('help me with this');
+    expect(result).toBeUndefined();
+  });
 });
 
-describe('MessageHandler buildHelpResponse', () => {
+describe('MessageHandler buildHelpPromptForModel', () => {
   function setKeywords(keywords: any[]) {
     (config.getKeywords as jest.Mock).mockReturnValue(keywords);
   }
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('should list enabled non-builtin keywords with descriptions', () => {
+  it('should include enabled capabilities and their descriptions', () => {
     setKeywords([
       { keyword: 'help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
       { keyword: 'generate', api: 'comfyui', timeout: 600, description: 'Generate image using ComfyUI' },
       { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
     ]);
 
-    const result = (messageHandler as any).buildHelpResponse();
-    expect(result).toContain('**generate**');
-    expect(result).toContain('Generate image using ComfyUI');
-    expect(result).toContain('**weather**');
-    expect(result).toContain('Get weather');
-    expect(result).not.toContain('**help**');
+    const result = (messageHandler as any).buildHelpPromptForModel();
+    expect(result).toContain('The user asked for help.');
+    expect(result).toContain('Available keyword capabilities:');
+    expect(result).toContain('- generate: Generate image using ComfyUI');
+    expect(result).toContain('- weather: Get weather');
+    expect(result).not.toContain('- help:');
   });
 
   it('should exclude disabled keywords', () => {
@@ -654,27 +667,103 @@ describe('MessageHandler buildHelpResponse', () => {
       { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
     ]);
 
-    const result = (messageHandler as any).buildHelpResponse();
-    expect(result).not.toContain('**generate**');
-    expect(result).toContain('**weather**');
+    const result = (messageHandler as any).buildHelpPromptForModel();
+    expect(result).not.toContain('- generate:');
+    expect(result).toContain('- weather:');
   });
 
-  it('should return message when no keywords are configured', () => {
+  it('should include fallback line when no non-help keywords are configured', () => {
     setKeywords([
       { keyword: 'help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
     ]);
 
-    const result = (messageHandler as any).buildHelpResponse();
-    expect(result).toContain('No keywords are currently configured');
+    const result = (messageHandler as any).buildHelpPromptForModel();
+    expect(result).toContain('No external keyword abilities are currently configured');
+  });
+});
+
+describe('MessageHandler help keyword handling (model path)', () => {
+  function createMentionedMessage(content: string): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username: 'testuser' },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      guild: { name: 'TestGuild' },
+      mentions: { has: jest.fn(() => true) },
+      reference: null,
+      content,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  const helpKw = {
+    keyword: 'help',
+    api: 'ollama' as const,
+    timeout: 30,
+    description: 'Show help',
+    builtin: true,
+    allowEmptyContent: true,
+  };
+  const generateKw = { keyword: 'generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getKeywords as jest.Mock).mockReturnValue([helpKw, generateKw]);
+    (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
+      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
   });
 
-  it('should include Available Keywords header', () => {
-    setKeywords([
-      { keyword: 'ask', api: 'ollama', timeout: 300, description: 'Ask a question' },
-    ]);
+  it('should route exact help through normal ollama processing path', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValue({
+      success: true,
+      data: { text: 'Here is what I can help with.' },
+    });
 
-    const result = (messageHandler as any).buildHelpResponse();
-    expect(result).toContain('Available Keywords');
+    const msg = createMentionedMessage('<@bot-123> help');
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).toHaveBeenNthCalledWith(1, '⏳ Processing your request...');
+    const processingMessage = await msg.reply.mock.results[0].value;
+    expect(processingMessage.edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Here is what I can help with.',
+      })
+    );
+    expect(assemblePrompt as jest.MockedFunction<typeof assemblePrompt>).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userMessage: expect.stringContaining('The user asked for help.'),
+      })
+    );
+  });
+
+  it('should not treat "help me" as help keyword and should keep original content', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValue({
+      success: true,
+      data: { text: 'regular response' },
+    });
+
+    const msg = createMentionedMessage('<@bot-123> help me find square roots');
+    await messageHandler.handleMessage(msg);
+
+    expect(assemblePrompt as jest.MockedFunction<typeof assemblePrompt>).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userMessage: 'help me find square roots',
+      })
+    );
   });
 });
 
@@ -702,22 +791,31 @@ describe('MessageHandler built-in help keyword handling', () => {
     };
   }
 
-  const helpKw = { keyword: 'help', api: 'ollama' as const, timeout: 30, description: 'Show help', builtin: true };
+  const helpKw = { keyword: 'help', api: 'ollama' as const, timeout: 30, description: 'Show help', builtin: true, allowEmptyContent: true };
   const generateKw = { keyword: 'generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('should respond with help text when built-in help keyword is enabled', async () => {
+  it('should not use legacy static help reply behavior', async () => {
     (config.getKeywords as jest.Mock).mockReturnValue([helpKw, generateKw]);
+
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValue({
+      success: true,
+      data: { text: 'I can help you!' },
+    });
+
+    (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
+      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
 
     const msg = createMentionedMessage('<@bot-123> help');
     await messageHandler.handleMessage(msg);
 
-    // Should reply with help text (not go through the normal processing flow)
-    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Available Keywords'));
-    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('**generate**'));
+    expect(msg.reply).toHaveBeenCalledWith('⏳ Processing your request...');
   });
 
   it('should not trigger help when built-in help is disabled', async () => {
@@ -739,7 +837,7 @@ describe('MessageHandler built-in help keyword handling', () => {
     await messageHandler.handleMessage(msg);
 
     // Should go through normal chat flow, not the help handler
-    // The first reply call is the processing message, not the help text
+    // The first reply call is the processing message
     expect(msg.reply).toHaveBeenCalledWith('⏳ Processing your request...');
   });
 });

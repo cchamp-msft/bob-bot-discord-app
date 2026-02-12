@@ -116,19 +116,6 @@ class MessageHandler {
       logger.log('success', 'system', `KEYWORD: No first-word match, deferring to two-stage evaluation`);
     }
 
-    // Built-in help keyword: respond immediately with keyword list
-    if (keywordConfig?.builtin && keywordConfig.keyword.toLowerCase() === 'help') {
-      logger.logRequest(message.author.username, `[help] ${content}`);
-      const helpText = this.buildHelpResponse();
-      let processingMessage: Message;
-      try {
-        processingMessage = await message.reply(helpText);
-      } catch (error) {
-        logger.logError(message.author.username, `Failed to send help response: ${error}`);
-      }
-      return;
-    }
-
     // Track whether a non-Ollama API keyword was matched (determines execution path)
     const apiKeywordMatched = keywordMatched && keywordConfig!.api !== 'ollama';
 
@@ -169,6 +156,13 @@ class MessageHandler {
         );
         return;
       }
+    }
+
+    // Route standalone "help" through the normal model path with explicit guidance.
+    // This avoids static hardcoded help output while still giving the model
+    // concrete topics/usage hints to summarize for the user.
+    if (keywordMatched && keywordConfig.keyword.toLowerCase() === 'help') {
+      content = this.buildHelpPromptForModel();
     }
 
     // Collect conversation context — needed for any path that may call Ollama
@@ -665,6 +659,13 @@ class MessageHandler {
     return sorted.find((k) => {
       const keyword = k.keyword.toLowerCase().trim();
       if (!keyword) return false;
+
+      // Built-in help is intentionally standalone-only.
+      // "help" should match, but "help me ..." should not.
+      if (keyword === 'help') {
+        return lowerContent.trim() === 'help';
+      }
+
       const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       // Anchor to START of message + word boundary after keyword
       const pattern = new RegExp(`^${escaped}\\b`, 'i');
@@ -851,17 +852,26 @@ class MessageHandler {
   }
 
   /**
-   * Build the help response text listing all enabled keywords and their descriptions.
-   * Built-in keywords (like help itself) are excluded from the list.
+   * Build a model-facing help prompt that asks Ollama to explain what the bot
+   * can do and how to invoke each capability.
    */
-  buildHelpResponse(): string {
-    const keywords = config.getKeywords().filter(k => k.enabled !== false && !k.builtin);
-    if (keywords.length === 0) {
-      return 'No keywords are currently configured.';
-    }
+  buildHelpPromptForModel(): string {
+    const keywords = config
+      .getKeywords()
+      .filter(k => k.enabled !== false && k.keyword.toLowerCase() !== 'help');
 
-    const lines = keywords.map(k => `**${k.keyword}** — ${k.description}`);
-    return `📖 **Available Keywords:**\n${lines.join('\n')}`;
+    const capabilityLines = keywords.length > 0
+      ? keywords.map(k => `- ${k.keyword}: ${k.description}`).join('\n')
+      : '- No external keyword abilities are currently configured.';
+
+    return [
+      'The user asked for help.',
+      'Explain what topics/capabilities this bot supports and how to use them.',
+      'Keep the response concise and practical with examples where useful.',
+      '',
+      'Available keyword capabilities:',
+      capabilityLines,
+    ].join('\n');
   }
 
   /**
