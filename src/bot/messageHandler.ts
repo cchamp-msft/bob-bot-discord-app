@@ -701,6 +701,13 @@ class MessageHandler {
         `TWO-STAGE: Context after eval: ${filteredHistory.length} messages (system messages excluded)`);
     }
 
+    // Append the triggering message to context so the model knows who is asking.
+    // This is done after context evaluation so it is never filtered out.
+    filteredHistory = [
+      ...filteredHistory,
+      { role: 'user' as const, content: `${requester}: ${content}` },
+    ];
+
     // Build the XML-tagged prompt with abilities context
     const assembled = assemblePrompt({
       userMessage: content,

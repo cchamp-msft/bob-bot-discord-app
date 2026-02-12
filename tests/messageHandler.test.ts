@@ -1169,12 +1169,13 @@ describe('MessageHandler two-stage evaluation', () => {
     // classifyIntent called once — on Ollama's response only (not on user content)
     expect(mockClassifyIntent).toHaveBeenCalledTimes(1);
 
-    // Should have called executeRoutedRequest with the weather keyword
+    // Should have called executeRoutedRequest with the weather keyword.
+    // filteredHistory is empty (no prior context) but the trigger message is appended.
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
       weatherKeyword,
       'is it going to rain in Seattle',
       'testuser',
-      undefined
+      [{ role: 'user', content: 'testuser: is it going to rain in Seattle' }]
     );
   });
 

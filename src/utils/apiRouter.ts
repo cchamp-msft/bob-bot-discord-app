@@ -308,6 +308,12 @@ export async function executeRoutedRequest(
         `API-ROUTING: Context-eval applied for final pass (${preFilterCount}→${filteredHistory?.length ?? 0} messages)`);
     }
 
+    // Append the triggering message to context so the model knows who is asking.
+    filteredHistory = [
+      ...(filteredHistory ?? []),
+      { role: 'user' as const, content: `${requester}: ${content}` },
+    ];
+
     // Build final prompt — format API data as <external_data> using XML template
     let externalDataBlock: string;
     if (keywordConfig.api === 'accuweather') {
