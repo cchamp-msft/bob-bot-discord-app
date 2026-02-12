@@ -232,11 +232,16 @@ class MessageHandler {
     try {
       if (apiKeywordMatched) {
         // ── API keyword path: execute API with optional final Ollama pass ──
+        // Append the triggering message so the model always knows who is asking.
+        const historyWithTrigger: ChatMessage[] = [
+          ...conversationHistory,
+          { role: 'user' as const, content: `${message.author.username}: ${content}`, contextSource: 'trigger' as const },
+        ];
         const routedResult = await executeRoutedRequest(
           keywordConfig,
           content,
           message.author.username,
-          conversationHistory.length > 0 ? conversationHistory : undefined
+          historyWithTrigger
         );
 
         await this.dispatchResponse(
@@ -705,7 +710,7 @@ class MessageHandler {
     // This is done after context evaluation so it is never filtered out.
     filteredHistory = [
       ...filteredHistory,
-      { role: 'user' as const, content: `${requester}: ${content}` },
+      { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const },
     ];
 
     // Build the XML-tagged prompt with abilities context

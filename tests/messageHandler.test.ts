@@ -1008,7 +1008,7 @@ describe('MessageHandler first-word keyword routing', () => {
       weatherKw,
       '45403',
       'testuser',
-      undefined
+      [{ role: 'user', content: 'testuser: 45403', contextSource: 'trigger' }]
     );
   });
 
@@ -1026,7 +1026,7 @@ describe('MessageHandler first-word keyword routing', () => {
       weatherReportKw,
       '28465',
       'testuser',
-      undefined
+      [{ role: 'user', content: 'testuser: 28465', contextSource: 'trigger' }]
     );
   });
 
@@ -1175,7 +1175,7 @@ describe('MessageHandler two-stage evaluation', () => {
       weatherKeyword,
       'is it going to rain in Seattle',
       'testuser',
-      [{ role: 'user', content: 'testuser: is it going to rain in Seattle' }]
+      [{ role: 'user', content: 'testuser: is it going to rain in Seattle', contextSource: 'trigger' }]
     );
   });
 
@@ -1271,6 +1271,140 @@ describe('MessageHandler two-stage evaluation', () => {
       undefined,
       { includeSystemPrompt: false }
     );
+  });
+});
+
+describe('MessageHandler trigger message attribution', () => {
+  const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
+  const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+  const mockParseFirstLineKeyword = parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>;
+
+  function createMentionedMessage(content: string, username = 'testuser'): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      guild: { name: 'TestGuild' },
+      mentions: { has: jest.fn(() => true) },
+      reference: null,
+      content,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    mockParseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+  });
+
+  it('should append trigger message with contextSource for direct keyword path', async () => {
+    const weatherKw = { keyword: 'weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
+    (config.getKeywords as jest.Mock).mockReturnValue([weatherKw]);
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Sunny' } },
+      finalApi: 'accuweather',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> weather Seattle');
+    await messageHandler.handleMessage(msg);
+
+    // Should have trigger message with contextSource: 'trigger'
+    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
+      weatherKw,
+      'Seattle',
+      'testuser',
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: 'testuser: Seattle',
+          contextSource: 'trigger',
+        }),
+      ])
+    );
+  });
+
+  it('should not duplicate trigger message when two-stage path routes to API with finalOllamaPass', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+
+    const weatherReportKw = {
+      keyword: 'weather report',
+      api: 'accuweather' as const,
+      timeout: 120,
+      description: 'AI weather report',
+      finalOllamaPass: true,
+    };
+    (config.getKeywords as jest.Mock).mockReturnValue([]);
+
+    // Stage 1: Ollama response
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'weather report\nLet me check the weather for you.' },
+    });
+
+    // parseFirstLineKeyword matches "weather report"
+    mockParseFirstLineKeyword.mockReturnValueOnce({
+      keywordConfig: weatherReportKw,
+      parsedLine: 'weather report',
+      matched: true,
+    });
+
+    // executeRoutedRequest call
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Beautiful day in Seattle!' } },
+      finalApi: 'ollama',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> is it going to rain in Seattle');
+    await messageHandler.handleMessage(msg);
+
+    // Verify executeRoutedRequest receives history with trigger message
+    const callArgs = mockExecuteRoutedRequest.mock.calls[0];
+    const history = callArgs[3] as Array<{ role: string; content: string; contextSource?: string }>;
+
+    // The trigger message should appear exactly ONCE
+    const triggerMessages = history.filter(m => m.contextSource === 'trigger');
+    expect(triggerMessages).toHaveLength(1);
+    expect(triggerMessages[0]).toEqual({
+      role: 'user',
+      content: 'testuser: is it going to rain in Seattle',
+      contextSource: 'trigger',
+    });
+  });
+
+  it('should properly form trigger message when content has special characters', async () => {
+    const weatherKw = { keyword: 'weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
+    (config.getKeywords as jest.Mock).mockReturnValue([weatherKw]);
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Sunny' } },
+      finalApi: 'accuweather',
+      stages: [],
+    });
+
+    const specialContent = 'São Paulo <script>alert("xss")</script> & "quotes" \'apostrophes\'';
+    const msg = createMentionedMessage(`<@bot-123> weather ${specialContent}`);
+    await messageHandler.handleMessage(msg);
+
+    const callArgs = mockExecuteRoutedRequest.mock.calls[0];
+    const history = callArgs[3] as Array<{ role: string; content: string; contextSource?: string }>;
+    const triggerMsg = history.find(m => m.contextSource === 'trigger');
+
+    expect(triggerMsg).toBeDefined();
+    expect(triggerMsg!.content).toBe(`testuser: ${specialContent}`);
   });
 });
 

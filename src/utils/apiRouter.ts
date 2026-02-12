@@ -309,10 +309,15 @@ export async function executeRoutedRequest(
     }
 
     // Append the triggering message to context so the model knows who is asking.
-    filteredHistory = [
-      ...(filteredHistory ?? []),
-      { role: 'user' as const, content: `${requester}: ${content}` },
-    ];
+    // Guard against duplication: the caller (messageHandler) may have already
+    // appended the trigger message before passing history into this function.
+    const lastMsg = filteredHistory?.[filteredHistory.length - 1];
+    if (lastMsg?.contextSource !== 'trigger') {
+      filteredHistory = [
+        ...(filteredHistory ?? []),
+        { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const },
+      ];
+    }
 
     // Build final prompt — format API data as <external_data> using XML template
     let externalDataBlock: string;

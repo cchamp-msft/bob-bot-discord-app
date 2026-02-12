@@ -3,7 +3,7 @@ export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
   /** How this message was sourced. */
-  contextSource?: 'reply' | 'channel' | 'thread' | 'dm';
+  contextSource?: 'reply' | 'channel' | 'thread' | 'dm' | 'trigger';
   /** Discord message snowflake — used for deduplication when merging contexts. */
   discordMessageId?: string;
   /** Message creation timestamp (ms) — used for stable chronological merge. */
