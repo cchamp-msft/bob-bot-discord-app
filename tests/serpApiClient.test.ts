@@ -704,6 +704,266 @@ describe('SerpApiClient', () => {
       const text = serpApiClient.formatSearchText(data as any, 'test');
       expect(text).not.toContain('🤖 **AI Overview:**');
     });
+
+    it('should extract snippets from expandable sections', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        ai_overview: {
+          text_blocks: [
+            { type: 'paragraph', snippet: 'Top level summary.' },
+            {
+              type: 'expandable',
+              title: 'Detailed section',
+              text_blocks: [
+                { type: 'paragraph', snippet: 'Expanded detail paragraph.' },
+                {
+                  type: 'list',
+                  list: [
+                    { snippet: 'Expanded list item 1' },
+                    { snippet: 'Expanded list item 2' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        organic_results: [],
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+      expect(text).toContain('Top level summary.');
+      expect(text).toContain('Expanded detail paragraph.');
+      expect(text).toContain('Expanded list item 1');
+    });
+
+    it('should extract snippets from table blocks using detailed array', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        ai_overview: {
+          text_blocks: [
+            {
+              type: 'table',
+              table: [
+                ['Feature', 'Description'],
+                ['Speed', 'Very fast'],
+                ['Size', 'Compact'],
+              ],
+              detailed: [
+                [{ snippet: 'Feature' }, { snippet: 'Description' }],
+                [{ snippet: 'Speed' }, { snippet: 'Very fast' }],
+                [{ snippet: 'Size' }, { snippet: 'Compact' }],
+              ],
+            },
+          ],
+        },
+        organic_results: [],
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+      expect(text).toContain('Speed — Very fast');
+      expect(text).toContain('Size — Compact');
+      // Header row should be skipped
+      expect(text).not.toContain('Feature — Description');
+    });
+
+    it('should extract snippets from raw table when detailed is absent', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        ai_overview: {
+          text_blocks: [
+            {
+              type: 'table',
+              table: [
+                ['Header1', 'Header2'],
+                ['CellA', 'CellB'],
+              ],
+            },
+          ],
+        },
+        organic_results: [],
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+      expect(text).toContain('CellA — CellB');
+    });
+
+    it('should extract snippets from comparison blocks', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        ai_overview: {
+          text_blocks: [
+            { type: 'paragraph', snippet: 'Comparing devices.' },
+            {
+              type: 'expandable',
+              title: 'Camera',
+              text_blocks: [
+                {
+                  type: 'comparison',
+                  product_labels: ['Phone A', 'Phone B'],
+                  comparison: [
+                    { feature: 'Resolution', values: ['12 MP', '48 MP'] },
+                    { feature: 'Zoom', values: ['2x', '5x'] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        organic_results: [],
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+      expect(text).toContain('Comparing devices.');
+      expect(text).toContain('Resolution: 12 MP vs 48 MP');
+      expect(text).toContain('Zoom: 2x vs 5x');
+    });
+
+    it('should extract snippets from nested lists within list items', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        ai_overview: {
+          text_blocks: [
+            {
+              type: 'list',
+              list: [
+                {
+                  snippet: 'Parent item',
+                  list: [
+                    { snippet: 'Nested child A' },
+                    { snippet: 'Nested child B' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        organic_results: [],
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+      expect(text).toContain('Parent item');
+      expect(text).toContain('Nested child A');
+      expect(text).toContain('Nested child B');
+    });
+
+    it('should not extract content from heading-only blocks beyond snippet', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        ai_overview: {
+          text_blocks: [
+            { type: 'heading', snippet: 'Section title' },
+            { type: 'paragraph', snippet: 'Body text.' },
+          ],
+        },
+        organic_results: [],
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+      expect(text).toContain('Section title');
+      expect(text).toContain('Body text.');
+    });
+  });
+
+  // ── Debug logging for SerpAPI ─────────────────────────────────
+
+  describe('SerpAPI debug logging', () => {
+    it('should log redacted request params via logDebugLazy', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
+      const { logger: mockLogger } = require('../src/utils/logger');
+
+      await serpApiClient.handleRequest('test query', 'search');
+
+      // logDebugLazy should have been called for request params
+      expect(mockLogger.logDebugLazy).toHaveBeenCalled();
+      // Verify the lazy builder produces the expected shape
+      const calls = mockLogger.logDebugLazy.mock.calls;
+      const requestCall = calls.find((c: any[]) => {
+        if (typeof c[1] === 'function') {
+          const output = c[1]();
+          return output.includes('REQUEST:') && output.includes('***');
+        }
+        return false;
+      });
+      expect(requestCall).toBeDefined();
+    });
+
+    it('should log response shape with ai_overview status', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
+      const { logger: mockLogger } = require('../src/utils/logger');
+
+      await serpApiClient.handleRequest('test query', 'search');
+
+      const calls = mockLogger.logDebugLazy.mock.calls;
+      const responseCall = calls.find((c: any[]) => {
+        if (typeof c[1] === 'function') {
+          const output = c[1]();
+          return output.includes('RESPONSE:');
+        }
+        return false;
+      });
+      expect(responseCall).toBeDefined();
+      // ai_overview with inline text_blocks should be reported
+      const output = responseCall![1]();
+      expect(output).toContain('inline(');
+    });
+
+    it('should log page_token follow-up request', async () => {
+      const searchDataWithToken = {
+        ...minimalSearchResponse,
+        ai_overview: {
+          text_blocks: [{ snippet: 'Inline' }],
+          page_token: 'follow_up_token_123',
+        },
+      };
+      const fullOverview = {
+        ai_overview: {
+          text_blocks: [{ type: 'paragraph', snippet: 'Full text.' }],
+          references: [],
+        },
+      };
+      mockInstance.get
+        .mockResolvedValueOnce({ status: 200, data: searchDataWithToken })
+        .mockResolvedValueOnce({ status: 200, data: fullOverview });
+      const { logger: mockLogger } = require('../src/utils/logger');
+
+      await serpApiClient.handleRequest('test', 'second opinion');
+
+      // Should have follow-up debug log
+      expect(mockLogger.logDebug).toHaveBeenCalledWith(
+        'serpapi',
+        expect.stringContaining('page_token present'),
+      );
+      // Should have AIO follow-up request log via logDebugLazy
+      const calls = mockLogger.logDebugLazy.mock.calls;
+      const followUpCall = calls.find((c: any[]) => {
+        if (typeof c[1] === 'function') {
+          const output = c[1]();
+          return output.includes('AIO-FOLLOWUP');
+        }
+        return false;
+      });
+      expect(followUpCall).toBeDefined();
+    });
+
+    it('should log api_key as redacted *** in request output', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
+      const { logger: mockLogger } = require('../src/utils/logger');
+
+      await serpApiClient.handleRequest('test', 'search');
+
+      const calls = mockLogger.logDebugLazy.mock.calls;
+      const requestCall = calls.find((c: any[]) => {
+        if (typeof c[1] === 'function') {
+          const output = c[1]();
+          return output.includes('REQUEST:');
+        }
+        return false;
+      });
+      expect(requestCall).toBeDefined();
+      const output = requestCall![1]();
+      expect(output).toContain('***');
+      expect(output).not.toContain('test-serpapi-key');
+    });
   });
 
   // ── refresh ───────────────────────────────────────────────────

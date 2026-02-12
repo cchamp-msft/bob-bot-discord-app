@@ -116,9 +116,19 @@ class SerpApiClient {
       logger.log('success', 'system', `SERPAPI: Searching "${query}" (keyword: ${keyword})`);
       const data = await this.googleSearch(query, apiKey, signal);
 
+      // Log response shape for debugging AIO availability issues
+      logger.logDebugLazy('serpapi', () => {
+        const aio = data.ai_overview;
+        const aioStatus = aio
+          ? (aio.page_token ? 'page_token' : aio.error ? `error: ${aio.error}` : aio.text_blocks?.length ? `inline(${aio.text_blocks.length} blocks)` : 'empty')
+          : 'absent';
+        return `RESPONSE: status=${data.search_metadata?.status}, ai_overview=${aioStatus}, organics=${data.organic_results?.length ?? 0}`;
+      });
+
       // If the initial search includes a page_token for AI Overview,
       // attempt the follow-up call and merge the full overview data.
       if (data.ai_overview?.page_token) {
+        logger.logDebug('serpapi', `AI Overview requires follow-up (page_token present)`);
         const fullOverview = await this.fetchAIOverview(data.ai_overview.page_token, apiKey, signal);
         if (fullOverview) {
           data.ai_overview = fullOverview;
@@ -157,12 +167,21 @@ class SerpApiClient {
 
     // Inject locale params to improve AI Overview availability.
     // AI Overview is mainly returned for hl=en with limited gl values.
+    // NOTE: `location` is supported by the Google Search API but NOT by
+    // the Google AI Overview API. We include it here on the initial search
+    // to help Google determine locale context for AIO eligibility.
     const hl = config.getSerpApiHl();
     const gl = config.getSerpApiGl();
     const location = config.getSerpApiLocation();
     if (hl) params.hl = hl;
     if (gl) params.gl = gl;
     if (location) params.location = location;
+
+    // Log outbound request shape (redacted: api_key replaced)
+    logger.logDebugLazy('serpapi', () => {
+      const safeParams = { ...params, api_key: '***' };
+      return `REQUEST: ${JSON.stringify(safeParams)}`;
+    });
 
     const response = await this.client.get('/search', {
       params,
@@ -181,17 +200,34 @@ class SerpApiClient {
    */
   private async fetchAIOverview(pageToken: string, apiKey: string, signal?: AbortSignal): Promise<SerpApiAIOverview | null> {
     try {
+      // The google_ai_overview engine only accepts page_token + api_key.
+      // It does NOT support hl, gl, or location — those are inherited from
+      // the original Google Search that produced the page_token.
+      const params = {
+        engine: 'google_ai_overview' as const,
+        page_token: pageToken,
+        api_key: apiKey,
+      };
+
+      logger.logDebugLazy('serpapi', () => {
+        return `AIO-FOLLOWUP REQUEST: engine=${params.engine}, page_token=${pageToken.substring(0, 24)}...`;
+      });
+
       const response = await this.client.get('/search', {
-        params: {
-          engine: 'google_ai_overview',
-          page_token: pageToken,
-          api_key: apiKey,
-        },
+        params,
         timeout: 15_000, // Shorter timeout — token expires quickly
         signal,
       });
 
-      return response.data?.ai_overview ?? null;
+      const overview: SerpApiAIOverview | undefined = response.data?.ai_overview;
+
+      logger.logDebugLazy('serpapi', () => {
+        if (!overview) return 'AIO-FOLLOWUP RESPONSE: ai_overview absent';
+        if (overview.error) return `AIO-FOLLOWUP RESPONSE: error=${overview.error}`;
+        return `AIO-FOLLOWUP RESPONSE: text_blocks=${overview.text_blocks?.length ?? 0}, refs=${overview.references?.length ?? 0}`;
+      });
+
+      return overview ?? null;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.logWarn('serpapi', `AI Overview fetch failed (non-fatal): ${msg}`);
@@ -377,7 +413,8 @@ class SerpApiClient {
 
   /**
    * Recursively extract snippet text from AI Overview text_blocks.
-   * Limits output to maxSnippets to keep context manageable.
+   * Handles all known block types: paragraph, heading, list, expandable,
+   * table, and comparison. Limits output to maxSnippets.
    */
   private extractAIOverviewSnippets(
     blocks: SerpApiAIOverviewTextBlock[],
@@ -385,24 +422,62 @@ class SerpApiClient {
   ): string[] {
     const snippets: string[] = [];
 
+    const push = (text: string): boolean => {
+      if (snippets.length >= maxSnippets) return false;
+      snippets.push(text);
+      return true;
+    };
+
     const walk = (items: SerpApiAIOverviewTextBlock[]): void => {
       for (const block of items) {
         if (snippets.length >= maxSnippets) return;
 
+        // Direct snippet (paragraph, heading, etc.)
         if (block.snippet) {
-          snippets.push(block.snippet);
+          push(block.snippet);
         }
 
         // Recurse into lists
         if (block.list) {
           for (const item of block.list) {
             if (snippets.length >= maxSnippets) return;
-            if (item.snippet) snippets.push(item.snippet);
+            if (item.snippet) push(item.snippet);
+            // Nested lists within list items
+            if ((item as any).list) {
+              for (const nested of (item as any).list) {
+                if (snippets.length >= maxSnippets) return;
+                if (nested.snippet) push(nested.snippet);
+              }
+            }
             if (item.text_blocks) walk(item.text_blocks);
           }
         }
 
-        // Recurse into nested text_blocks
+        // Table blocks — extract from the 'detailed' array or 'formatted'
+        if ((block as any).table && (block as any).detailed) {
+          for (const row of (block as any).detailed.slice(1)) { // skip header row
+            if (snippets.length >= maxSnippets) return;
+            const cells = row.map((c: any) => c.snippet || '').filter(Boolean);
+            if (cells.length) push(cells.join(' — '));
+          }
+        } else if ((block as any).table && Array.isArray((block as any).table)) {
+          // Fallback: raw table rows
+          for (const row of (block as any).table.slice(1)) {
+            if (snippets.length >= maxSnippets) return;
+            if (Array.isArray(row)) push(row.join(' — '));
+          }
+        }
+
+        // Comparison blocks within expandable sections
+        if ((block as any).comparison) {
+          for (const comp of (block as any).comparison) {
+            if (snippets.length >= maxSnippets) return;
+            const vals = comp.values?.join(' vs ') || '';
+            if (comp.feature && vals) push(`${comp.feature}: ${vals}`);
+          }
+        }
+
+        // Recurse into nested text_blocks (expandable sections, etc.)
         if (block.text_blocks) {
           walk(block.text_blocks);
         }
