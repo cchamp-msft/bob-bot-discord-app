@@ -12,28 +12,14 @@
       "api": "comfyui",
       "timeout": 600,
       "description": "Generate image using ComfyUI",
-      "abilityText": "Generate an image via ComfyUI.",
-      "abilityWhen": "User wants an image generated.",
-      "abilityInputs": {
-        "mode": "implicit",
-        "inferFrom": ["reply_target", "current_message"],
-        "validation": "Use the reply target text if present; otherwise use descriptive text from the current message. If no usable image prompt text can be inferred, ask the user what they want generated.",
-        "examples": ["generate a sunset over mountains", "(as a reply) generate"]
-      }
+      "abilityText": "Generate image using ComfyUI"
     },
     {
       "keyword": "imagine",
       "api": "comfyui",
       "timeout": 600,
       "description": "Generate image using ComfyUI",
-      "abilityText": "Generate an image via ComfyUI.",
-      "abilityWhen": "User wants an image generated.",
-      "abilityInputs": {
-        "mode": "implicit",
-        "inferFrom": ["reply_target", "current_message"],
-        "validation": "Use the reply target text if present; otherwise use descriptive text from the current message. If no usable image prompt text can be inferred, ask the user what they want generated.",
-        "examples": ["imagine a sunset over mountains", "(as a reply) imagine"]
-      }
+      "abilityText": "Generate image using ComfyUI"
     },
     {
       "keyword": "ask",
@@ -56,13 +42,19 @@
       "api": "accuweather",
       "timeout": 60,
       "description": "Get current weather conditions and 5-day forecast",
-      "abilityText": "Current conditions and 5-day forecast.",
-      "abilityWhen": "User asks about weather.",
+      "abilityText": "Get current weather conditions and 5-day forecast",
+      "abilityWhen": "User asks for weather/temperature/conditions/forecast for a specific place.",
       "abilityInputs": {
-        "mode": "explicit",
+        "mode": "mixed",
         "required": ["location"],
-        "validation": "Must be a city name or postal code. Use the configured default location if the user did not specify one.",
-        "examples": ["weather Dallas", "weather 90210"]
+        "optional": ["time window (implied by keyword: current vs forecast)"],
+        "inferFrom": ["current_message"],
+        "validation": "Location must be a specific place. Prefer City, State (US) or City, Region, Country (non-US) or a 5-digit US ZIP.",
+        "examples": [
+          "weather Seattle, WA",
+          "weather 90210",
+          "weather Paris, France"
+        ]
       },
       "contextFilterMaxDepth": 1
     },
@@ -71,12 +63,18 @@
       "api": "accuweather",
       "timeout": 60,
       "description": "Get 5-day weather forecast",
-      "abilityText": "5-day weather forecast.",
-      "abilityWhen": "User asks for a multi-day weather forecast.",
+      "abilityText": "Get 5-day weather forecast",
+      "abilityWhen": "User asks for the upcoming forecast for a specific place.",
       "abilityInputs": {
-        "mode": "explicit",
+        "mode": "mixed",
         "required": ["location"],
-        "validation": "Must be a city name or postal code. Use the configured default location if the user did not specify one."
+        "inferFrom": ["current_message"],
+        "validation": "Location must be specific. Prefer City, State (US) or City, Region, Country or 5-digit ZIP.",
+        "examples": [
+          "forecast for Austin, TX",
+          "forecast 10001",
+          "forecast Tokyo, Japan"
+        ]
       },
       "contextFilterMaxDepth": 1
     },
@@ -85,6 +83,19 @@
       "api": "accuweather",
       "timeout": 60,
       "description": "Get current weather conditions",
+      "abilityText": "Get current weather conditions",
+      "abilityWhen": "User asks what it is like right now (conditions/temperature) for a specific place.",
+      "abilityInputs": {
+        "mode": "mixed",
+        "required": ["location"],
+        "inferFrom": ["current_message"],
+        "validation": "Location must be specific. Prefer City, State (US) or City, Region, Country or 5-digit ZIP.",
+        "examples": [
+          "conditions Chicago, IL",
+          "conditions 60601",
+          "conditions London, UK"
+        ]
+      },
       "contextFilterMaxDepth": 1
     },
     {
@@ -93,6 +104,19 @@
       "timeout": 360,
       "description": "Get an AI-powered opinionated weather report",
       "finalOllamaPass": true,
+      "abilityText": "Get weather data and produce an AI-powered opinionated weather report",
+      "abilityWhen": "User asks for a narrative/opinionated weather report for a specific place.",
+      "abilityInputs": {
+        "mode": "mixed",
+        "required": ["location"],
+        "inferFrom": ["current_message"],
+        "validation": "Location must be specific. Prefer City, State (US) or City, Region, Country or 5-digit ZIP.",
+        "examples": [
+          "weather report for Denver, CO",
+          "weather report 94105",
+          "weather report Madrid, Spain"
+        ]
+      },
       "contextFilterMaxDepth": 1
     },
     {
@@ -100,16 +124,7 @@
       "api": "nfl",
       "timeout": 30,
       "description": "Get current NFL game scores. Optionally provide a date (YYYYMMDD or YYYY-MM-DD) to look up scores for a specific date; otherwise returns the most recent scoreboard.",
-      "abilityText": "Get current NFL game scores.",
-      "abilityWhen": "User asks about NFL scores or game results.",
-      "abilityInputs": {
-        "mode": "mixed",
-        "optional": ["date"],
-        "inferFrom": ["current_message"],
-        "validation": "Date must be YYYYMMDD or YYYY-MM-DD. If omitted, returns the most recent scoreboard.",
-        "examples": ["nfl scores", "nfl scores 20260208"]
-      },
-      "allowEmptyContent": true,
+      "abilityText": "Get current NFL game scores. Optionally provide a date (YYYYMMDD or YYYY-MM-DD) to look up scores for a specific date; otherwise returns the most recent scoreboard.",
       "finalOllamaPass": true
     },
     {
@@ -118,7 +133,6 @@
       "timeout": 30,
       "description": "Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl news chiefs').",
       "abilityText": "Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl news chiefs').",
-      "allowEmptyContent": true,
       "finalOllamaPass": true
     },
     {
@@ -134,15 +148,7 @@
       "api": "serpapi",
       "timeout": 60,
       "description": "Search the web for current information using Google",
-      "abilityText": "Search the web for current information via Google.",
-      "abilityWhen": "User needs current or factual information that you cannot confidently answer.",
-      "abilityInputs": {
-        "mode": "mixed",
-        "required": ["query"],
-        "inferFrom": ["current_message"],
-        "examples": ["search latest TypeScript release", "search who won the Super Bowl"]
-      },
-      "allowEmptyContent": true,
+      "abilityText": "Search the web for current information using Google",
       "finalOllamaPass": true,
       "contextFilterMaxDepth": 1
     },
@@ -151,8 +157,7 @@
       "api": "serpapi",
       "timeout": 60,
       "description": "Get a second opinion by searching the web using Google",
-      "abilityText": "Get a second opinion by searching the web using Google",
-      "allowEmptyContent": true
+      "abilityText": "Get a second opinion by searching the web using Google"
     }
   ]
 }

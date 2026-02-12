@@ -206,6 +206,36 @@ class ConfigWriter {
         if (entry.abilityText !== undefined && typeof entry.abilityText !== 'string') {
           throw new Error(`Keyword "${entry.keyword}" has invalid abilityText — must be a string`);
         }
+        if (entry.abilityWhen !== undefined && typeof entry.abilityWhen !== 'string') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid abilityWhen — must be a string`);
+        }
+        if (entry.abilityInputs !== undefined) {
+          const ai = entry.abilityInputs as unknown;
+          if (typeof ai !== 'object' || ai === null || Array.isArray(ai)) {
+            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs — must be an object`);
+          }
+          const mode = (ai as any).mode;
+          const validModes = ['implicit', 'explicit', 'mixed'];
+          if (!validModes.includes(mode)) {
+            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.mode "${mode}" — must be "implicit", "explicit", or "mixed"`);
+          }
+          const validateStringArray = (val: unknown) => Array.isArray(val) && val.every(s => typeof s === 'string');
+          if ((ai as any).required !== undefined && !validateStringArray((ai as any).required)) {
+            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.required — must be an array of strings`);
+          }
+          if ((ai as any).optional !== undefined && !validateStringArray((ai as any).optional)) {
+            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.optional — must be an array of strings`);
+          }
+          if ((ai as any).inferFrom !== undefined && !validateStringArray((ai as any).inferFrom)) {
+            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.inferFrom — must be an array of strings`);
+          }
+          if ((ai as any).validation !== undefined && typeof (ai as any).validation !== 'string') {
+            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.validation — must be a string`);
+          }
+          if ((ai as any).examples !== undefined && !validateStringArray((ai as any).examples)) {
+            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.examples — must be an array of strings`);
+          }
+        }
         if (entry.finalOllamaPass !== undefined && typeof entry.finalOllamaPass !== 'boolean') {
           throw new Error(`Keyword "${entry.keyword}" has invalid finalOllamaPass — must be a boolean`);
         }
@@ -214,6 +244,27 @@ class ConfigWriter {
         }
         if (entry.enabled !== undefined && typeof entry.enabled !== 'boolean') {
           throw new Error(`Keyword "${entry.keyword}" has invalid enabled — must be a boolean`);
+        }
+        if (entry.retry !== undefined) {
+          const r = entry.retry as unknown;
+          if (typeof r !== 'object' || r === null || Array.isArray(r)) {
+            throw new Error(`Keyword "${entry.keyword}" has invalid retry — must be an object`);
+          }
+          if ((r as any).enabled !== undefined && typeof (r as any).enabled !== 'boolean') {
+            throw new Error(`Keyword "${entry.keyword}" has invalid retry.enabled — must be a boolean`);
+          }
+          if ((r as any).maxRetries !== undefined) {
+            const mr = (r as any).maxRetries;
+            if (typeof mr !== 'number' || !Number.isInteger(mr) || mr < 0 || mr > 10) {
+              throw new Error(`Keyword "${entry.keyword}" has invalid retry.maxRetries — must be an integer between 0 and 10`);
+            }
+          }
+          if ((r as any).model !== undefined && typeof (r as any).model !== 'string') {
+            throw new Error(`Keyword "${entry.keyword}" has invalid retry.model — must be a string`);
+          }
+          if ((r as any).prompt !== undefined && typeof (r as any).prompt !== 'string') {
+            throw new Error(`Keyword "${entry.keyword}" has invalid retry.prompt — must be a string`);
+          }
         }
         if (entry.builtin !== undefined && typeof entry.builtin !== 'boolean') {
           throw new Error(`Keyword "${entry.keyword}" has invalid builtin — must be a boolean`);
@@ -257,10 +308,13 @@ class ConfigWriter {
           description: entry.description,
         };
         if (entry.abilityText) clean.abilityText = entry.abilityText;
+        if (entry.abilityWhen) clean.abilityWhen = entry.abilityWhen;
+        if (entry.abilityInputs) clean.abilityInputs = entry.abilityInputs;
         if (entry.finalOllamaPass) clean.finalOllamaPass = entry.finalOllamaPass;
         if (entry.allowEmptyContent) clean.allowEmptyContent = entry.allowEmptyContent;
         if (entry.accuweatherMode) clean.accuweatherMode = entry.accuweatherMode;
         if (entry.enabled === false) clean.enabled = false;
+        if (entry.retry) clean.retry = entry.retry;
         if (entry.builtin) clean.builtin = true;
         // contextFilterEnabled is deprecated (context eval is always active);
         // accepted on input for backward compat but no longer persisted.

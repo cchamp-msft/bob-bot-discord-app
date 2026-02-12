@@ -13,7 +13,7 @@ dotenv.config();
  * these from the raw file and replace process.env with the decoded
  * value so the rest of the app sees human-readable text.
  */
-const ESCAPED_ENV_KEYS = ['OLLAMA_SYSTEM_PROMPT', 'ERROR_MESSAGE', 'OLLAMA_FINAL_PASS_PROMPT'];
+const ESCAPED_ENV_KEYS = ['OLLAMA_SYSTEM_PROMPT', 'ERROR_MESSAGE', 'OLLAMA_FINAL_PASS_PROMPT', 'ABILITY_RETRY_PROMPT'];
 
 function normalizeEscapedEnvVars(): void {
   const envPath = path.join(__dirname, '../../.env');
@@ -62,6 +62,17 @@ export interface KeywordConfig {
   accuweatherMode?: 'current' | 'forecast' | 'full';
   /** Whether this keyword is currently enabled. Defaults to true when omitted. */
   enabled?: boolean;
+  /** Optional per-keyword retry override (global defaults exist). */
+  retry?: {
+    /** When set, overrides the global ABILITY_RETRY_ENABLED for this keyword. */
+    enabled?: boolean;
+    /** When set, overrides global ABILITY_RETRY_MAX_RETRIES for this keyword. */
+    maxRetries?: number;
+    /** Optional per-keyword model override (defaults to global retry model, then default Ollama model). */
+    model?: string;
+    /** Optional per-keyword prompt override (defaults to global retry prompt). */
+    prompt?: string;
+  };
   /** Whether this keyword is a built-in that cannot be edited or deleted — only toggled on/off. */
   builtin?: boolean;
   /**
@@ -148,6 +159,26 @@ class Config {
         }
         if (entry.enabled !== undefined && typeof entry.enabled !== 'boolean') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid enabled — must be a boolean`);
+        }
+        if (entry.retry !== undefined) {
+          const r = entry.retry;
+          if (typeof r !== 'object' || r === null || Array.isArray(r)) {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid retry — must be an object`);
+          }
+          if (r.enabled !== undefined && typeof r.enabled !== 'boolean') {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid retry.enabled — must be a boolean`);
+          }
+          if (r.maxRetries !== undefined) {
+            if (typeof r.maxRetries !== 'number' || !Number.isInteger(r.maxRetries) || r.maxRetries < 0 || r.maxRetries > 10) {
+              throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid retry.maxRetries — must be an integer between 0 and 10`);
+            }
+          }
+          if (r.model !== undefined && typeof r.model !== 'string') {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid retry.model — must be a string`);
+          }
+          if (r.prompt !== undefined && typeof r.prompt !== 'string') {
+            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid retry.prompt — must be a string`);
+          }
         }
         if (entry.builtin !== undefined && typeof entry.builtin !== 'boolean') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid builtin — must be a boolean`);
@@ -312,6 +343,45 @@ class Config {
     const val = process.env.OLLAMA_FINAL_PASS_PROMPT;
     if (val === undefined) {
       return 'Keeping in character, review the incoming data and provide an opinionated response.';
+    }
+    return val;
+  }
+
+  // ── Ability retry (global) ───────────────────────────────────
+
+  /**
+   * Global toggle for the ability retry/refinement loop.
+   * Default: false.
+   */
+  getAbilityRetryEnabled(): boolean {
+    return process.env.ABILITY_RETRY_ENABLED === 'true';
+  }
+
+  /**
+   * Max number of retries AFTER the initial attempt.
+   * Default: 2.
+   */
+  getAbilityRetryMaxRetries(): number {
+    const raw = this.parseIntEnv('ABILITY_RETRY_MAX_RETRIES', 2);
+    return Math.max(0, Math.min(raw, 10));
+  }
+
+  /**
+   * Ollama model to use for parameter refinement.
+   * Defaults to OLLAMA_MODEL.
+   */
+  getAbilityRetryModel(): string {
+    return process.env.ABILITY_RETRY_MODEL || this.getOllamaModel();
+  }
+
+  /**
+   * Generic instruction for parameter refinement calls.
+   * AccuWeather may still use a specialized prompt at runtime.
+   */
+  getAbilityRetryPrompt(): string {
+    const val = process.env.ABILITY_RETRY_PROMPT;
+    if (val === undefined) {
+      return 'Refine the user\'s parameters so the external ability can succeed. Return ONLY the refined parameters, with no extra commentary.';
     }
     return val;
   }
@@ -681,6 +751,12 @@ class Config {
       },
       nflLogging: {
         level: this.getNflLoggingLevel(),
+      },
+      abilityRetry: {
+        enabled: this.getAbilityRetryEnabled(),
+        maxRetries: this.getAbilityRetryMaxRetries(),
+        model: this.getAbilityRetryModel(),
+        prompt: this.getAbilityRetryPrompt(),
       },
       imageResponse: {
         includeEmbed: this.getImageResponseIncludeEmbed(),

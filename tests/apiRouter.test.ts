@@ -15,6 +15,10 @@ jest.mock('../src/utils/config', () => ({
     getKeywords: jest.fn(() => []),
     getSerpApiEndpoint: jest.fn(() => 'https://serpapi.com'),
     getSerpApiKey: jest.fn(() => ''),
+    getAbilityRetryEnabled: jest.fn(() => false),
+    getAbilityRetryMaxRetries: jest.fn(() => 2),
+    getAbilityRetryModel: jest.fn(() => 'llama2'),
+    getAbilityRetryPrompt: jest.fn(() => 'Refine the parameters. Return ONLY the refined parameters.'),
   },
 }));
 
@@ -55,6 +59,7 @@ import { requestQueue } from '../src/utils/requestQueue';
 import { KeywordConfig } from '../src/utils/config';
 import { accuweatherClient } from '../src/api/accuweatherClient';
 import { apiManager } from '../src/api';
+import { config } from '../src/utils/config';
 
 const mockExecute = requestQueue.execute as jest.MockedFunction<typeof requestQueue.execute>;
 const mockApiExecute = apiManager.executeRequest as jest.MockedFunction<typeof apiManager.executeRequest>;
@@ -62,6 +67,100 @@ const mockApiExecute = apiManager.executeRequest as jest.MockedFunction<typeof a
 describe('ApiRouter', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('executeRoutedRequest — ability retry loop (AccuWeather)', () => {
+    it('should refine location via Ollama and retry AccuWeather when location lookup fails', async () => {
+      (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
+      (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
+
+      const keyword: KeywordConfig = {
+        keyword: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      // 1) Primary AccuWeather fails to resolve location
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Could not find location "asdfasdf". Try a different city name or zip code.',
+      });
+
+      // 2) Ollama refinement returns a better location
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Seattle, WA' },
+      });
+
+      // 3) Retry AccuWeather succeeds
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Sunny, 72°F' },
+      });
+
+      const result = await executeRoutedRequest(keyword, 'asdfasdf', 'testuser');
+
+      expect(result.finalApi).toBe('accuweather');
+      expect(result.finalResponse.success).toBe(true);
+      expect(mockExecute).toHaveBeenCalledTimes(3);
+      // stages: accuweather fail + ollama refine + accuweather success
+      expect(result.stages).toHaveLength(3);
+
+      // Ensure we invoked refinement (ollama) between attempts
+      expect(mockExecute.mock.calls[1][0]).toBe('ollama');
+      expect(mockExecute.mock.calls[2][0]).toBe('accuweather');
+    });
+
+    it('should stop retrying after max retries and return final failure', async () => {
+      (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
+      (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
+
+      const keyword: KeywordConfig = {
+        keyword: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      // Primary failure
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Could not find location "q". Try a different city name or zip code.',
+      });
+
+      // Retry 1 refinement
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Springfield' },
+      });
+
+      // Retry 1 attempt still fails (retryable)
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Could not find location "Springfield". Try a different city name or zip code.',
+      });
+
+      // Retry 2 refinement
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Springfield, IL' },
+      });
+
+      // Retry 2 attempt fails (still)
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Could not find location "Springfield, IL". Try a different city name or zip code.',
+      });
+
+      const result = await executeRoutedRequest(keyword, 'q', 'testuser');
+
+      expect(result.finalApi).toBe('accuweather');
+      expect(result.finalResponse.success).toBe(false);
+      expect(mockExecute).toHaveBeenCalledTimes(5);
+      // stages: primary fail + (refine+attempt)*2
+      expect(result.stages).toHaveLength(5);
+    });
   });
 
   describe('executeRoutedRequest — single stage (no final pass)', () => {

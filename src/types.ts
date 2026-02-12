@@ -364,6 +364,15 @@ export interface PublicConfig {
   nflLogging: {
     level: number;
   };
+  abilityRetry: {
+    enabled: boolean;
+    /** Max number of retries AFTER the initial attempt. */
+    maxRetries: number;
+    /** Model used for refinement. */
+    model: string;
+    /** Generic refinement prompt (abilities may still use specialized prompts internally). */
+    prompt: string;
+  };
   imageResponse: {
     includeEmbed: boolean;
   };
