@@ -631,6 +631,12 @@ describe('MessageHandler findKeyword (start-anchored)', () => {
     expect(result).toBe(helpKw);
   });
 
+  it('should match help keyword case-insensitively', () => {
+    setKeywords([helpKw, generateKw, chatKw]);
+    expect((messageHandler as any).findKeyword('Help')).toBe(helpKw);
+    expect((messageHandler as any).findKeyword('HELP')).toBe(helpKw);
+  });
+
   it('should NOT match help keyword when followed by more text', () => {
     setKeywords([helpKw, generateKw, chatKw]);
     const result = (messageHandler as any).findKeyword('help me with this');

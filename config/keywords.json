@@ -3,11 +3,10 @@
     {
       "keyword": "help",
       "api": "ollama",
-      "timeout": 30,
+      "timeout": 120,
       "description": "Explain what the bot can help with and how to use each capability",
       "builtin": true,
-      "allowEmptyContent": true,
-      "finalOllamaPass": true
+      "allowEmptyContent": true
     },
     {
       "keyword": "generate",
