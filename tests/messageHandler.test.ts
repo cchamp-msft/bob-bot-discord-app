@@ -1202,6 +1202,178 @@ describe('MessageHandler first-word keyword routing', () => {
     const callArgs = apiManager.executeRequest.mock.calls[0];
     expect(callArgs[2]).toContain('chat about dogs');
   });
+
+  // ── SerpAPI "second opinion" routing regression ─────────────
+
+  it('should route "second opinion" keyword to SerpAPI via executeRoutedRequest', async () => {
+    const searchKw = { keyword: 'search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
+    const secondOpinionKw = { keyword: 'second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
+    (config.getKeywords as jest.Mock).mockReturnValue([searchKw, secondOpinionKw, weatherKw, generateKw]);
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: '🔎 **Second opinion for:** *is water wet*\n\n🤖 **Google AI Overview:**\n> Water is wet.' } },
+      finalApi: 'serpapi',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> second opinion is water wet');
+    await messageHandler.handleMessage(msg);
+
+    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
+      secondOpinionKw,
+      'is water wet',
+      'testuser',
+      expect.arrayContaining([
+        expect.objectContaining({ role: 'user', contextSource: 'trigger' }),
+      ])
+    );
+  });
+
+  it('should prefer "second opinion" (longer) over "search" when both match at start', async () => {
+    const searchKw = { keyword: 'search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
+    const secondOpinionKw = { keyword: 'second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
+    (config.getKeywords as jest.Mock).mockReturnValue([searchKw, secondOpinionKw]);
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'overview text' } },
+      finalApi: 'serpapi',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> second opinion about AI');
+    await messageHandler.handleMessage(msg);
+
+    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
+      secondOpinionKw,
+      'about AI',
+      'testuser',
+      expect.any(Array)
+    );
+  });
+
+  it('should NOT route to SerpAPI when "second opinion" appears in the middle of the message', async () => {
+    const searchKw = { keyword: 'search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
+    const secondOpinionKw = { keyword: 'second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
+    (config.getKeywords as jest.Mock).mockReturnValue([searchKw, secondOpinionKw, weatherKw, generateKw]);
+
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValue({
+      success: true,
+      data: { text: 'chat response' },
+    });
+
+    const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
+    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: true });
+
+    const msg = createMentionedMessage('<@bot-123> I want a second opinion on this');
+    await messageHandler.handleMessage(msg);
+
+    // Should NOT have used the routed pipeline — keyword was not at message start
+    expect(mockExecuteRoutedRequest).not.toHaveBeenCalled();
+    expect(requestQueue.execute).toHaveBeenCalled();
+  });
+});
+
+describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () => {
+  const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+
+  const secondOpinionKw = { keyword: 'second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
+
+  function createMentionedMessage(content: string): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username: 'testuser' },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      guild: { name: 'TestGuild' },
+      mentions: { has: jest.fn(() => true) },
+      reference: null,
+      content,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getKeywords as jest.Mock).mockReturnValue([secondOpinionKw]);
+  });
+
+  it('should show user-facing fallback text when AIO is absent — not a generic error', async () => {
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: {
+        success: true,
+        data: {
+          text: '🔎 **Second opinion for:** *niche topic*\n\n⚠️ Google did not return an AI Overview for this query.\nThis can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.\nAI Overview availability is locale-dependent — ensure **SERPAPI_HL** and **SERPAPI_GL** are set (e.g. `en`/`us`).\n💡 *Tip: Try rephrasing your query or using the **search** keyword for full results.*',
+          raw: {},
+        },
+      },
+      finalApi: 'serpapi',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> second opinion niche topic');
+    await messageHandler.handleMessage(msg);
+
+    const processingMessage = await msg.reply.mock.results[0].value;
+    // The edit call should contain the structured fallback, not ⚠️ generic error
+    expect(processingMessage.edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('⚠️ Google did not return an AI Overview'),
+      })
+    );
+    expect(processingMessage.edit).not.toHaveBeenCalledWith(
+      expect.stringContaining('Pipeline failed')
+    );
+  });
+
+  it('should show AIO error message when ai_overview.error propagates through handler', async () => {
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: {
+        success: true,
+        data: {
+          text: '🔎 **Second opinion for:** *restricted*\n\n⚠️ Google AI Overview returned an error: Content restriction\nThis can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.\nAI Overview availability is locale-dependent — ensure **SERPAPI_HL** and **SERPAPI_GL** are set (e.g. `en`/`us`).\n💡 *Tip: Try rephrasing your query or using the **search** keyword for full results.*',
+          raw: {},
+        },
+      },
+      finalApi: 'serpapi',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> second opinion restricted');
+    await messageHandler.handleMessage(msg);
+
+    const processingMessage = await msg.reply.mock.results[0].value;
+    expect(processingMessage.edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('⚠️ Google AI Overview returned an error'),
+      })
+    );
+  });
+
+  it('should show generic pipeline error when SerpAPI request itself fails', async () => {
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: false, error: 'SerpAPI key is not configured' },
+      finalApi: 'serpapi',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> second opinion test');
+    await messageHandler.handleMessage(msg);
+
+    const processingMessage = await msg.reply.mock.results[0].value;
+    expect(processingMessage.edit).toHaveBeenCalledWith(
+      expect.stringContaining('⚠️')
+    );
+  });
 });
 
 describe('MessageHandler two-stage evaluation', () => {

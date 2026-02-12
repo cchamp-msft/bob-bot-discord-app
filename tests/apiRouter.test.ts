@@ -537,6 +537,71 @@ describe('ApiRouter', () => {
       expect(result.stages).toHaveLength(1);
       expect(mockExecute).toHaveBeenCalledTimes(1);
     });
+
+    it('should execute serpapi "search" keyword directly without final pass', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'search',
+        api: 'serpapi',
+        timeout: 60,
+        description: 'Search the web',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: '🔎 **Search results for:** *TypeScript tips*', raw: {} },
+      });
+
+      const result = await executeRoutedRequest(keyword, 'TypeScript tips', 'testuser');
+
+      expect(result.finalApi).toBe('serpapi');
+      expect(result.finalResponse.success).toBe(true);
+      expect(result.stages).toHaveLength(1);
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+    });
+
+    it('should execute serpapi "second opinion" keyword directly without final pass', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'second opinion',
+        api: 'serpapi',
+        timeout: 60,
+        description: 'Get a second opinion via Google',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: {
+          text: '🔎 **Second opinion for:** *best practices*\n\n🤖 **Google AI Overview:**\n> Follow SOLID principles.',
+          raw: {},
+        },
+      });
+
+      const result = await executeRoutedRequest(keyword, 'best practices', 'testuser');
+
+      expect(result.finalApi).toBe('serpapi');
+      expect(result.finalResponse.success).toBe(true);
+      expect(result.stages).toHaveLength(1);
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return failure when serpapi request fails', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'second opinion',
+        api: 'serpapi',
+        timeout: 60,
+        description: 'Get a second opinion via Google',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'SerpAPI key is not configured',
+      });
+
+      const result = await executeRoutedRequest(keyword, 'test query', 'testuser');
+
+      expect(result.finalResponse.success).toBe(false);
+      expect(result.finalResponse.error).toContain('not configured');
+      expect(result.stages).toHaveLength(1);
+    });
   });
 
   describe('executeRoutedRequest — with finalOllamaPass', () => {
