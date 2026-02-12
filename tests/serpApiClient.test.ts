@@ -25,6 +25,8 @@ jest.mock('../src/utils/config', () => ({
   config: {
     getSerpApiEndpoint: jest.fn(() => 'https://serpapi.com'),
     getSerpApiKey: jest.fn(() => 'test-serpapi-key'),
+    getSerpApiHl: jest.fn(() => 'en'),
+    getSerpApiGl: jest.fn(() => 'us'),
   },
 }));
 
@@ -153,7 +155,7 @@ describe('SerpApiClient', () => {
       expect(result.error).toContain('Network error');
     });
 
-    it('should pass correct parameters to SerpAPI', async () => {
+    it('should pass correct parameters including locale to SerpAPI', async () => {
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
 
       await serpApiClient.handleRequest('my query', 'search');
@@ -164,9 +166,23 @@ describe('SerpApiClient', () => {
           q: 'my query',
           api_key: 'test-serpapi-key',
           num: 5,
+          hl: 'en',
+          gl: 'us',
         },
         signal: undefined,
       });
+    });
+
+    it('should omit hl/gl when set to empty string', async () => {
+      (config.getSerpApiHl as jest.Mock).mockReturnValueOnce('');
+      (config.getSerpApiGl as jest.Mock).mockReturnValueOnce('');
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
+
+      await serpApiClient.handleRequest('my query', 'search');
+
+      const params = mockInstance.get.mock.calls[0][1].params;
+      expect(params).not.toHaveProperty('hl');
+      expect(params).not.toHaveProperty('gl');
     });
 
     it('should forward AbortSignal to axios', async () => {
@@ -337,6 +353,94 @@ describe('SerpApiClient', () => {
       expect(xml).not.toContain('<answer_box>');
       expect(xml).not.toContain('<knowledge_graph>');
       expect(xml).not.toContain('<ai_overview>');
+    });
+  });
+
+  // ── formatAIOverviewOnly ───────────────────────────────────────
+
+  describe('formatAIOverviewOnly', () => {
+    it('should return only the AI Overview section with references', () => {
+      const text = serpApiClient.formatAIOverviewOnly(sampleSearchResponse as any, 'what is TypeScript');
+
+      expect(text).toContain('🔎 **Second opinion for:**');
+      expect(text).toContain('🤖 **Google AI Overview:**');
+      expect(text).toContain('TypeScript is a superset of JavaScript');
+      expect(text).toContain('📚 **Sources:**');
+      expect(text).toContain('[TypeScript Docs](https://typescriptlang.org/docs)');
+      // Should NOT contain organic results or other sections
+      expect(text).not.toContain('📋 **Direct Answer:**');
+      expect(text).not.toContain('📖 **');
+      expect(text).not.toContain('📄 **Top Results:**');
+    });
+
+    it('should return a helpful fallback when no AI Overview is available', () => {
+      const text = serpApiClient.formatAIOverviewOnly(minimalSearchResponse as any, 'obscure query');
+
+      expect(text).toContain('🔎 **Second opinion for:**');
+      expect(text).toContain('⚠️ Google did not return an AI Overview');
+      expect(text).toContain('search');
+      expect(text).not.toContain('🤖 **Google AI Overview:**');
+    });
+
+    it('should handle empty AI overview text_blocks', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        ai_overview: { text_blocks: [] },
+        organic_results: [{ position: 1, title: 'Test', link: 'https://example.com' }],
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+
+      expect(text).toContain('⚠️ Google did not return an AI Overview');
+    });
+
+    it('should handle AI Overview without references', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        ai_overview: {
+          text_blocks: [{ type: 'paragraph', snippet: 'Some overview text.' }],
+        },
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+
+      expect(text).toContain('🤖 **Google AI Overview:**');
+      expect(text).toContain('Some overview text.');
+      expect(text).not.toContain('📚 **Sources:**');
+    });
+  });
+
+  // ── handleRequest with "second opinion" keyword ───────────────
+
+  describe('handleRequest - second opinion keyword', () => {
+    it('should use AI-Overview-only formatting for "second opinion" keyword', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
+
+      const result = await serpApiClient.handleRequest('what is TypeScript', 'second opinion');
+
+      expect(result.success).toBe(true);
+      expect(result.data!.text).toContain('🔎 **Second opinion for:**');
+      expect(result.data!.text).toContain('🤖 **Google AI Overview:**');
+      expect(result.data!.text).not.toContain('📄 **Top Results:**');
+    });
+
+    it('should return fallback message when no AI Overview for "second opinion"', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
+
+      const result = await serpApiClient.handleRequest('obscure topic', 'second opinion');
+
+      expect(result.success).toBe(true);
+      expect(result.data!.text).toContain('⚠️ Google did not return an AI Overview');
+    });
+
+    it('should use full formatting for "search" keyword', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
+
+      const result = await serpApiClient.handleRequest('what is TypeScript', 'search');
+
+      expect(result.success).toBe(true);
+      expect(result.data!.text).toContain('🔎 **Search results for:**');
+      expect(result.data!.text).toContain('📄 **Top Results:**');
     });
   });
 

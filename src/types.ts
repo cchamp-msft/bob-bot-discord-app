@@ -328,6 +328,8 @@ export interface PublicConfig {
     nflEnabled: boolean;
     serpapi: string;
     serpapiApiKeyConfigured: boolean;
+    serpapiHl: string;
+    serpapiGl: string;
   };
   defaultWorkflow: {
     model: string;

@@ -121,7 +121,11 @@ class SerpApiClient {
         }
       }
 
-      const text = this.formatSearchText(data, query);
+      // "second opinion" keyword returns only the AI Overview section.
+      const isAIOverviewOnly = keyword === 'second opinion';
+      const text = isAIOverviewOnly
+        ? this.formatAIOverviewOnly(data, query)
+        : this.formatSearchText(data, query);
       return {
         success: true,
         data: { text, raw: data },
@@ -140,13 +144,22 @@ class SerpApiClient {
    * Returns the parsed JSON response.
    */
   private async googleSearch(query: string, apiKey: string, signal?: AbortSignal): Promise<SerpApiSearchResponse> {
+    const params: Record<string, string | number> = {
+      engine: 'google',
+      q: query,
+      api_key: apiKey,
+      num: 5,
+    };
+
+    // Inject locale params to improve AI Overview availability.
+    // AI Overview is mainly returned for hl=en with limited gl values.
+    const hl = config.getSerpApiHl();
+    const gl = config.getSerpApiGl();
+    if (hl) params.hl = hl;
+    if (gl) params.gl = gl;
+
     const response = await this.client.get('/search', {
-      params: {
-        engine: 'google',
-        q: query,
-        api_key: apiKey,
-        num: 5,
-      },
+      params,
       signal,
     });
 
@@ -178,6 +191,50 @@ class SerpApiClient {
       logger.logWarn('serpapi', `AI Overview fetch failed (non-fatal): ${msg}`);
       return null;
     }
+  }
+
+  // ── Formatting: AI Overview only (second opinion) ──────────────
+
+  /**
+   * Format only the AI Overview section for "second opinion" responses.
+   * Returns a user-friendly message when no AI Overview is available.
+   */
+  formatAIOverviewOnly(data: SerpApiSearchResponse, query: string): string {
+    const parts: string[] = [];
+
+    parts.push(`🔎 **Second opinion for:** *${query}*\n`);
+
+    if (data.ai_overview?.text_blocks?.length) {
+      const snippets = this.extractAIOverviewSnippets(data.ai_overview.text_blocks, 10);
+      if (snippets.length > 0) {
+        parts.push(`🤖 **Google AI Overview:**`);
+        for (const s of snippets) {
+          parts.push(`> ${s}`);
+        }
+
+        // Include references if available
+        if (data.ai_overview.references?.length) {
+          parts.push('');
+          parts.push(`📚 **Sources:**`);
+          for (const ref of data.ai_overview.references.slice(0, 5)) {
+            const title = ref.title || 'Link';
+            const link = ref.link || '';
+            if (link) {
+              parts.push(`- [${title}](${link})`);
+            }
+          }
+        }
+      }
+    }
+
+    // If we only have the header line, no AI Overview was found
+    if (parts.length <= 1) {
+      parts.push(`⚠️ Google did not return an AI Overview for this query.`);
+      parts.push(`This can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.`);
+      parts.push(`💡 *Tip: Try rephrasing your query or using the **search** keyword for full results.*`);
+    }
+
+    return parts.join('\n').trim();
   }
 
   // ── Formatting: Discord-friendly text ─────────────────────────

@@ -284,6 +284,26 @@ class Config {
     return process.env.SERPAPI_ENDPOINT || 'https://serpapi.com';
   }
 
+  /**
+   * Language code for SerpAPI Google Search requests.
+   * AI Overview availability is mainly limited to English (`hl=en`).
+   * Defaults to 'en' when unset; set to empty string to omit.
+   */
+  getSerpApiHl(): string {
+    const val = process.env.SERPAPI_HL;
+    return val === undefined ? 'en' : val;
+  }
+
+  /**
+   * Country code for SerpAPI Google Search requests.
+   * AI Overview availability varies by country.
+   * Defaults to 'us' when unset; set to empty string to omit.
+   */
+  getSerpApiGl(): string {
+    const val = process.env.SERPAPI_GL;
+    return val === undefined ? 'us' : val;
+  }
+
   getHttpPort(): number {
     return this.parseIntEnv('HTTP_PORT', 3000);
   }
@@ -612,6 +632,8 @@ class Config {
     const prevNflEnabled = this.getNflEnabled();
     const prevSerpApiKey = this.getSerpApiKey();
     const prevSerpApiEndpoint = this.getSerpApiEndpoint();
+    const prevSerpApiHl = this.getSerpApiHl();
+    const prevSerpApiGl = this.getSerpApiGl();
     const prevFinalPassPrompt = this.getOllamaFinalPassPrompt();
     const prevAbilityRetryEnabled = this.getAbilityRetryEnabled();
     const prevAbilityRetryMaxRetries = this.getAbilityRetryMaxRetries();
@@ -673,6 +695,8 @@ class Config {
     if (this.getNflEnabled() !== prevNflEnabled) reloaded.push('NFL_ENABLED');
     if (this.getSerpApiKey() !== prevSerpApiKey) reloaded.push('SERPAPI_API_KEY');
     if (this.getSerpApiEndpoint() !== prevSerpApiEndpoint) reloaded.push('SERPAPI_ENDPOINT');
+    if (this.getSerpApiHl() !== prevSerpApiHl) reloaded.push('SERPAPI_HL');
+    if (this.getSerpApiGl() !== prevSerpApiGl) reloaded.push('SERPAPI_GL');
     if (this.getOllamaFinalPassPrompt() !== prevFinalPassPrompt) reloaded.push('OLLAMA_FINAL_PASS_PROMPT');
     if (this.getAbilityRetryEnabled() !== prevAbilityRetryEnabled) reloaded.push('ABILITY_RETRY_ENABLED');
     if (this.getAbilityRetryMaxRetries() !== prevAbilityRetryMaxRetries) reloaded.push('ABILITY_RETRY_MAX_RETRIES');
@@ -722,6 +746,8 @@ class Config {
         nflEnabled: this.getNflEnabled(),
         serpapi: this.getSerpApiEndpoint(),
         serpapiApiKeyConfigured: !!this.getSerpApiKey(),
+        serpapiHl: this.getSerpApiHl(),
+        serpapiGl: this.getSerpApiGl(),
       },
       defaultWorkflow: {
         model: this.getComfyUIDefaultModel(),

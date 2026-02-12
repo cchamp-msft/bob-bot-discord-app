@@ -560,6 +560,16 @@
           <label>Endpoint <span class="note">override only if using a proxy</span></label>
           <input type="text" id="serpapi_endpoint" data-env="SERPAPI_ENDPOINT" placeholder="https://serpapi.com">
         </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Language <span class="note">hl — AI Overview requires <code style="color:var(--accent)">en</code></span></label>
+            <input type="text" id="serpapi_hl" data-env="SERPAPI_HL" placeholder="en">
+          </div>
+          <div class="field">
+            <label>Country <span class="note">gl — limits AI Overview availability</span></label>
+            <input type="text" id="serpapi_gl" data-env="SERPAPI_GL" placeholder="us">
+          </div>
+        </div>
         <div id="serpapiTestResult" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
       </div>
     </section>
@@ -932,6 +942,8 @@
 
       // Populate SerpAPI fields
       document.getElementById('serpapi_endpoint').value = cfg.apis.serpapi || '';
+      document.getElementById('serpapi_hl').value = cfg.apis.serpapiHl ?? 'en';
+      document.getElementById('serpapi_gl').value = cfg.apis.serpapiGl ?? 'us';
       document.getElementById('serpapi_api_key').value = '';
       document.getElementById('serpapi_api_key').placeholder =
         cfg.apis.serpapiApiKeyConfigured ? 'API key configured ✓ — paste new value to change' : 'Paste SerpAPI key';
