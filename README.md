@@ -735,7 +735,7 @@ If no output is being returned and upon checking ComfyUI logs you see an excepti
 - Check the configurator's status console for reload confirmation
 
 ### SerpAPI / AI Overview ("second opinion") issues
-- **Enable debug logging** (`LOG_LEVEL=debug`) to see request/response diagnostics tagged `[serpapi]`
+- **Enable debug logging** (`DEBUG_LOGGING=true`) to see request/response diagnostics tagged `[serpapi]`
 - **Request shape** — look for `SERPAPI REQUEST:` lines showing `engine`, `q`, `hl`, `gl`, `location`, and redacted `api_key` (`***`)
 - **Response markers** — look for `SERPAPI RESPONSE:` lines showing `status`, `ai_overview` classification (`page_token`, `inline(N blocks)`, `error: …`, `empty`, or `absent`), and organic result count
 - **AIO follow-up** — when a `page_token` is present, the bot issues a second request using `engine=google_ai_overview`. Look for `AIO-FOLLOWUP REQUEST:` and `AIO-FOLLOWUP RESPONSE:` debug lines

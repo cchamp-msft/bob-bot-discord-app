@@ -1376,6 +1376,154 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
   });
 });
 
+describe('MessageHandler SerpAPI find content keyword routing', () => {
+  const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+
+  const findContentKw = { keyword: 'find content', api: 'serpapi' as const, timeout: 60, description: 'Find pertinent web content', contextFilterMaxDepth: 1 };
+
+  function createMentionedMessage(content: string): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username: 'testuser' },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      guild: { name: 'TestGuild' },
+      mentions: { has: jest.fn(() => true) },
+      reference: null,
+      content,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getKeywords as jest.Mock).mockReturnValue([findContentKw]);
+    (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
+      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+  });
+
+  it('should route "find content <topic>" through serpapi pipeline', async () => {
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: {
+        success: true,
+        data: {
+          text: '🔎 **Search results for:** *TypeScript generics*\n\nResult 1...',
+          raw: {},
+        },
+      },
+      finalApi: 'serpapi',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> find content TypeScript generics');
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).toHaveBeenNthCalledWith(1, '⏳ Processing your request...');
+    const processingMessage = await msg.reply.mock.results[0].value;
+    expect(processingMessage.edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('Search results for'),
+      })
+    );
+    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ keyword: 'find content', api: 'serpapi' }),
+      'TypeScript generics',
+      'testuser',
+      expect.any(Array)
+    );
+  });
+
+  it('should reject "find content" with no extra text (allowEmptyContent absent)', async () => {
+    const { logger } = require('../src/utils/logger');
+    const msg = createMentionedMessage('<@bot-123> find content');
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).toHaveBeenCalledWith(
+      'Please include a prompt or question after the keyword!'
+    );
+    expect(logger.logIgnored).toHaveBeenCalled();
+  });
+});
+
+describe('MessageHandler standalone help keyword uses actual config flag', () => {
+  const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+
+  const helpKw = { keyword: 'help', api: 'ollama' as const, timeout: 120, description: 'Show help', builtin: true, allowEmptyContent: true };
+
+  function createDmMessage(content: string): any {
+    return {
+      author: { bot: false, id: 'user-1', username: 'testuser' },
+      client: { user: { id: 'bot-123' } },
+      channel: {
+        type: 1,
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      guild: null,
+      mentions: { has: jest.fn(() => false) },
+      reference: null,
+      content,
+      id: 'dm-help-1',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getKeywords as jest.Mock).mockReturnValue([helpKw]);
+    (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
+      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+  });
+
+  it('should NOT reject standalone "help" when allowEmptyContent is true', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValue({
+      success: true,
+      data: { text: 'Here is what I can help with.' },
+    });
+
+    const msg = createDmMessage('help');
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).not.toHaveBeenCalledWith(
+      'Please include a prompt or question after the keyword!'
+    );
+    expect(msg.reply).toHaveBeenCalled();
+  });
+
+  it('should reject standalone "help" when allowEmptyContent is absent', async () => {
+    const { logger } = require('../src/utils/logger');
+    const helpNoEmpty = { keyword: 'help', api: 'ollama' as const, timeout: 120, description: 'Show help', builtin: true };
+    (config.getKeywords as jest.Mock).mockReturnValue([helpNoEmpty]);
+
+    const msg = createDmMessage('help');
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).toHaveBeenCalledWith(
+      'Please include a prompt or question after the keyword!'
+    );
+    expect(logger.logIgnored).toHaveBeenCalled();
+  });
+});
+
 describe('MessageHandler two-stage evaluation', () => {
   const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;

@@ -602,6 +602,28 @@ describe('ApiRouter', () => {
       expect(result.finalResponse.error).toContain('not configured');
       expect(result.stages).toHaveLength(1);
     });
+
+    it('should execute serpapi "find content" keyword directly without final pass', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'find content',
+        api: 'serpapi',
+        timeout: 60,
+        description: 'Find pertinent web content related to a topic using Google',
+        contextFilterMaxDepth: 1,
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: '🔎 **Search results for:** *React hooks*\n\nResult 1...', raw: {} },
+      });
+
+      const result = await executeRoutedRequest(keyword, 'React hooks', 'testuser');
+
+      expect(result.finalApi).toBe('serpapi');
+      expect(result.finalResponse.success).toBe(true);
+      expect(result.stages).toHaveLength(1);
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('executeRoutedRequest — with finalOllamaPass', () => {

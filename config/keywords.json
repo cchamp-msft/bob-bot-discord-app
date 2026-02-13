@@ -5,7 +5,8 @@
       "api": "ollama",
       "timeout": 120,
       "description": "Explain what the bot can help with and how to use each capability",
-      "builtin": true
+      "builtin": true,
+      "allowEmptyContent": true
     },
     {
       "keyword": "generate",
@@ -73,7 +74,8 @@
       "timeout": 30,
       "description": "Get current NFL game scores. Optionally provide a date (YYYYMMDD or YYYY-MM-DD) to look up scores for a specific date; otherwise returns the most recent scoreboard.",
       "abilityText": "Get current NFL game scores. Optionally provide a date (YYYYMMDD or YYYY-MM-DD) to look up scores for a specific date; otherwise returns the most recent scoreboard.",
-      "finalOllamaPass": true
+      "finalOllamaPass": true,
+      "allowEmptyContent": true
     },
     {
       "keyword": "nfl news",
@@ -81,7 +83,8 @@
       "timeout": 30,
       "description": "Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl news chiefs').",
       "abilityText": "Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl news chiefs').",
-      "finalOllamaPass": true
+      "finalOllamaPass": true,
+      "allowEmptyContent": true
     },
     {
       "keyword": "analyze",
