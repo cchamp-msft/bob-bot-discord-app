@@ -66,11 +66,32 @@ interface SerpApiAIOverview {
 interface SerpApiSearchResponse {
   search_metadata?: { status?: string };
   search_parameters?: { q?: string };
+  search_information?: Record<string, unknown>;
   answer_box?: SerpApiAnswerBox;
   knowledge_graph?: SerpApiKnowledgeGraph;
   ai_overview?: SerpApiAIOverview;
   organic_results?: SerpApiOrganicResult[];
+  /** Index signature — generic blocks are accessed dynamically. */
+  [key: string]: unknown;
 }
+
+/**
+ * Keys to silently skip when generically formatting response blocks.
+ * These are either metadata (not user-useful) or presentational noise.
+ * Everything NOT in this set AND not handled by a dedicated formatter
+ * will be rendered generically.
+ */
+const SKIP_RESPONSE_KEYS = new Set([
+  'search_metadata',
+  'search_parameters',
+  'search_information',
+  'pagination',
+  'serpapi_pagination',
+  'related_searches',
+  'immersive_products',
+  'refine_search_filters',
+  'refine_this_search',
+]);
 
 // ── SerpAPI Client ────────────────────────────────────────────────
 
@@ -123,6 +144,11 @@ class SerpApiClient {
           ? (aio.page_token ? 'page_token' : aio.error ? `error: ${aio.error}` : aio.text_blocks?.length ? `inline(${aio.text_blocks.length} blocks)` : 'empty')
           : 'absent';
         return `RESPONSE: status=${data.search_metadata?.status}, ai_overview=${aioStatus}, organics=${data.organic_results?.length ?? 0}`;
+      });
+
+      // Log full raw response body for deep diagnostics
+      logger.logDebugLazy('serpapi', () => {
+        return `RAW RESPONSE BODY:\n${JSON.stringify(data, null, 2)}`;
       });
 
       // If the initial search includes a page_token for AI Overview,
@@ -269,7 +295,18 @@ class SerpApiClient {
       }
     }
 
-    // If we only have the header line, no AI Overview was found
+    // Generic iteration: render every block not skipped and not already handled
+    // For "second opinion", organic_results are intentionally excluded.
+    const extras = this.getExtraBlocks(data, ['ai_overview', 'organic_results']);
+    for (const key of extras) {
+      const block = this.formatStructuredBlock(key, data[key]);
+      if (block.length > 0) {
+        parts.push('');
+        parts.push(...block);
+      }
+    }
+
+    // If we only have the header line, no structured content was found
     if (parts.length <= 1) {
       if (data.ai_overview?.error) {
         parts.push(`⚠️ Google AI Overview returned an error: ${data.ai_overview.error}`);
@@ -324,6 +361,16 @@ class SerpApiClient {
         for (const s of snippets) {
           parts.push(`> ${s}`);
         }
+        parts.push('');
+      }
+    }
+
+    // Generic iteration: render blocks not already handled above
+    const extras = this.getExtraBlocks(data, ['answer_box', 'knowledge_graph', 'ai_overview', 'organic_results']);
+    for (const key of extras) {
+      const block = this.formatStructuredBlock(key, data[key]);
+      if (block.length > 0) {
+        parts.push(...block);
         parts.push('');
       }
     }
@@ -390,6 +437,12 @@ class SerpApiClient {
         parts.push(`  </references>`);
       }
       parts.push(`</ai_overview>`);
+    }
+
+    // Generic iteration: render any remaining blocks as XML
+    const extras = this.getExtraBlocks(data, ['answer_box', 'knowledge_graph', 'ai_overview', 'organic_results']);
+    for (const key of extras) {
+      parts.push(...this.formatStructuredBlockXml(key, data[key]));
     }
 
     // Organic Results
@@ -536,6 +589,118 @@ class SerpApiClient {
   }
 
   // ── Utility ─────────────────────────────────────────────────────
+
+  /**
+   * Return top-level response keys that should be generically formatted.
+   * Filters out SKIP_RESPONSE_KEYS (metadata/noise) plus any additional
+   * keys the caller already handles with dedicated formatters.
+   */
+  private getExtraBlocks(data: SerpApiSearchResponse, additionalSkips: string[] = []): string[] {
+    const skip = new Set([...SKIP_RESPONSE_KEYS, ...additionalSkips]);
+    return Object.keys(data).filter(
+      (key) => !skip.has(key) && data[key] != null
+    );
+  }
+
+  /**
+   * Convert a snake_case key to a human-readable label.
+   * e.g. "recipes_results" → "Recipes Results"
+   */
+  private humanizeKey(key: string): string {
+    return key
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  /**
+   * Generically format an arbitrary structured block for Discord Markdown.
+   * Handles arrays of objects (extracts title/link/snippet), plain objects,
+   * and primitive values. Limits arrays to 3 items.
+   */
+  private formatStructuredBlock(key: string, value: unknown): string[] {
+    const parts: string[] = [];
+    const label = this.humanizeKey(key);
+
+    if (Array.isArray(value)) {
+      parts.push(`📦 **${label}:**`);
+      for (const item of value.slice(0, 3)) {
+        if (typeof item === 'object' && item !== null) {
+          const obj = item as Record<string, unknown>;
+          const title = String(obj.title || obj.name || obj.question || '');
+          const link = String(obj.link || obj.url || '');
+          const snippet = String(obj.snippet || obj.description || obj.answer || '');
+
+          if (title && link) {
+            parts.push(`- [${title}](${link})${snippet ? ` — ${snippet}` : ''}`);
+          } else if (title) {
+            parts.push(`- **${title}**${snippet ? ` — ${snippet}` : ''}`);
+          } else if (snippet) {
+            parts.push(`- ${snippet}`);
+          } else {
+            const vals = Object.values(obj).filter((v) => typeof v === 'string').slice(0, 2);
+            if (vals.length) parts.push(`- ${vals.join(' — ')}`);
+          }
+        } else {
+          parts.push(`- ${String(item)}`);
+        }
+      }
+      if (value.length > 3) {
+        parts.push(`  *(${value.length - 3} more…)*`);
+      }
+    } else if (typeof value === 'object' && value !== null) {
+      parts.push(`📦 **${label}:**`);
+      const obj = value as Record<string, unknown>;
+      if (obj.title || obj.description) {
+        if (obj.title) parts.push(`> **${obj.title}**`);
+        if (obj.description) parts.push(`> ${obj.description}`);
+      } else {
+        const entries = Object.entries(obj)
+          .filter(([, v]) => typeof v === 'string' || typeof v === 'number')
+          .slice(0, 5);
+        for (const [k, v] of entries) {
+          parts.push(`> *${this.humanizeKey(k)}:* ${v}`);
+        }
+      }
+    }
+
+    return parts;
+  }
+
+  /**
+   * Generically format an arbitrary structured block as XML for AI context.
+   * Extracts scalar fields from objects/arrays; limits arrays to 3 items.
+   */
+  private formatStructuredBlockXml(key: string, value: unknown): string[] {
+    const parts: string[] = [];
+    parts.push(`<${key}>`);
+
+    if (Array.isArray(value)) {
+      for (const item of value.slice(0, 3)) {
+        if (typeof item === 'object' && item !== null) {
+          parts.push(`  <item>`);
+          for (const [k, v] of Object.entries(item as Record<string, unknown>)) {
+            if (typeof v === 'string' || typeof v === 'number') {
+              parts.push(`    <${k}>${this.escapeXml(String(v))}</${k}>`);
+            }
+          }
+          parts.push(`  </item>`);
+        } else {
+          parts.push(`  <item>${this.escapeXml(String(item))}</item>`);
+        }
+      }
+    } else if (typeof value === 'object' && value !== null) {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof v === 'string' || typeof v === 'number') {
+          parts.push(`  <${k}>${this.escapeXml(String(v))}</${k}>`);
+        }
+      }
+    } else {
+      parts.push(`  ${this.escapeXml(String(value))}`);
+    }
+
+    parts.push(`</${key}>`);
+    return parts;
+  }
 
   private escapeXml(text: string): string {
     return text

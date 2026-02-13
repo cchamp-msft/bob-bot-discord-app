@@ -102,6 +102,72 @@ const emptySearchResponse = {
   search_parameters: { q: 'nothing' },
 };
 
+const recipeSearchResponse = {
+  search_metadata: { status: 'Success' },
+  search_parameters: { q: 'best way to prepare a chuck roast' },
+  recipes_results: [
+    {
+      title: 'Oven Braised Chuck Roast',
+      link: 'https://example.com/chuck-roast',
+      source: 'Hungry Paprikas',
+      rating: 4.9,
+      reviews: 138,
+      total_time: '4 hr 40 min',
+      ingredients: ['Chuck roast', 'apple cider vinegar', 'garlic'],
+    },
+    {
+      title: 'Best Pot Roast',
+      link: 'https://example.com/pot-roast',
+      source: 'The Kitchn',
+      total_time: '4 hr 30 min',
+      ingredients: ['Beef chuck roast', 'red wine', 'beef broth'],
+    },
+  ],
+  related_questions: [
+    {
+      question: 'How long should a chuck roast cook?',
+      snippet: 'About 3-4 hours at 325°F.',
+      link: 'https://example.com/faq',
+    },
+    {
+      question: 'Should you sear a chuck roast first?',
+      snippet: 'Yes, searing locks in flavor.',
+    },
+  ],
+  organic_results: [
+    { position: 1, title: 'Chuck Roast Guide', link: 'https://example.com/guide', snippet: 'A complete guide.' },
+  ],
+};
+
+const responseWithUnhandledBlocks = {
+  search_metadata: { status: 'Success' },
+  search_parameters: { q: 'test' },
+  organic_results: [
+    { position: 1, title: 'Test', link: 'https://example.com' },
+  ],
+  top_stories: [
+    { title: 'Breaking News', link: 'https://example.com/news' },
+  ],
+  local_results: {
+    places: [{ title: 'Local Place' }],
+  },
+};
+
+/** Fixture with skip-list keys that should be silently ignored. */
+const responseWithSkippedKeys = {
+  search_metadata: { status: 'Success' },
+  search_parameters: { q: 'test' },
+  organic_results: [
+    { position: 1, title: 'Test', link: 'https://example.com' },
+  ],
+  immersive_products: [{ title: 'Product A' }],
+  refine_search_filters: [{ label: 'By date' }],
+  refine_this_search: [{ query: 'test refined' }],
+  related_searches: [{ query: 'related test' }],
+  pagination: { next: 'page2' },
+  serpapi_pagination: { next: 'page2' },
+};
+
 // ── Tests ────────────────────────────────────────────────────────
 
 describe('SerpApiClient', () => {
@@ -325,6 +391,35 @@ describe('SerpApiClient', () => {
 
       expect(text).toContain('[Source: Wikipedia](https://en.wikipedia.org/wiki/TypeScript)');
     });
+
+    it('should format recipe results generically via formatStructuredBlock', () => {
+      const text = serpApiClient.formatSearchText(recipeSearchResponse as any, 'chuck roast');
+
+      // Recipes are now rendered via the generic block formatter
+      expect(text).toContain('📦 **Recipes Results:**');
+      expect(text).toContain('[Oven Braised Chuck Roast](https://example.com/chuck-roast)');
+      expect(text).toContain('[Best Pot Roast](https://example.com/pot-roast)');
+    });
+
+    it('should render unknown blocks generically instead of only logging', () => {
+      const text = serpApiClient.formatSearchText(responseWithUnhandledBlocks as any, 'test');
+
+      // top_stories and local_results should be rendered (not "not yet parsed")
+      expect(text).toContain('📦 **Top Stories:**');
+      expect(text).toContain('Breaking News');
+      expect(text).toContain('📦 **Local Results:**');
+    });
+
+    it('should silently skip metadata and noise keys', () => {
+      const text = serpApiClient.formatSearchText(responseWithSkippedKeys as any, 'test');
+
+      expect(text).not.toContain('Immersive Products');
+      expect(text).not.toContain('Refine Search');
+      expect(text).not.toContain('Refine This');
+      expect(text).not.toContain('Related Searches');
+      expect(text).not.toContain('Pagination');
+      expect(text).not.toContain('Serpapi Pagination');
+    });
   });
 
   // ── formatSearchContextForAI ──────────────────────────────────
@@ -384,6 +479,37 @@ describe('SerpApiClient', () => {
       expect(xml).not.toContain('<answer_box>');
       expect(xml).not.toContain('<knowledge_graph>');
       expect(xml).not.toContain('<ai_overview>');
+    });
+
+    it('should format recipe results as generic XML blocks', () => {
+      const xml = serpApiClient.formatSearchContextForAI(recipeSearchResponse as any, 'chuck roast');
+
+      expect(xml).toContain('<recipes_results>');
+      expect(xml).toContain('</recipes_results>');
+      expect(xml).toContain('<title>Oven Braised Chuck Roast</title>');
+      expect(xml).toContain('<link>https://example.com/chuck-roast</link>');
+    });
+
+    it('should format related questions as generic XML blocks', () => {
+      const xml = serpApiClient.formatSearchContextForAI(recipeSearchResponse as any, 'chuck roast');
+
+      expect(xml).toContain('<related_questions>');
+      expect(xml).toContain('</related_questions>');
+      expect(xml).toContain('<question>How long should a chuck roast cook?</question>');
+      expect(xml).toContain('<snippet>About 3-4 hours');
+    });
+
+    it('should render unknown blocks as generic XML tags', () => {
+      const xml = serpApiClient.formatSearchContextForAI(responseWithUnhandledBlocks as any, 'test');
+
+      // Should use the actual key name as the XML tag
+      expect(xml).toContain('<top_stories>');
+      expect(xml).toContain('</top_stories>');
+      expect(xml).toContain('<title>Breaking News</title>');
+      expect(xml).toContain('<local_results>');
+      expect(xml).toContain('</local_results>');
+      // Should NOT use the old unhandled_blocks wrapper
+      expect(xml).not.toContain('<unhandled_blocks>');
     });
   });
 
@@ -462,6 +588,50 @@ describe('SerpApiClient', () => {
       expect(text).toContain('SERPAPI_HL');
       expect(text).toContain('SERPAPI_GL');
       expect(text).toContain('search');
+    });
+
+    it('should surface recipe data generically when no AI Overview is available', () => {
+      const text = serpApiClient.formatAIOverviewOnly(recipeSearchResponse as any, 'chuck roast');
+
+      expect(text).toContain('📦 **Recipes Results:**');
+      expect(text).toContain('[Oven Braised Chuck Roast]');
+      // Should NOT show the "no AI Overview" fallback when recipes are present
+      expect(text).not.toContain('⚠️ Google did not return an AI Overview');
+    });
+
+    it('should surface related questions generically when no AI Overview is available', () => {
+      const text = serpApiClient.formatAIOverviewOnly(recipeSearchResponse as any, 'chuck roast');
+
+      expect(text).toContain('📦 **Related Questions:**');
+      expect(text).toContain('How long should a chuck roast cook?');
+    });
+
+    it('should render unknown blocks generically instead of "not yet parsed"', () => {
+      const text = serpApiClient.formatAIOverviewOnly(responseWithUnhandledBlocks as any, 'test');
+
+      expect(text).toContain('📦 **Top Stories:**');
+      expect(text).toContain('Breaking News');
+      expect(text).toContain('📦 **Local Results:**');
+      // Should NOT contain the old "not yet parsed" text
+      expect(text).not.toContain('not yet parsed');
+      expect(text).not.toContain('📦 **Additional Data:**');
+    });
+
+    it('should exclude organic_results from second opinion output', () => {
+      const text = serpApiClient.formatAIOverviewOnly(responseWithUnhandledBlocks as any, 'test');
+
+      // organic_results should be explicitly skipped for second opinion
+      expect(text).not.toContain('📄 **Top Results:**');
+      expect(text).not.toContain('Organic Results');
+    });
+
+    it('should silently skip noise keys in second opinion', () => {
+      const text = serpApiClient.formatAIOverviewOnly(responseWithSkippedKeys as any, 'test');
+
+      expect(text).not.toContain('Immersive Products');
+      expect(text).not.toContain('Refine Search');
+      expect(text).not.toContain('Refine This');
+      expect(text).not.toContain('Pagination');
     });
   });
 
@@ -905,6 +1075,27 @@ describe('SerpApiClient', () => {
       // ai_overview with inline text_blocks should be reported
       const output = responseCall![1]();
       expect(output).toContain('inline(');
+    });
+
+    it('should log full raw response body via logDebugLazy', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
+      const { logger: mockLogger } = require('../src/utils/logger');
+
+      await serpApiClient.handleRequest('test query', 'search');
+
+      const calls = mockLogger.logDebugLazy.mock.calls;
+      const rawCall = calls.find((c: any[]) => {
+        if (typeof c[1] === 'function') {
+          const output = c[1]();
+          return output.includes('RAW RESPONSE BODY:');
+        }
+        return false;
+      });
+      expect(rawCall).toBeDefined();
+      const output = rawCall![1]();
+      // Should contain the full JSON-serialized response
+      expect(output).toContain('organic_results');
+      expect(output).toContain('search_metadata');
     });
 
     it('should log page_token follow-up request', async () => {
