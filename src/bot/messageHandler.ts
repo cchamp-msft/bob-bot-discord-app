@@ -81,6 +81,11 @@ class MessageHandler {
       message.content
     );
 
+    // Prefer the server nickname (member.displayName) over the raw Discord
+    // username so that logs, prompts, and error messages show the friendly
+    // name the user sees in the guild.  Falls back to username for DMs.
+    const requester = message.member?.displayName ?? message.author.displayName ?? message.author.username;
+
     // Extract message content — remove the bot's own mention first
     const mentionRegex = new RegExp(
       `<@!?${message.client.user.id}>`,
@@ -99,7 +104,7 @@ class MessageHandler {
     content = content.replace(/<@[!&]?\d+>|<#\d+>|<a?:\w+:\d+>/g, '').trim();
 
     if (!content) {
-      logger.logIgnored(message.author.username, 'Empty message after mention removal');
+      logger.logIgnored(requester, 'Empty message after mention removal');
       await message.reply(
         'Please include a prompt or question in your message!'
       );
@@ -126,7 +131,7 @@ class MessageHandler {
         timeout: config.getDefaultTimeout(),
         description: 'Default chat via Ollama',
       };
-      logger.logDefault(message.author.username, content);
+      logger.logDefault(requester, content);
     }
 
     // Strip the routing keyword only when it was explicitly matched at the start.
@@ -150,7 +155,7 @@ class MessageHandler {
       if (keywordAllowsEmpty) {
         content = keywordConfig.keyword;
       } else {
-        logger.logIgnored(message.author.username, 'Empty message after keyword removal');
+        logger.logIgnored(requester, 'Empty message after keyword removal');
         await message.reply(
           'Please include a prompt or question after the keyword!'
         );
@@ -207,7 +212,7 @@ class MessageHandler {
 
     // Log the request
     logger.logRequest(
-      message.author.username,
+      requester,
       `[${keywordConfig.keyword}] ${content}`
     );
 
@@ -217,7 +222,7 @@ class MessageHandler {
       processingMessage = await message.reply('⏳ Processing your request...');
     } catch (error) {
       logger.logError(
-        message.author.username,
+        requester,
         `Failed to send processing message: ${error}`
       );
       return;
@@ -229,12 +234,12 @@ class MessageHandler {
         // Append the triggering message so the model always knows who is asking.
         const historyWithTrigger: ChatMessage[] = [
           ...conversationHistory,
-          { role: 'user' as const, content: `${message.author.username}: ${content}`, contextSource: 'trigger' as const },
+          { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const },
         ];
         const routedResult = await executeRoutedRequest(
           keywordConfig,
           content,
-          message.author.username,
+          requester,
           historyWithTrigger
         );
 
@@ -242,7 +247,7 @@ class MessageHandler {
           routedResult.finalResponse,
           routedResult.finalApi,
           processingMessage,
-          message.author.username
+          requester
         );
       } else {
         // ── Ollama path: chat with abilities context, then second evaluation ──
@@ -250,7 +255,7 @@ class MessageHandler {
           content,
           keywordConfig,
           processingMessage,
-          message.author.username,
+          requester,
           conversationHistory
         );
       }
@@ -259,7 +264,7 @@ class MessageHandler {
         error instanceof Error ? error.message : 'Unknown error';
 
       // Log full error to console always
-      logger.logError(message.author.username, errorMsg);
+      logger.logError(requester, errorMsg);
 
       // Edit processing message with friendly error
       if (this.canSendErrorMessage()) {
