@@ -105,7 +105,33 @@ class Config {
     return path.join(__dirname, '../../config/keywords.json');
   }
 
+  private getDefaultKeywordsPath(): string {
+    return path.join(__dirname, '../../config/keywords.default.json');
+  }
+
+  /**
+   * If the runtime keywords.json does not exist and KEYWORDS_CONFIG_PATH is
+   * not set, copy from the tracked keywords.default.json template — mirroring
+   * the .env.example → .env pattern so the runtime file can be gitignored.
+   */
+  private ensureKeywordsFile(): void {
+    // Skip when user specified a custom path via env.
+    if (process.env.KEYWORDS_CONFIG_PATH) return;
+
+    const runtimePath = this.getKeywordsPath();
+    if (fs.existsSync(runtimePath)) return;
+
+    const defaultPath = this.getDefaultKeywordsPath();
+    if (fs.existsSync(defaultPath)) {
+      fs.copyFileSync(defaultPath, runtimePath);
+      logger.log('success', 'config', `Created runtime ${path.basename(runtimePath)} from ${path.basename(defaultPath)}`);
+    } else {
+      logger.logWarn('config', `No keywords config found — neither ${runtimePath} nor ${defaultPath} exist`);
+    }
+  }
+
   private loadKeywords(): void {
+    this.ensureKeywordsFile();
     const keywordsPath = this.getKeywordsPath();
     try {
       const data = fs.readFileSync(keywordsPath, 'utf-8');
@@ -611,7 +637,7 @@ class Config {
   }
 
   /**
-   * Reload hot-reloadable config from .env and keywords.json.
+   * Reload hot-reloadable config from .env and keywords.json (runtime copy).
    * API endpoints and keywords reload in-place.
    * Discord token, client ID, and HTTP port require restart.
    */

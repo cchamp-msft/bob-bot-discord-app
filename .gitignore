@@ -11,3 +11,4 @@ outputs/
 .work/
 *.swp
 *.swo
+config/keywords.json

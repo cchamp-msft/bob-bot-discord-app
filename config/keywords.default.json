@@ -64,6 +64,7 @@
       "api": "accuweather",
       "timeout": 360,
       "description": "Get an AI-powered opinionated weather report",
+      "abilityText": "Get an AI-powered opinionated weather report",
       "finalOllamaPass": true,
       "contextFilterMaxDepth": 1
     },

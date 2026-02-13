@@ -16,6 +16,7 @@ class ConfigWriter {
     }
     return path.join(__dirname, '../../config/keywords.json');
   }
+  private defaultKeywordsPath = path.join(__dirname, '../../config/keywords.default.json');
   private configDir = path.join(__dirname, '../../.config');
   private workflowPath = path.join(__dirname, '../../.config/comfyui-workflow.json');
 

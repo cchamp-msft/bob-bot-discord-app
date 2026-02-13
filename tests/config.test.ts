@@ -403,7 +403,7 @@ describe('Config', () => {
     const { config } = require('../src/utils/config');
 
     it('should find keyword case-insensitively', () => {
-      // The default keywords.json should have "generate"
+      // The runtime keywords.json (copied from keywords.default.json) should have "generate"
       const kw = config.getKeywordConfig('GENERATE');
       if (kw) {
         expect(kw.keyword.toLowerCase()).toBe('generate');
@@ -414,6 +414,109 @@ describe('Config', () => {
     it('should return undefined for unknown keyword', () => {
       const kw = config.getKeywordConfig('nonexistent_keyword_xyz');
       expect(kw).toBeUndefined();
+    });
+  });
+
+  describe('keywords.default.json copy-on-startup', () => {
+    const { config } = require('../src/utils/config');
+    const runtimePath = path.join(__dirname, '../config/keywords.json');
+    const defaultPath = path.join(__dirname, '../config/keywords.default.json');
+    let savedRuntime: string | null = null;
+
+    beforeEach(() => {
+      // Save current runtime file content (may have been created by earlier tests / singleton init)
+      if (fs.existsSync(runtimePath)) {
+        savedRuntime = fs.readFileSync(runtimePath, 'utf-8');
+      } else {
+        savedRuntime = null;
+      }
+    });
+
+    afterEach(() => {
+      // Restore runtime keywords.json
+      if (savedRuntime !== null) {
+        fs.writeFileSync(runtimePath, savedRuntime);
+      } else if (fs.existsSync(runtimePath)) {
+        fs.unlinkSync(runtimePath);
+      }
+      delete process.env.KEYWORDS_CONFIG_PATH;
+      config.reload();
+    });
+
+    it('should copy keywords.default.json to keywords.json when runtime file is missing', () => {
+      // Remove the runtime file
+      if (fs.existsSync(runtimePath)) {
+        fs.unlinkSync(runtimePath);
+      }
+
+      config.reload();
+
+      // Runtime file should now exist (copied from default)
+      expect(fs.existsSync(runtimePath)).toBe(true);
+
+      // Content should match the default template
+      const defaultContent = JSON.parse(fs.readFileSync(defaultPath, 'utf-8'));
+      const runtimeContent = JSON.parse(fs.readFileSync(runtimePath, 'utf-8'));
+      expect(runtimeContent).toEqual(defaultContent);
+
+      // Keywords should be loaded
+      expect(config.getKeywords().length).toBeGreaterThan(0);
+    });
+
+    it('should not overwrite existing runtime keywords.json', () => {
+      // Write a custom runtime file
+      const customKeywords = {
+        keywords: [
+          { keyword: 'customonly', api: 'ollama', timeout: 30, description: 'Custom' },
+        ],
+      };
+      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+
+      config.reload();
+
+      // Should load the custom keyword, not the defaults
+      expect(config.getKeywordConfig('customonly')).toBeDefined();
+    });
+
+    it('should skip copy-from-default when KEYWORDS_CONFIG_PATH is set', () => {
+      // Remove the runtime file
+      if (fs.existsSync(runtimePath)) {
+        fs.unlinkSync(runtimePath);
+      }
+
+      // Point to a custom path
+      writeKeywords([
+        { keyword: 'envpath', api: 'ollama', timeout: 30, description: 'From env path' },
+      ]);
+      process.env.KEYWORDS_CONFIG_PATH = keywordsPath;
+
+      config.reload();
+
+      // Runtime keywords.json should NOT have been created (env path used instead)
+      expect(fs.existsSync(runtimePath)).toBe(false);
+      expect(config.getKeywordConfig('envpath')).toBeDefined();
+    });
+
+    it('should fall back to empty keywords when neither runtime nor default file exists', () => {
+      // Remove the runtime file
+      if (fs.existsSync(runtimePath)) {
+        fs.unlinkSync(runtimePath);
+      }
+
+      // Temporarily rename the default file
+      const backupPath = defaultPath + '.bak';
+      fs.renameSync(defaultPath, backupPath);
+
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        config.reload();
+        expect(config.getKeywords()).toEqual([]);
+      } finally {
+        // Restore the default file
+        fs.renameSync(backupPath, defaultPath);
+        warnSpy.mockRestore();
+      }
     });
   });
 
@@ -621,7 +724,7 @@ describe('Config', () => {
     });
 
     afterEach(() => {
-      // Restore original keywords.json and reload
+      // Restore runtime keywords.json and reload
       fs.writeFileSync(kwPath, originalContent);
       config.reload();
     });

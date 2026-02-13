@@ -72,7 +72,8 @@ src/
     └── responseTransformer.ts # Stage result extraction and context building
 
 config/
-└── keywords.json         # Keyword to API mapping with timeouts
+├── keywords.default.json  # Default keyword definitions (tracked template)
+└── keywords.json          # Runtime keyword config (auto-created from default, gitignored)
 
 .config/
 └── comfyui-workflow.json  # ComfyUI workflow template (uploaded via configurator)
@@ -233,6 +234,7 @@ npm run test:watch
 ### Test Coverage:
 - **config.test.ts** — Environment parsing, public config, keyword routing
 - **configWriter.test.ts** — .env persistence, keywords.json validation
+- **config.test.ts** also covers keywords.default.json → keywords.json copy-on-startup
 - **fileHandler.test.ts** — File saving, sanitization, path generation
 - **logger.test.ts** — Log formatting, level mapping, console output, file tail
 - **requestQueue.test.ts** — API locking, timeouts, concurrency
@@ -345,7 +347,7 @@ Depth is counted from the **newest** message (newest = depth 1), matching the "p
 
 #### Per-Keyword Depth Overrides
 
-These optional fields in `config/keywords.json` (or via the configurator UI) override the global defaults for a specific keyword:
+These optional fields in `config/keywords.json` (runtime, or `config/keywords.default.json` for defaults) override the global defaults for a specific keyword:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -391,7 +393,7 @@ The bot uses a two-stage evaluation flow to intelligently route requests. Keywor
 
 ### Keyword Configuration
 
-Extended fields in `config/keywords.json`:
+Extended fields in `config/keywords.json` (or `config/keywords.default.json`):
 
 ```json
 {
@@ -555,7 +557,7 @@ When a user says "weather in Seattle", the bot extracts "Seattle", resolves it v
 
 #### Weather Keywords
 
-Four default weather keywords are configured in `config/keywords.json`. All require a location parameter:
+Four default weather keywords are configured in `config/keywords.default.json`. All require a location parameter:
 
 | Keyword | Mode | Behavior |
 |---------|------|----------|
@@ -595,7 +597,7 @@ The bot integrates with [ESPN's public API](https://site.api.espn.com/apis/site/
 
 #### NFL Keywords
 
-Two NFL keywords are configured in `config/keywords.json`:
+Two NFL keywords are configured in `config/keywords.default.json`:
 
 | Keyword | Behavior |
 |---------|----------|
