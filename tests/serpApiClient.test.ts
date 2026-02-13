@@ -516,14 +516,14 @@ describe('SerpApiClient', () => {
   // ── formatAIOverviewOnly ───────────────────────────────────────
 
   describe('formatAIOverviewOnly', () => {
-    it('should return only the AI Overview section with references', () => {
+    it('should return only the AI Overview section without sources', () => {
       const text = serpApiClient.formatAIOverviewOnly(sampleSearchResponse as any, 'what is TypeScript');
 
       expect(text).toContain('🔎 **Second opinion for:**');
       expect(text).toContain('🤖 **Google AI Overview:**');
       expect(text).toContain('TypeScript is a superset of JavaScript');
-      expect(text).toContain('📚 **Sources:**');
-      expect(text).toContain('[TypeScript Docs](https://typescriptlang.org/docs)');
+      // Sources are omitted from second opinion — users can use "find content"
+      expect(text).not.toContain('📚 **Sources:**');
       // Should NOT contain organic results or other sections
       expect(text).not.toContain('📋 **Direct Answer:**');
       expect(text).not.toContain('📖 **');
@@ -536,7 +536,7 @@ describe('SerpApiClient', () => {
       expect(text).toContain('🔎 **Second opinion for:**');
       expect(text).toContain('⚠️ Google did not return an AI Overview');
       expect(text).toContain('search');
-      expect(text).not.toContain('🤖 **Google AI Overview:**');
+      expect(text).toContain('find content');
     });
 
     it('should handle empty AI overview text_blocks', () => {
@@ -588,6 +588,7 @@ describe('SerpApiClient', () => {
       expect(text).toContain('SERPAPI_HL');
       expect(text).toContain('SERPAPI_GL');
       expect(text).toContain('search');
+      expect(text).toContain('find content');
     });
 
     it('should NOT render generic blocks (recipes, questions) — AI overview only', () => {
@@ -639,8 +640,8 @@ describe('SerpApiClient', () => {
       expect(text).toContain('🤖 **AI Overview** — *What are the different types?*');
       expect(text).toContain('There are several types to consider.');
       expect(text).toContain('Type A');
-      expect(text).toContain('📚 **Sources:**');
-      expect(text).toContain('[Source One](https://example.com/one)');
+      // Sources are omitted from second opinion
+      expect(text).not.toContain('📚 **Sources:**');
       expect(text).not.toContain('⚠️ Google did not return an AI Overview');
     });
 
@@ -879,6 +880,30 @@ describe('SerpApiClient', () => {
       expect(results[0].subtitle).toBe('How does it work?');
     });
 
+    it('should deduplicate embedded overviews with identical first snippets', () => {
+      const sharedAIO = {
+        text_blocks: [{ type: 'paragraph', snippet: 'Duplicate content here.' }],
+        references: [],
+      };
+      const data = {
+        knowledge_graph: {
+          path_a: {
+            subtitle: 'First path',
+            ai_overview: sharedAIO,
+          },
+          path_b: {
+            // Same AIO content at a different path without subtitle
+            ai_overview: { ...sharedAIO },
+          },
+        },
+      };
+
+      const results = serpApiClient.findEmbeddedAIOverviews(data as any);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].subtitle).toBe('First path');
+    });
+
     it('should handle missing subtitle gracefully', () => {
       const data = {
         some_block: {
@@ -901,7 +926,7 @@ describe('SerpApiClient', () => {
 
   describe('handleRequest - second opinion keyword', () => {
     it('should use AI-Overview-only formatting for "second opinion" keyword', async () => {
-      mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: { ...sampleSearchResponse, organic_results: [...sampleSearchResponse.organic_results] } });
 
       const result = await serpApiClient.handleRequest('what is TypeScript', 'second opinion');
 
@@ -959,8 +984,8 @@ describe('SerpApiClient', () => {
       expect(result.success).toBe(true);
       expect(result.data!.text).toContain('🔎 **Second opinion for:**');
       expect(result.data!.text).toContain('Full AI Overview from follow-up.');
-      expect(result.data!.text).toContain('📚 **Sources:**');
-      expect(result.data!.text).toContain('[Source](https://source.example.com)');
+      // Sources are omitted from second opinion
+      expect(result.data!.text).not.toContain('📚 **Sources:**');
       // Should NOT contain organic/answer-box content
       expect(result.data!.text).not.toContain('📄 **Top Results:**');
     });
@@ -1025,10 +1050,31 @@ describe('SerpApiClient', () => {
       expect(result.success).toBe(true);
       expect(result.data!.text).toContain('🤖 **AI Overview** — *What are the different types of lasagna?*');
       expect(result.data!.text).toContain('Lasagna types vary significantly by region.');
-      expect(result.data!.text).toContain('[Serious Eats](https://www.seriouseats.com/lasagna)');
+      // Sources are omitted from second opinion
+      expect(result.data!.text).not.toContain('📚 **Sources:**');
       // Should NOT contain organic results or generic blocks
       expect(result.data!.text).not.toContain('📄 **Top Results:**');
       expect(result.data!.text).not.toContain('⚠️ Google did not return an AI Overview');
+      // organic_results should be stripped from raw data
+      expect((result.data!.raw as Record<string, unknown>).organic_results).toBeUndefined();
+    });
+    it('should request num=1 organic results for "second opinion"', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: { ...sampleSearchResponse, organic_results: [...sampleSearchResponse.organic_results] } });
+
+      await serpApiClient.handleRequest('test topic', 'second opinion');
+
+      expect(mockInstance.get).toHaveBeenCalledWith('/search', expect.objectContaining({
+        params: expect.objectContaining({ num: 1 }),
+      }));
+    });
+
+    it('should strip organic_results from raw data for "second opinion"', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: { ...sampleSearchResponse, organic_results: [...sampleSearchResponse.organic_results] } });
+
+      const result = await serpApiClient.handleRequest('test topic', 'second opinion');
+
+      expect(result.success).toBe(true);
+      expect((result.data!.raw as Record<string, unknown>).organic_results).toBeUndefined();
     });
   });
 
