@@ -135,7 +135,9 @@ class SerpApiClient {
 
     try {
       logger.log('success', 'system', `SERPAPI: Searching "${query}" (keyword: ${keyword})`);
-      const data = await this.googleSearch(query, apiKey, signal);
+      // "second opinion" only needs the AI Overview — request minimal organic results
+      const num = keyword === 'second opinion' ? 1 : 5;
+      const data = await this.googleSearch(query, apiKey, signal, num);
 
       // Log response shape for debugging AIO availability issues
       logger.logDebugLazy('serpapi', () => {
@@ -164,6 +166,9 @@ class SerpApiClient {
       // Route to the appropriate formatter based on keyword.
       let text: string;
       if (keyword === 'second opinion') {
+        // Organic results are not rendered for "second opinion" — strip them
+        // from the raw data so downstream consumers don't receive them either.
+        delete data.organic_results;
         text = this.formatAIOverviewOnly(data, query);
       } else if (keyword === 'find content') {
         text = this.formatContentSearch(data, query);
@@ -187,12 +192,12 @@ class SerpApiClient {
    * Execute a Google Search via SerpAPI.
    * Returns the parsed JSON response.
    */
-  private async googleSearch(query: string, apiKey: string, signal?: AbortSignal): Promise<SerpApiSearchResponse> {
+  private async googleSearch(query: string, apiKey: string, signal?: AbortSignal, num = 5): Promise<SerpApiSearchResponse> {
     const params: Record<string, string | number> = {
       engine: 'google',
       q: query,
       api_key: apiKey,
-      num: 5,
+      num,
     };
 
     // Inject locale params to improve AI Overview availability.
@@ -299,7 +304,7 @@ class SerpApiClient {
       }
       parts.push(`This can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.`);
       parts.push(`AI Overview availability is locale-dependent — ensure **SERPAPI_HL** and **SERPAPI_GL** are set (e.g. \`en\`/\`us\`).`);
-      parts.push(`💡 *Tip: Try rephrasing your query or using the **search** keyword for full results.*`);
+      parts.push(`💡 *Tip: Try rephrasing your query or using the **search** or **find content** keyword for full results.*`);
     }
 
     return parts.join('\n').trim();
@@ -616,19 +621,6 @@ class SerpApiClient {
       parts.push(`> ${s}`);
     }
 
-    // Include references if available
-    if (overview.references?.length) {
-      parts.push('');
-      parts.push(`📚 **Sources:**`);
-      for (const ref of overview.references.slice(0, 5)) {
-        const title = ref.title || 'Link';
-        const link = ref.link || '';
-        if (link) {
-          parts.push(`- [${title}](${link})`);
-        }
-      }
-    }
-
     parts.push('');
   }
 
@@ -645,6 +637,7 @@ class SerpApiClient {
     data: SerpApiSearchResponse
   ): Array<{ subtitle: string | undefined; aiOverview: SerpApiAIOverview }> {
     const results: Array<{ subtitle: string | undefined; aiOverview: SerpApiAIOverview }> = [];
+    const seen = new Set<string>();
     const MAX_DEPTH = 10;
 
     const walk = (obj: unknown, depth: number, isTopLevel: boolean): void => {
@@ -663,9 +656,15 @@ class SerpApiClient {
         if (key === 'ai_overview' && value && typeof value === 'object') {
           const overview = value as SerpApiAIOverview;
           if (overview.text_blocks?.length) {
-            // Grab the sibling 'subtitle' from the parent object as context
-            const subtitle = typeof record.subtitle === 'string' ? record.subtitle : undefined;
-            results.push({ subtitle, aiOverview: overview });
+            // Deduplicate by first snippet — Google sometimes nests the same
+            // AI Overview at multiple paths (e.g. types + layering).
+            const fingerprint = overview.text_blocks[0]?.snippet ?? '';
+            if (!seen.has(fingerprint)) {
+              seen.add(fingerprint);
+              // Grab the sibling 'subtitle' from the parent object as context
+              const subtitle = typeof record.subtitle === 'string' ? record.subtitle : undefined;
+              results.push({ subtitle, aiOverview: overview });
+            }
           }
         } else if (typeof value === 'object' && value !== null) {
           walk(value, depth + 1, false);
