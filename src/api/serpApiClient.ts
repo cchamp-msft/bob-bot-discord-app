@@ -161,11 +161,15 @@ class SerpApiClient {
         }
       }
 
-      // "second opinion" keyword returns only the AI Overview section.
-      const isAIOverviewOnly = keyword === 'second opinion';
-      const text = isAIOverviewOnly
-        ? this.formatAIOverviewOnly(data, query)
-        : this.formatSearchText(data, query);
+      // Route to the appropriate formatter based on keyword.
+      let text: string;
+      if (keyword === 'second opinion') {
+        text = this.formatAIOverviewOnly(data, query);
+      } else if (keyword === 'find content') {
+        text = this.formatContentSearch(data, query);
+      } else {
+        text = this.formatSearchText(data, query);
+      }
       return {
         success: true,
         data: { text, raw: data },
@@ -272,41 +276,21 @@ class SerpApiClient {
 
     parts.push(`🔎 **Second opinion for:** *${query}*\n`);
 
+    // 1. Try top-level AI Overview first
     if (data.ai_overview?.text_blocks?.length) {
-      const snippets = this.extractAIOverviewSnippets(data.ai_overview.text_blocks, 10);
-      if (snippets.length > 0) {
-        parts.push(`🤖 **Google AI Overview:**`);
-        for (const s of snippets) {
-          parts.push(`> ${s}`);
-        }
+      this.renderAIOverviewSection(parts, data.ai_overview, undefined, 10);
+    }
 
-        // Include references if available
-        if (data.ai_overview.references?.length) {
-          parts.push('');
-          parts.push(`📚 **Sources:**`);
-          for (const ref of data.ai_overview.references.slice(0, 5)) {
-            const title = ref.title || 'Link';
-            const link = ref.link || '';
-            if (link) {
-              parts.push(`- [${title}](${link})`);
-            }
-          }
-        }
+    // 2. If no top-level AIO content, search for embedded AI overviews
+    //    (e.g. knowledge_graph.types.ai_overview, knowledge_graph.layering.ai_overview)
+    if (parts.length <= 1) {
+      const embedded = this.findEmbeddedAIOverviews(data);
+      for (const entry of embedded) {
+        this.renderAIOverviewSection(parts, entry.aiOverview, entry.subtitle, 10);
       }
     }
 
-    // Generic iteration: render every block not skipped and not already handled
-    // For "second opinion", organic_results are intentionally excluded.
-    const extras = this.getExtraBlocks(data, ['ai_overview', 'organic_results']);
-    for (const key of extras) {
-      const block = this.formatStructuredBlock(key, data[key]);
-      if (block.length > 0) {
-        parts.push('');
-        parts.push(...block);
-      }
-    }
-
-    // If we only have the header line, no structured content was found
+    // 3. If still only the header line, no AI overview content was found anywhere
     if (parts.length <= 1) {
       if (data.ai_overview?.error) {
         parts.push(`⚠️ Google AI Overview returned an error: ${data.ai_overview.error}`);
@@ -316,6 +300,69 @@ class SerpApiClient {
       parts.push(`This can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.`);
       parts.push(`AI Overview availability is locale-dependent — ensure **SERPAPI_HL** and **SERPAPI_GL** are set (e.g. \`en\`/\`us\`).`);
       parts.push(`💡 *Tip: Try rephrasing your query or using the **search** keyword for full results.*`);
+    }
+
+    return parts.join('\n').trim();
+  }
+
+  // ── Formatting: Content search (find content) ──────────────────
+
+  /**
+   * Format search results focused on pertinent content: answer box,
+   * knowledge graph, generic blocks, and organic results.
+   * AI Overview is intentionally excluded — that is "second opinion"'s domain.
+   */
+  formatContentSearch(data: SerpApiSearchResponse, query: string): string {
+    const parts: string[] = [];
+
+    parts.push(`🔍 **Content found for:** *${query}*\n`);
+
+    // Answer Box (direct answer)
+    if (data.answer_box) {
+      const ab = data.answer_box;
+      const answer = ab.answer || ab.snippet || '';
+      if (answer) {
+        parts.push(`📋 **Direct Answer:**`);
+        if (ab.title) parts.push(`> **${ab.title}**`);
+        parts.push(`> ${answer}`);
+        if (ab.link) parts.push(`> [Source](${ab.link})`);
+        parts.push('');
+      }
+    }
+
+    // Knowledge Graph
+    if (data.knowledge_graph?.description) {
+      const kg = data.knowledge_graph;
+      parts.push(`📖 **${kg.title || 'Knowledge Graph'}**${kg.type ? ` *(${kg.type})*` : ''}`);
+      parts.push(`> ${kg.description}`);
+      if (kg.source?.link) parts.push(`> [Source: ${kg.source.name || 'Link'}](${kg.source.link})`);
+      parts.push('');
+    }
+
+    // Generic iteration: render blocks not already handled above
+    // Exclude ai_overview — that belongs to "second opinion"
+    const extras = this.getExtraBlocks(data, ['answer_box', 'knowledge_graph', 'ai_overview', 'organic_results']);
+    for (const key of extras) {
+      const block = this.formatStructuredBlock(key, data[key]);
+      if (block.length > 0) {
+        parts.push(...block);
+        parts.push('');
+      }
+    }
+
+    // Organic Results (top 5)
+    const organics = data.organic_results?.slice(0, 5) ?? [];
+    if (organics.length > 0) {
+      parts.push(`📄 **Top Results:**`);
+      for (const result of organics) {
+        const snippet = result.snippet ? ` — ${result.snippet}` : '';
+        parts.push(`${result.position}. [${result.title}](${result.link})${snippet}`);
+      }
+    }
+
+    // If we only have the header line, nothing was found
+    if (parts.length <= 1) {
+      parts.push(`No content found for "${query}".`);
     }
 
     return parts.join('\n').trim();
@@ -539,6 +586,95 @@ class SerpApiClient {
 
     walk(blocks);
     return snippets;
+  }
+
+  // ── Embedded AI Overview discovery ────────────────────────────
+
+  /**
+   * Render a single AI Overview section (top-level or embedded) into parts.
+   * Optionally includes a subtitle heading for embedded overviews.
+   */
+  private renderAIOverviewSection(
+    parts: string[],
+    overview: SerpApiAIOverview,
+    subtitle: string | undefined,
+    maxSnippets: number
+  ): void {
+    if (!overview.text_blocks?.length) return;
+
+    const snippets = this.extractAIOverviewSnippets(overview.text_blocks, maxSnippets);
+    if (snippets.length === 0) return;
+
+    // Add section heading
+    if (subtitle) {
+      parts.push(`🤖 **AI Overview** — *${subtitle}*`);
+    } else {
+      parts.push(`🤖 **Google AI Overview:**`);
+    }
+
+    for (const s of snippets) {
+      parts.push(`> ${s}`);
+    }
+
+    // Include references if available
+    if (overview.references?.length) {
+      parts.push('');
+      parts.push(`📚 **Sources:**`);
+      for (const ref of overview.references.slice(0, 5)) {
+        const title = ref.title || 'Link';
+        const link = ref.link || '';
+        if (link) {
+          parts.push(`- [${title}](${link})`);
+        }
+      }
+    }
+
+    parts.push('');
+  }
+
+  /**
+   * Recursively search the entire response object for embedded `ai_overview`
+   * keys. Google sometimes nests AI Overview data inside other blocks
+   * (e.g. knowledge_graph.types.<topic>.ai_overview).
+   *
+   * Skips the top-level `data.ai_overview` (already handled separately).
+   * Returns an array of { subtitle, aiOverview } for each embedded occurrence,
+   * where subtitle is the parent object's `subtitle` field (the topic question).
+   */
+  findEmbeddedAIOverviews(
+    data: SerpApiSearchResponse
+  ): Array<{ subtitle: string | undefined; aiOverview: SerpApiAIOverview }> {
+    const results: Array<{ subtitle: string | undefined; aiOverview: SerpApiAIOverview }> = [];
+    const MAX_DEPTH = 10;
+
+    const walk = (obj: unknown, depth: number, isTopLevel: boolean): void => {
+      if (depth > MAX_DEPTH || obj === null || obj === undefined || typeof obj !== 'object') {
+        return;
+      }
+
+      const record = obj as Record<string, unknown>;
+
+      for (const key of Object.keys(record)) {
+        const value = record[key];
+
+        // Skip top-level ai_overview — it's handled separately
+        if (isTopLevel && key === 'ai_overview') continue;
+
+        if (key === 'ai_overview' && value && typeof value === 'object') {
+          const overview = value as SerpApiAIOverview;
+          if (overview.text_blocks?.length) {
+            // Grab the sibling 'subtitle' from the parent object as context
+            const subtitle = typeof record.subtitle === 'string' ? record.subtitle : undefined;
+            results.push({ subtitle, aiOverview: overview });
+          }
+        } else if (typeof value === 'object' && value !== null) {
+          walk(value, depth + 1, false);
+        }
+      }
+    };
+
+    walk(data, 0, true);
+    return results;
   }
 
   // ── Health / connectivity ───────────────────────────────────────
