@@ -112,6 +112,36 @@ describe('Config', () => {
       process.env.SERPAPI_LOCATION = 'Austin,Texas';
       expect(config.getSerpApiLocation()).toBe('Austin,Texas');
     });
+
+    it('getSerpApiHl should default to "en" when unset', () => {
+      delete process.env.SERPAPI_HL;
+      expect(config.getSerpApiHl()).toBe('en');
+    });
+
+    it('getSerpApiHl should return env value when set', () => {
+      process.env.SERPAPI_HL = 'de';
+      expect(config.getSerpApiHl()).toBe('de');
+    });
+
+    it('getSerpApiHl should return empty string when explicitly cleared', () => {
+      process.env.SERPAPI_HL = '';
+      expect(config.getSerpApiHl()).toBe('');
+    });
+
+    it('getSerpApiGl should default to "us" when unset', () => {
+      delete process.env.SERPAPI_GL;
+      expect(config.getSerpApiGl()).toBe('us');
+    });
+
+    it('getSerpApiGl should return env value when set', () => {
+      process.env.SERPAPI_GL = 'uk';
+      expect(config.getSerpApiGl()).toBe('uk');
+    });
+
+    it('getSerpApiGl should return empty string when explicitly cleared', () => {
+      process.env.SERPAPI_GL = '';
+      expect(config.getSerpApiGl()).toBe('');
+    });
   });
 
   describe('parseIntEnv (via public getters)', () => {
