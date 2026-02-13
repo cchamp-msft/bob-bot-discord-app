@@ -209,18 +209,43 @@ function formatConversationHistory(history: ChatMessage[]): string {
   return blocks.join('\n');
 }
 
+// ── Current date/time helper ─────────────────────────────────────
+
+/**
+ * Build an XML tag containing the current date/time so the model
+ * can reason about temporal context (e.g. "today", "this weekend").
+ *
+ * @param now - Optional Date for testing; defaults to `new Date()`.
+ */
+export function getCurrentDateTimeTag(now?: Date): string {
+  const d = now ?? new Date();
+  const formatted = d.toLocaleString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  });
+  return `<current_datetime>${formatted}</current_datetime>`;
+}
+
 // ── XML user content builder ─────────────────────────────────────
 
 /**
  * Build the XML-tagged user message content.
- * Assembles <conversation_history>, <external_data>, <current_question>,
- * and <thinking_and_output_rules> blocks.
+ * Assembles <current_datetime>, <conversation_history>, <external_data>,
+ * <current_question>, and <thinking_and_output_rules> blocks.
  */
 export function buildUserContent(options: PromptBuildOptions): string {
   const { userMessage, conversationHistory, externalData, enabledKeywords } = options;
   const routable = getRoutableKeywords(enabledKeywords);
 
   const parts: string[] = [];
+
+  // ── <current_datetime> ──
+  parts.push(getCurrentDateTimeTag());
 
   // ── <conversation_history> ──
   const historyText = formatConversationHistory(
@@ -296,9 +321,11 @@ export function assemblePrompt(options: PromptBuildOptions): AssembledPrompt {
 export function buildAskPrompt(question: string): string {
   const persona = config.getOllamaSystemPrompt();
 
+  const dateTag = getCurrentDateTimeTag();
+
   return (
     `<system>\n${persona}\n</system>\n\n` +
-    `<user>\n<current_question>\n${escapeXmlContent(question)}\n</current_question>\n</user>`
+    `<user>\n${dateTag}\n<current_question>\n${escapeXmlContent(question)}\n</current_question>\n</user>`
   );
 }
 

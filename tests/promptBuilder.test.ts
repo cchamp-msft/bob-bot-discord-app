@@ -114,6 +114,7 @@ import {
   formatGenericExternalData,
   formatSerpApiExternalData,
   escapeXmlContent,
+  getCurrentDateTimeTag,
 } from '../src/utils/promptBuilder';
 import { config } from '../src/utils/config';
 
@@ -632,6 +633,53 @@ describe('PromptBuilder', () => {
 
       expect(result.userContent).toContain('&lt;script&gt;');
       expect(result.userContent).not.toContain('<script>');
+    });
+  });
+
+  // ── getCurrentDateTimeTag ──────────────────────────────────
+
+  describe('getCurrentDateTimeTag', () => {
+    it('should wrap formatted date/time in <current_datetime> tag', () => {
+      const tag = getCurrentDateTimeTag(new Date('2026-02-13T20:30:00Z'));
+      expect(tag).toMatch(/^<current_datetime>.+<\/current_datetime>$/);
+    });
+
+    it('should include day-of-week, month, day, year, and time', () => {
+      const tag = getCurrentDateTimeTag(new Date('2026-07-04T15:00:00Z'));
+      expect(tag).toContain('Saturday');
+      expect(tag).toContain('July');
+      expect(tag).toContain('4');
+      expect(tag).toContain('2026');
+    });
+
+    it('should use current time when no argument is provided', () => {
+      const tag = getCurrentDateTimeTag();
+      const year = new Date().getFullYear().toString();
+      expect(tag).toContain(year);
+      expect(tag).toContain('<current_datetime>');
+    });
+  });
+
+  // ── current_datetime integration ───────────────────────────
+
+  describe('current_datetime in prompts', () => {
+    it('should appear in buildUserContent output', () => {
+      const content = buildUserContent({ userMessage: 'Hello' });
+      expect(content).toContain('<current_datetime>');
+      expect(content).toContain('</current_datetime>');
+    });
+
+    it('should appear before conversation_history in buildUserContent', () => {
+      const content = buildUserContent({ userMessage: 'Hello' });
+      const dtIndex = content.indexOf('<current_datetime>');
+      const histIndex = content.indexOf('<conversation_history>');
+      expect(dtIndex).toBeLessThan(histIndex);
+    });
+
+    it('should appear in buildAskPrompt output', () => {
+      const prompt = buildAskPrompt('What is 2+2?');
+      expect(prompt).toContain('<current_datetime>');
+      expect(prompt).toContain('</current_datetime>');
     });
   });
 });
