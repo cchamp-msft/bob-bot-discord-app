@@ -426,6 +426,12 @@ class MessageHandler {
         if (!content) continue;
 
         const role = msg.author.id === botId ? 'assistant' as const : 'user' as const;
+        // Prefix user messages with display name so the model sees who said what,
+        // matching the format used in the trigger message and guild context.
+        if (role === 'user') {
+          const dmDisplayName = msg.author.displayName ?? msg.author.username;
+          content = `${dmDisplayName}: ${content}`;
+        }
         candidates.push({
           role,
           content,

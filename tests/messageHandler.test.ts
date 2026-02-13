@@ -2753,9 +2753,10 @@ describe('MessageHandler collectDmHistory — keep-newest and dm metadata', () =
   });
 
   it('should keep newest messages when char budget is exceeded', async () => {
-    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(30);
+    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(40);
 
-    // oldest-first after reverse: dm-1 (20 chars), dm-2 (20 chars) — budget 30
+    // oldest-first after reverse: dm-1 (20 chars), dm-2 (20 chars) — budget 40
+    // After username prefix "testuser: " (10 chars), each becomes 30 chars
     const messages = new Map([
       ['dm-2', {
         id: 'dm-2',
@@ -2774,9 +2775,9 @@ describe('MessageHandler collectDmHistory — keep-newest and dm metadata', () =
     const msg = createDmMsg(messages);
     const result = await messageHandler.collectDmHistory(msg);
 
-    // Only the newest (dm-2) should survive — 20 chars fits within 30
+    // Only the newest (dm-2) should survive — prefixed content fits within budget
     expect(result).toHaveLength(1);
-    expect(result[0].content).toBe('B'.repeat(20));
+    expect(result[0].content).toBe(`testuser: ${'B'.repeat(20)}`);
   });
 });
 
@@ -2824,7 +2825,7 @@ describe('MessageHandler collectDmHistory — ALLOW_BOT_INTERACTIONS filtering',
     const result = await messageHandler.collectDmHistory(msg);
 
     expect(result).toHaveLength(1);
-    expect(result[0].content).toBe('Human message');
+    expect(result[0].content).toBe('testuser: Human message');
   });
 
   it('should include other bot messages in DM history when ALLOW_BOT_INTERACTIONS is true', async () => {
