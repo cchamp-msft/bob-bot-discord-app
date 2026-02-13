@@ -338,8 +338,8 @@ class HttpServer {
         // Update keywords if provided
         if (keywords && Array.isArray(keywords)) {
           await configWriter.updateKeywords(keywords);
-          messages.push(`Updated keywords.json: ${keywords.length} keyword(s)`);
-          logger.log('success', 'configurator', `Config saved — ${keywords.length} keyword(s) written to keywords.json`);
+          messages.push(`Updated keywords config: ${keywords.length} keyword(s)`);
+          logger.log('success', 'configurator', `Config saved — ${keywords.length} keyword(s) written to keywords config`);
         }
 
         // Hot-reload config

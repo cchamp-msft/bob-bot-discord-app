@@ -97,8 +97,16 @@ class Config {
     this.loadKeywords();
   }
 
+  private getKeywordsPath(): string {
+    const envPath = process.env.KEYWORDS_CONFIG_PATH;
+    if (envPath) {
+      return path.resolve(path.join(__dirname, '../..'), envPath);
+    }
+    return path.join(__dirname, '../../config/keywords.json');
+  }
+
   private loadKeywords(): void {
-    const keywordsPath = path.join(__dirname, '../../config/keywords.json');
+    const keywordsPath = this.getKeywordsPath();
     try {
       const data = fs.readFileSync(keywordsPath, 'utf-8');
       const config: ConfigData = JSON.parse(data);
@@ -221,7 +229,7 @@ class Config {
       this.keywords = config.keywords;
       logger.log('success', 'config', `Loaded ${this.keywords.length} keywords from config`);
     } catch (error) {
-      logger.logError('config', `Failed to load keywords.json: ${error}`);
+      logger.logError('config', `Failed to load keywords config (${keywordsPath}): ${error}`);
       this.keywords = [];
     }
   }

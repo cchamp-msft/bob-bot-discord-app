@@ -9,7 +9,13 @@ interface EnvUpdate {
 
 class ConfigWriter {
   private envPath = path.join(__dirname, '../../.env');
-  private keywordsPath = path.join(__dirname, '../../config/keywords.json');
+  private get keywordsPath(): string {
+    const envPath = process.env.KEYWORDS_CONFIG_PATH;
+    if (envPath) {
+      return path.resolve(path.join(__dirname, '../..'), envPath);
+    }
+    return path.join(__dirname, '../../config/keywords.json');
+  }
   private configDir = path.join(__dirname, '../../.config');
   private workflowPath = path.join(__dirname, '../../.config/comfyui-workflow.json');
 
@@ -339,7 +345,7 @@ class ConfigWriter {
         'utf-8'
       );
     } catch (error) {
-      throw new Error(`Failed to update keywords.json: ${error}`);
+      throw new Error(`Failed to update keywords config: ${error}`);
     }
   }
 }

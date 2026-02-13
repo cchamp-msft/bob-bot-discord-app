@@ -32,10 +32,11 @@ describe('ConfigWriter', () => {
 
     // Override private paths via Object property access
     (configWriter as any).envPath = envPath;
-    (configWriter as any).keywordsPath = keywordsPath;
+    process.env.KEYWORDS_CONFIG_PATH = keywordsPath;
   });
 
   afterEach(() => {
+    delete process.env.KEYWORDS_CONFIG_PATH;
     // Clean up temp dir
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
