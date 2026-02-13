@@ -1312,7 +1312,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
       finalResponse: {
         success: true,
         data: {
-          text: '🔎 **Second opinion for:** *niche topic*\n\n⚠️ Google did not return an AI Overview for this query.\nThis can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.\nAI Overview availability is locale-dependent — ensure **SERPAPI_HL** and **SERPAPI_GL** are set (e.g. `en`/`us`).\n💡 *Tip: Try rephrasing your query or using the **search** keyword for full results.*',
+          text: '🔎 **Second opinion for:** *niche topic*\n\n⚠️ Google did not return an AI Overview for this query.\nThis can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.\n💡 *Tip: Try rephrasing your query or using the **search** keyword for full results.*',
           raw: {},
         },
       },
@@ -1340,7 +1340,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
       finalResponse: {
         success: true,
         data: {
-          text: '🔎 **Second opinion for:** *restricted*\n\n⚠️ Google AI Overview returned an error: Content restriction\nThis can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.\nAI Overview availability is locale-dependent — ensure **SERPAPI_HL** and **SERPAPI_GL** are set (e.g. `en`/`us`).\n💡 *Tip: Try rephrasing your query or using the **search** keyword for full results.*',
+          text: '🔎 **Second opinion for:** *restricted*\n\n⚠️ Google AI Overview returned an error: Content restriction\nThis can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.\n💡 *Tip: Try rephrasing your query or using the **search** keyword for full results.*',
           raw: {},
         },
       },

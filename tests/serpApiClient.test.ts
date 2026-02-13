@@ -577,16 +577,16 @@ describe('SerpApiClient', () => {
       const text = serpApiClient.formatAIOverviewOnly(data as any, 'restricted query');
 
       expect(text).toContain('⚠️ Google AI Overview returned an error: Content policy restriction');
-      expect(text).toContain('SERPAPI_HL');
+      expect(text).not.toContain('SERPAPI_HL');
       expect(text).not.toContain('🤖 **Google AI Overview:**');
     });
 
-    it('should show generic fallback with locale guidance when no overview and no error', () => {
+    it('should show generic fallback without locale guidance when no overview and no error', () => {
       const text = serpApiClient.formatAIOverviewOnly(minimalSearchResponse as any, 'obscure');
 
       expect(text).toContain('⚠️ Google did not return an AI Overview');
-      expect(text).toContain('SERPAPI_HL');
-      expect(text).toContain('SERPAPI_GL');
+      expect(text).not.toContain('SERPAPI_HL');
+      expect(text).not.toContain('SERPAPI_GL');
       expect(text).toContain('search');
       expect(text).toContain('find content');
     });
@@ -1008,18 +1008,18 @@ describe('SerpApiClient', () => {
       expect(result.success).toBe(true);
       expect(result.data!.text).toContain('⚠️ Google AI Overview returned an error');
       expect(result.data!.text).toContain('AI Overview is not available for this query.');
-      expect(result.data!.text).toContain('SERPAPI_HL');
-      expect(result.data!.text).toContain('SERPAPI_GL');
+      expect(result.data!.text).not.toContain('SERPAPI_HL');
+      expect(result.data!.text).not.toContain('SERPAPI_GL');
     });
 
-    it('should include locale guidance in fallback when no AI Overview is available', async () => {
+    it('should not include locale guidance in fallback when no AI Overview is available', async () => {
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
 
       const result = await serpApiClient.handleRequest('obscure topic', 'second opinion');
 
       expect(result.success).toBe(true);
-      expect(result.data!.text).toContain('SERPAPI_HL');
-      expect(result.data!.text).toContain('SERPAPI_GL');
+      expect(result.data!.text).not.toContain('SERPAPI_HL');
+      expect(result.data!.text).not.toContain('SERPAPI_GL');
     });
 
     it('should find embedded AI overview for "second opinion" when top-level is absent', async () => {

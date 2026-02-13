@@ -303,7 +303,7 @@ class SerpApiClient {
         parts.push(`⚠️ Google did not return an AI Overview for this query.`);
       }
       parts.push(`This can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.`);
-      parts.push(`AI Overview availability is locale-dependent — ensure **SERPAPI_HL** and **SERPAPI_GL** are set (e.g. \`en\`/\`us\`).`);
+      logger.log('warn', 'serpapi', 'AI Overview availability is locale-dependent — ensure SERPAPI_HL and SERPAPI_GL are set (e.g. en/us).');
       parts.push(`💡 *Tip: Try rephrasing your query or using the **search** or **find content** keyword for full results.*`);
     }
 
