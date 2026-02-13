@@ -387,6 +387,36 @@ describe('Config', () => {
     });
   });
 
+  describe('KEYWORDS_CONFIG_PATH support', () => {
+    const { config } = require('../src/utils/config');
+
+    it('reload should read keywords from KEYWORDS_CONFIG_PATH when set', () => {
+      writeKeywords([
+        {
+          keyword: 'envkw',
+          api: 'ollama',
+          timeout: 30,
+          description: 'Loaded from env path',
+        },
+      ]);
+
+      process.env.KEYWORDS_CONFIG_PATH = keywordsPath;
+
+      try {
+        const result = config.reload();
+        expect(result.reloaded).toContain('keywords');
+
+        const loaded = config.getKeywordConfig('envkw');
+        expect(loaded).toBeDefined();
+        expect(loaded!.description).toBe('Loaded from env path');
+        expect(config.getKeywordConfig('generate')).toBeUndefined();
+      } finally {
+        delete process.env.KEYWORDS_CONFIG_PATH;
+        config.reload();
+      }
+    });
+  });
+
   describe('abilityWhen and abilityInputs validation', () => {
     const { config } = require('../src/utils/config');
     const kwPath = path.join(__dirname, '../config/keywords.json');
