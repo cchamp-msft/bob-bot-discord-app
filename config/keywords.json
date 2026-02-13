@@ -106,6 +106,14 @@
       "timeout": 60,
       "description": "Get a second opinion by searching the web using Google",
       "abilityText": "Get a second opinion by searching the web using Google"
+    },
+    {
+      "keyword": "find content",
+      "api": "serpapi",
+      "timeout": 60,
+      "description": "Find pertinent web content related to a topic using Google",
+      "abilityText": "Find pertinent web content related to a topic using Google",
+      "contextFilterMaxDepth": 1
     }
   ]
 }

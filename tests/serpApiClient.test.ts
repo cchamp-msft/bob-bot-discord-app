@@ -590,48 +590,310 @@ describe('SerpApiClient', () => {
       expect(text).toContain('search');
     });
 
-    it('should surface recipe data generically when no AI Overview is available', () => {
+    it('should NOT render generic blocks (recipes, questions) — AI overview only', () => {
       const text = serpApiClient.formatAIOverviewOnly(recipeSearchResponse as any, 'chuck roast');
 
-      expect(text).toContain('📦 **Recipes Results:**');
-      expect(text).toContain('[Oven Braised Chuck Roast]');
-      // Should NOT show the "no AI Overview" fallback when recipes are present
-      expect(text).not.toContain('⚠️ Google did not return an AI Overview');
+      // No AI overview exists, so should show fallback — NOT recipe/question blocks
+      expect(text).not.toContain('📦 **Recipes Results:**');
+      expect(text).not.toContain('📦 **Related Questions:**');
+      expect(text).toContain('⚠️ Google did not return an AI Overview');
     });
 
-    it('should surface related questions generically when no AI Overview is available', () => {
-      const text = serpApiClient.formatAIOverviewOnly(recipeSearchResponse as any, 'chuck roast');
-
-      expect(text).toContain('📦 **Related Questions:**');
-      expect(text).toContain('How long should a chuck roast cook?');
-    });
-
-    it('should render unknown blocks generically instead of "not yet parsed"', () => {
+    it('should NOT render unknown blocks generically', () => {
       const text = serpApiClient.formatAIOverviewOnly(responseWithUnhandledBlocks as any, 'test');
 
-      expect(text).toContain('📦 **Top Stories:**');
-      expect(text).toContain('Breaking News');
-      expect(text).toContain('📦 **Local Results:**');
-      // Should NOT contain the old "not yet parsed" text
-      expect(text).not.toContain('not yet parsed');
-      expect(text).not.toContain('📦 **Additional Data:**');
+      expect(text).not.toContain('📦 **Top Stories:**');
+      expect(text).not.toContain('📦 **Local Results:**');
+      expect(text).toContain('⚠️ Google did not return an AI Overview');
     });
 
     it('should exclude organic_results from second opinion output', () => {
       const text = serpApiClient.formatAIOverviewOnly(responseWithUnhandledBlocks as any, 'test');
 
-      // organic_results should be explicitly skipped for second opinion
       expect(text).not.toContain('📄 **Top Results:**');
       expect(text).not.toContain('Organic Results');
     });
 
-    it('should silently skip noise keys in second opinion', () => {
-      const text = serpApiClient.formatAIOverviewOnly(responseWithSkippedKeys as any, 'test');
+    it('should find embedded AI overview in knowledge_graph', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        knowledge_graph: {
+          types: {
+            subtitle: 'What are the different types?',
+            ai_overview: {
+              text_blocks: [
+                { type: 'paragraph', snippet: 'There are several types to consider.' },
+                { type: 'list', list: [{ snippet: 'Type A' }, { snippet: 'Type B' }] },
+              ],
+              references: [
+                { title: 'Source One', link: 'https://example.com/one' },
+              ],
+            },
+          },
+        },
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'types of things');
+
+      expect(text).toContain('🔎 **Second opinion for:**');
+      expect(text).toContain('🤖 **AI Overview** — *What are the different types?*');
+      expect(text).toContain('There are several types to consider.');
+      expect(text).toContain('Type A');
+      expect(text).toContain('📚 **Sources:**');
+      expect(text).toContain('[Source One](https://example.com/one)');
+      expect(text).not.toContain('⚠️ Google did not return an AI Overview');
+    });
+
+    it('should find multiple embedded AI overviews across topics', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        knowledge_graph: {
+          topic_a: {
+            subtitle: 'Question about A?',
+            ai_overview: {
+              text_blocks: [{ type: 'paragraph', snippet: 'Answer about A.' }],
+              references: [],
+            },
+          },
+          topic_b: {
+            subtitle: 'Question about B?',
+            ai_overview: {
+              text_blocks: [{ type: 'paragraph', snippet: 'Answer about B.' }],
+              references: [{ title: 'B Source', link: 'https://example.com/b' }],
+            },
+          },
+        },
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'multi topic');
+
+      expect(text).toContain('🤖 **AI Overview** — *Question about A?*');
+      expect(text).toContain('Answer about A.');
+      expect(text).toContain('🤖 **AI Overview** — *Question about B?*');
+      expect(text).toContain('Answer about B.');
+      expect(text).not.toContain('⚠️ Google did not return an AI Overview');
+    });
+
+    it('should prefer top-level AI overview over embedded when both exist', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        ai_overview: {
+          text_blocks: [{ type: 'paragraph', snippet: 'Top-level overview.' }],
+          references: [],
+        },
+        knowledge_graph: {
+          types: {
+            subtitle: 'What are the types?',
+            ai_overview: {
+              text_blocks: [{ type: 'paragraph', snippet: 'Embedded overview.' }],
+              references: [],
+            },
+          },
+        },
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+
+      expect(text).toContain('🤖 **Google AI Overview:**');
+      expect(text).toContain('Top-level overview.');
+      // Should NOT render embedded when top-level is present
+      expect(text).not.toContain('Embedded overview.');
+    });
+
+    it('should show fallback when embedded ai_overview has empty text_blocks', () => {
+      const data = {
+        search_metadata: { status: 'Success' },
+        knowledge_graph: {
+          types: {
+            subtitle: 'Some question?',
+            ai_overview: {
+              text_blocks: [],
+              references: [],
+            },
+          },
+        },
+      };
+
+      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+
+      expect(text).toContain('⚠️ Google did not return an AI Overview');
+    });
+  });
+
+  // ── formatContentSearch ───────────────────────────────────────
+
+  describe('formatContentSearch', () => {
+    it('should format content with answer box, knowledge graph, and organic results', () => {
+      const text = serpApiClient.formatContentSearch(sampleSearchResponse as any, 'what is TypeScript');
+
+      expect(text).toContain('🔍 **Content found for:**');
+      expect(text).toContain('📋 **Direct Answer:**');
+      expect(text).toContain('TypeScript is a strongly typed programming language');
+      expect(text).toContain('📖 **TypeScript**');
+      expect(text).toContain('📄 **Top Results:**');
+      expect(text).toContain('[TypeScript: JavaScript With Syntax For Types]');
+      // Should NOT contain AI Overview — that's second opinion's domain
+      expect(text).not.toContain('🤖 **AI Overview:**');
+      expect(text).not.toContain('🤖 **Google AI Overview:**');
+    });
+
+    it('should render generic blocks (recipes, related questions)', () => {
+      const text = serpApiClient.formatContentSearch(recipeSearchResponse as any, 'chuck roast');
+
+      expect(text).toContain('📦 **Recipes Results:**');
+      expect(text).toContain('[Oven Braised Chuck Roast]');
+      expect(text).toContain('📦 **Related Questions:**');
+      expect(text).toContain('How long should a chuck roast cook?');
+      expect(text).toContain('📄 **Top Results:**');
+    });
+
+    it('should render unknown blocks generically', () => {
+      const text = serpApiClient.formatContentSearch(responseWithUnhandledBlocks as any, 'test');
+
+      expect(text).toContain('📦 **Top Stories:**');
+      expect(text).toContain('Breaking News');
+      expect(text).toContain('📦 **Local Results:**');
+      expect(text).toContain('📄 **Top Results:**');
+    });
+
+    it('should silently skip noise keys', () => {
+      const text = serpApiClient.formatContentSearch(responseWithSkippedKeys as any, 'test');
 
       expect(text).not.toContain('Immersive Products');
       expect(text).not.toContain('Refine Search');
-      expect(text).not.toContain('Refine This');
       expect(text).not.toContain('Pagination');
+    });
+
+    it('should return fallback when no content is found', () => {
+      const text = serpApiClient.formatContentSearch(emptySearchResponse as any, 'nothing');
+
+      expect(text).toContain('No content found for "nothing".');
+    });
+
+    it('should handle results with only organic results', () => {
+      const text = serpApiClient.formatContentSearch(minimalSearchResponse as any, 'obscure query');
+
+      expect(text).toContain('🔍 **Content found for:**');
+      expect(text).toContain('📄 **Top Results:**');
+      expect(text).toContain('[Some Result]');
+    });
+  });
+
+  // ── findEmbeddedAIOverviews ────────────────────────────────────
+
+  describe('findEmbeddedAIOverviews', () => {
+    it('should find ai_overview nested in knowledge_graph', () => {
+      const data = {
+        knowledge_graph: {
+          types: {
+            subtitle: 'What are the types?',
+            ai_overview: {
+              text_blocks: [{ type: 'paragraph', snippet: 'Found it.' }],
+              references: [],
+            },
+          },
+        },
+      };
+
+      const results = serpApiClient.findEmbeddedAIOverviews(data as any);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].subtitle).toBe('What are the types?');
+      expect(results[0].aiOverview.text_blocks![0].snippet).toBe('Found it.');
+    });
+
+    it('should skip top-level ai_overview', () => {
+      const data = {
+        ai_overview: {
+          text_blocks: [{ type: 'paragraph', snippet: 'Top level.' }],
+        },
+      };
+
+      const results = serpApiClient.findEmbeddedAIOverviews(data as any);
+
+      expect(results).toHaveLength(0);
+    });
+
+    it('should find multiple embedded overviews', () => {
+      const data = {
+        knowledge_graph: {
+          topic_a: {
+            subtitle: 'Question A?',
+            ai_overview: {
+              text_blocks: [{ type: 'paragraph', snippet: 'Answer A.' }],
+            },
+          },
+          topic_b: {
+            subtitle: 'Question B?',
+            ai_overview: {
+              text_blocks: [{ type: 'paragraph', snippet: 'Answer B.' }],
+            },
+          },
+        },
+      };
+
+      const results = serpApiClient.findEmbeddedAIOverviews(data as any);
+
+      expect(results).toHaveLength(2);
+      expect(results.map(r => r.subtitle)).toEqual(['Question A?', 'Question B?']);
+    });
+
+    it('should return empty array when no embedded overviews exist', () => {
+      const results = serpApiClient.findEmbeddedAIOverviews(minimalSearchResponse as any);
+
+      expect(results).toHaveLength(0);
+    });
+
+    it('should skip embedded ai_overview with empty text_blocks', () => {
+      const data = {
+        knowledge_graph: {
+          types: {
+            subtitle: 'Empty?',
+            ai_overview: {
+              text_blocks: [],
+            },
+          },
+        },
+      };
+
+      const results = serpApiClient.findEmbeddedAIOverviews(data as any);
+
+      expect(results).toHaveLength(0);
+    });
+
+    it('should capture subtitle from parent object', () => {
+      const data = {
+        some_block: {
+          nested: {
+            subtitle: 'How does it work?',
+            ai_overview: {
+              text_blocks: [{ snippet: 'It works like this.' }],
+            },
+          },
+        },
+      };
+
+      const results = serpApiClient.findEmbeddedAIOverviews(data as any);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].subtitle).toBe('How does it work?');
+    });
+
+    it('should handle missing subtitle gracefully', () => {
+      const data = {
+        some_block: {
+          nested: {
+            ai_overview: {
+              text_blocks: [{ snippet: 'No subtitle here.' }],
+            },
+          },
+        },
+      };
+
+      const results = serpApiClient.findEmbeddedAIOverviews(data as any);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].subtitle).toBeUndefined();
     });
   });
 
@@ -733,6 +995,77 @@ describe('SerpApiClient', () => {
       expect(result.success).toBe(true);
       expect(result.data!.text).toContain('SERPAPI_HL');
       expect(result.data!.text).toContain('SERPAPI_GL');
+    });
+
+    it('should find embedded AI overview for "second opinion" when top-level is absent', async () => {
+      const dataWithEmbedded = {
+        search_metadata: { status: 'Success' },
+        search_parameters: { q: 'best lasagna' },
+        knowledge_graph: {
+          types: {
+            subtitle: 'What are the different types of lasagna?',
+            ai_overview: {
+              text_blocks: [
+                { type: 'paragraph', snippet: 'Lasagna types vary significantly by region.' },
+              ],
+              references: [
+                { title: 'Serious Eats', link: 'https://www.seriouseats.com/lasagna' },
+              ],
+            },
+          },
+        },
+        organic_results: [
+          { position: 1, title: 'Easy Lasagna', link: 'https://example.com/lasagna' },
+        ],
+      };
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: dataWithEmbedded });
+
+      const result = await serpApiClient.handleRequest('best lasagna', 'second opinion');
+
+      expect(result.success).toBe(true);
+      expect(result.data!.text).toContain('🤖 **AI Overview** — *What are the different types of lasagna?*');
+      expect(result.data!.text).toContain('Lasagna types vary significantly by region.');
+      expect(result.data!.text).toContain('[Serious Eats](https://www.seriouseats.com/lasagna)');
+      // Should NOT contain organic results or generic blocks
+      expect(result.data!.text).not.toContain('📄 **Top Results:**');
+      expect(result.data!.text).not.toContain('⚠️ Google did not return an AI Overview');
+    });
+  });
+
+  // ── handleRequest with "find content" keyword ──────────────────
+
+  describe('handleRequest - find content keyword', () => {
+    it('should use content search formatting for "find content" keyword', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
+
+      const result = await serpApiClient.handleRequest('what is TypeScript', 'find content');
+
+      expect(result.success).toBe(true);
+      expect(result.data!.text).toContain('🔍 **Content found for:**');
+      expect(result.data!.text).toContain('📋 **Direct Answer:**');
+      expect(result.data!.text).toContain('📄 **Top Results:**');
+      expect(result.data!.text).not.toContain('🤖 **AI Overview:**');
+      expect(result.data!.text).not.toContain('🤖 **Google AI Overview:**');
+    });
+
+    it('should return content with recipes and organic results for "find content"', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: recipeSearchResponse });
+
+      const result = await serpApiClient.handleRequest('chuck roast', 'find content');
+
+      expect(result.success).toBe(true);
+      expect(result.data!.text).toContain('🔍 **Content found for:**');
+      expect(result.data!.text).toContain('📦 **Recipes Results:**');
+      expect(result.data!.text).toContain('📄 **Top Results:**');
+    });
+
+    it('should return fallback for empty results with "find content"', async () => {
+      mockInstance.get.mockResolvedValueOnce({ status: 200, data: emptySearchResponse });
+
+      const result = await serpApiClient.handleRequest('nothing', 'find content');
+
+      expect(result.success).toBe(true);
+      expect(result.data!.text).toContain('No content found for "nothing".');
     });
   });
 
