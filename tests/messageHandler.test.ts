@@ -1477,9 +1477,13 @@ describe('MessageHandler standalone help keyword uses actual config flag', () =>
   const helpKw = { keyword: 'help', api: 'ollama' as const, timeout: 120, description: 'Show help', builtin: true, allowEmptyContent: true };
 
   function createDmMessage(content: string): any {
+    const sharedGuild = {
+      id: 'guild-shared',
+      members: { cache: new Map([['user-1', { user: { id: 'user-1' } }]]), fetch: jest.fn() },
+    };
     return {
       author: { bot: false, id: 'user-1', username: 'testuser' },
-      client: { user: { id: 'bot-123' } },
+      client: { user: { id: 'bot-123' }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
       channel: {
         type: 1,
         isThread: () => false,
@@ -1850,9 +1854,13 @@ describe('MessageHandler trigger message attribution', () => {
 describe('MessageHandler DM handling', () => {
   function createDmMessage(content: string): any {
     const botUserId = 'bot-123';
+    const sharedGuild = {
+      id: 'guild-shared',
+      members: { cache: new Map([['user-1', { user: { id: 'user-1' } }]]), fetch: jest.fn() },
+    };
     return {
       author: { bot: false, id: 'user-1', username: 'dmuser' },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
       channel: {
         type: 1, // ChannelType.DM
         messages: {
@@ -1940,9 +1948,13 @@ describe('MessageHandler DM handling', () => {
 describe('MessageHandler empty-content bypass for NFL keywords', () => {
   function createDmMessage(content: string): any {
     const botUserId = 'bot-123';
+    const sharedGuild = {
+      id: 'guild-shared',
+      members: { cache: new Map([['user-1', { user: { id: 'user-1' } }]]), fetch: jest.fn() },
+    };
     return {
       author: { bot: false, id: 'user-1', username: 'nfluser' },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
       channel: {
         type: 1, // ChannelType.DM
         messages: {
@@ -3144,10 +3156,14 @@ describe('MessageHandler activity event emission', () => {
 
   function createMsg(content: string, isDM = false): any {
     const botUserId = 'bot-123';
+    const sharedGuild = {
+      id: 'guild-shared',
+      members: { cache: new Map([['user-1', { user: { id: 'user-1' } }]]), fetch: jest.fn() },
+    };
     return {
       author: { bot: false, id: 'user-1', username: 'testuser', displayName: 'testuser' },
-      member: { displayName: 'testuser' },
-      client: { user: { id: botUserId } },
+      member: isDM ? null : { displayName: 'testuser' },
+      client: { user: { id: botUserId }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
       channel: {
         type: isDM ? 1 : 0,
         isThread: () => false,
@@ -3371,5 +3387,157 @@ describe('MessageHandler activity event emission', () => {
     const serialized = JSON.stringify(allCalls);
     expect(serialized).not.toContain('user-1');
     expect(serialized).not.toContain('TestGuild');
+  });
+});
+
+describe('MessageHandler DM guild-membership gate', () => {
+  const { logger } = require('../src/utils/logger');
+
+  function createDmMessage(opts: {
+    authorId?: string;
+    username?: string;
+    sharedGuilds?: Array<{ id: string; memberCached: boolean }>;
+    content?: string;
+  }): any {
+    const authorId = opts.authorId ?? 'dm-user-1';
+    const guilds = (opts.sharedGuilds ?? []).map(g => {
+      const memberCache = new Map<string, any>();
+      if (g.memberCached) {
+        memberCache.set(authorId, { user: { id: authorId } });
+      }
+      return [
+        g.id,
+        {
+          id: g.id,
+          members: {
+            cache: memberCache,
+            fetch: g.memberCached
+              ? jest.fn().mockResolvedValue({ user: { id: authorId } })
+              : jest.fn().mockRejectedValue(new Error('Unknown Member')),
+          },
+        },
+      ] as const;
+    });
+
+    const guildCache = new Map(guilds);
+
+    return {
+      author: { bot: false, id: authorId, username: opts.username ?? 'dmuser', displayName: opts.username ?? 'dmuser' },
+      client: {
+        user: { id: 'bot-123' },
+        guilds: { cache: guildCache },
+      },
+      channel: {
+        type: 1, // DM
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      guild: null,
+      member: null,
+      mentions: { has: jest.fn(() => false) },
+      reference: null,
+      content: opts.content ?? 'hello',
+      id: 'dm-msg-1',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getKeywords as jest.Mock).mockReturnValue([]);
+    (config.getAllowBotInteractions as jest.Mock).mockReturnValue(false);
+    (config.getReplyChainEnabled as jest.Mock).mockReturnValue(false);
+  });
+
+  it('should allow DM from user who shares a guild (cached member)', async () => {
+    const msg = createDmMessage({
+      sharedGuilds: [{ id: 'guild-1', memberCached: true }],
+      content: 'hello',
+    });
+
+    await messageHandler.handleMessage(msg);
+
+    // DM was accepted — reply was called (processing message)
+    expect(msg.reply).toHaveBeenCalled();
+  });
+
+  it('should allow DM from user found via fetch (not cached)', async () => {
+    const authorId = 'dm-user-2';
+    // Guild where member is NOT cached but fetch succeeds
+    const guildCache = new Map([
+      ['guild-1', {
+        id: 'guild-1',
+        members: {
+          cache: new Map(), // not cached
+          fetch: jest.fn().mockResolvedValue({ user: { id: authorId } }),
+        },
+      }],
+    ]);
+
+    const msg = createDmMessage({ authorId, content: 'hi there' });
+    msg.client.guilds.cache = guildCache;
+
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).toHaveBeenCalled();
+  });
+
+  it('should reject DM from user who shares no guild', async () => {
+    const msg = createDmMessage({
+      sharedGuilds: [{ id: 'guild-1', memberCached: false }],
+      content: 'sneaky message',
+    });
+
+    await messageHandler.handleMessage(msg);
+
+    // DM was rejected — reply should NOT be called
+    expect(msg.reply).not.toHaveBeenCalled();
+    expect(logger.log).toHaveBeenCalledWith(
+      'warn', 'system',
+      expect.stringContaining('no shared guild')
+    );
+  });
+
+  it('should reject DM when bot is in no guilds at all', async () => {
+    const msg = createDmMessage({ sharedGuilds: [] });
+
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).not.toHaveBeenCalled();
+  });
+
+  it('should still process guild @mention messages normally (no DM gate)', async () => {
+    // A guild mention should bypass the DM gate entirely
+    const msg: any = {
+      author: { bot: false, id: 'user-1', username: 'guilduser', displayName: 'guilduser' },
+      client: { user: { id: 'bot-123' }, guilds: { cache: new Map() } },
+      channel: {
+        type: 0, // GuildText
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      guild: { name: 'TestGuild' },
+      member: { displayName: 'guilduser' },
+      mentions: { has: jest.fn(() => true) },
+      reference: null,
+      content: '<@bot-123> hello',
+      id: 'guild-msg-1',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+
+    await messageHandler.handleMessage(msg);
+
+    // Guild mention should proceed normally
+    expect(msg.reply).toHaveBeenCalled();
   });
 });

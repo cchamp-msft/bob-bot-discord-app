@@ -71,6 +71,16 @@ class MessageHandler {
     // Process DMs, @mentions, or direct replies to the bot — ignore everything else
     if (!isDM && !isMentioned && !isReplyToBot) return;
 
+    // DM authorization: only respond to users who share at least one guild with the bot.
+    // This prevents strangers from interacting with the bot via unsolicited DMs.
+    if (isDM) {
+      const sharesGuild = await this.userSharesGuildWithBot(message);
+      if (!sharesGuild) {
+        logger.log('warn', 'system', `DM-GATE: Rejected DM from ${message.author.username} (${message.author.id}) — no shared guild`);
+        return;
+      }
+    }
+
     // Log incoming message details for diagnostics
     const guildName = message.guild?.name ?? null;
     const channelTypeName = isDM ? 'DM' : message.channel.type === ChannelType.GuildText ? 'GuildText' : 'Channel';
@@ -691,6 +701,34 @@ class MessageHandler {
       const pattern = new RegExp(`^${escaped}\\b`, 'i');
       return pattern.test(lowerContent);
     });
+  }
+
+  /**
+   * Check whether a DM author shares at least one guild with the bot.
+   * Uses the client guild cache (populated by the Guilds intent) and
+   * attempts a per-guild member fetch, short-circuiting on first hit.
+   * Returns false if the user is not found in any mutual guild.
+   */
+  private async userSharesGuildWithBot(message: Message): Promise<boolean> {
+    const userId = message.author.id;
+    const guilds = message.client.guilds.cache;
+
+    // Fast path: check in-memory member caches first (no API calls)
+    for (const guild of guilds.values()) {
+      if (guild.members.cache.has(userId)) return true;
+    }
+
+    // Slow path: fetch from API, stopping at first success
+    for (const guild of guilds.values()) {
+      try {
+        await guild.members.fetch(userId);
+        return true;
+      } catch {
+        // User not in this guild — continue to next
+      }
+    }
+
+    return false;
   }
 
   /**
