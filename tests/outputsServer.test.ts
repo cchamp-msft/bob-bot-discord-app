@@ -28,8 +28,36 @@ jest.mock('../src/utils/config', () => ({
   },
 }));
 
+jest.mock('../src/utils/activityEvents', () => {
+  const events: any[] = [];
+  return {
+    activityEvents: {
+      emit: jest.fn((type: string, narrative: string, metadata = {}, imageUrls: string[] = []) => {
+        const ev = { id: events.length + 1, timestamp: new Date().toISOString(), type, narrative, metadata, imageUrls };
+        events.push(ev);
+        return ev;
+      }),
+      emitMessageReceived: jest.fn(),
+      emitRoutingDecision: jest.fn(),
+      emitBotReply: jest.fn(),
+      emitBotImageReply: jest.fn(),
+      emitError: jest.fn(),
+      emitWarning: jest.fn(),
+      getRecent: jest.fn((count = 50, since?: string) => {
+        let filtered = events;
+        if (since) filtered = events.filter((e: any) => e.timestamp > since);
+        return filtered.slice(-count);
+      }),
+      clear: jest.fn(() => { events.length = 0; }),
+      get size() { return events.length; },
+    },
+    __testEvents: events,
+  };
+});
+
 import http from 'http';
 import { outputsServer } from '../src/utils/outputsServer';
+import { activityEvents } from '../src/utils/activityEvents';
 import type { Express } from 'express';
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -172,5 +200,66 @@ describe('OutputsServer', () => {
     expect(res.status).toBe(404);
     const body = await res.json() as Record<string, unknown>;
     expect(body.error).toBe('Not found');
+  });
+
+  // ── /activity page ──────────────────────────────────────────
+
+  it('/activity serves the activity page HTML', async () => {
+    const res = await fetch(`${baseUrl}/activity`);
+    expect(res.status).toBe(200);
+    const contentType = res.headers.get('content-type') ?? '';
+    expect(contentType).toContain('text/html');
+  });
+
+  // ── /api/activity endpoint ─────────────────────────────────
+
+  it('/api/activity returns JSON with events and serverTime', async () => {
+    const res = await fetch(`${baseUrl}/api/activity`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { events: any[]; serverTime: string };
+    expect(Array.isArray(body.events)).toBe(true);
+    expect(body.serverTime).toBeDefined();
+    expect(new Date(body.serverTime).toISOString()).toBe(body.serverTime);
+  });
+
+  it('/api/activity respects since query parameter', async () => {
+    // getRecent is mocked — just verify it's called with the right args
+    const mockGetRecent = activityEvents.getRecent as jest.MockedFunction<typeof activityEvents.getRecent>;
+    mockGetRecent.mockClear();
+
+    const since = '2026-01-01T00:00:00.000Z';
+    await fetch(`${baseUrl}/api/activity?since=${encodeURIComponent(since)}`);
+
+    expect(mockGetRecent).toHaveBeenCalledWith(50, since);
+  });
+
+  it('/api/activity respects count query parameter (capped at 100)', async () => {
+    const mockGetRecent = activityEvents.getRecent as jest.MockedFunction<typeof activityEvents.getRecent>;
+    mockGetRecent.mockClear();
+
+    await fetch(`${baseUrl}/api/activity?count=10`);
+    expect(mockGetRecent).toHaveBeenCalledWith(10, undefined);
+  });
+
+  it('/api/activity caps count at 100', async () => {
+    const mockGetRecent = activityEvents.getRecent as jest.MockedFunction<typeof activityEvents.getRecent>;
+    mockGetRecent.mockClear();
+
+    await fetch(`${baseUrl}/api/activity?count=999`);
+    expect(mockGetRecent).toHaveBeenCalledWith(100, undefined);
+  });
+
+  it('/api/activity ignores invalid count parameter', async () => {
+    const mockGetRecent = activityEvents.getRecent as jest.MockedFunction<typeof activityEvents.getRecent>;
+    mockGetRecent.mockClear();
+
+    await fetch(`${baseUrl}/api/activity?count=abc`);
+    expect(mockGetRecent).toHaveBeenCalledWith(50, undefined);
+  });
+
+  it('/api/activity has security headers', async () => {
+    const res = await fetch(`${baseUrl}/api/activity`);
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('x-powered-by')).toBeNull();
   });
 });

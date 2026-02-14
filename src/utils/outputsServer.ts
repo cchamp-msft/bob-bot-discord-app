@@ -3,6 +3,7 @@ import * as http from 'http';
 import * as path from 'path';
 import { config } from './config';
 import { logger } from './logger';
+import { activityEvents } from './activityEvents';
 
 /**
  * Remove fingerprint headers and add minimal security headers.
@@ -46,6 +47,22 @@ class OutputsServer {
     // Block access to logs directory
     this.app.use('/logs', (_req, res) => {
       res.status(403).json({ error: 'Forbidden' });
+    });
+
+    // ── Activity feed (public) ────────────────────────────────────
+    // Serve the activity timeline page
+    this.app.get('/activity', (_req, res) => {
+      res.sendFile(path.join(__dirname, '../public/activity.html'));
+    });
+
+    // Activity events API — returns sanitised narrative events
+    this.app.get('/api/activity', (req, res) => {
+      const since = typeof req.query.since === 'string' ? req.query.since : undefined;
+      const countParam = typeof req.query.count === 'string' ? parseInt(req.query.count, 10) : undefined;
+      const count = countParam && Number.isFinite(countParam) && countParam > 0 ? Math.min(countParam, 100) : 50;
+
+      const events = activityEvents.getRecent(count, since);
+      res.json({ events, serverTime: new Date().toISOString() });
     });
 
     // Serve static files from outputs directory
