@@ -254,6 +254,11 @@ class Config {
 
       this.keywords = config.keywords;
       logger.log('success', 'config', `Loaded ${this.keywords.length} keywords from config`);
+
+      // Merge any built-in keywords from the default template that are missing
+      // from the runtime config.  This ensures newly added built-in keywords
+      // (e.g. activity_key) are available even if keywords.json predates them.
+      this.mergeDefaultBuiltins();
     } catch (error) {
       logger.logError('config', `Failed to load keywords config (${keywordsPath}): ${error}`);
       this.keywords = [];
@@ -262,6 +267,47 @@ class Config {
 
   getKeywords(): KeywordConfig[] {
     return this.keywords;
+  }
+
+  /**
+   * Return the keyword array from keywords.default.json.
+   * Used by the configurator to offer a "sync missing" action.
+   */
+  getDefaultKeywords(): KeywordConfig[] {
+    const defaultPath = this.getDefaultKeywordsPath();
+    try {
+      const data = fs.readFileSync(defaultPath, 'utf-8');
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed.keywords) ? parsed.keywords : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Ensure every built-in keyword from the default template is present
+   * in the runtime keyword list.  Missing built-ins are appended so
+   * features like `activity_key` work even if the user's keywords.json
+   * was created before that keyword existed.
+   */
+  private mergeDefaultBuiltins(): void {
+    const defaults = this.getDefaultKeywords();
+    const builtins = defaults.filter(d => d.builtin);
+    const existingKeys = new Set(this.keywords.map(k => k.keyword.toLowerCase()));
+    let added = 0;
+    for (const b of builtins) {
+      if (!existingKeys.has(b.keyword.toLowerCase())) {
+        this.keywords.push(b);
+        existingKeys.add(b.keyword.toLowerCase());
+        added++;
+        logger.log('success', 'config',
+          `Merged missing built-in keyword "${b.keyword}" from defaults`);
+      }
+    }
+    if (added > 0) {
+      logger.log('success', 'config',
+        `Merged ${added} missing built-in keyword(s) from defaults — total: ${this.keywords.length}`);
+    }
   }
 
   getKeywordConfig(keyword: string): KeywordConfig | undefined {
@@ -872,6 +918,7 @@ class Config {
         maxAttachments: this.getMaxAttachments(),
       },
       keywords: this.getKeywords(),
+      defaultKeywords: this.getDefaultKeywords(),
       allowBotInteractions: this.getAllowBotInteractions(),
       replyChain: {
         enabled: this.getReplyChainEnabled(),

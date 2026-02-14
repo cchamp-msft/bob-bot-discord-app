@@ -717,6 +717,8 @@
         </table>
         <div style="margin-top:10px">
           <button class="btn-secondary btn-sm" onclick="addKeywordRow()">+ Add Keyword</button>
+          <button class="btn-secondary btn-sm" id="syncDefaultsBtn" style="margin-left:8px;display:none" onclick="syncMissingDefaults()">+ Add Missing Defaults</button>
+          <span id="syncDefaultsInfo" style="font-size:0.75em;color:var(--text-dim);margin-left:8px"></span>
         </div>
       </div>
     </section>
@@ -1025,6 +1027,9 @@
       // Populate keywords
       renderKeywords(cfg.keywords);
 
+      // Check for missing default keywords and show sync button if needed
+      checkMissingDefaults(cfg.keywords, cfg.defaultKeywords || []);
+
       // Clear dirty state
       document.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
       markClean();
@@ -1082,6 +1087,40 @@
       el.addEventListener('change', markDirty);
     });
     tbody.appendChild(tr);
+  }
+
+  // ── Missing defaults detection / sync ──────────────
+  let _cachedDefaultKeywords = [];
+
+  function checkMissingDefaults(currentKeywords, defaultKeywords) {
+    _cachedDefaultKeywords = defaultKeywords || [];
+    const currentKeys = new Set(currentKeywords.map(k => k.keyword.toLowerCase()));
+    const missing = _cachedDefaultKeywords.filter(d => !currentKeys.has(d.keyword.toLowerCase()));
+    const btn = document.getElementById('syncDefaultsBtn');
+    const info = document.getElementById('syncDefaultsInfo');
+    if (missing.length > 0) {
+      btn.style.display = '';
+      info.textContent = `${missing.length} keyword(s) in defaults not in your config: ${missing.map(m => m.keyword).join(', ')}`;
+    } else {
+      btn.style.display = 'none';
+      info.textContent = '';
+    }
+  }
+
+  function syncMissingDefaults() {
+    const currentKeywords = collectKeywords();
+    const currentKeys = new Set(currentKeywords.map(k => k.keyword.toLowerCase()));
+    const missing = _cachedDefaultKeywords.filter(d => !currentKeys.has(d.keyword.toLowerCase()));
+    for (const kw of missing) {
+      addKeywordRow(kw);
+    }
+    markDirty();
+    const btn = document.getElementById('syncDefaultsBtn');
+    const info = document.getElementById('syncDefaultsInfo');
+    btn.style.display = 'none';
+    info.textContent = `Added ${missing.length} keyword(s) — save to persist`;
+    info.style.color = 'var(--ok)';
+    conLog(`[${new Date().toISOString()}] Synced ${missing.length} missing default keyword(s): ${missing.map(m => m.keyword).join(', ')}`, 'ok');
   }
 
   function collectKeywords() {

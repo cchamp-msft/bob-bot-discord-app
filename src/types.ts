@@ -360,6 +360,7 @@ export interface PublicConfig {
     maxAttachments: number;
   };
   keywords: import('./utils/config').KeywordConfig[];
+  defaultKeywords: import('./utils/config').KeywordConfig[];
   allowBotInteractions: boolean;
   replyChain: {
     enabled: boolean;

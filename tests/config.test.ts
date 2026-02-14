@@ -277,6 +277,7 @@ describe('Config', () => {
       expect(pub).toHaveProperty('http');
       expect(pub).toHaveProperty('limits');
       expect(pub).toHaveProperty('keywords');
+      expect(pub).toHaveProperty('defaultKeywords');
       expect(pub).toHaveProperty('replyChain');
       expect(pub).toHaveProperty('imageResponse');
     });
@@ -564,6 +565,89 @@ describe('Config', () => {
         fs.renameSync(backupPath, defaultPath);
         warnSpy.mockRestore();
       }
+    });
+  });
+
+  describe('getDefaultKeywords', () => {
+    const { config } = require('../src/utils/config');
+
+    it('should return an array of keywords from keywords.default.json', () => {
+      const defaults = config.getDefaultKeywords();
+      expect(Array.isArray(defaults)).toBe(true);
+      expect(defaults.length).toBeGreaterThan(0);
+    });
+
+    it('should include the activity_key built-in keyword', () => {
+      const defaults = config.getDefaultKeywords();
+      const ak = defaults.find((k: any) => k.keyword === 'activity_key');
+      expect(ak).toBeDefined();
+      expect(ak.builtin).toBe(true);
+    });
+  });
+
+  describe('mergeDefaultBuiltins', () => {
+    const { config } = require('../src/utils/config');
+    const runtimePath = path.join(__dirname, '../config/keywords.json');
+    let savedRuntime: string | null = null;
+
+    beforeEach(() => {
+      if (fs.existsSync(runtimePath)) {
+        savedRuntime = fs.readFileSync(runtimePath, 'utf-8');
+      } else {
+        savedRuntime = null;
+      }
+    });
+
+    afterEach(() => {
+      if (savedRuntime !== null) {
+        fs.writeFileSync(runtimePath, savedRuntime);
+      } else if (fs.existsSync(runtimePath)) {
+        fs.unlinkSync(runtimePath);
+      }
+      config.reload();
+    });
+
+    it('should merge missing built-in keywords from defaults into runtime config', () => {
+      // Write a runtime config WITHOUT activity_key
+      const customKeywords = {
+        keywords: [
+          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+          { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat' },
+        ],
+      };
+      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      config.reload();
+
+      // activity_key should be merged from defaults
+      const ak = config.getKeywordConfig('activity_key');
+      expect(ak).toBeDefined();
+      expect(ak!.builtin).toBe(true);
+    });
+
+    it('should not duplicate already-present built-in keywords', () => {
+      // Write a runtime config WITH activity_key already present
+      const customKeywords = {
+        keywords: [
+          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+          { keyword: 'activity_key', api: 'ollama', timeout: 10, description: 'Key', builtin: true },
+        ],
+      };
+      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      config.reload();
+
+      const matches = config.getKeywords().filter((k: any) => k.keyword.toLowerCase() === 'activity_key');
+      expect(matches).toHaveLength(1);
+    });
+  });
+
+  describe('getPublicConfig includes defaultKeywords', () => {
+    const { config } = require('../src/utils/config');
+
+    it('should include defaultKeywords array in public config', () => {
+      const pub = config.getPublicConfig();
+      expect(pub).toHaveProperty('defaultKeywords');
+      expect(Array.isArray(pub.defaultKeywords)).toBe(true);
+      expect(pub.defaultKeywords.length).toBeGreaterThan(0);
     });
   });
 
