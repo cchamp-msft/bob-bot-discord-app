@@ -5,6 +5,8 @@
 - Changes to code should be evaluated for documentation and README updates.
 - If changes can be made in small commits, please do so to make review easier.
 - During plan phase of a new feature, consider overall commit strategy dividing work into logical steps that can be committed separately (e.g. "Add config option and basic handling", "Implement new API endpoint", "Add tests for new feature", "Update documentation").
+- When implementing error handling, prefer specific error classes and messages that can be tested against, rather than generic errors. Avoid generic catch-all error handling that may obscure the root cause of issues.
+- For security-sensitive changes, consider adding tests that simulate attack scenarios (e.g. invalid tokens for auth endpoints, malformed input for parsers) to verify that protections are effective.
 
 ## Commit Messages
 - Use: "type(scope): desc"

@@ -351,6 +351,10 @@ class Config {
     return this.parseIntEnv('HTTP_PORT', 3000);
   }
 
+  getHttpHost(): string {
+    return (process.env.HTTP_HOST || '').trim() || '127.0.0.1';
+  }
+
   getOutputsPort(): number {
     return this.parseIntEnv('OUTPUTS_PORT', 3003);
   }
@@ -847,7 +851,9 @@ class Config {
       },
       http: {
         port: this.getHttpPort(),
+        httpHost: this.getHttpHost(),
         outputsPort: this.getOutputsPort(),
+        outputsHost: this.getOutputsHost(),
         outputBaseUrl: this.getOutputBaseUrl(),
       },
       limits: {

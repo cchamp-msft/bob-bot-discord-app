@@ -597,15 +597,37 @@
     <section>
       <h2 onclick="toggleSection(this)">HTTP Server</h2>
       <div class="body">
+        <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
+          The <strong>Configurator</strong> server is the admin interface you are using now (localhost-only by default).
+          The <strong>Outputs</strong> server is a public-facing HTTP server that serves generated files (images, etc.) so Discord can fetch attachments.
+          Changing any of these values requires a <strong>restart</strong>.
+        </p>
+        <label style="display:block;font-size:0.85em;font-weight:600;margin-bottom:6px">Configurator (Admin)</label>
         <div class="field-row">
           <div class="field narrow">
             <label>Port <span class="note">restart</span></label>
             <input type="number" id="http_port" data-env="HTTP_PORT" placeholder="3000">
           </div>
           <div class="field">
-            <label>Output Base URL</label>
-            <input type="text" id="output_base_url" data-env="OUTPUT_BASE_URL" placeholder="http://localhost:3000">
+            <label>Bind Host <span class="note">restart · default 127.0.0.1 (localhost only)</span></label>
+            <input type="text" id="http_host" data-env="HTTP_HOST" placeholder="127.0.0.1">
           </div>
+        </div>
+        <hr style="border-color:var(--border);margin:12px 0">
+        <label style="display:block;font-size:0.85em;font-weight:600;margin-bottom:6px">Outputs (Public)</label>
+        <div class="field-row">
+          <div class="field narrow">
+            <label>Port <span class="note">restart</span></label>
+            <input type="number" id="outputs_port" data-env="OUTPUTS_PORT" placeholder="3003">
+          </div>
+          <div class="field">
+            <label>Bind Host <span class="note">restart · default 0.0.0.0 (all interfaces)</span></label>
+            <input type="text" id="outputs_host" data-env="OUTPUTS_HOST" placeholder="0.0.0.0">
+          </div>
+        </div>
+        <div class="field" style="margin-top:10px">
+          <label>Output Base URL <span class="note">URL Discord uses to fetch files from the outputs server</span></label>
+          <input type="text" id="output_base_url" data-env="OUTPUT_BASE_URL" placeholder="http://localhost:3003">
         </div>
       </div>
     </section>
@@ -850,6 +872,9 @@
       document.getElementById('comfyui_endpoint').value = cfg.apis.comfyui;
       document.getElementById('ollama_endpoint').value = cfg.apis.ollama;
       document.getElementById('http_port').value = cfg.http.port;
+      document.getElementById('http_host').value = cfg.http.httpHost || '';
+      document.getElementById('outputs_port').value = cfg.http.outputsPort;
+      document.getElementById('outputs_host').value = cfg.http.outputsHost || '';
       document.getElementById('output_base_url').value = cfg.http.outputBaseUrl;
       document.getElementById('file_size_threshold').value = cfg.limits.fileSizeThreshold;
       document.getElementById('default_timeout').value = cfg.limits.defaultTimeout;

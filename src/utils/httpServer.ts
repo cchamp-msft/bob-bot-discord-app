@@ -461,7 +461,7 @@ class HttpServer {
   }
 
   start(): void {
-    const host = (process.env.HTTP_HOST || '').trim() || '127.0.0.1';
+    const host = config.getHttpHost();
     const displayHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host;
 
     this.server = this.app.listen(this.port, host, () => {

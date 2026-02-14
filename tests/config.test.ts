@@ -97,6 +97,19 @@ describe('Config', () => {
       expect(config.getOutputsHost()).toBe('192.168.1.100');
     });
 
+    it('getHttpHost should return env value or default 127.0.0.1', () => {
+      delete process.env.HTTP_HOST;
+      expect(config.getHttpHost()).toBe('127.0.0.1');
+
+      process.env.HTTP_HOST = '0.0.0.0';
+      expect(config.getHttpHost()).toBe('0.0.0.0');
+    });
+
+    it('getHttpHost should trim whitespace', () => {
+      process.env.HTTP_HOST = '  192.168.1.50  ';
+      expect(config.getHttpHost()).toBe('192.168.1.50');
+    });
+
     it('getApiEndpoint should route correctly', () => {
       process.env.COMFYUI_ENDPOINT = 'http://comfy:1111';
       process.env.OLLAMA_ENDPOINT = 'http://ollama:2222';
@@ -280,6 +293,24 @@ describe('Config', () => {
       delete process.env.REPLY_CHAIN_MAX_TOKENS;
       const pub = config.getPublicConfig();
       expect(pub.replyChain).toEqual({ enabled: true, maxDepth: 30, maxTokens: 16000 });
+    });
+
+    it('should include httpHost and outputsHost in http section', () => {
+      delete process.env.HTTP_HOST;
+      delete process.env.OUTPUTS_HOST;
+      const pub = config.getPublicConfig();
+      expect(pub.http).toHaveProperty('httpHost');
+      expect(pub.http).toHaveProperty('outputsHost');
+      expect(pub.http.httpHost).toBe('127.0.0.1');
+      expect(pub.http.outputsHost).toBe('0.0.0.0');
+    });
+
+    it('should reflect custom httpHost and outputsHost values', () => {
+      process.env.HTTP_HOST = '0.0.0.0';
+      process.env.OUTPUTS_HOST = '192.168.1.50';
+      const pub = config.getPublicConfig();
+      expect(pub.http.httpHost).toBe('0.0.0.0');
+      expect(pub.http.outputsHost).toBe('192.168.1.50');
     });
   });
 

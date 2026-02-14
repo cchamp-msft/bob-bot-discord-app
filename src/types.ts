@@ -348,7 +348,9 @@ export interface PublicConfig {
   };
   http: {
     port: number;
+    httpHost: string;
     outputsPort: number;
+    outputsHost: string;
     outputBaseUrl: string;
   };
   limits: {

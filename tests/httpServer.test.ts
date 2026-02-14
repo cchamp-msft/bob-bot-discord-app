@@ -70,11 +70,12 @@ jest.mock('../src/bot/discordManager', () => ({
 // Dynamic mock for config so we can control ADMIN_TOKEN per test
 const mockConfig = {
   getHttpPort: () => 3000,
+  getHttpHost: () => (process.env.HTTP_HOST || '').trim() || '127.0.0.1',
   getOutputsPort: () => 3003,
   getOutputsHost: () => '0.0.0.0',
   getOutputBaseUrl: () => 'http://localhost:3003',
   getAdminToken: jest.fn(() => ''),
-  getPublicConfig: jest.fn(() => ({ http: { port: 3000 } })),
+  getPublicConfig: jest.fn(() => ({ http: { port: 3000, httpHost: '127.0.0.1', outputsPort: 3003, outputsHost: '0.0.0.0' } })),
   getApiEndpoint: jest.fn(() => 'http://localhost'),
   reload: jest.fn(() => ({ reloaded: [], requiresRestart: [] })),
 };
