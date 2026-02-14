@@ -629,6 +629,10 @@
           <label>Output Base URL <span class="note">URL Discord uses to fetch files from the outputs server</span></label>
           <input type="text" id="output_base_url" data-env="OUTPUT_BASE_URL" placeholder="http://localhost:3003">
         </div>
+        <div class="field narrow" style="margin-top:10px">
+          <label>Activity Key TTL (seconds) <span class="note">how long a key stays valid · default 300</span></label>
+          <input type="number" id="activity_key_ttl" data-env="ACTIVITY_KEY_TTL" placeholder="300" min="30">
+        </div>
       </div>
     </section>
 

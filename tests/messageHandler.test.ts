@@ -35,6 +35,8 @@ jest.mock('../src/utils/config', () => ({
     getNflEnabled: jest.fn(() => true),
     getNflLoggingLevel: jest.fn(() => 0),
     getAllowBotInteractions: jest.fn(() => false),
+    getActivityKeyTtl: jest.fn(() => 300),
+    getOutputBaseUrl: jest.fn(() => 'http://localhost:3003'),
   },
 }));
 
@@ -100,6 +102,16 @@ jest.mock('../src/utils/activityEvents', () => ({
     emitWarning: jest.fn(),
     getRecent: jest.fn(() => []),
     clear: jest.fn(),
+  },
+}));
+
+jest.mock('../src/utils/activityKeyManager', () => ({
+  activityKeyManager: {
+    issueKey: jest.fn(() => 'mock-activity-key-abc'),
+    isValid: jest.fn(() => true),
+    isExpired: jest.fn(() => false),
+    remainingSeconds: jest.fn(() => 300),
+    revoke: jest.fn(),
   },
 }));
 
@@ -3539,5 +3551,137 @@ describe('MessageHandler DM guild-membership gate', () => {
 
     // Guild mention should proceed normally
     expect(msg.reply).toHaveBeenCalled();
+  });
+});
+
+describe('MessageHandler activity_key keyword', () => {
+  const { logger } = require('../src/utils/logger');
+  const { activityKeyManager } = require('../src/utils/activityKeyManager');
+
+  const activityKeyKw = {
+    keyword: 'activity_key',
+    api: 'ollama' as const,
+    timeout: 10,
+    description: 'Request a temporary access key for the activity monitor',
+    builtin: true,
+    allowEmptyContent: true,
+  };
+
+  function createDmMsg(content: string): any {
+    const sharedGuild = {
+      id: 'guild-shared',
+      members: { cache: new Map([['user-1', { user: { id: 'user-1' } }]]), fetch: jest.fn() },
+    };
+    return {
+      author: { bot: false, id: 'user-1', username: 'keyuser', displayName: 'keyuser' },
+      client: { user: { id: 'bot-123' }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
+      channel: {
+        type: 1, // DM
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      guild: null,
+      member: null,
+      mentions: { has: jest.fn(() => false) },
+      reference: null,
+      content,
+      id: 'dm-key-1',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  function createMentionMsg(content: string): any {
+    return {
+      author: { bot: false, id: 'user-1', username: 'keyuser', displayName: 'keyuser' },
+      client: { user: { id: 'bot-123' }, guilds: { cache: new Map() } },
+      channel: {
+        type: 0, // GuildText
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      guild: { name: 'TestGuild' },
+      member: { displayName: 'keyuser' },
+      mentions: { has: jest.fn(() => true) },
+      reference: null,
+      content,
+      id: 'guild-key-1',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getKeywords as jest.Mock).mockReturnValue([activityKeyKw]);
+    (config.getAllowBotInteractions as jest.Mock).mockReturnValue(false);
+    (config.getReplyChainEnabled as jest.Mock).mockReturnValue(false);
+    (config.getActivityKeyTtl as jest.Mock).mockReturnValue(300);
+    (config.getOutputBaseUrl as jest.Mock).mockReturnValue('http://localhost:3003');
+    activityKeyManager.issueKey.mockReturnValue('mock-activity-key-abc');
+  });
+
+  it('should issue a key and reply when standalone "activity_key" is sent via DM', async () => {
+    const msg = createDmMsg('activity_key');
+    await messageHandler.handleMessage(msg);
+
+    expect(activityKeyManager.issueKey).toHaveBeenCalled();
+    expect(msg.reply).toHaveBeenCalledWith(
+      expect.stringContaining('mock-activity-key-abc')
+    );
+    expect(msg.reply).toHaveBeenCalledWith(
+      expect.stringContaining('300 seconds')
+    );
+  });
+
+  it('should issue a key via guild @mention', async () => {
+    const msg = createMentionMsg('<@bot-123> activity_key');
+    await messageHandler.handleMessage(msg);
+
+    expect(activityKeyManager.issueKey).toHaveBeenCalled();
+    expect(msg.reply).toHaveBeenCalledWith(
+      expect.stringContaining('mock-activity-key-abc')
+    );
+  });
+
+  it('should NOT match "activity_key something" (standalone only)', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'I do not know what that means.' },
+    });
+
+    const msg = createDmMsg('activity_key something');
+    await messageHandler.handleMessage(msg);
+
+    // It should NOT have issued a key — it doesn't match the standalone keyword
+    expect(activityKeyManager.issueKey).not.toHaveBeenCalled();
+  });
+
+  it('should include the activity URL in the reply', async () => {
+    const msg = createDmMsg('activity_key');
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).toHaveBeenCalledWith(
+      expect.stringContaining('http://localhost:3003/activity')
+    );
+  });
+
+  it('should log the key issuance', async () => {
+    const msg = createDmMsg('activity_key');
+    await messageHandler.handleMessage(msg);
+
+    expect(logger.log).toHaveBeenCalledWith(
+      'success', 'system',
+      expect.stringContaining('ACTIVITY-KEY: Key issued to')
+    );
   });
 });

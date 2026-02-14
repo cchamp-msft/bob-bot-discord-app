@@ -38,7 +38,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
 - ✅ **NFL commands** — `nfl scores` (current or date-specific) and `nfl news` (with optional keyword filter)
 - ✅ **Web search** — Google Search via SerpAPI with AI Overview support; `search` returns full results, `second opinion` returns only Google's AI Overview (AI Overview availability is locale-dependent — configure `SERPAPI_HL`/`SERPAPI_GL`; optional `SERPAPI_LOCATION` can further improve coverage)
-- ✅ **Public activity feed** — privacy-first `/activity` page on the outputs server showing bot decisions as first-person narrative events; no raw message content, user IDs, or API keys are exposed
+- ✅ **Public activity feed** — privacy-first `/activity` page on the outputs server showing bot decisions as first-person narrative events; no raw message content, user IDs, or API keys are exposed; protected by a rotating access key requested from Discord via the `activity_key` keyword
 
 ## Project Structure
 
@@ -61,7 +61,7 @@ src/
 │   └── ollamaClient.ts   # Ollama API client
 ├── public/
 │   ├── configurator.html # Web-based configurator SPA
-│   └── activity.html     # Public activity timeline page
+│   └── activity.html     # Activity timeline page (key-protected)
 └── utils/
     ├── config.ts         # Configuration loader (with hot-reload)
     ├── configWriter.ts   # Configuration persistence layer
@@ -71,6 +71,7 @@ src/
     ├── httpServer.ts     # Express HTTP server for configurator (localhost-only)
     ├── outputsServer.ts  # Express HTTP server for output file serving (public)
     ├── activityEvents.ts # Sanitised in-memory event buffer for activity feed
+    ├── activityKeyManager.ts # In-memory rotating key for activity monitor access
     ├── keywordClassifier.ts  # AI-based keyword classification (Ollama fallback)
     ├── apiRouter.ts      # Multi-stage API routing pipeline
     └── responseTransformer.ts # Stage result extraction and context building
@@ -126,7 +127,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `HTTP_HOST`, `OUTPUTS_PORT`, `OUTPUTS_HOST`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `ALLOW_BOT_INTERACTIONS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`, `SERPAPI_API_KEY`, `SERPAPI_ENDPOINT`, `SERPAPI_HL`, `SERPAPI_GL`, `SERPAPI_LOCATION`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `HTTP_HOST`, `OUTPUTS_PORT`, `OUTPUTS_HOST`, `OUTPUT_BASE_URL`, `ACTIVITY_KEY_TTL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `ALLOW_BOT_INTERACTIONS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`, `SERPAPI_API_KEY`, `SERPAPI_ENDPOINT`, `SERPAPI_HL`, `SERPAPI_GL`, `SERPAPI_LOCATION`
 
 ### Running the Bot
 
@@ -182,12 +183,14 @@ The bot runs two independent HTTP servers:
 
 #### Public Activity Feed
 
-The outputs server hosts a privacy-first activity timeline at `/activity` that shows the bot's decision-making as first-person narrative events.
+The outputs server hosts a privacy-first activity timeline at `/activity` that shows the bot's decision-making as first-person narrative events. Access to the activity data API is protected by a rotating key that must be requested from the bot via Discord.
+
+**Getting access**: Send `activity_key` to the bot (DM or @mention). The bot replies with a temporary key and the activity page URL. Enter the key when prompted on the activity page. Keys expire after `ACTIVITY_KEY_TTL` seconds (default 300 / 5 minutes, configurable in the HTTP Server section of the configurator).
 
 | Endpoint | Description |
 |----------|------------|
 | `GET /activity` | HTML timeline page with auto-polling and image enlargement |
-| `GET /api/activity` | JSON API returning `{ events, serverTime }` |
+| `GET /api/activity` | JSON API returning `{ events, serverTime }` — requires `?key=<key>` or `x-activity-key` header |
 | `GET /api/activity?since=<ISO>` | Incremental — only events after the given timestamp |
 | `GET /api/activity?count=<n>` | Limit result count (default 50, max 100) |
 | `GET /api/privacy-policy` | Returns `PRIVACY_POLICY.md` as plain text (lazy-loaded on link click) |
@@ -764,7 +767,7 @@ If no output is being returned and upon checking ComfyUI logs you see an excepti
 ### Reverse proxy / SSL termination
 - Both HTTP servers explicitly set `trust proxy = false` — `req.ip` is always the direct socket address and cannot be spoofed via `X-Forwarded-For` headers
 - If the configurator must be reachable through a reverse proxy (e.g. for remote administration), **set `ADMIN_TOKEN`** to a strong random value (`openssl rand -hex 32`). Without it the only protection is the localhost IP check, which can be bypassed if the proxy forwards traffic from the same host
-- The outputs server (port 3003) is designed for public access — if placed behind a TLS-terminating proxy, set `OUTPUT_BASE_URL` to the external HTTPS URL so generated image links work correctly (e.g. `OUTPUT_BASE_URL=https://cdn.example.com`). The activity feed (`/activity`) and its API (`/api/activity`) are also served publicly on this port
+- The outputs server (port 3003) is designed for public access — if placed behind a TLS-terminating proxy, set `OUTPUT_BASE_URL` to the external HTTPS URL so generated image links work correctly (e.g. `OUTPUT_BASE_URL=https://cdn.example.com`). The activity feed (`/activity`) serves static HTML publicly; `GET /api/activity` requires a valid rotating key obtained from the bot via Discord
 - Neither server enables `trust proxy` or reads `X-Forwarded-Proto` — HTTPS is assumed to be handled entirely upstream
 - Restrict the configurator's upstream proxy route to trusted IP ranges / authentication at the proxy layer as an additional defence in depth
 

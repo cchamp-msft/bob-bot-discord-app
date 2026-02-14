@@ -5,6 +5,7 @@ import * as path from 'path';
 import { config } from './config';
 import { logger } from './logger';
 import { activityEvents } from './activityEvents';
+import { activityKeyManager } from './activityKeyManager';
 
 /**
  * Remove fingerprint headers and add minimal security headers.
@@ -50,12 +51,13 @@ class OutputsServer {
       res.status(403).json({ error: 'Forbidden' });
     });
 
-    // ── Activity feed (public) ────────────────────────────────────
+    // ── Activity feed (key-protected) ───────────────────────────────
     // Serve the activity timeline page
     // Resolve to src/public (same pattern as httpServer's configurator.html)
     // so the path works both in ts-node (dev) and compiled dist/ (production).
     const publicDir = path.resolve(__dirname, '../../src/public');
-    this.app.get('/activity', (_req, res) => {
+    this.app.get('/activity', (req, res) => {
+      // Allow the HTML page through — it will prompt for the key client-side
       res.sendFile(path.join(publicDir, 'activity.html'));
     });
 
@@ -71,8 +73,15 @@ class OutputsServer {
       });
     });
 
-    // Activity events API — returns sanitised narrative events
+    // Activity events API — requires a valid activity key
     this.app.get('/api/activity', (req, res) => {
+      const key = typeof req.query.key === 'string' ? req.query.key : req.headers['x-activity-key'] as string | undefined;
+
+      if (!key || !activityKeyManager.isValid(key)) {
+        res.status(401).json({ error: 'Unauthorized', message: 'A valid activity key is required. Send "activity_key" to the bot in Discord to get one.' });
+        return;
+      }
+
       const since = typeof req.query.since === 'string' ? req.query.since : undefined;
       const countParam = typeof req.query.count === 'string' ? parseInt(req.query.count, 10) : undefined;
       const count = countParam && Number.isFinite(countParam) && countParam > 0 ? Math.min(countParam, 100) : 50;

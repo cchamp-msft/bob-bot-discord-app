@@ -368,6 +368,15 @@ class Config {
   }
 
   /**
+   * Time-to-live in seconds for the activity monitor access key.
+   * After this duration a new key must be requested from Discord.
+   * Default: 300 (5 minutes).  Configurable via ACTIVITY_KEY_TTL.
+   */
+  getActivityKeyTtl(): number {
+    return this.parseIntEnv('ACTIVITY_KEY_TTL', 300);
+  }
+
+  /**
    * Optional bearer token for authenticating admin/configurator requests.
    * When set, every request to configurator routes must include an
    * `Authorization: Bearer <token>` header. When unset the configurator
@@ -855,6 +864,7 @@ class Config {
         outputsPort: this.getOutputsPort(),
         outputsHost: this.getOutputsHost(),
         outputBaseUrl: this.getOutputBaseUrl(),
+        activityKeyTtl: this.getActivityKeyTtl(),
       },
       limits: {
         fileSizeThreshold: this.getFileSizeThreshold(),

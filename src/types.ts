@@ -352,6 +352,7 @@ export interface PublicConfig {
     outputsPort: number;
     outputsHost: string;
     outputBaseUrl: string;
+    activityKeyTtl: number;
   };
   limits: {
     fileSizeThreshold: number;

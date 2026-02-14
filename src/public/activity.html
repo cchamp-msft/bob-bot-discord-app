@@ -263,6 +263,19 @@
 
   <div class="timeline" id="timeline"></div>
 
+  <!-- Activity key prompt overlay -->
+  <div id="keyOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;display:none;align-items:center;justify-content:center;">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:28px 32px;max-width:420px;width:90%;text-align:center;">
+      <h2 style="margin-bottom:12px;font-size:1.1em;">🔑 Activity Key Required</h2>
+      <p style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px;">
+        Send <code style="background:var(--surface2);padding:2px 6px;border-radius:3px;">activity_key</code> to the bot in Discord to get a temporary access key.
+      </p>
+      <input type="text" id="keyInput" placeholder="Paste your key here" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9em;margin-bottom:12px;">
+      <div id="keyError" style="color:var(--err);font-size:0.8em;margin-bottom:10px;display:none;">Invalid or expired key. Please request a new one.</div>
+      <button id="keySubmit" style="background:var(--accent);border:none;color:#fff;padding:8px 20px;border-radius:4px;cursor:pointer;font-size:0.9em;">Unlock</button>
+    </div>
+  </div>
+
   <dialog id="imageDialog">
     <button class="close-btn" id="dialogClose">×</button>
     <img id="dialogImg" src="" alt="Enlarged image">
@@ -282,6 +295,46 @@
   const policyBody = document.getElementById('policyBody');
   const policyClose = document.getElementById('policyClose');
   const privacyLink = document.getElementById('privacyLink');
+
+  // ── Key management ───────────────────────────────────────────
+  const keyOverlay = document.getElementById('keyOverlay');
+  const keyInput = document.getElementById('keyInput');
+  const keySubmit = document.getElementById('keySubmit');
+  const keyError = document.getElementById('keyError');
+
+  function getStoredKey() {
+    return sessionStorage.getItem('activityKey') || '';
+  }
+
+  function storeKey(k) {
+    sessionStorage.setItem('activityKey', k);
+  }
+
+  function showKeyPrompt(errorMsg) {
+    keyError.style.display = errorMsg ? 'block' : 'none';
+    if (errorMsg) keyError.textContent = errorMsg;
+    keyOverlay.style.display = 'flex';
+    keyInput.value = '';
+    keyInput.focus();
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function hideKeyPrompt() {
+    keyOverlay.style.display = 'none';
+  }
+
+  keySubmit.addEventListener('click', function() {
+    var k = keyInput.value.trim();
+    if (!k) return;
+    storeKey(k);
+    hideKeyPrompt();
+    fullRefresh();
+    pollTimer = setInterval(poll, POLL_INTERVAL);
+  });
+
+  keyInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') keySubmit.click();
+  });
 
   let lastTimestamp = null;
   let pollTimer = null;
@@ -430,14 +483,25 @@
   function fetchEvents(since) {
     var url = '/api/activity';
     var params = [];
+    var key = getStoredKey();
+    if (key) params.push('key=' + encodeURIComponent(key));
     if (since) params.push('since=' + encodeURIComponent(since));
     if (params.length) url += '?' + params.join('&');
 
     return fetch(url)
-      .then(function(res) { return res.json(); })
+      .then(function(res) {
+        if (res.status === 401) {
+          sessionStorage.removeItem('activityKey');
+          showKeyPrompt('Invalid or expired key. Please request a new one from the bot.');
+          return { events: [] };
+        }
+        return res.json();
+      })
       .then(function(data) {
-        lastUpdatedEl.textContent = 'Updated ' + formatTime(data.serverTime);
-        return data.events;
+        if (data.events && data.events.length >= 0 && data.serverTime) {
+          lastUpdatedEl.textContent = 'Updated ' + formatTime(data.serverTime);
+        }
+        return data.events || [];
       })
       .catch(function(err) {
         console.error('Activity fetch error:', err);
@@ -467,11 +531,16 @@
 
   refreshBtn.addEventListener('click', fullRefresh);
 
-  // Initial load
-  fullRefresh();
+  // Check for stored key — show prompt if missing
+  if (!getStoredKey()) {
+    showKeyPrompt(null);
+  } else {
+    // Initial load
+    fullRefresh();
 
-  // Start polling
-  pollTimer = setInterval(poll, POLL_INTERVAL);
+    // Start polling
+    pollTimer = setInterval(poll, POLL_INTERVAL);
+  }
 
   // ── Future: WebSocket upgrade path ───────────────────────────
   // To replace polling with real-time push:

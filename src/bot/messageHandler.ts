@@ -15,6 +15,7 @@ import { executeRoutedRequest } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
 import { assemblePrompt, parseFirstLineKeyword } from '../utils/promptBuilder';
 import { activityEvents } from '../utils/activityEvents';
+import { activityKeyManager } from '../utils/activityKeyManager';
 
 export type { ChatMessage };
 
@@ -182,6 +183,29 @@ class MessageHandler {
     // concrete topics/usage hints to summarize for the user.
     if (keywordMatched && keywordConfig.keyword.toLowerCase() === 'help') {
       content = this.buildHelpPromptForModel();
+    }
+
+    // Route standalone "activity_key" — issue a new rotating key and DM it
+    // back to the user. This short-circuits before Ollama/API routing since
+    // no model interaction is needed.
+    if (keywordMatched && keywordConfig.keyword.toLowerCase() === 'activity_key') {
+      const key = activityKeyManager.issueKey();
+      const ttl = config.getActivityKeyTtl();
+      const url = config.getOutputBaseUrl();
+      const reply = [
+        `🔑 Here is your activity monitor key (valid for ${ttl} seconds):`,
+        '',
+        `\`${key}\``,
+        '',
+        `Open the activity page and enter this key when prompted:`,
+        `${url}/activity`,
+        '',
+        `After ${ttl} seconds you'll need to request a new key by sending \`activity_key\` again.`,
+      ].join('\n');
+
+      await message.reply(reply);
+      logger.log('success', 'system', `ACTIVITY-KEY: Key issued to ${requester}`);
+      return;
     }
 
     // Collect conversation context — needed for any path that may call Ollama
@@ -694,6 +718,11 @@ class MessageHandler {
       // "help" should match, but "help me ..." should not.
       if (keyword === 'help') {
         return lowerContent.trim() === 'help';
+      }
+
+      // Built-in activity_key is standalone-only, same as help.
+      if (keyword === 'activity_key') {
+        return lowerContent.trim() === 'activity_key';
       }
 
       const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

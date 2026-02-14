@@ -36,7 +36,7 @@ The Bot includes a real-time activity page (`/activity`) that displays a stream 
 - **Does not show** usernames, user IDs, guild/server names, or channel IDs
 - **Automatically redacts** URLs, Discord snowflake IDs, and API-key-like tokens from all displayed text
 - **Is not persisted to disk** — events are held in an in-memory ring buffer (maximum 100 events) and are lost when the bot restarts
-- **Is served on the public outputs server** without authentication — anyone with network access to the outputs port can view it
+- **Is protected by a rotating access key** — viewing activity data requires a temporary key obtained by sending `activity_key` to the bot in Discord; keys expire after a configurable interval (default 5 minutes) and are held in memory only
 
 This is separate from the file-based logger described above, which collects more detailed information including usernames, user IDs, and message content previews.
 

@@ -55,9 +55,21 @@ jest.mock('../src/utils/activityEvents', () => {
   };
 });
 
+// Mock activityKeyManager — always valid for tests unless overridden
+jest.mock('../src/utils/activityKeyManager', () => ({
+  activityKeyManager: {
+    isValid: jest.fn((key: string) => key === 'test-valid-key'),
+    issueKey: jest.fn(() => 'test-valid-key'),
+    isExpired: jest.fn(() => false),
+    remainingSeconds: jest.fn(() => 300),
+    revoke: jest.fn(),
+  },
+}));
+
 import http from 'http';
 import { outputsServer } from '../src/utils/outputsServer';
 import { activityEvents } from '../src/utils/activityEvents';
+import { activityKeyManager } from '../src/utils/activityKeyManager';
 import type { Express } from 'express';
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -214,7 +226,7 @@ describe('OutputsServer', () => {
   // ── /api/activity endpoint ─────────────────────────────────
 
   it('/api/activity returns JSON with events and serverTime', async () => {
-    const res = await fetch(`${baseUrl}/api/activity`);
+    const res = await fetch(`${baseUrl}/api/activity?key=test-valid-key`);
     expect(res.status).toBe(200);
     const body = await res.json() as { events: any[]; serverTime: string };
     expect(Array.isArray(body.events)).toBe(true);
@@ -228,7 +240,7 @@ describe('OutputsServer', () => {
     mockGetRecent.mockClear();
 
     const since = '2026-01-01T00:00:00.000Z';
-    await fetch(`${baseUrl}/api/activity?since=${encodeURIComponent(since)}`);
+    await fetch(`${baseUrl}/api/activity?key=test-valid-key&since=${encodeURIComponent(since)}`);
 
     expect(mockGetRecent).toHaveBeenCalledWith(50, since);
   });
@@ -237,7 +249,7 @@ describe('OutputsServer', () => {
     const mockGetRecent = activityEvents.getRecent as jest.MockedFunction<typeof activityEvents.getRecent>;
     mockGetRecent.mockClear();
 
-    await fetch(`${baseUrl}/api/activity?count=10`);
+    await fetch(`${baseUrl}/api/activity?key=test-valid-key&count=10`);
     expect(mockGetRecent).toHaveBeenCalledWith(10, undefined);
   });
 
@@ -245,7 +257,7 @@ describe('OutputsServer', () => {
     const mockGetRecent = activityEvents.getRecent as jest.MockedFunction<typeof activityEvents.getRecent>;
     mockGetRecent.mockClear();
 
-    await fetch(`${baseUrl}/api/activity?count=999`);
+    await fetch(`${baseUrl}/api/activity?key=test-valid-key&count=999`);
     expect(mockGetRecent).toHaveBeenCalledWith(100, undefined);
   });
 
@@ -253,14 +265,37 @@ describe('OutputsServer', () => {
     const mockGetRecent = activityEvents.getRecent as jest.MockedFunction<typeof activityEvents.getRecent>;
     mockGetRecent.mockClear();
 
-    await fetch(`${baseUrl}/api/activity?count=abc`);
+    await fetch(`${baseUrl}/api/activity?key=test-valid-key&count=abc`);
     expect(mockGetRecent).toHaveBeenCalledWith(50, undefined);
   });
 
   it('/api/activity has security headers', async () => {
-    const res = await fetch(`${baseUrl}/api/activity`);
+    const res = await fetch(`${baseUrl}/api/activity?key=test-valid-key`);
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
     expect(res.headers.get('x-powered-by')).toBeNull();
+  });
+
+  // ── /api/activity key guard ──────────────────────────────
+
+  it('/api/activity returns 401 when no key is provided', async () => {
+    const res = await fetch(`${baseUrl}/api/activity`);
+    expect(res.status).toBe(401);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.error).toBe('Unauthorized');
+  });
+
+  it('/api/activity returns 401 for an invalid key', async () => {
+    const res = await fetch(`${baseUrl}/api/activity?key=bad-key-value`);
+    expect(res.status).toBe(401);
+  });
+
+  it('/api/activity accepts key via x-activity-key header', async () => {
+    const res = await fetch(`${baseUrl}/api/activity`, {
+      headers: { 'x-activity-key': 'test-valid-key' },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { events: any[]; serverTime: string };
+    expect(Array.isArray(body.events)).toBe(true);
   });
 
   // ── /api/privacy-policy endpoint ───────────────────────────

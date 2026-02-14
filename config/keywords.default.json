@@ -8,6 +8,14 @@
       "builtin": true
     },
     {
+      "keyword": "activity_key",
+      "api": "ollama",
+      "timeout": 10,
+      "description": "Request a temporary access key for the activity monitor",
+      "builtin": true,
+      "allowEmptyContent": true
+    },
+    {
       "keyword": "generate",
       "api": "comfyui",
       "timeout": 600,
