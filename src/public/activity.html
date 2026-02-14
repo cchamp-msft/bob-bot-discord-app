@@ -75,7 +75,7 @@
   }
   .privacy-notice a:hover { color: var(--accent); }
 
-  /* Privacy policy dialog */
+  /* Privacy policy dialog — hidden until .showModal() adds [open] */
   dialog.policy-dialog {
     background: var(--surface);
     color: var(--text);
@@ -85,6 +85,8 @@
     max-width: 720px;
     width: 90vw;
     max-height: 85vh;
+  }
+  dialog.policy-dialog[open] {
     display: flex;
     flex-direction: column;
   }
@@ -317,22 +319,46 @@
   }
 
   let policyLoaded = false;
+  let policyLoading = false;
 
-  function showPrivacyPolicy() {
+  function renderPolicyError() {
+    policyBody.innerHTML =
+      '<p style="color:var(--err)">Could not load privacy policy.</p>' +
+      '<button id="policyRetry" style="margin-top:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:4px;cursor:pointer;">Retry</button>';
+    document.getElementById('policyRetry').addEventListener('click', function() {
+      policyLoaded = false;
+      policyLoading = false;
+      loadAndShowPolicy();
+    });
+  }
+
+  function loadAndShowPolicy() {
+    if (policyLoaded) {
+      policyDialog.showModal();
+      return;
+    }
+    if (policyLoading) return;
+    policyLoading = true;
+    policyBody.textContent = 'Loading\u2026';
     policyDialog.showModal();
-    if (policyLoaded) return;
     fetch('/api/privacy-policy')
-      .then(function(res) { return res.text(); })
+      .then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.text();
+      })
       .then(function(text) {
         policyBody.innerHTML = mdToHtml(text);
         policyLoaded = true;
       })
       .catch(function() {
-        policyBody.textContent = 'Could not load privacy policy.';
+        renderPolicyError();
+      })
+      .finally(function() {
+        policyLoading = false;
       });
   }
 
-  privacyLink.addEventListener('click', showPrivacyPolicy);
+  privacyLink.addEventListener('click', loadAndShowPolicy);
   policyClose.addEventListener('click', function() { policyDialog.close(); });
   policyDialog.addEventListener('click', function(e) {
     if (e.target === policyDialog) policyDialog.close();
