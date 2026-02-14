@@ -89,10 +89,25 @@ jest.mock('../src/utils/contextEvaluator', () => ({
   evaluateContextWindow: jest.fn().mockImplementation((history) => Promise.resolve(history)),
 }));
 
+jest.mock('../src/utils/activityEvents', () => ({
+  activityEvents: {
+    emit: jest.fn(),
+    emitMessageReceived: jest.fn(),
+    emitRoutingDecision: jest.fn(),
+    emitBotReply: jest.fn(),
+    emitBotImageReply: jest.fn(),
+    emitError: jest.fn(),
+    emitWarning: jest.fn(),
+    getRecent: jest.fn(() => []),
+    clear: jest.fn(),
+  },
+}));
+
 import { config } from '../src/utils/config';
 import { classifyIntent, buildAbilitiesContext } from '../src/utils/keywordClassifier';
 import { executeRoutedRequest } from '../src/utils/apiRouter';
 import { assemblePrompt, parseFirstLineKeyword } from '../src/utils/promptBuilder';
+import { activityEvents } from '../src/utils/activityEvents';
 
 // We need to test the rate-limit behavior. The MessageHandler class is not
 // exported directly, but the singleton is. We can access its private method.
@@ -3117,5 +3132,245 @@ describe('MessageHandler handleMessage — ALLOW_BOT_INTERACTIONS gating', () =>
     await messageHandler.handleMessage(msg as any);
 
     expect(msg.reply).not.toHaveBeenCalled();
+  });
+});
+
+// ── Activity event emission tests ────────────────────────────────
+
+describe('MessageHandler activity event emission', () => {
+  const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+  const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
+  const mockParseFirstLineKeyword = parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>;
+
+  function createMsg(content: string, isDM = false): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username: 'testuser', displayName: 'testuser' },
+      member: { displayName: 'testuser' },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: isDM ? 1 : 0,
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      guild: isDM ? null : { name: 'TestGuild' },
+      mentions: { has: jest.fn(() => !isDM) },
+      reference: null,
+      content: isDM ? content : `<@bot-123> ${content}`,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (messageHandler as any).lastErrorMessageTime = 0;
+    (config.getKeywords as jest.Mock).mockReturnValue([]);
+    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    mockParseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+  });
+
+  it('emits message_received for DM', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Hello there!' },
+    });
+    mockClassifyIntent.mockResolvedValueOnce({ keywordConfig: null, wasClassified: false });
+
+    const msg = createMsg('hello', true);
+    await messageHandler.handleMessage(msg);
+
+    expect(activityEvents.emitMessageReceived).toHaveBeenCalledWith(true);
+  });
+
+  it('emits message_received for server mention', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Hi!' },
+    });
+    mockClassifyIntent.mockResolvedValueOnce({ keywordConfig: null, wasClassified: false });
+
+    const msg = createMsg('hi');
+    await messageHandler.handleMessage(msg);
+
+    expect(activityEvents.emitMessageReceived).toHaveBeenCalledWith(false);
+  });
+
+  it('emits routing_decision on keyword match path', async () => {
+    const weatherKeyword = {
+      keyword: 'weather',
+      api: 'accuweather' as const,
+      timeout: 60,
+      description: 'Get weather',
+    };
+    (config.getKeywords as jest.Mock).mockReturnValue([weatherKeyword]);
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Sunny, 72°F' } },
+      finalApi: 'accuweather',
+      stages: [],
+    });
+
+    const msg = createMsg('weather Seattle');
+    await messageHandler.handleMessage(msg);
+
+    expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
+      'accuweather', 'weather', 'keyword'
+    );
+  });
+
+  it('emits routing_decision on two-stage keyword parse', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const weatherKeyword = {
+      keyword: 'weather',
+      api: 'accuweather' as const,
+      timeout: 60,
+      description: 'Get weather',
+    };
+
+    // Ollama first-pass
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'weather\nLet me check that' },
+    });
+
+    // parseFirstLineKeyword matches
+    mockParseFirstLineKeyword.mockReturnValueOnce({
+      keywordConfig: weatherKeyword,
+      parsedLine: 'weather',
+      matched: true,
+    });
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Sunny' } },
+      finalApi: 'accuweather',
+      stages: [],
+    });
+
+    const msg = createMsg('is it going to rain');
+    await messageHandler.handleMessage(msg);
+
+    expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
+      'accuweather', 'weather', 'two-stage-parse'
+    );
+  });
+
+  it('emits routing_decision on two-stage classify fallback', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const searchKeyword = {
+      keyword: 'search',
+      api: 'serpapi' as const,
+      timeout: 60,
+      description: 'Search web',
+    };
+
+    // Ollama first-pass
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Let me search that for you' },
+    });
+
+    // parseFirstLineKeyword does NOT match
+    mockParseFirstLineKeyword.mockReturnValueOnce({
+      keywordConfig: null, parsedLine: '', matched: false,
+    });
+
+    // classifyIntent matches
+    mockClassifyIntent.mockResolvedValueOnce({
+      keywordConfig: searchKeyword,
+      wasClassified: true,
+    });
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Results...' } },
+      finalApi: 'serpapi',
+      stages: [],
+    });
+
+    const msg = createMsg('find latest news about AI');
+    await messageHandler.handleMessage(msg);
+
+    expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
+      'serpapi', 'search', 'two-stage-classify'
+    );
+  });
+
+  it('emits bot_reply for text responses', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'The answer is 42.' },
+    });
+    mockClassifyIntent.mockResolvedValueOnce({ keywordConfig: null, wasClassified: false });
+
+    const msg = createMsg('meaning of life');
+    await messageHandler.handleMessage(msg);
+
+    expect(activityEvents.emitBotReply).toHaveBeenCalledWith('ollama', 17);
+  });
+
+  it('emits error when exception occurs in handleMessage', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockRejectedValueOnce(new Error('Connection refused'));
+
+    const msg = createMsg('hello');
+    await messageHandler.handleMessage(msg);
+
+    expect(activityEvents.emitError).toHaveBeenCalledWith(
+      'I couldn\'t complete that request'
+    );
+  });
+
+  it('emits error when dispatch receives failed response', async () => {
+    const weatherKeyword = {
+      keyword: 'weather',
+      api: 'accuweather' as const,
+      timeout: 60,
+      description: 'Get weather',
+    };
+    (config.getKeywords as jest.Mock).mockReturnValue([weatherKeyword]);
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: false, error: 'Location not found' },
+      finalApi: 'accuweather',
+      stages: [],
+    });
+
+    const msg = createMsg('weather asdfasdf');
+    await messageHandler.handleMessage(msg);
+
+    expect(activityEvents.emitError).toHaveBeenCalledWith(
+      'I couldn\'t get a response from the API'
+    );
+  });
+
+  it('does not leak raw message content, user IDs, or guild names in events', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Hi!' },
+    });
+    mockClassifyIntent.mockResolvedValueOnce({ keywordConfig: null, wasClassified: false });
+
+    const msg = createMsg('secret password 12345');
+    await messageHandler.handleMessage(msg);
+
+    // Verify none of the activity calls include raw content or user ID
+    const mockEmitMessageReceived = activityEvents.emitMessageReceived as jest.MockedFunction<typeof activityEvents.emitMessageReceived>;
+    const mockEmitBotReply = activityEvents.emitBotReply as jest.MockedFunction<typeof activityEvents.emitBotReply>;
+    const allCalls = [
+      ...mockEmitMessageReceived.mock.calls,
+      ...mockEmitBotReply.mock.calls,
+    ];
+    const serialized = JSON.stringify(allCalls);
+    expect(serialized).not.toContain('secret password');
+    expect(serialized).not.toContain('user-1');
+    expect(serialized).not.toContain('TestGuild');
   });
 });

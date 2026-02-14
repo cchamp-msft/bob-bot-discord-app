@@ -14,6 +14,7 @@ import { classifyIntent } from '../utils/keywordClassifier';
 import { executeRoutedRequest } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
 import { assemblePrompt, parseFirstLineKeyword } from '../utils/promptBuilder';
+import { activityEvents } from '../utils/activityEvents';
 
 export type { ChatMessage };
 
@@ -80,6 +81,9 @@ class MessageHandler {
       guildName,
       message.content
     );
+
+    // Emit sanitised activity event (no raw content, IDs, or guild names)
+    activityEvents.emitMessageReceived(isDM);
 
     // Prefer the server nickname (member.displayName) over the raw Discord
     // username so that logs, prompts, and error messages show the friendly
@@ -236,6 +240,8 @@ class MessageHandler {
           ...conversationHistory,
           { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const },
         ];
+        activityEvents.emitRoutingDecision(keywordConfig.api, keywordConfig.keyword, 'keyword');
+
         const routedResult = await executeRoutedRequest(
           keywordConfig,
           content,
@@ -265,6 +271,9 @@ class MessageHandler {
 
       // Log full error to console always
       logger.logError(requester, errorMsg);
+
+      // Emit sanitised error activity event
+      activityEvents.emitError('I couldn\'t complete that request');
 
       // Edit processing message with friendly error
       if (this.canSendErrorMessage()) {
@@ -779,6 +788,7 @@ class MessageHandler {
       if (parseResult.matched && parseResult.keywordConfig) {
         logger.log('success', 'system',
           `TWO-STAGE: First-line keyword match "${parseResult.keywordConfig.keyword}" — executing ${parseResult.keywordConfig.api} API`);
+        activityEvents.emitRoutingDecision(parseResult.keywordConfig.api, parseResult.keywordConfig.keyword, 'two-stage-parse');
 
         const apiResult = await executeRoutedRequest(
           parseResult.keywordConfig,
@@ -804,6 +814,7 @@ class MessageHandler {
       if (secondClassification.keywordConfig && secondClassification.keywordConfig.api !== 'ollama') {
         logger.log('success', 'system',
           `TWO-STAGE: Fallback classifier matched "${secondClassification.keywordConfig.keyword}" — executing ${secondClassification.keywordConfig.api} API`);
+        activityEvents.emitRoutingDecision(secondClassification.keywordConfig.api, secondClassification.keywordConfig.keyword, 'two-stage-classify');
 
         const apiResult = await executeRoutedRequest(
           secondClassification.keywordConfig,
@@ -840,6 +851,7 @@ class MessageHandler {
     if (!response.success) {
       const errorDetail = response.error ?? 'Unknown API error';
       logger.logError(requester, errorDetail);
+      activityEvents.emitError('I couldn\'t get a response from the API');
 
       if (this.canSendErrorMessage()) {
         await processingMessage.edit(`⚠️ ${config.getErrorMessage()}`);
@@ -1016,6 +1028,10 @@ class MessageHandler {
       }
     }
 
+    // Collect public image URLs for the activity feed (no local paths)
+    const publicImageUrls = apiResult.data.images.filter(u => u.startsWith('http'));
+    activityEvents.emitBotImageReply(apiResult.data.images.length, publicImageUrls);
+
     logger.logReply(
       requester,
       `ComfyUI response sent: ${apiResult.data.images.length} images`
@@ -1041,6 +1057,8 @@ class MessageHandler {
         await processingMessage.channel.send(chunks[i]);
       }
     }
+
+    activityEvents.emitBotReply('ollama', text.length);
 
     logger.logReply(
       requester,
@@ -1069,6 +1087,8 @@ class MessageHandler {
       }
     }
 
+    activityEvents.emitBotReply('accuweather', text.length);
+
     logger.logReply(
       requester,
       `AccuWeather response sent: ${text.length} characters`,
@@ -1095,6 +1115,8 @@ class MessageHandler {
         await processingMessage.channel.send(chunks[i]);
       }
     }
+
+    activityEvents.emitBotReply('nfl', text.length);
 
     logger.logReply(
       requester,
@@ -1125,6 +1147,8 @@ class MessageHandler {
         await processingMessage.channel.send({ content: chunks[i], allowedMentions: { parse: [] } });
       }
     }
+
+    activityEvents.emitBotReply('serpapi', text.length);
 
     logger.logReply(
       requester,

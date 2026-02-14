@@ -55,6 +55,20 @@ jest.mock('../src/utils/contextEvaluator', () => ({
   evaluateContextWindow: jest.fn().mockImplementation((history) => Promise.resolve(history)),
 }));
 
+jest.mock('../src/utils/activityEvents', () => ({
+  activityEvents: {
+    emit: jest.fn(),
+    emitMessageReceived: jest.fn(),
+    emitRoutingDecision: jest.fn(),
+    emitBotReply: jest.fn(),
+    emitBotImageReply: jest.fn(),
+    emitError: jest.fn(),
+    emitWarning: jest.fn(),
+    getRecent: jest.fn(() => []),
+    clear: jest.fn(),
+  },
+}));
+
 import { executeRoutedRequest } from '../src/utils/apiRouter';
 import { requestQueue } from '../src/utils/requestQueue';
 import { KeywordConfig } from '../src/utils/config';
@@ -1389,6 +1403,84 @@ describe('ApiRouter', () => {
       // Verify the trigger message content was properly passed through
       const userContent = mockApiExecute.mock.calls[0][2] as string;
       expect(userContent).toContain('user123:');
+    });
+  });
+
+  // ── Activity event emission ────────────────────────────────────
+
+  describe('activity event emission', () => {
+    const { activityEvents } = require('../src/utils/activityEvents');
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('emits routing_decision when executing a primary API request', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Sunny in Seattle' },
+      });
+
+      await executeRoutedRequest(keyword, 'Seattle weather', 'alice');
+
+      expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
+        'accuweather', 'weather', 'api-route'
+      );
+    });
+
+    it('emits routing_decision for comfyui requests', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'generate',
+        api: 'comfyui',
+        timeout: 120,
+        description: 'Generate image',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { images: ['http://localhost:3003/img.png'] },
+      });
+
+      await executeRoutedRequest(keyword, 'a cat', 'bob');
+
+      expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
+        'comfyui', 'generate', 'api-route'
+      );
+    });
+
+    it('does not emit activity events for internal retry refinement', async () => {
+      (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
+      (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(1);
+
+      const keyword: KeywordConfig = {
+        keyword: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      // Primary fails
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Location not found',
+        errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
+      });
+      // Ollama refinement
+      mockExecute.mockResolvedValueOnce({ success: true, data: { text: 'Seattle, WA' } });
+      // Retry succeeds
+      mockExecute.mockResolvedValueOnce({ success: true, data: { text: 'Sunny' } });
+
+      await executeRoutedRequest(keyword, 'asdf', 'alice');
+
+      // Only one routing_decision for the initial route, no extra for retries
+      expect(activityEvents.emitRoutingDecision).toHaveBeenCalledTimes(1);
     });
   });
 });
