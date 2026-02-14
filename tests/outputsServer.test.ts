@@ -273,4 +273,33 @@ describe('OutputsServer', () => {
     const text = await res.text();
     expect(text).toContain('Privacy Policy');
   });
+
+  it('/api/privacy-policy has security headers', async () => {
+    const res = await fetch(`${baseUrl}/api/privacy-policy`);
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('x-powered-by')).toBeNull();
+  });
+
+  // ── Activity page privacy dialog ──────────────────────────
+
+  it('/activity page does not display the privacy dialog by default', async () => {
+    const res = await fetch(`${baseUrl}/activity`);
+    const html = await res.text();
+
+    // The dialog CSS must NOT unconditionally set display:flex
+    // — it should be gated behind the [open] attribute.
+    expect(html).toContain('dialog.policy-dialog[open]');
+    expect(html).not.toMatch(/dialog\.policy-dialog\s*\{[^}]*display:\s*flex/);
+  });
+
+  it('/activity page loads privacy policy only on click (lazy)', async () => {
+    const res = await fetch(`${baseUrl}/activity`);
+    const html = await res.text();
+
+    // The script must contain a click-gated fetch, not an eager fetch
+    expect(html).toContain("privacyLink.addEventListener('click'");
+    expect(html).toContain("fetch('/api/privacy-policy')");
+    // showModal must only appear inside named functions, not at top-level init
+    expect(html).toContain('loadAndShowPolicy');
+  });
 });
