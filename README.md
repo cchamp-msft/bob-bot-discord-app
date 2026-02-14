@@ -38,6 +38,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
 - ✅ **NFL commands** — `nfl scores` (current or date-specific) and `nfl news` (with optional keyword filter)
 - ✅ **Web search** — Google Search via SerpAPI with AI Overview support; `search` returns full results, `second opinion` returns only Google's AI Overview (AI Overview availability is locale-dependent — configure `SERPAPI_HL`/`SERPAPI_GL`; optional `SERPAPI_LOCATION` can further improve coverage)
+- ✅ **Public activity feed** — privacy-first `/activity` page on the outputs server showing bot decisions as first-person narrative events; no raw message content, user IDs, or API keys are exposed
 
 ## Project Structure
 
@@ -59,7 +60,8 @@ src/
 │   ├── comfyuiWebSocket.ts # ComfyUI WebSocket manager (real-time execution tracking)
 │   └── ollamaClient.ts   # Ollama API client
 ├── public/
-│   └── configurator.html # Web-based configurator SPA
+│   ├── configurator.html # Web-based configurator SPA
+│   └── activity.html     # Public activity timeline page
 └── utils/
     ├── config.ts         # Configuration loader (with hot-reload)
     ├── configWriter.ts   # Configuration persistence layer
@@ -68,6 +70,7 @@ src/
     ├── requestQueue.ts   # Request queue with API availability tracking
     ├── httpServer.ts     # Express HTTP server for configurator (localhost-only)
     ├── outputsServer.ts  # Express HTTP server for output file serving (public)
+    ├── activityEvents.ts # Sanitised in-memory event buffer for activity feed
     ├── keywordClassifier.ts  # AI-based keyword classification (Ollama fallback)
     ├── apiRouter.ts      # Multi-stage API routing pipeline
     └── responseTransformer.ts # Stage result extraction and context building
@@ -175,7 +178,25 @@ The bot runs two independent HTTP servers:
 | **Configurator** | `127.0.0.1:3000` | Web UI for setup and management (localhost-only) |
 | **Outputs** | `0.0.0.0:3003` | Serves generated images so Discord can fetch them |
 
-> ⚠️ **Security**: The configurator must never be exposed to the public internet. Only expose port 3003 (outputs) through your firewall. The outputs server only serves static files and a health endpoint.
+> ⚠️ **Security**: The configurator must never be exposed to the public internet. Only expose port 3003 (outputs) through your firewall. The outputs server serves static files, a health endpoint, and the public activity feed.
+
+#### Public Activity Feed
+
+The outputs server hosts a privacy-first activity timeline at `/activity` that shows the bot's decision-making as first-person narrative events.
+
+| Endpoint | Description |
+|----------|------------|
+| `GET /activity` | HTML timeline page with auto-polling and image enlargement |
+| `GET /api/activity` | JSON API returning `{ events, serverTime }` |
+| `GET /api/activity?since=<ISO>` | Incremental — only events after the given timestamp |
+| `GET /api/activity?count=<n>` | Limit result count (default 50, max 100) |
+
+**Privacy guarantees** — activity events never contain:
+- Raw message content or user prompts
+- Discord user IDs, guild IDs, or guild/channel names
+- API keys, endpoint URLs, or internal error details
+
+Events are written as sanitized first-person narratives (e.g. *"Someone wants my attention in a server channel"*, *"I need to check the weather"*, *"I created 2 images for you"*) and are color-coded by type on the timeline page.
 
 ### Accessing the Configurator
 
@@ -742,7 +763,7 @@ If no output is being returned and upon checking ComfyUI logs you see an excepti
 ### Reverse proxy / SSL termination
 - Both HTTP servers explicitly set `trust proxy = false` — `req.ip` is always the direct socket address and cannot be spoofed via `X-Forwarded-For` headers
 - If the configurator must be reachable through a reverse proxy (e.g. for remote administration), **set `ADMIN_TOKEN`** to a strong random value (`openssl rand -hex 32`). Without it the only protection is the localhost IP check, which can be bypassed if the proxy forwards traffic from the same host
-- The outputs server (port 3003) is designed for public access — if placed behind a TLS-terminating proxy, set `OUTPUT_BASE_URL` to the external HTTPS URL so generated image links work correctly (e.g. `OUTPUT_BASE_URL=https://cdn.example.com`)
+- The outputs server (port 3003) is designed for public access — if placed behind a TLS-terminating proxy, set `OUTPUT_BASE_URL` to the external HTTPS URL so generated image links work correctly (e.g. `OUTPUT_BASE_URL=https://cdn.example.com`). The activity feed (`/activity`) and its API (`/api/activity`) are also served publicly on this port
 - Neither server enables `trust proxy` or reads `X-Forwarded-Proto` — HTTPS is assumed to be handled entirely upstream
 - Restrict the configurator's upstream proxy route to trusted IP ranges / authentication at the proxy layer as an additional defence in depth
 
