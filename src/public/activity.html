@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bot Activity</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --text: #eee;
+    --text-dim: #999;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
+    --border: #2a2a4a;
+    --blue: #42a5f5;
+    --purple: #ab47bc;
+    --green: #66bb6a;
+    --orange: #ffa726;
+    --red: #ef5350;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header {
+    background: var(--surface);
+    padding: 12px 24px;
+    border-bottom: 2px solid var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 1.2em; font-weight: 600; }
+  header .spacer { flex: 1; }
+  header .meta {
+    font-size: 0.78em;
+    color: var(--text-dim);
+  }
+  header button {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.82em;
+  }
+  header button:hover { background: var(--accent); }
+
+  /* Timeline */
+  .timeline {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .timeline:empty::after {
+    content: 'Waiting for activity…';
+    color: var(--text-dim);
+    text-align: center;
+    margin-top: 40px;
+    font-style: italic;
+  }
+
+  /* Event card */
+  .event {
+    background: var(--surface);
+    border-left: 3px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 14px;
+    animation: fadeIn 0.3s ease;
+  }
+  .event.message_received { border-left-color: var(--blue); }
+  .event.routing_decision  { border-left-color: var(--purple); }
+  .event.bot_reply          { border-left-color: var(--green); }
+  .event.error              { border-left-color: var(--red); }
+  .event.warning            { border-left-color: var(--orange); }
+
+  .event .ts {
+    font-size: 0.72em;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .event .narrative {
+    font-size: 0.92em;
+    line-height: 1.5;
+    font-style: italic;
+  }
+
+  /* Type icon dot */
+  .event .type-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .event.message_received .type-dot { background: var(--blue); }
+  .event.routing_decision  .type-dot { background: var(--purple); }
+  .event.bot_reply          .type-dot { background: var(--green); }
+  .event.error              .type-dot { background: var(--red); }
+  .event.warning            .type-dot { background: var(--orange); }
+
+  /* Inline images */
+  .event .images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .event .images img {
+    max-width: 300px;
+    max-height: 200px;
+    border-radius: 4px;
+    cursor: pointer;
+    object-fit: contain;
+    background: #0d0d1a;
+  }
+
+  /* Image dialog */
+  dialog {
+    background: rgba(0,0,0,0.9);
+    border: none;
+    padding: 0;
+    max-width: 95vw;
+    max-height: 95vh;
+  }
+  dialog::backdrop { background: rgba(0,0,0,0.7); }
+  dialog img {
+    max-width: 95vw;
+    max-height: 90vh;
+    object-fit: contain;
+    display: block;
+  }
+  dialog .close-btn {
+    position: absolute;
+    top: 8px; right: 12px;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 1.8em;
+    cursor: pointer;
+    line-height: 1;
+    z-index: 1;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>🤖 Activity</h1>
+    <span class="spacer"></span>
+    <span class="meta" id="lastUpdated">—</span>
+    <button id="refreshBtn">↻ Refresh</button>
+  </header>
+
+  <div class="timeline" id="timeline"></div>
+
+  <dialog id="imageDialog">
+    <button class="close-btn" id="dialogClose">×</button>
+    <img id="dialogImg" src="" alt="Enlarged image">
+  </dialog>
+
+<script>
+(function() {
+  'use strict';
+
+  const timeline = document.getElementById('timeline');
+  const lastUpdatedEl = document.getElementById('lastUpdated');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const dialog = document.getElementById('imageDialog');
+  const dialogImg = document.getElementById('dialogImg');
+  const dialogClose = document.getElementById('dialogClose');
+
+  let lastTimestamp = null;
+  let pollTimer = null;
+  const POLL_INTERVAL = 4000; // 4 seconds
+
+  // ── Helpers ──────────────────────────────────────────────────
+
+  function formatTime(isoStr) {
+    const d = new Date(isoStr);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function escapeHtml(text) {
+    const el = document.createElement('span');
+    el.textContent = text;
+    return el.innerHTML;
+  }
+
+  // ── Render ───────────────────────────────────────────────────
+
+  function createEventCard(ev) {
+    const card = document.createElement('div');
+    card.className = 'event ' + ev.type;
+    card.dataset.id = ev.id;
+
+    let html = '<div class="ts">' + formatTime(ev.timestamp) + '</div>';
+    html += '<div class="narrative"><span class="type-dot"></span>' + escapeHtml(ev.narrative) + '</div>';
+
+    if (ev.imageUrls && ev.imageUrls.length > 0) {
+      html += '<div class="images">';
+      ev.imageUrls.forEach(function(url) {
+        html += '<img src="' + escapeHtml(url) + '" alt="Generated image" loading="lazy">';
+      });
+      html += '</div>';
+    }
+
+    card.innerHTML = html;
+
+    // Attach image click handlers
+    card.querySelectorAll('.images img').forEach(function(img) {
+      img.addEventListener('click', function() {
+        dialogImg.src = img.src;
+        dialog.showModal();
+      });
+    });
+
+    return card;
+  }
+
+  function appendEvents(events) {
+    if (!events.length) return;
+
+    var wasAtBottom = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 40;
+
+    events.forEach(function(ev) {
+      timeline.appendChild(createEventCard(ev));
+    });
+
+    // Auto-scroll if user was near bottom
+    if (wasAtBottom) {
+      timeline.scrollTop = timeline.scrollHeight;
+    }
+
+    lastTimestamp = events[events.length - 1].timestamp;
+  }
+
+  // ── Fetch ────────────────────────────────────────────────────
+
+  function fetchEvents(since) {
+    var url = '/api/activity';
+    var params = [];
+    if (since) params.push('since=' + encodeURIComponent(since));
+    if (params.length) url += '?' + params.join('&');
+
+    return fetch(url)
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        lastUpdatedEl.textContent = 'Updated ' + formatTime(data.serverTime);
+        return data.events;
+      })
+      .catch(function(err) {
+        console.error('Activity fetch error:', err);
+        lastUpdatedEl.textContent = 'Error fetching';
+        return [];
+      });
+  }
+
+  function poll() {
+    fetchEvents(lastTimestamp).then(appendEvents);
+  }
+
+  function fullRefresh() {
+    timeline.innerHTML = '';
+    lastTimestamp = null;
+    fetchEvents(null).then(appendEvents);
+  }
+
+  // ── Dialog ───────────────────────────────────────────────────
+
+  dialogClose.addEventListener('click', function() { dialog.close(); });
+  dialog.addEventListener('click', function(e) {
+    if (e.target === dialog) dialog.close();
+  });
+
+  // ── Init ─────────────────────────────────────────────────────
+
+  refreshBtn.addEventListener('click', fullRefresh);
+
+  // Initial load
+  fullRefresh();
+
+  // Start polling
+  pollTimer = setInterval(poll, POLL_INTERVAL);
+
+  // ── Future: WebSocket upgrade path ───────────────────────────
+  // To replace polling with real-time push:
+  // 1. Add ws endpoint on outputsServer (reuse comfyuiWebSocket patterns)
+  // 2. const ws = new WebSocket('ws://' + location.host + '/ws/activity');
+  // 3. ws.onmessage = (e) => appendEvents([JSON.parse(e.data)]);
+  // 4. Clear pollTimer when ws opens, restore on ws close.
+})();
+</script>
+</body>
+</html>
