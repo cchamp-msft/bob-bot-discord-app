@@ -51,8 +51,11 @@ class OutputsServer {
 
     // ── Activity feed (public) ────────────────────────────────────
     // Serve the activity timeline page
+    // Resolve to src/public (same pattern as httpServer's configurator.html)
+    // so the path works both in ts-node (dev) and compiled dist/ (production).
+    const publicDir = path.resolve(__dirname, '../../src/public');
     this.app.get('/activity', (_req, res) => {
-      res.sendFile(path.join(__dirname, '../public/activity.html'));
+      res.sendFile(path.join(publicDir, 'activity.html'));
     });
 
     // Activity events API — returns sanitised narrative events
