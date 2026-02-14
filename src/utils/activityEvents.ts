@@ -57,6 +57,22 @@ function apiNarrative(api: string): string {
   }
 }
 
+// ── Narrative normalisation ───────────────────────────────────────
+
+/**
+ * Rewrite second-person audience language to first→third-person style.
+ * The bot speaks about the people it is talking to as "them / their",
+ * never addressing the reader as "you / your".
+ */
+export function normalizeNarrative(text: string): string {
+  let result = text;
+  // Whole-word replacements, case-insensitive — order matters
+  result = result.replace(/\bfor you\b/gi, 'for them');
+  result = result.replace(/\byour\b/gi, 'their');
+  result = result.replace(/\byou\b/gi, 'them');
+  return result;
+}
+
 // ── Sanitisation helpers ─────────────────────────────────────────
 
 /**
@@ -88,10 +104,17 @@ export function redactSensitive(text: string): string {
 const DEFAULT_BUFFER_CAPACITY = 100;
 const DEFAULT_RECENT_COUNT = 50;
 
+/** Milliseconds within which identical routing decisions are suppressed. */
+const ROUTING_DEDUPE_WINDOW_MS = 5_000;
+
 class ActivityEventStore {
   private buffer: ActivityEvent[] = [];
   private nextId = 1;
   private capacity: number;
+
+  /** Fingerprint + timestamp of the last routing_decision event. */
+  private lastRoutingKey = '';
+  private lastRoutingTime = 0;
 
   constructor(capacity = DEFAULT_BUFFER_CAPACITY) {
     this.capacity = capacity;
@@ -111,7 +134,7 @@ class ActivityEventStore {
       id: this.nextId++,
       timestamp: new Date().toISOString(),
       type,
-      narrative: redactSensitive(narrative),
+      narrative: normalizeNarrative(redactSensitive(narrative)),
       metadata,
       imageUrls,
     };
@@ -138,6 +161,8 @@ class ActivityEventStore {
   clear(): void {
     this.buffer = [];
     this.nextId = 1;
+    this.lastRoutingKey = '';
+    this.lastRoutingTime = 0;
   }
 
   /** Current number of stored events. */
@@ -157,10 +182,29 @@ class ActivityEventStore {
     );
   }
 
-  /** A routing / API decision was made. */
+  /**
+   * A routing / API decision was made.
+   * Duplicate routing decisions for the same api+keyword within the
+   * dedupe window are suppressed and return the previously emitted event.
+   */
   emitRoutingDecision(api: string, keyword: string, stage?: string): ActivityEvent {
     const meta: Record<string, string> = { api, keyword };
     if (stage) meta.stage = stage;
+
+    // ── dedupe: suppress identical api+keyword within the window ──
+    const fingerprint = `${api}:${keyword}`;
+    const now = Date.now();
+    if (
+      fingerprint === this.lastRoutingKey &&
+      now - this.lastRoutingTime < ROUTING_DEDUPE_WINDOW_MS
+    ) {
+      // Return the most recent routing_decision already in the buffer
+      const existing = [...this.buffer].reverse().find(e => e.type === 'routing_decision');
+      if (existing) return existing;
+    }
+    this.lastRoutingKey = fingerprint;
+    this.lastRoutingTime = now;
+
     return this.emit('routing_decision', `I need to ${apiNarrative(api)}`, meta);
   }
 
@@ -178,7 +222,7 @@ class ActivityEventStore {
     const plural = imageCount === 1 ? 'image' : 'images';
     return this.emit(
       'bot_reply',
-      `I created ${imageCount} ${plural} for you`,
+      `I created ${imageCount} ${plural} for them`,
       { api: 'comfyui', imageCount },
       imageUrls
     );
@@ -198,6 +242,30 @@ class ActivityEventStore {
       ? `Hmm, ${redactSensitive(context)}`
       : 'Hmm, that took longer than expected';
     return this.emit('warning', narrative);
+  }
+
+  // ── Context evaluation thought ──────────────────────────────
+
+  /**
+   * Emit a thought about context-window evaluation decisions.
+   * Surfaced so observers can understand how context was filtered.
+   */
+  emitContextDecision(
+    kept: number,
+    total: number,
+    keyword: string,
+    indices?: number[]
+  ): ActivityEvent {
+    const pct = total > 0 ? Math.round((kept / total) * 100) : 100;
+    const narrative = indices && indices.length > 0
+      ? `I reviewed ${total} messages and kept ${kept} (${pct}%) as context for ${keyword} [indices: ${indices.join(', ')}]`
+      : `I reviewed ${total} messages and kept ${kept} (${pct}%) as context for ${keyword}`;
+    return this.emit('routing_decision', narrative, {
+      subtype: 'context_eval',
+      keyword,
+      kept,
+      total,
+    });
   }
 }
 

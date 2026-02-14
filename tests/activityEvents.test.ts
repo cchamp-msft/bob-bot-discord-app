@@ -6,6 +6,7 @@
 
 import {
   activityEvents,
+  normalizeNarrative,
   redactSensitive,
   sanitizeLocation,
   type ActivityEvent,
@@ -204,6 +205,20 @@ describe('ActivityEventStore', () => {
       const ev = activityEvents.emitRoutingDecision('unknown-api', 'kw');
       expect(ev.narrative).toContain('use unknown-api');
     });
+
+    it('suppresses duplicate routing for same api+keyword within dedupe window', () => {
+      const first = activityEvents.emitRoutingDecision('comfyui', 'imagine', 'keyword');
+      const second = activityEvents.emitRoutingDecision('comfyui', 'imagine', 'api-route');
+      // Second call returns the same event — no new entry created
+      expect(second.id).toBe(first.id);
+      expect(activityEvents.size).toBe(1);
+    });
+
+    it('allows routing for different api+keyword', () => {
+      activityEvents.emitRoutingDecision('comfyui', 'imagine');
+      activityEvents.emitRoutingDecision('accuweather', 'weather');
+      expect(activityEvents.size).toBe(2);
+    });
   });
 
   describe('emitBotReply', () => {
@@ -234,6 +249,12 @@ describe('ActivityEventStore', () => {
       const ev = activityEvents.emitBotImageReply(3, ['a', 'b', 'c']);
       expect(ev.narrative).toContain('3 images');
       expect(ev.metadata.imageCount).toBe(3);
+    });
+
+    it('uses third-person phrasing (for them, not for you)', () => {
+      const ev = activityEvents.emitBotImageReply(2, ['a', 'b']);
+      expect(ev.narrative).toContain('for them');
+      expect(ev.narrative).not.toContain('for you');
     });
   });
 
@@ -305,5 +326,60 @@ describe('sanitizeLocation', () => {
 
   it('returns server for isDM=false', () => {
     expect(sanitizeLocation(false)).toBe('server');
+  });
+});
+
+// ── Narrative normalisation unit tests ───────────────────────────
+
+describe('normalizeNarrative', () => {
+  it('replaces "for you" with "for them"', () => {
+    expect(normalizeNarrative('I made this for you')).toBe('I made this for them');
+  });
+
+  it('replaces "your" with "their"', () => {
+    expect(normalizeNarrative('Here is your answer')).toBe('Here is their answer');
+  });
+
+  it('replaces standalone "you" with "them"', () => {
+    expect(normalizeNarrative('I told you already')).toBe('I told them already');
+  });
+
+  it('is case-insensitive', () => {
+    expect(normalizeNarrative('For You, Your request')).toBe('for them, their request');
+  });
+
+  it('leaves first-person text unchanged', () => {
+    const text = 'I need to check the weather';
+    expect(normalizeNarrative(text)).toBe(text);
+  });
+});
+
+// ── Context decision emitter ────────────────────────────────────
+
+describe('emitContextDecision', () => {
+  beforeEach(() => {
+    activityEvents.clear();
+  });
+
+  it('emits a routing_decision with context_eval subtype', () => {
+    const ev = activityEvents.emitContextDecision(3, 8, 'weather', [1, 2, 5]);
+    expect(ev.type).toBe('routing_decision');
+    expect(ev.metadata.subtype).toBe('context_eval');
+    expect(ev.metadata.kept).toBe(3);
+    expect(ev.metadata.total).toBe(8);
+    expect(ev.narrative).toContain('reviewed 8 messages');
+    expect(ev.narrative).toContain('kept 3');
+    expect(ev.narrative).toContain('indices: 1, 2, 5');
+  });
+
+  it('omits indices clause when not provided', () => {
+    const ev = activityEvents.emitContextDecision(2, 5, 'chat');
+    expect(ev.narrative).not.toContain('indices');
+    expect(ev.narrative).toContain('kept 2');
+  });
+
+  it('calculates percentage correctly', () => {
+    const ev = activityEvents.emitContextDecision(1, 4, 'search');
+    expect(ev.narrative).toContain('25%');
   });
 });

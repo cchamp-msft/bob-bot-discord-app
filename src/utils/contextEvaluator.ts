@@ -4,6 +4,7 @@ import { ollamaClient, OllamaResponse } from '../api/ollamaClient';
 import { requestQueue } from './requestQueue';
 import { ChatMessage } from '../types';
 import { formatSourceTag } from './contextFormatter';
+import { activityEvents } from './activityEvents';
 
 /**
  * Build the system prompt for context evaluation.
@@ -269,6 +270,14 @@ export async function evaluateContextWindow(
 
     logger.log('success', 'system',
       `CONTEXT-EVAL: Including ${indices.length} of ${candidates.length} context messages (indices: [${indices.join(', ')}])`);
+
+    // Surface the context-filter decision as an activity thought
+    activityEvents.emitContextDecision(
+      indices.length,
+      candidates.length,
+      keywordConfig.keyword,
+      indices
+    );
 
     // Map indices (1=newest) back to candidates (oldest→newest order).
     // Reverse the candidates to get newest-first, pick by index, then

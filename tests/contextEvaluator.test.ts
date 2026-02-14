@@ -33,6 +33,15 @@ jest.mock('../src/utils/requestQueue', () => ({
   },
 }));
 
+jest.mock('../src/utils/activityEvents', () => ({
+  activityEvents: {
+    emitContextDecision: jest.fn().mockReturnValue({
+      id: 1, type: 'routing_decision', narrative: 'mock',
+      metadata: {}, imageUrls: [], timestamp: new Date().toISOString(),
+    }),
+  },
+}));
+
 import { evaluateContextWindow, buildContextEvalPrompt, parseEvalResponse, formatHistoryForEval, extractJsonArray } from '../src/utils/contextEvaluator';
 import { ollamaClient } from '../src/api/ollamaClient';
 import { config } from '../src/utils/config';
@@ -254,6 +263,23 @@ describe('ContextEvaluator', () => {
       expect(result).toHaveLength(2);
       expect(result[0].content).toBe('message 4');
       expect(result[1].content).toBe('message 6');
+    });
+
+    it('should emit context decision activity event on successful filtering', async () => {
+      const { activityEvents } = require('../src/utils/activityEvents');
+      const history = makeHistory(6);
+      const kw = makeKeyword({ contextFilterMinDepth: 1, contextFilterMaxDepth: 6 });
+
+      mockGenerate.mockResolvedValue({
+        success: true,
+        data: { text: '[1, 3]' },
+      });
+
+      await evaluateContextWindow(history, 'test prompt', kw, 'user1');
+
+      expect(activityEvents.emitContextDecision).toHaveBeenCalledWith(
+        2, 6, 'chat', [1, 3]
+      );
     });
 
     it('should handle legacy integer response (contiguous window)', async () => {

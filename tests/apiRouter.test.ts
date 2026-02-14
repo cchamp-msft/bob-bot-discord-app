@@ -64,6 +64,7 @@ jest.mock('../src/utils/activityEvents', () => ({
     emitBotImageReply: jest.fn(),
     emitError: jest.fn(),
     emitWarning: jest.fn(),
+    emitContextDecision: jest.fn(),
     getRecent: jest.fn(() => []),
     clear: jest.fn(),
   },
@@ -1415,7 +1416,7 @@ describe('ApiRouter', () => {
       jest.clearAllMocks();
     });
 
-    it('emits routing_decision when executing a primary API request', async () => {
+    it('does not emit routing_decision from apiRouter (consolidated to caller)', async () => {
       const keyword: KeywordConfig = {
         keyword: 'weather',
         api: 'accuweather',
@@ -1430,29 +1431,7 @@ describe('ApiRouter', () => {
 
       await executeRoutedRequest(keyword, 'Seattle weather', 'alice');
 
-      expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
-        'accuweather', 'weather', 'api-route'
-      );
-    });
-
-    it('emits routing_decision for comfyui requests', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'generate',
-        api: 'comfyui',
-        timeout: 120,
-        description: 'Generate image',
-      };
-
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: { images: ['http://localhost:3003/img.png'] },
-      });
-
-      await executeRoutedRequest(keyword, 'a cat', 'bob');
-
-      expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
-        'comfyui', 'generate', 'api-route'
-      );
+      expect(activityEvents.emitRoutingDecision).not.toHaveBeenCalled();
     });
 
     it('does not emit activity events for internal retry refinement', async () => {
@@ -1479,8 +1458,8 @@ describe('ApiRouter', () => {
 
       await executeRoutedRequest(keyword, 'asdf', 'alice');
 
-      // Only one routing_decision for the initial route, no extra for retries
-      expect(activityEvents.emitRoutingDecision).toHaveBeenCalledTimes(1);
+      // No routing_decision emitted from apiRouter at all
+      expect(activityEvents.emitRoutingDecision).not.toHaveBeenCalled();
     });
   });
 });

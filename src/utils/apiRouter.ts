@@ -18,7 +18,6 @@ import {
   formatSerpApiExternalData,
   formatGenericExternalData,
 } from './promptBuilder';
-import { activityEvents } from './activityEvents';
 
 function normalizeOneLine(text: string): string {
   const first = text.split(/\r?\n/).find(l => l.trim().length > 0) ?? '';
@@ -165,7 +164,7 @@ export async function executeRoutedRequest(
   const needsFinalPass = keywordConfig.finalOllamaPass === true;
 
   // ── Primary API request ───────────────────────────────────────
-  logger.log('success', 'system', `API-ROUTING: Executing ${keywordConfig.api} request for "${keywordConfig.keyword}"`);  activityEvents.emitRoutingDecision(keywordConfig.api, keywordConfig.keyword, 'api-route');
+  logger.log('success', 'system', `API-ROUTING: Executing ${keywordConfig.api} request for "${keywordConfig.keyword}"`);
   const apiType = keywordConfig.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
   const originalContent = content;
   let attemptContent = content;

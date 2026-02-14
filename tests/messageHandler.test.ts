@@ -100,6 +100,7 @@ jest.mock('../src/utils/activityEvents', () => ({
     emitBotImageReply: jest.fn(),
     emitError: jest.fn(),
     emitWarning: jest.fn(),
+    emitContextDecision: jest.fn(),
     getRecent: jest.fn(() => []),
     clear: jest.fn(),
   },
