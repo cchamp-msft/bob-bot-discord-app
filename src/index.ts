@@ -1,11 +1,13 @@
 import { config } from './utils/config';
 import { httpServer } from './utils/httpServer';
+import { outputsServer } from './utils/outputsServer';
 import { logger } from './utils/logger';
 import { discordManager } from './bot/discordManager';
 import { comfyuiClient } from './api/comfyuiClient';
 
-// Start HTTP server immediately (configurator available without Discord)
+// Start HTTP servers immediately (configurator + outputs available without Discord)
 httpServer.start();
+outputsServer.start();
 
 // Auto-connect to Discord if token is configured
 const token = process.env.DISCORD_TOKEN;
@@ -38,6 +40,9 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
   }
   try { await httpServer.stop(); } catch (e) {
     logger.logError('system', `Error stopping HTTP server: ${e}`);
+  }
+  try { await outputsServer.stop(); } catch (e) {
+    logger.logError('system', `Error stopping outputs server: ${e}`);
   }
 
   process.exit(exitCode);

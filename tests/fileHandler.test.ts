@@ -25,7 +25,7 @@ jest.mock('../src/utils/logger', () => ({
 // Mock config to return predictable values
 jest.mock('../src/utils/config', () => ({
   config: {
-    getOutputBaseUrl: () => 'http://localhost:3000',
+    getOutputBaseUrl: () => 'http://localhost:3003',
     getFileSizeThreshold: () => 10485760,
   },
 }));
@@ -114,7 +114,7 @@ describe('FileHandler', () => {
 
       expect(result.fileName).toMatch(/^testuser-my_great_file\.txt$/);
       expect(result.size).toBe(11);
-      expect(result.url).toContain('http://localhost:3000/');
+      expect(result.url).toContain('http://localhost:3003/');
       expect(fs.existsSync(result.filePath)).toBe(true);
     });
 

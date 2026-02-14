@@ -348,6 +348,7 @@ export interface PublicConfig {
   };
   http: {
     port: number;
+    outputsPort: number;
     outputBaseUrl: string;
   };
   limits: {

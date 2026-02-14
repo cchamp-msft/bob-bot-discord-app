@@ -75,10 +75,26 @@ describe('Config', () => {
 
     it('getOutputBaseUrl should return env value or default', () => {
       delete process.env.OUTPUT_BASE_URL;
-      expect(config.getOutputBaseUrl()).toBe('http://localhost:3000');
+      expect(config.getOutputBaseUrl()).toBe('http://localhost:3003');
 
       process.env.OUTPUT_BASE_URL = 'https://cdn.example.com';
       expect(config.getOutputBaseUrl()).toBe('https://cdn.example.com');
+    });
+
+    it('getOutputsPort should return env value or default 3003', () => {
+      delete process.env.OUTPUTS_PORT;
+      expect(config.getOutputsPort()).toBe(3003);
+
+      process.env.OUTPUTS_PORT = '4444';
+      expect(config.getOutputsPort()).toBe(4444);
+    });
+
+    it('getOutputsHost should return env value or default 0.0.0.0', () => {
+      delete process.env.OUTPUTS_HOST;
+      expect(config.getOutputsHost()).toBe('0.0.0.0');
+
+      process.env.OUTPUTS_HOST = '192.168.1.100';
+      expect(config.getOutputsHost()).toBe('192.168.1.100');
     });
 
     it('getApiEndpoint should route correctly', () => {

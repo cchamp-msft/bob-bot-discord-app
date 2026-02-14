@@ -66,7 +66,8 @@ src/
     ├── logger.ts         # Unified logging system (console + file + configurator tail)
     ├── fileHandler.ts    # File output management
     ├── requestQueue.ts   # Request queue with API availability tracking
-    ├── httpServer.ts     # Express HTTP server for file serving + configurator
+    ├── httpServer.ts     # Express HTTP server for configurator (localhost-only)
+    ├── outputsServer.ts  # Express HTTP server for output file serving (public)
     ├── keywordClassifier.ts  # AI-based keyword classification (Ollama fallback)
     ├── apiRouter.ts      # Multi-stage API routing pipeline
     └── responseTransformer.ts # Stage result extraction and context building
@@ -122,7 +123,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `ALLOW_BOT_INTERACTIONS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`, `SERPAPI_API_KEY`, `SERPAPI_ENDPOINT`, `SERPAPI_HL`, `SERPAPI_GL`, `SERPAPI_LOCATION`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `HTTP_HOST`, `OUTPUTS_PORT`, `OUTPUTS_HOST`, `OUTPUT_BASE_URL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `ALLOW_BOT_INTERACTIONS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`, `SERPAPI_API_KEY`, `SERPAPI_ENDPOINT`, `SERPAPI_HL`, `SERPAPI_GL`, `SERPAPI_LOCATION`
 
 ### Running the Bot
 
@@ -165,12 +166,23 @@ npm run register
 
 The bot includes a **localhost-only web configurator** for easy management without editing config files directly.
 
+### Two-Server Architecture
+
+The bot runs two independent HTTP servers:
+
+| Server | Default Binding | Purpose |
+|--------|----------------|---------|
+| **Configurator** | `127.0.0.1:3000` | Web UI for setup and management (localhost-only) |
+| **Outputs** | `0.0.0.0:3003` | Serves generated images so Discord can fetch them |
+
+> ⚠️ **Security**: The configurator must never be exposed to the public internet. Only expose port 3003 (outputs) through your firewall. The outputs server only serves static files and a health endpoint.
+
 ### Accessing the Configurator
 
 1. Start the bot (`npm run dev`, `npm run dev:watch`, or `npm start`)
 2. Open your browser to: **http://localhost:3000/configurator**
-   - The HTTP server starts immediately — no Discord connection required
-   - ⚠️ Only accessible from localhost for security
+   - Both HTTP servers start immediately — no Discord connection required
+   - ⚠️ Configurator is only accessible from localhost for security
    - Port matches your `HTTP_PORT` setting in `.env` (default: 3000)
 
 ### Configurator Features
@@ -189,7 +201,8 @@ The bot includes a **localhost-only web configurator** for easy management witho
 - **ComfyUI Discovery**: Auto-detect available checkpoints, samplers, and schedulers from the connected ComfyUI instance
 - **Workflow Export**: Download the currently active workflow as ComfyUI API format JSON for external testing
 - **Error Handling**: Configure user-facing error message and rate limit interval
-- **HTTP Server**: Adjust port and output base URL
+- **HTTP Server**: Adjust configurator port and output base URL
+- **Two-Server Architecture**: Configurator runs on localhost:3000 (secure), outputs server on 0.0.0.0:3003 (public, for Discord image fetching)
 - **Limits**: Set file size threshold, default timeout, and max attachments per message
 - **Image Response**: Toggle whether image responses include the embed block with internal View link (off by default)
 - **Keywords Management**: Add/edit/remove keyword→API mappings with custom timeouts
@@ -458,7 +471,8 @@ System logs use consistent prefixes to identify their source:
 | `API-ROUTING:` | apiRouter | API routing pipeline |
 | `CLASSIFIER:` | keywordClassifier | AI-based keyword classification |
 | `BOT:` | discordManager | Discord bot lifecycle |
-| `HTTP-SERVER:` | httpServer | HTTP server events |
+| `HTTP-SERVER:` | httpServer | Configurator HTTP server events |
+| `OUTPUTS-SERVER:` | outputsServer | Outputs file server events |
 
 ### Example Flows
 

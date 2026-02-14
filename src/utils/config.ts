@@ -351,8 +351,16 @@ class Config {
     return this.parseIntEnv('HTTP_PORT', 3000);
   }
 
+  getOutputsPort(): number {
+    return this.parseIntEnv('OUTPUTS_PORT', 3003);
+  }
+
+  getOutputsHost(): string {
+    return (process.env.OUTPUTS_HOST || '').trim() || '0.0.0.0';
+  }
+
   getOutputBaseUrl(): string {
-    return process.env.OUTPUT_BASE_URL || 'http://localhost:3000';
+    return process.env.OUTPUT_BASE_URL || 'http://localhost:3003';
   }
 
   getFileSizeThreshold(): number {
@@ -765,6 +773,8 @@ class Config {
 
   /** Port captured at construction time — changes require restart */
   private port = this.parseIntEnv('HTTP_PORT', 3000);
+  /** Outputs port captured at construction time — changes require restart */
+  private outputsPort = this.parseIntEnv('OUTPUTS_PORT', 3003);
 
   /**
    * Get a safe view of config for the configurator UI.
@@ -811,6 +821,7 @@ class Config {
       },
       http: {
         port: this.getHttpPort(),
+        outputsPort: this.getOutputsPort(),
         outputBaseUrl: this.getOutputBaseUrl(),
       },
       limits: {

@@ -39,7 +39,6 @@ class HttpServer {
   }
 
   private setupRoutes(): void {
-    const outputsDir = path.join(__dirname, '../../outputs');
     const publicDir = path.resolve(__dirname, '../../src/public');
 
     // Parse JSON bodies for API routes (increased limit for workflow uploads)
@@ -410,16 +409,6 @@ class HttpServer {
       }
     });
 
-    // ── Output file routes ───────────────────────────────────────
-
-    // Block access to logs directory
-    this.app.use('/logs', (_req, res) => {
-      res.status(403).json({ error: 'Forbidden' });
-    });
-
-    // Serve static files from outputs directory
-    this.app.use(express.static(outputsDir));
-
     // Health check endpoint
     this.app.get('/health', (_req, res) => {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -436,7 +425,7 @@ class HttpServer {
     const displayHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host;
 
     this.server = this.app.listen(this.port, host, () => {
-      logger.log('success', 'system', `HTTP-SERVER: Listening on http://${displayHost}:${this.port}`);
+      logger.log('success', 'system', `HTTP-SERVER: Configurator (localhost-only) on http://${displayHost}:${this.port}`);
       logger.log('success', 'system', `HTTP-SERVER: Configurator: http://${displayHost}:${this.port}/configurator`);
     });
   }
