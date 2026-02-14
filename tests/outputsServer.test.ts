@@ -262,4 +262,15 @@ describe('OutputsServer', () => {
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
     expect(res.headers.get('x-powered-by')).toBeNull();
   });
+
+  // ── /api/privacy-policy endpoint ───────────────────────────
+
+  it('/api/privacy-policy returns the privacy policy as plain text', async () => {
+    const res = await fetch(`${baseUrl}/api/privacy-policy`);
+    expect(res.status).toBe(200);
+    const contentType = res.headers.get('content-type') ?? '';
+    expect(contentType).toContain('text/plain');
+    const text = await res.text();
+    expect(text).toContain('Privacy Policy');
+  });
 });

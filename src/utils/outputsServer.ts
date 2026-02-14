@@ -1,4 +1,5 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
+import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
 import { config } from './config';
@@ -56,6 +57,18 @@ class OutputsServer {
     const publicDir = path.resolve(__dirname, '../../src/public');
     this.app.get('/activity', (_req, res) => {
       res.sendFile(path.join(publicDir, 'activity.html'));
+    });
+
+    // Privacy policy API — returns raw markdown content for the overlay
+    const privacyPolicyPath = path.resolve(__dirname, '../../PRIVACY_POLICY.md');
+    this.app.get('/api/privacy-policy', (_req, res) => {
+      fs.readFile(privacyPolicyPath, 'utf-8', (err, data) => {
+        if (err) {
+          res.status(500).json({ error: 'Could not read privacy policy' });
+          return;
+        }
+        res.type('text/plain').send(data);
+      });
     });
 
     // Activity events API — returns sanitised narrative events
