@@ -1,4 +1,5 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
+import * as crypto from 'crypto';
 import * as http from 'http';
 import * as path from 'path';
 import { config } from './config';
@@ -9,9 +10,16 @@ import { apiManager } from '../api';
 import { comfyuiClient } from '../api/comfyuiClient';
 import { discordManager } from '../bot/discordManager';
 
+// ── Security middleware ──────────────────────────────────────────
+
 /**
  * Middleware that restricts access to localhost only.
- * Blocks any request not originating from 127.0.0.1 or ::1.
+ * Rejects forwarded-header spoofing: when Express `trust proxy` is disabled
+ * (the default) `req.ip` equals `req.socket.remoteAddress`, so upstream
+ * `X-Forwarded-For` headers cannot trick the check.
+ *
+ * This is the **secondary** guard — prefer ADMIN_TOKEN authentication when
+ * the configurator is reachable through a reverse proxy.
  */
 function localhostOnly(req: Request, res: Response, next: NextFunction): void {
   const ip = req.ip || req.socket.remoteAddress || '';
@@ -21,10 +29,86 @@ function localhostOnly(req: Request, res: Response, next: NextFunction): void {
     ip === '::ffff:127.0.0.1';
 
   if (!isLocal) {
-    res.status(403).json({ error: 'Forbidden — configurator is localhost only' });
+    logger.logWarn('http', `Blocked non-local request to ${req.path} from ${ip}`);
+    res.status(403).json({ error: 'Forbidden' });
     return;
   }
   next();
+}
+
+/**
+ * Middleware that enforces bearer-token authentication when ADMIN_TOKEN is
+ * configured. It is applied **before** localhostOnly so that proxied
+ * environments get a strong authn check even if the IP check passes.
+ *
+ * When ADMIN_TOKEN is unset (empty) the middleware is a no-op, preserving
+ * backward-compatible localhost-only behaviour.
+ *
+ * Uses constant-time comparison to prevent timing-based token leakage.
+ */
+function adminAuth(req: Request, res: Response, next: NextFunction): void {
+  const expected = config.getAdminToken();
+  if (!expected) {
+    // No token configured — fall through to localhostOnly guard
+    next();
+    return;
+  }
+
+  const header = req.headers.authorization || '';
+  const match = header.match(/^Bearer\s+(\S+)$/i);
+  const provided = match ? match[1] : '';
+
+  // Constant-time comparison (always compare equal-length buffers)
+  const expectedBuf = Buffer.from(expected, 'utf8');
+  const providedBuf = Buffer.from(provided, 'utf8');
+  const lengthMatch = expectedBuf.length === providedBuf.length;
+  const timingSafe = lengthMatch
+    ? crypto.timingSafeEqual(expectedBuf, providedBuf)
+    : false;
+
+  if (!timingSafe) {
+    logger.logWarn('http', `Unauthorized admin request to ${req.path} from ${req.ip}`);
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  next();
+}
+
+/**
+ * Combined admin guard: token auth (if configured) then localhost check.
+ * Attach both to every configurator / admin route.
+ */
+const adminGuard = [adminAuth, localhostOnly];
+
+/**
+ * Remove common server fingerprint headers and add minimal security
+ * headers. Applied once as app-level middleware.
+ */
+function securityHeaders(_req: Request, res: Response, next: NextFunction): void {
+  res.removeHeader('X-Powered-By');
+  // Prevent MIME-type sniffing
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  next();
+}
+
+/**
+ * Wrap an async route handler so that unhandled rejections are caught and
+ * returned as a generic 500 — internal details are logged, not exposed.
+ */
+function safeHandler(
+  fn: (req: Request, res: Response) => Promise<void>,
+): (req: Request, res: Response, _next: NextFunction) => void {
+  return (req, res, _next) => {
+    fn(req, res).catch((err) => {
+      logger.logError('http', `Unhandled error on ${req.method} ${req.path}: ${err}`);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Internal server error' });
+      }
+      // Do NOT call next(err) — the error is logged and responded to.
+      // Propagating it to Express 5's default handler would destroy the
+      // underlying socket and break keep-alive / future connections.
+    });
+  };
 }
 
 class HttpServer {
@@ -35,38 +119,43 @@ class HttpServer {
   constructor() {
     this.app = express();
     this.port = config.getHttpPort();
+
+    // Explicitly disable trust proxy — req.ip must always be the direct
+    // socket address so the localhostOnly guard cannot be bypassed via
+    // spoofed X-Forwarded-For headers.
+    this.app.set('trust proxy', false);
+
     this.setupRoutes();
   }
 
   private setupRoutes(): void {
     const publicDir = path.resolve(__dirname, '../../src/public');
 
+    // ── Global middleware ─────────────────────────────────────────
+    this.app.use(securityHeaders);
+
     // Parse JSON bodies for API routes (increased limit for workflow uploads)
     this.app.use(express.json({ limit: '10mb' }));
 
-    // ── Configurator routes (localhost only) ──────────────────────
+    // ── Configurator routes (admin-guarded) ──────────────────────
 
     // Serve the configurator SPA
-    this.app.get('/configurator', localhostOnly, (_req, res) => {
+    this.app.get('/configurator', ...adminGuard, (_req, res) => {
       res.sendFile(path.join(publicDir, 'configurator.html'));
     });
 
     // GET current config (safe view — no secrets)
-    this.app.get('/api/config', localhostOnly, (_req, res) => {
-      try {
-        res.json(config.getPublicConfig());
-      } catch (error) {
-        res.status(500).json({ error: String(error) });
-      }
-    });
+    this.app.get('/api/config', ...adminGuard, safeHandler(async (_req, res) => {
+      res.json(config.getPublicConfig());
+    }));
 
     // GET status log for the console panel (tails today's log file)
-    this.app.get('/api/config/status', localhostOnly, (_req, res) => {
+    this.app.get('/api/config/status', ...adminGuard, (_req, res) => {
       res.json({ lines: logger.getRecentLines() });
     });
 
     // GET test API connectivity
-    this.app.get('/api/config/test-connection/:api', localhostOnly, async (req, res) => {
+    this.app.get('/api/config/test-connection/:api', ...adminGuard, safeHandler(async (req, res) => {
       const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
       if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather' && api !== 'nfl' && api !== 'serpapi') {
         res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", "accuweather", "nfl", or "serpapi"' });
@@ -75,7 +164,6 @@ class HttpServer {
 
       try {
         if (api === 'ollama') {
-          // Enhanced: return model list alongside health status
           const result = await apiManager.testOllamaConnection();
           const endpoint = config.getApiEndpoint(api);
           if (result.healthy) {
@@ -124,112 +212,81 @@ class HttpServer {
       } catch (error) {
         const endpoint = config.getApiEndpoint(api);
         logger.logError('configurator', `Connection test: ${api} at ${endpoint} — ERROR: ${error}`);
-        res.json({ api, endpoint, healthy: false, error: String(error) });
+        res.json({ api, endpoint, healthy: false, error: 'Connection test failed' });
       }
-    });
+    }));
 
     // POST upload ComfyUI workflow JSON
-    this.app.post('/api/config/upload-workflow', localhostOnly, async (req, res) => {
-      try {
-        const { workflow, filename } = req.body;
+    this.app.post('/api/config/upload-workflow', ...adminGuard, safeHandler(async (req, res) => {
+      const { workflow, filename } = req.body;
 
-        if (!workflow || typeof workflow !== 'string') {
-          logger.logError('configurator', 'Workflow upload FAILED: No workflow data provided');
-          res.status(400).json({ success: false, error: 'Workflow JSON string is required' });
-          return;
-        }
-
-        const safeName = filename || 'comfyui-workflow.json';
-
-        const result = await configWriter.saveWorkflow(workflow, safeName);
-
-        if (result.success) {
-          const convertedNote = result.converted ? ' (auto-converted from UI format to API format)' : '';
-          logger.log('success', 'configurator', `Workflow uploaded: ${safeName} — validation passed${convertedNote}`);
-          res.json({ success: true, filename: safeName, converted: result.converted || false });
-        } else {
-          logger.logError('configurator', `Workflow upload FAILED: ${result.error}`);
-          res.status(400).json({ success: false, error: result.error });
-        }
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        logger.logError('configurator', `Workflow upload ERROR: ${errorMsg}`);
-        res.status(500).json({ success: false, error: errorMsg });
+      if (!workflow || typeof workflow !== 'string') {
+        logger.logError('configurator', 'Workflow upload FAILED: No workflow data provided');
+        res.status(400).json({ success: false, error: 'Workflow JSON string is required' });
+        return;
       }
-    });
+
+      const safeName = filename || 'comfyui-workflow.json';
+
+      const result = await configWriter.saveWorkflow(workflow, safeName);
+
+      if (result.success) {
+        const convertedNote = result.converted ? ' (auto-converted from UI format to API format)' : '';
+        logger.log('success', 'configurator', `Workflow uploaded: ${safeName} — validation passed${convertedNote}`);
+        res.json({ success: true, filename: safeName, converted: result.converted || false });
+      } else {
+        logger.logError('configurator', `Workflow upload FAILED: ${result.error}`);
+        res.status(400).json({ success: false, error: result.error });
+      }
+    }));
 
     // DELETE remove custom ComfyUI workflow (fall back to default)
-    this.app.delete('/api/config/workflow', localhostOnly, (_req, res) => {
-      try {
-        const deleted = configWriter.deleteWorkflow();
-        if (deleted) {
-          logger.log('success', 'configurator', 'Custom workflow removed — will use default workflow');
-          apiManager.refreshClients();
-          res.json({ success: true, message: 'Custom workflow removed. Default workflow will be used.' });
-        } else {
-          res.json({ success: true, message: 'No custom workflow was configured.' });
-        }
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        logger.logError('configurator', `Workflow delete ERROR: ${errorMsg}`);
-        res.status(500).json({ success: false, error: errorMsg });
+    this.app.delete('/api/config/workflow', ...adminGuard, safeHandler(async (_req, res) => {
+      const deleted = configWriter.deleteWorkflow();
+      if (deleted) {
+        logger.log('success', 'configurator', 'Custom workflow removed — will use default workflow');
+        apiManager.refreshClients();
+        res.json({ success: true, message: 'Custom workflow removed. Default workflow will be used.' });
+      } else {
+        res.json({ success: true, message: 'No custom workflow was configured.' });
       }
-    });
+    }));
 
     // GET available ComfyUI samplers
-    this.app.get('/api/config/comfyui/samplers', localhostOnly, async (_req, res) => {
-      try {
-        const samplers = await comfyuiClient.getSamplers();
-        res.json(samplers);
-      } catch (error) {
-        res.status(500).json({ error: String(error) });
-      }
-    });
+    this.app.get('/api/config/comfyui/samplers', ...adminGuard, safeHandler(async (_req, res) => {
+      const samplers = await comfyuiClient.getSamplers();
+      res.json(samplers);
+    }));
 
     // GET available ComfyUI schedulers
-    this.app.get('/api/config/comfyui/schedulers', localhostOnly, async (_req, res) => {
-      try {
-        const schedulers = await comfyuiClient.getSchedulers();
-        res.json(schedulers);
-      } catch (error) {
-        res.status(500).json({ error: String(error) });
-      }
-    });
+    this.app.get('/api/config/comfyui/schedulers', ...adminGuard, safeHandler(async (_req, res) => {
+      const schedulers = await comfyuiClient.getSchedulers();
+      res.json(schedulers);
+    }));
 
     // GET available ComfyUI checkpoints
-    this.app.get('/api/config/comfyui/checkpoints', localhostOnly, async (_req, res) => {
-      try {
-        const checkpoints = await comfyuiClient.getCheckpoints();
-        res.json(checkpoints);
-      } catch (error) {
-        res.status(500).json({ error: String(error) });
-      }
-    });
+    this.app.get('/api/config/comfyui/checkpoints', ...adminGuard, safeHandler(async (_req, res) => {
+      const checkpoints = await comfyuiClient.getCheckpoints();
+      res.json(checkpoints);
+    }));
 
     // GET export currently active workflow as ComfyUI API format JSON
-    this.app.get('/api/config/workflow/export', localhostOnly, async (_req, res) => {
-      try {
-        const result = await comfyuiClient.getExportWorkflow();
-        if (!result) {
-          res.status(400).json({
-            success: false,
-            error: 'No workflow configured. Upload a custom workflow or configure default workflow settings first.',
-          });
-          return;
-        }
-        logger.log('success', 'configurator', `Workflow exported (source: ${result.source})`);
-        res.json({ success: true, workflow: result.workflow, source: result.source, params: result.params });
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        logger.logError('configurator', `Workflow export ERROR: ${errorMsg}`);
-        res.status(500).json({ success: false, error: errorMsg });
+    this.app.get('/api/config/workflow/export', ...adminGuard, safeHandler(async (_req, res) => {
+      const result = await comfyuiClient.getExportWorkflow();
+      if (!result) {
+        res.status(400).json({
+          success: false,
+          error: 'No workflow configured. Upload a custom workflow or configure default workflow settings first.',
+        });
+        return;
       }
-    });
+      logger.log('success', 'configurator', `Workflow exported (source: ${result.source})`);
+      res.json({ success: true, workflow: result.workflow, source: result.source, params: result.params });
+    }));
 
     // POST save default workflow parameters
-    this.app.post('/api/config/default-workflow', localhostOnly, async (req, res) => {
-      try {
-        const body = req.body;
+    this.app.post('/api/config/default-workflow', ...adminGuard, safeHandler(async (req, res) => {
+      const body = req.body;
         const errors: string[] = [];
 
         // Coerce fields that may arrive as strings (e.g. from non-UI callers)
@@ -270,38 +327,33 @@ class HttpServer {
 
         logger.log('success', 'configurator', `Default workflow params saved: model=${model}, ${width}x${height}, steps=${steps}, cfg=${cfg}, sampler=${sampler}, scheduler=${scheduler}, denoise=${denoise}`);
         res.json({ success: true });
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        logger.logError('configurator', `Default workflow save ERROR: ${errorMsg}`);
-        res.status(500).json({ success: false, error: errorMsg });
-      }
-    });
+    }));
 
-    // ── Discord control routes (localhost only) ──────────────────
+    // ── Discord control routes (admin-guarded) ──────────────────
 
     // GET Discord bot status
-    this.app.get('/api/discord/status', localhostOnly, (_req, res) => {
+    this.app.get('/api/discord/status', ...adminGuard, (_req, res) => {
       res.json(discordManager.getStatus());
     });
 
     // POST start the Discord bot
-    this.app.post('/api/discord/start', localhostOnly, async (_req, res) => {
+    this.app.post('/api/discord/start', ...adminGuard, safeHandler(async (_req, res) => {
       logger.log('success', 'configurator', 'Discord bot start requested');
       const result = await discordManager.start();
       logger.log(result.success ? 'success' : 'error', 'configurator', `Discord start: ${result.message}`);
       res.json(result);
-    });
+    }));
 
     // POST stop the Discord bot
-    this.app.post('/api/discord/stop', localhostOnly, async (_req, res) => {
+    this.app.post('/api/discord/stop', ...adminGuard, safeHandler(async (_req, res) => {
       logger.log('success', 'configurator', 'Discord bot stop requested');
       const result = await discordManager.stop();
       logger.log(result.success ? 'success' : 'error', 'configurator', `Discord stop: ${result.message}`);
       res.json(result);
-    });
+    }));
 
     // POST test Discord token (does not persist or affect running bot)
-    this.app.post('/api/discord/test', localhostOnly, async (req, res) => {
+    this.app.post('/api/discord/test', ...adminGuard, safeHandler(async (req, res) => {
       const { token } = req.body;
       if (!token || typeof token !== 'string') {
         res.status(400).json({ success: false, message: 'Token is required' });
@@ -313,12 +365,11 @@ class HttpServer {
       // Never log the actual token value
       logger.log(result.success ? 'success' : 'error', 'configurator', `Discord token test: ${result.success ? 'OK' : 'FAILED'} — ${result.message}`);
       res.json(result);
-    });
+    }));
 
     // POST save config changes
-    this.app.post('/api/config/save', localhostOnly, async (req, res) => {
-      try {
-        const { env, keywords } = req.body;
+    this.app.post('/api/config/save', ...adminGuard, safeHandler(async (req, res) => {
+      const { env, keywords } = req.body;
         const messages: string[] = [];
 
         // Update .env values if provided
@@ -355,17 +406,12 @@ class HttpServer {
 
         logger.log('success', 'configurator', `Config updated: ${messages.join('; ')}`);
         res.json({ success: true, messages, reloadResult });
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        logger.logError('configurator', `Config save failed: ${errorMsg}`);
-        res.status(400).json({ success: false, error: errorMsg });
-      }
-    });
+    }));
 
-    // ── Test routes (localhost only) ─────────────────────────────
+    // ── Test routes (admin-guarded) ──────────────────────────────
 
     // POST test image generation — submit a prompt to ComfyUI and return results
-    this.app.post('/api/test/generate-image', localhostOnly, async (req, res) => {
+    this.app.post('/api/test/generate-image', ...adminGuard, safeHandler(async (req, res) => {
       const { prompt } = req.body;
 
       if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
@@ -375,39 +421,33 @@ class HttpServer {
 
       logger.log('success', 'configurator', `Test image generation started — prompt: "${prompt.substring(0, 80)}"`);
 
-      try {
-        const controller = new AbortController();
-        const result = await comfyuiClient.generateImage(prompt.trim(), 'test', controller.signal);
+      const controller = new AbortController();
+      const result = await comfyuiClient.generateImage(prompt.trim(), 'test', controller.signal);
 
-        if (!result.success) {
-          logger.logError('configurator', `Test image generation failed: ${result.error}`);
-          res.json({ success: false, error: result.error });
-          return;
-        }
-
-        // Download and save images to outputs/ with 'test' as requester
-        const savedImages: Array<{ url: string; localUrl: string }> = [];
-        const images = result.data?.images || [];
-
-        for (const imageUrl of images) {
-          const saved = await fileHandler.saveFromUrl('test', prompt, imageUrl, 'png');
-          if (saved) {
-            savedImages.push({ url: imageUrl, localUrl: saved.url });
-          }
-        }
-
-        logger.log('success', 'configurator', `Test image generation completed — ${savedImages.length} image(s) saved`);
-        res.json({
-          success: true,
-          images: savedImages.map(img => img.localUrl),
-          comfyuiImages: images,
-        });
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        logger.logError('configurator', `Test image generation error: ${errorMsg}`);
-        res.status(500).json({ success: false, error: errorMsg });
+      if (!result.success) {
+        logger.logError('configurator', `Test image generation failed: ${result.error}`);
+        res.json({ success: false, error: result.error });
+        return;
       }
-    });
+
+      // Download and save images to outputs/ with 'test' as requester
+      const savedImages: Array<{ url: string; localUrl: string }> = [];
+      const images = result.data?.images || [];
+
+      for (const imageUrl of images) {
+        const saved = await fileHandler.saveFromUrl('test', prompt, imageUrl, 'png');
+        if (saved) {
+          savedImages.push({ url: imageUrl, localUrl: saved.url });
+        }
+      }
+
+      logger.log('success', 'configurator', `Test image generation completed — ${savedImages.length} image(s) saved`);
+      res.json({
+        success: true,
+        images: savedImages.map(img => img.localUrl),
+        comfyuiImages: images,
+      });
+    }));
 
     // Health check endpoint
     this.app.get('/health', (_req, res) => {

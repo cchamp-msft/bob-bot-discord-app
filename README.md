@@ -737,12 +737,19 @@ If no output is being returned and upon checking ComfyUI logs you see an excepti
 - Verify you're accessing from `http://localhost:{HTTP_PORT}/configurator`
 - Configurator is **localhost-only** — remote access is blocked for security
 - The HTTP server starts immediately on `npm run dev` / `npm start` — no Discord connection needed
-- **Not supported behind a reverse proxy** — the configurator checks `req.ip` directly and does not support `X-Forwarded-For` or `trust proxy` headers. If your staging environment uses a reverse proxy, ensure it does *not* forward `/configurator` or `/api/config*` routes from remote clients
+- When `ADMIN_TOKEN` is set, every configurator request must include an `Authorization: Bearer <token>` header
+
+### Reverse proxy / SSL termination
+- Both HTTP servers explicitly set `trust proxy = false` — `req.ip` is always the direct socket address and cannot be spoofed via `X-Forwarded-For` headers
+- If the configurator must be reachable through a reverse proxy (e.g. for remote administration), **set `ADMIN_TOKEN`** to a strong random value (`openssl rand -hex 32`). Without it the only protection is the localhost IP check, which can be bypassed if the proxy forwards traffic from the same host
+- The outputs server (port 3003) is designed for public access — if placed behind a TLS-terminating proxy, set `OUTPUT_BASE_URL` to the external HTTPS URL so generated image links work correctly (e.g. `OUTPUT_BASE_URL=https://cdn.example.com`)
+- Neither server enables `trust proxy` or reads `X-Forwarded-Proto` — HTTPS is assumed to be handled entirely upstream
+- Restrict the configurator's upstream proxy route to trusted IP ranges / authentication at the proxy layer as an additional defence in depth
 
 ### Staging / deployment notes
-- The HTTP server binds on all interfaces by default (`0.0.0.0`) — restrict access via firewall rules or network policy if the host is reachable externally
-- Configurator and config API routes are localhost-only at the application level; output files under `/` are served publicly to anyone who can reach the port
-- Future work: HTTPS / signed-URL support for sharing large output files
+- The configurator server binds to `127.0.0.1` by default; the outputs server binds to `0.0.0.0`
+- Admin/configurator routes are guarded by `ADMIN_TOKEN` + localhost IP check; output files are served publicly
+- Changing `HTTP_PORT`, `HTTP_HOST`, `OUTPUTS_PORT`, or `OUTPUTS_HOST` requires a full process restart (the configurator will report this)
 
 ### Config changes not applying
 - **API endpoints & keywords**: Use configurator's "Save Changes" button (hot-reload, no restart)

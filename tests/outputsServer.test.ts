@@ -1,6 +1,7 @@
 /**
  * OutputsServer tests — verifies the dedicated outputs file server
- * starts on the configured port/host, and shuts down cleanly.
+ * starts on the configured port/host, shuts down cleanly, serves
+ * static files, blocks /logs, returns health, and sets security headers.
  */
 
 // Mock logger so tests don't write to real log files
@@ -27,10 +28,39 @@ jest.mock('../src/utils/config', () => ({
   },
 }));
 
+import http from 'http';
 import { outputsServer } from '../src/utils/outputsServer';
+import type { Express } from 'express';
+
+// ── Helpers ──────────────────────────────────────────────────────
+
+let testServer: http.Server | null = null;
+
+function startTestServer(app: Express): Promise<string> {
+  return new Promise((resolve) => {
+    testServer = app.listen(0, '127.0.0.1', () => {
+      const addr = testServer!.address() as { port: number };
+      resolve(`http://127.0.0.1:${addr.port}`);
+    });
+  });
+}
+
+async function stopTestServer(): Promise<void> {
+  return new Promise((resolve) => {
+    if (!testServer) { resolve(); return; }
+    testServer.close(() => { testServer = null; resolve(); });
+  });
+}
+
+// ── Tests ────────────────────────────────────────────────────────
 
 describe('OutputsServer', () => {
   const originalEnv = process.env;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    baseUrl = await startTestServer(outputsServer.getApp());
+  });
 
   beforeEach(() => {
     jest.resetModules();
@@ -39,12 +69,11 @@ describe('OutputsServer', () => {
 
   afterAll(async () => {
     process.env = originalEnv;
-    try {
-      await outputsServer.stop();
-    } catch {
-      // ignore
-    }
+    await stopTestServer();
+    try { await outputsServer.stop(); } catch { /* ignore */ }
   });
+
+  // ── Start / stop / lifecycle ─────────────────────────────────
 
   it('starts on configured port and host', () => {
     const app: any = outputsServer.getApp();
@@ -91,5 +120,57 @@ describe('OutputsServer', () => {
     const app = outputsServer.getApp();
     expect(app).toBeDefined();
     expect(typeof app.listen).toBe('function');
+  });
+
+  // ── Trust proxy ──────────────────────────────────────────────
+
+  it('has trust proxy explicitly disabled', () => {
+    const app = outputsServer.getApp();
+    expect(app.get('trust proxy')).toBe(false);
+  });
+
+  // ── Security headers ─────────────────────────────────────────
+
+  it('sets X-Content-Type-Options on responses', async () => {
+    const res = await fetch(`${baseUrl}/health`);
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
+  it('does not expose X-Powered-By header', async () => {
+    const res = await fetch(`${baseUrl}/health`);
+    expect(res.headers.get('x-powered-by')).toBeNull();
+  });
+
+  // ── /health endpoint ─────────────────────────────────────────
+
+  it('/health returns ok status', async () => {
+    const res = await fetch(`${baseUrl}/health`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.status).toBe('ok');
+    expect(body.timestamp).toBeDefined();
+  });
+
+  // ── /logs blocking ───────────────────────────────────────────
+
+  it('/logs returns 403 Forbidden', async () => {
+    const res = await fetch(`${baseUrl}/logs`);
+    expect(res.status).toBe(403);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.error).toBe('Forbidden');
+  });
+
+  it('/logs/anything returns 403 Forbidden', async () => {
+    const res = await fetch(`${baseUrl}/logs/2026/02/test.log`);
+    expect(res.status).toBe(403);
+  });
+
+  // ── 404 handler ──────────────────────────────────────────────
+
+  it('returns 404 for unknown paths', async () => {
+    const res = await fetch(`${baseUrl}/nonexistent-file.png`);
+    expect(res.status).toBe(404);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.error).toBe('Not found');
   });
 });

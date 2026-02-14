@@ -58,6 +58,7 @@ jest.mock('../src/utils/config', () => ({
     getPublicConfig: jest.fn(() => ({})),
     reload: jest.fn(() => ({ reloaded: [], requiresRestart: [] })),
     getOllamaModel: jest.fn(() => ''),
+    getAdminToken: jest.fn(() => ''),
   },
 }));
 
@@ -411,8 +412,7 @@ describe('Default Workflow Routes', () => {
       const res = await deleteRequest(server, '/api/config/workflow');
 
       expect(res.status).toBe(500);
-      expect(res.body.success).toBe(false);
-      expect(res.body.error).toContain('EPERM');
+      expect(res.body.error).toBe('Internal server error');
     });
   });
 
@@ -480,8 +480,7 @@ describe('Default Workflow Routes', () => {
 
       expect(res.status).toBe(500);
       const body = res.body as Record<string, unknown>;
-      expect(body.success).toBe(false);
-      expect(body.error).toContain('Unexpected error');
+      expect(body.error).toBe('Internal server error');
     });
   });
 

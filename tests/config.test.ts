@@ -857,5 +857,63 @@ describe('Config', () => {
       expect(pub.defaultWorkflow.model).toBe('test.safetensors');
       expect(pub.defaultWorkflow.steps).toBe(30);
     });
+
+    // ── Admin token getter ───────────────────────────────────────
+
+    it('getAdminToken should return empty string when not set', () => {
+      delete process.env.ADMIN_TOKEN;
+      expect(config.getAdminToken()).toBe('');
+    });
+
+    it('getAdminToken should return trimmed value when set', () => {
+      process.env.ADMIN_TOKEN = '  my-secret  ';
+      expect(config.getAdminToken()).toBe('my-secret');
+    });
+
+    // ── Reload restart signaling for split-server fields ─────────
+    // Note: reload() re-reads the .env file from disk with dotenv.config(),
+    // so runtime process.env changes are overwritten. We verify the mechanism
+    // by checking that HTTP_PORT uses the same private-field comparison
+    // pattern as the new host/port fields.
+
+    it('reload should report HTTP_PORT as restart-required when file differs from construction', () => {
+      // The singleton captured HTTP_PORT at construction. If the .env file on
+      // disk has a different value, reload should detect it.
+      // Since we can't easily change the file in a singleton test, we verify
+      // that calling reload twice with stable env does NOT flag restart keys.
+      const result = config.reload();
+      expect(result.requiresRestart).not.toContain('HTTP_HOST');
+      expect(result.requiresRestart).not.toContain('OUTPUTS_PORT');
+      expect(result.requiresRestart).not.toContain('OUTPUTS_HOST');
+    });
+
+    it('reload should include OUTPUTS_PORT, OUTPUTS_HOST, and HTTP_HOST in restart detection', () => {
+      // Verify the reload return type includes the new fields when they differ.
+      // We force the private fields to a known value, then reload so that
+      // the live env (from .env on disk) differs.
+      const original = {
+        httpHost: (config as any).httpHost,
+        outputsPort: (config as any).outputsPort,
+        outputsHostBound: (config as any).outputsHostBound,
+      };
+
+      try {
+        // Set private fields to values that differ from what .env will produce
+        (config as any).httpHost = '__FAKE_HOST__';
+        (config as any).outputsPort = 99999;
+        (config as any).outputsHostBound = '__FAKE_OUTPUTS_HOST__';
+
+        const result = config.reload();
+        expect(result.requiresRestart).toContain('HTTP_HOST');
+        expect(result.requiresRestart).toContain('OUTPUTS_PORT');
+        expect(result.requiresRestart).toContain('OUTPUTS_HOST');
+      } finally {
+        // Restore
+        (config as any).httpHost = original.httpHost;
+        (config as any).outputsPort = original.outputsPort;
+        (config as any).outputsHostBound = original.outputsHostBound;
+        config.reload(); // re-stabilize
+      }
+    });
   });
 });

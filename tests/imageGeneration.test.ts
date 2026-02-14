@@ -47,6 +47,7 @@ jest.mock('../src/utils/config', () => ({
     getPublicConfig: jest.fn(() => ({})),
     reload: jest.fn(() => ({ reloaded: [], requiresRestart: [] })),
     getOllamaModel: jest.fn(() => 'llama3'),
+    getAdminToken: jest.fn(() => ''),
   },
 }));
 
@@ -273,8 +274,8 @@ describe('POST /api/test/generate-image', () => {
     });
 
     expect(res.status).toBe(500);
-    expect(res.body.success).toBe(false);
-    expect(res.body.error).toContain('Network timeout');
+    // safeHandler returns a generic error to avoid leaking internal details
+    expect(res.body.error).toBe('Internal server error');
   });
 
   it('should still succeed when file save fails for one image', async () => {

@@ -1,8 +1,17 @@
-import express, { Express } from 'express';
+import express, { Express, Request, Response, NextFunction } from 'express';
 import * as http from 'http';
 import * as path from 'path';
 import { config } from './config';
 import { logger } from './logger';
+
+/**
+ * Remove fingerprint headers and add minimal security headers.
+ */
+function securityHeaders(_req: Request, res: Response, next: NextFunction): void {
+  res.removeHeader('X-Powered-By');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  next();
+}
 
 /**
  * Dedicated HTTP server for serving generated output files (images, etc.).
@@ -15,11 +24,24 @@ class OutputsServer {
 
   constructor() {
     this.app = express();
+
+    // Explicitly disable trust proxy — this server intentionally binds on a
+    // public interface but should never interpret forwarded headers.
+    this.app.set('trust proxy', false);
+
     this.setupRoutes();
   }
 
   private setupRoutes(): void {
     const outputsDir = path.join(__dirname, '../../outputs');
+
+    // ── Global middleware ─────────────────────────────────────────
+    this.app.use(securityHeaders);
+
+    // Health check endpoint (registered before static/404 so it always responds)
+    this.app.get('/health', (_req, res) => {
+      res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    });
 
     // Block access to logs directory
     this.app.use('/logs', (_req, res) => {
@@ -28,11 +50,6 @@ class OutputsServer {
 
     // Serve static files from outputs directory
     this.app.use(express.static(outputsDir));
-
-    // Health check endpoint
-    this.app.get('/health', (_req, res) => {
-      res.json({ status: 'ok', timestamp: new Date().toISOString() });
-    });
 
     // 404 handler
     this.app.use((_req, res) => {

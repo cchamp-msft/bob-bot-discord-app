@@ -363,6 +363,19 @@ class Config {
     return process.env.OUTPUT_BASE_URL || 'http://localhost:3003';
   }
 
+  /**
+   * Optional bearer token for authenticating admin/configurator requests.
+   * When set, every request to configurator routes must include an
+   * `Authorization: Bearer <token>` header. When unset the configurator
+   * relies on the localhostOnly IP guard (legacy behaviour).
+   *
+   * **Strongly recommended** when the configurator is reachable through a
+   * reverse proxy, even if the proxy applies an IP allow-list.
+   */
+  getAdminToken(): string {
+    return (process.env.ADMIN_TOKEN || '').trim();
+  }
+
   getFileSizeThreshold(): number {
     return this.parseIntEnv('FILE_SIZE_THRESHOLD', 10485760);
   }
@@ -657,6 +670,9 @@ class Config {
     const prevToken = process.env.DISCORD_TOKEN || '';
     const prevClientId = process.env.DISCORD_CLIENT_ID || '';
     const prevPort = this.port;
+    const prevOutputsPort = this.outputsPort;
+    const prevHttpHost = this.httpHost;
+    const prevOutputsHost = this.outputsHostBound;
     const prevComfyUI = this.getComfyUIEndpoint();
     const prevOllama = this.getOllamaEndpoint();
     const prevAccuWeather = this.getAccuWeatherEndpoint();
@@ -710,9 +726,15 @@ class Config {
     // Decode backslash escapes that dotenv leaves as-is
     normalizeEscapedEnvVars();
 
-    // Detect restart-required changes (only HTTP port)
+    // Detect restart-required changes (server bind params)
     const newPort = this.parseIntEnv('HTTP_PORT', 3000);
     if (newPort !== prevPort) requiresRestart.push('HTTP_PORT');
+    const newHttpHost = (process.env.HTTP_HOST || '').trim() || '127.0.0.1';
+    if (newHttpHost !== prevHttpHost) requiresRestart.push('HTTP_HOST');
+    const newOutputsPort = this.parseIntEnv('OUTPUTS_PORT', 3003);
+    if (newOutputsPort !== prevOutputsPort) requiresRestart.push('OUTPUTS_PORT');
+    const newOutputsHost = this.getOutputsHost();
+    if (newOutputsHost !== prevOutputsHost) requiresRestart.push('OUTPUTS_HOST');
 
     // Track Discord changes (manageable via start/stop, not restart)
     const newToken = process.env.DISCORD_TOKEN || '';
@@ -775,6 +797,10 @@ class Config {
   private port = this.parseIntEnv('HTTP_PORT', 3000);
   /** Outputs port captured at construction time — changes require restart */
   private outputsPort = this.parseIntEnv('OUTPUTS_PORT', 3003);
+  /** HTTP bind host captured at construction time — changes require restart */
+  private httpHost = (process.env.HTTP_HOST || '').trim() || '127.0.0.1';
+  /** Outputs bind host captured at construction time — changes require restart */
+  private outputsHostBound = this.getOutputsHost();
 
   /**
    * Get a safe view of config for the configurator UI.
