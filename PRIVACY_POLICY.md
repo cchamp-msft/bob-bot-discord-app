@@ -28,6 +28,18 @@ This data is logged for:
 
 Log files are stored indefinitely in the `outputs/logs/` directory as daily log files (`YYYY-MM-DD.log`). There is **no automatic purging or retention policy**. Logs persist for an indeterminate period unless manually deleted.
 
+## Activity Monitor
+
+The Bot includes a real-time activity page (`/activity`) that displays a stream of recent interactions. The activity monitor:
+
+- **Shows** incoming message content and outgoing bot responses
+- **Does not show** usernames, user IDs, guild/server names, or channel IDs
+- **Automatically redacts** URLs, Discord snowflake IDs, and API-key-like tokens from all displayed text
+- **Is not persisted to disk** — events are held in an in-memory ring buffer (maximum 100 events) and are lost when the bot restarts
+- **Is served on the public outputs server** without authentication — anyone with network access to the outputs port can view it
+
+This is separate from the file-based logger described above, which collects more detailed information including usernames, user IDs, and message content previews.
+
 ## Data Storage Location
 
 All logs are stored locally on the server running the Bot:

@@ -82,9 +82,6 @@ class MessageHandler {
       message.content
     );
 
-    // Emit sanitised activity event (no raw content, IDs, or guild names)
-    activityEvents.emitMessageReceived(isDM);
-
     // Prefer the server nickname (member.displayName) over the raw Discord
     // username so that logs, prompts, and error messages show the friendly
     // name the user sees in the guild.  Falls back to username for DMs.
@@ -106,6 +103,9 @@ class MessageHandler {
     //   <:name:123>  — custom emoji
     //   <a:name:123> — animated emoji
     content = content.replace(/<@[!&]?\d+>|<#\d+>|<a?:\w+:\d+>/g, '').trim();
+
+    // Emit activity event with cleaned message content (no usernames or IDs)
+    activityEvents.emitMessageReceived(isDM, content);
 
     if (!content) {
       logger.logIgnored(requester, 'Empty message after mention removal');
@@ -1058,7 +1058,7 @@ class MessageHandler {
       }
     }
 
-    activityEvents.emitBotReply('ollama', text.length);
+    activityEvents.emitBotReply('ollama', text);
 
     logger.logReply(
       requester,
@@ -1087,7 +1087,7 @@ class MessageHandler {
       }
     }
 
-    activityEvents.emitBotReply('accuweather', text.length);
+    activityEvents.emitBotReply('accuweather', text);
 
     logger.logReply(
       requester,
@@ -1116,7 +1116,7 @@ class MessageHandler {
       }
     }
 
-    activityEvents.emitBotReply('nfl', text.length);
+    activityEvents.emitBotReply('nfl', text);
 
     logger.logReply(
       requester,
@@ -1148,7 +1148,7 @@ class MessageHandler {
       }
     }
 
-    activityEvents.emitBotReply('serpapi', text.length);
+    activityEvents.emitBotReply('serpapi', text);
 
     logger.logReply(
       requester,

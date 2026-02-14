@@ -148,9 +148,13 @@ class ActivityEventStore {
   // ── Convenience emitters with narrative templates ────────────
 
   /** Someone sent a DM or @mentioned the bot. */
-  emitMessageReceived(isDM: boolean): ActivityEvent {
+  emitMessageReceived(isDM: boolean, messageContent: string): ActivityEvent {
     const loc = sanitizeLocation(isDM);
-    return this.emit('message_received', `Someone wants my attention in ${LOCATION_LABELS[loc]}`, { location: loc });
+    return this.emit(
+      'message_received',
+      `Received in ${LOCATION_LABELS[loc]}: ${messageContent}`,
+      { location: loc }
+    );
   }
 
   /** A routing / API decision was made. */
@@ -161,8 +165,12 @@ class ActivityEventStore {
   }
 
   /** The bot sent a text reply. */
-  emitBotReply(api: string, characterCount: number): ActivityEvent {
-    return this.emit('bot_reply', 'Done! Here\'s what I found', { api, characterCount });
+  emitBotReply(api: string, responseText: string): ActivityEvent {
+    return this.emit(
+      'bot_reply',
+      `Replied via ${api}: ${responseText}`,
+      { api, characterCount: responseText.length }
+    );
   }
 
   /** The bot sent an image reply. */

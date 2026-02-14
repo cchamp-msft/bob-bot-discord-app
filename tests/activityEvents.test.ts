@@ -152,17 +152,31 @@ describe('ActivityEventStore', () => {
   // ── Convenience emitters ─────────────────────────────────────
 
   describe('emitMessageReceived', () => {
-    it('creates DM narrative', () => {
-      const ev = activityEvents.emitMessageReceived(true);
+    it('creates DM narrative with message content', () => {
+      const ev = activityEvents.emitMessageReceived(true, 'hello bot');
       expect(ev.type).toBe('message_received');
       expect(ev.narrative).toContain('direct message');
+      expect(ev.narrative).toContain('hello bot');
       expect(ev.metadata.location).toBe('dm');
     });
 
-    it('creates server narrative', () => {
-      const ev = activityEvents.emitMessageReceived(false);
+    it('creates server narrative with message content', () => {
+      const ev = activityEvents.emitMessageReceived(false, 'what is the weather');
       expect(ev.narrative).toContain('server channel');
+      expect(ev.narrative).toContain('what is the weather');
       expect(ev.metadata.location).toBe('server');
+    });
+
+    it('does not include usernames in narrative', () => {
+      const ev = activityEvents.emitMessageReceived(false, 'hi there');
+      expect(ev.narrative).not.toContain('user');
+    });
+
+    it('redacts sensitive content in message', () => {
+      const ev = activityEvents.emitMessageReceived(true, 'check https://secret.api/v1 please');
+      expect(ev.narrative).not.toContain('https://secret.api/v1');
+      expect(ev.narrative).toContain('[redacted-url]');
+      expect(ev.narrative).toContain('check');
     });
   });
 
@@ -193,11 +207,18 @@ describe('ActivityEventStore', () => {
   });
 
   describe('emitBotReply', () => {
-    it('produces text reply event', () => {
-      const ev = activityEvents.emitBotReply('ollama', 500);
+    it('produces text reply event with response text', () => {
+      const ev = activityEvents.emitBotReply('ollama', 'The answer is 42.');
       expect(ev.type).toBe('bot_reply');
-      expect(ev.narrative).toContain('what I found');
-      expect(ev.metadata).toEqual({ api: 'ollama', characterCount: 500 });
+      expect(ev.narrative).toContain('Replied via ollama');
+      expect(ev.narrative).toContain('The answer is 42.');
+      expect(ev.metadata).toEqual({ api: 'ollama', characterCount: 17 });
+    });
+
+    it('redacts sensitive content in response text', () => {
+      const ev = activityEvents.emitBotReply('serpapi', 'Visit https://example.com for details');
+      expect(ev.narrative).not.toContain('https://example.com');
+      expect(ev.narrative).toContain('[redacted-url]');
     });
   });
 

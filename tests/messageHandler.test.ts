@@ -3185,7 +3185,7 @@ describe('MessageHandler activity event emission', () => {
     const msg = createMsg('hello', true);
     await messageHandler.handleMessage(msg);
 
-    expect(activityEvents.emitMessageReceived).toHaveBeenCalledWith(true);
+    expect(activityEvents.emitMessageReceived).toHaveBeenCalledWith(true, 'hello');
   });
 
   it('emits message_received for server mention', async () => {
@@ -3199,7 +3199,7 @@ describe('MessageHandler activity event emission', () => {
     const msg = createMsg('hi');
     await messageHandler.handleMessage(msg);
 
-    expect(activityEvents.emitMessageReceived).toHaveBeenCalledWith(false);
+    expect(activityEvents.emitMessageReceived).toHaveBeenCalledWith(false, 'hi');
   });
 
   it('emits routing_decision on keyword match path', async () => {
@@ -3312,7 +3312,7 @@ describe('MessageHandler activity event emission', () => {
     const msg = createMsg('meaning of life');
     await messageHandler.handleMessage(msg);
 
-    expect(activityEvents.emitBotReply).toHaveBeenCalledWith('ollama', 17);
+    expect(activityEvents.emitBotReply).toHaveBeenCalledWith('ollama', 'The answer is 42.');
   });
 
   it('emits error when exception occurs in handleMessage', async () => {
@@ -3350,7 +3350,7 @@ describe('MessageHandler activity event emission', () => {
     );
   });
 
-  it('does not leak raw message content, user IDs, or guild names in events', async () => {
+  it('does not leak user IDs or guild names in events', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
@@ -3361,7 +3361,7 @@ describe('MessageHandler activity event emission', () => {
     const msg = createMsg('secret password 12345');
     await messageHandler.handleMessage(msg);
 
-    // Verify none of the activity calls include raw content or user ID
+    // Verify none of the activity calls include user ID or guild name
     const mockEmitMessageReceived = activityEvents.emitMessageReceived as jest.MockedFunction<typeof activityEvents.emitMessageReceived>;
     const mockEmitBotReply = activityEvents.emitBotReply as jest.MockedFunction<typeof activityEvents.emitBotReply>;
     const allCalls = [
@@ -3369,7 +3369,6 @@ describe('MessageHandler activity event emission', () => {
       ...mockEmitBotReply.mock.calls,
     ];
     const serialized = JSON.stringify(allCalls);
-    expect(serialized).not.toContain('secret password');
     expect(serialized).not.toContain('user-1');
     expect(serialized).not.toContain('TestGuild');
   });

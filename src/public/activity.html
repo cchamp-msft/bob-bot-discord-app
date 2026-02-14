@@ -57,6 +57,18 @@
   }
   header button:hover { background: var(--accent); }
 
+  /* Privacy notice */
+  .privacy-notice {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 24px;
+    font-size: 0.78em;
+    color: var(--text-dim);
+    line-height: 1.5;
+    flex-shrink: 0;
+  }
+  .privacy-notice em { font-style: italic; }
+
   /* Timeline */
   .timeline {
     flex: 1;
@@ -169,6 +181,10 @@
     <span class="meta" id="lastUpdated">—</span>
     <button id="refreshBtn">↻ Refresh</button>
   </header>
+
+  <div class="privacy-notice">
+    <em>This</em> activity log is not saved, but other logging with more details are collected by the host. See PRIVACY_POLICY.md for details.
+  </div>
 
   <div class="timeline" id="timeline"></div>
 
