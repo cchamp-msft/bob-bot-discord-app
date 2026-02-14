@@ -190,6 +190,7 @@ The outputs server hosts a privacy-first activity timeline at `/activity` that s
 | `GET /api/activity` | JSON API returning `{ events, serverTime }` |
 | `GET /api/activity?since=<ISO>` | Incremental — only events after the given timestamp |
 | `GET /api/activity?count=<n>` | Limit result count (default 50, max 100) |
+| `GET /api/privacy-policy` | Returns `PRIVACY_POLICY.md` as plain text (lazy-loaded on link click) |
 
 **Privacy guarantees** — activity events never contain:
 - Raw message content or user prompts
