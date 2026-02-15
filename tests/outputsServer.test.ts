@@ -63,6 +63,11 @@ jest.mock('../src/utils/activityKeyManager', () => ({
     isExpired: jest.fn(() => false),
     remainingSeconds: jest.fn(() => 300),
     revoke: jest.fn(),
+    createSession: jest.fn(() => 'test-session-token'),
+    isSessionValid: jest.fn((token: string) => token === 'test-session-token'),
+    isSessionExpired: jest.fn(() => false),
+    sessionRemainingSeconds: jest.fn(() => 86400),
+    revokeSession: jest.fn(),
   },
 }));
 
@@ -336,5 +341,69 @@ describe('OutputsServer', () => {
     expect(html).toContain("fetch('/api/privacy-policy')");
     // showModal must only appear inside named functions, not at top-level init
     expect(html).toContain('loadAndShowPolicy');
+  });
+
+  // ── /api/activity session-based auth ──────────────────────
+
+  it('/api/activity creates a session on successful key auth', async () => {
+    const mockCreateSession = activityKeyManager.createSession as jest.MockedFunction<typeof activityKeyManager.createSession>;
+    mockCreateSession.mockClear();
+
+    const res = await fetch(`${baseUrl}/api/activity?key=test-valid-key`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { events: any[]; serverTime: string; sessionToken?: string };
+    expect(body.sessionToken).toBe('test-session-token');
+    expect(mockCreateSession).toHaveBeenCalled();
+  });
+
+  it('/api/activity accepts session token via query param', async () => {
+    const res = await fetch(`${baseUrl}/api/activity?session=test-session-token`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { events: any[]; serverTime: string; sessionToken?: string };
+    expect(Array.isArray(body.events)).toBe(true);
+    // No new sessionToken when already using a session
+    expect(body.sessionToken).toBeUndefined();
+  });
+
+  it('/api/activity accepts session token via x-activity-session header', async () => {
+    const res = await fetch(`${baseUrl}/api/activity`, {
+      headers: { 'x-activity-session': 'test-session-token' },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { events: any[]; serverTime: string };
+    expect(Array.isArray(body.events)).toBe(true);
+  });
+
+  it('/api/activity returns 401 for an invalid session token', async () => {
+    const res = await fetch(`${baseUrl}/api/activity?session=bad-session-token`);
+    expect(res.status).toBe(401);
+  });
+
+  it('/api/activity prefers session token over key when both provided', async () => {
+    const mockIsValid = activityKeyManager.isValid as jest.MockedFunction<typeof activityKeyManager.isValid>;
+    const mockCreateSession = activityKeyManager.createSession as jest.MockedFunction<typeof activityKeyManager.createSession>;
+    mockIsValid.mockClear();
+    mockCreateSession.mockClear();
+
+    const res = await fetch(`${baseUrl}/api/activity?session=test-session-token&key=test-valid-key`);
+    expect(res.status).toBe(200);
+    // isValid should NOT be called because session check came first
+    expect(mockIsValid).not.toHaveBeenCalled();
+    // No new session created since we already had a valid one
+    expect(mockCreateSession).not.toHaveBeenCalled();
+  });
+
+  it('/api/activity falls back to key when session is invalid', async () => {
+    const mockIsSessionValid = activityKeyManager.isSessionValid as jest.MockedFunction<typeof activityKeyManager.isSessionValid>;
+    const mockCreateSession = activityKeyManager.createSession as jest.MockedFunction<typeof activityKeyManager.createSession>;
+    mockIsSessionValid.mockReturnValueOnce(false); // session invalid this time
+    mockCreateSession.mockClear();
+
+    const res = await fetch(`${baseUrl}/api/activity?session=expired-session&key=test-valid-key`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { sessionToken?: string };
+    // Should have created a new session from the valid key
+    expect(mockCreateSession).toHaveBeenCalled();
+    expect(body.sessionToken).toBe('test-session-token');
   });
 });

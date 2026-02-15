@@ -296,7 +296,7 @@
   const policyClose = document.getElementById('policyClose');
   const privacyLink = document.getElementById('privacyLink');
 
-  // ── Key management ───────────────────────────────────────────
+  // ── Key & session management ─────────────────────────────────
   const keyOverlay = document.getElementById('keyOverlay');
   const keyInput = document.getElementById('keyInput');
   const keySubmit = document.getElementById('keySubmit');
@@ -308,6 +308,24 @@
 
   function storeKey(k) {
     sessionStorage.setItem('activityKey', k);
+  }
+
+  function getStoredSession() {
+    return sessionStorage.getItem('activitySession') || '';
+  }
+
+  function storeSession(token) {
+    sessionStorage.setItem('activitySession', token);
+  }
+
+  function clearAuth() {
+    sessionStorage.removeItem('activityKey');
+    sessionStorage.removeItem('activitySession');
+  }
+
+  /** Whether we have either a session token or a raw key to try. */
+  function hasCredentials() {
+    return !!(getStoredSession() || getStoredKey());
   }
 
   function showKeyPrompt(errorMsg) {
@@ -483,21 +501,32 @@
   function fetchEvents(since) {
     var url = '/api/activity';
     var params = [];
+
+    // Prefer session token; fall back to raw key for initial auth
+    var session = getStoredSession();
     var key = getStoredKey();
-    if (key) params.push('key=' + encodeURIComponent(key));
+    if (session) {
+      params.push('session=' + encodeURIComponent(session));
+    } else if (key) {
+      params.push('key=' + encodeURIComponent(key));
+    }
     if (since) params.push('since=' + encodeURIComponent(since));
     if (params.length) url += '?' + params.join('&');
 
     return fetch(url)
       .then(function(res) {
         if (res.status === 401) {
-          sessionStorage.removeItem('activityKey');
-          showKeyPrompt('Invalid or expired key. Please request a new one from the bot.');
+          clearAuth();
+          showKeyPrompt('Session expired. Please request a new key from the bot.');
           return { events: [] };
         }
         return res.json();
       })
       .then(function(data) {
+        // If the server issued a session token (first key-based auth), store it
+        if (data.sessionToken) {
+          storeSession(data.sessionToken);
+        }
         if (data.events && data.events.length >= 0 && data.serverTime) {
           lastUpdatedEl.textContent = 'Updated ' + formatTime(data.serverTime);
         }
@@ -531,8 +560,8 @@
 
   refreshBtn.addEventListener('click', fullRefresh);
 
-  // Check for stored key — show prompt if missing
-  if (!getStoredKey()) {
+  // Check for stored session or key — show prompt if missing
+  if (!hasCredentials()) {
     showKeyPrompt(null);
   } else {
     // Initial load

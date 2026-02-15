@@ -222,16 +222,24 @@ describe('ActivityEventStore', () => {
   });
 
   describe('emitBotReply', () => {
-    it('produces text reply event with response text', () => {
-      const ev = activityEvents.emitBotReply('ollama', 'The answer is 42.');
+    it('produces text reply event for a DM', () => {
+      const ev = activityEvents.emitBotReply('ollama', 'The answer is 42.', true);
       expect(ev.type).toBe('bot_reply');
-      expect(ev.narrative).toContain('Replied via ollama');
+      expect(ev.narrative).toContain('Replied via a direct message');
       expect(ev.narrative).toContain('The answer is 42.');
-      expect(ev.metadata).toEqual({ api: 'ollama', characterCount: 17 });
+      expect(ev.metadata).toEqual({ api: 'ollama', location: 'dm', characterCount: 17 });
+    });
+
+    it('produces text reply event for a channel message', () => {
+      const ev = activityEvents.emitBotReply('ollama', 'Hello world.', false);
+      expect(ev.type).toBe('bot_reply');
+      expect(ev.narrative).toContain('Replied via a server channel');
+      expect(ev.narrative).toContain('Hello world.');
+      expect(ev.metadata).toEqual({ api: 'ollama', location: 'server', characterCount: 12 });
     });
 
     it('redacts sensitive content in response text', () => {
-      const ev = activityEvents.emitBotReply('serpapi', 'Visit https://example.com for details');
+      const ev = activityEvents.emitBotReply('serpapi', 'Visit https://example.com for details', false);
       expect(ev.narrative).not.toContain('https://example.com');
       expect(ev.narrative).toContain('[redacted-url]');
     });

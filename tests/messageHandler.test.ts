@@ -36,6 +36,7 @@ jest.mock('../src/utils/config', () => ({
     getNflLoggingLevel: jest.fn(() => 0),
     getAllowBotInteractions: jest.fn(() => false),
     getActivityKeyTtl: jest.fn(() => 300),
+    getActivitySessionMaxTime: jest.fn(() => 86400),
     getOutputBaseUrl: jest.fn(() => 'http://localhost:3003'),
   },
 }));
@@ -3341,7 +3342,7 @@ describe('MessageHandler activity event emission', () => {
     const msg = createMsg('meaning of life');
     await messageHandler.handleMessage(msg);
 
-    expect(activityEvents.emitBotReply).toHaveBeenCalledWith('ollama', 'The answer is 42.');
+    expect(activityEvents.emitBotReply).toHaveBeenCalledWith('ollama', 'The answer is 42.', false);
   });
 
   it('emits error when exception occurs in handleMessage', async () => {

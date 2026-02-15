@@ -73,12 +73,42 @@ class OutputsServer {
       });
     });
 
-    // Activity events API — requires a valid activity key
+    // Activity events API — requires a valid session token or activity key.
+    // Authentication flow:
+    //   1. Check for an existing session token (long-lived, survives key rotation).
+    //   2. If no session, check for a raw activity key (short-lived, used once to
+    //      bootstrap a session).
+    //   3. On successful key auth, create a session and return the token in the
+    //      response so the client can switch to session-based auth.
     this.app.get('/api/activity', (req, res) => {
-      const key = typeof req.query.key === 'string' ? req.query.key : req.headers['x-activity-key'] as string | undefined;
+      // ── Try session token first ──
+      const sessionToken = typeof req.query.session === 'string'
+        ? req.query.session
+        : req.headers['x-activity-session'] as string | undefined;
 
-      if (!key || !activityKeyManager.isValid(key)) {
-        res.status(401).json({ error: 'Unauthorized', message: 'A valid activity key is required. Send "activity_key" to the bot in Discord to get one.' });
+      let authenticated = false;
+      let newSessionToken: string | undefined;
+
+      if (sessionToken && activityKeyManager.isSessionValid(sessionToken)) {
+        authenticated = true;
+      } else {
+        // ── Fall back to raw activity key ──
+        const key = typeof req.query.key === 'string'
+          ? req.query.key
+          : req.headers['x-activity-key'] as string | undefined;
+
+        if (key && activityKeyManager.isValid(key)) {
+          authenticated = true;
+          // Bootstrap a new session so subsequent polls don't need the key
+          newSessionToken = activityKeyManager.createSession();
+        }
+      }
+
+      if (!authenticated) {
+        res.status(401).json({
+          error: 'Unauthorized',
+          message: 'A valid activity key is required. Send "activity_key" to the bot in Discord to get one.',
+        });
         return;
       }
 
@@ -87,7 +117,11 @@ class OutputsServer {
       const count = countParam && Number.isFinite(countParam) && countParam > 0 ? Math.min(countParam, 100) : 50;
 
       const events = activityEvents.getRecent(count, since);
-      res.json({ events, serverTime: new Date().toISOString() });
+      const payload: Record<string, unknown> = { events, serverTime: new Date().toISOString() };
+      if (newSessionToken) {
+        payload.sessionToken = newSessionToken;
+      }
+      res.json(payload);
     });
 
     // Serve static files from outputs directory

@@ -423,6 +423,16 @@ class Config {
   }
 
   /**
+   * Maximum session duration in seconds for the activity monitor.
+   * Once a key is used to authenticate, a session is created that lasts
+   * up to this duration (or until the page is fully refreshed).
+   * Default: 86400 (1 day).  Configurable via ACTIVITY_SESSION_MAX_TIME.
+   */
+  getActivitySessionMaxTime(): number {
+    return this.parseIntEnv('ACTIVITY_SESSION_MAX_TIME', 86400);
+  }
+
+  /**
    * Optional bearer token for authenticating admin/configurator requests.
    * When set, every request to configurator routes must include an
    * `Authorization: Bearer <token>` header. When unset the configurator

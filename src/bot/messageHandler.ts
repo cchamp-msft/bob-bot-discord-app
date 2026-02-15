@@ -191,16 +191,25 @@ class MessageHandler {
     if (keywordMatched && keywordConfig.keyword.toLowerCase() === 'activity_key') {
       const key = activityKeyManager.issueKey();
       const ttl = config.getActivityKeyTtl();
+      const sessionMaxTime = config.getActivitySessionMaxTime();
       const url = config.getOutputBaseUrl();
+
+      // Format session duration in a human-friendly way
+      const sessionHours = Math.floor(sessionMaxTime / 3600);
+      const sessionMins = Math.floor((sessionMaxTime % 3600) / 60);
+      const sessionDesc = sessionHours >= 1
+        ? `${sessionHours} hour${sessionHours !== 1 ? 's' : ''}${sessionMins > 0 ? ` ${sessionMins} min` : ''}`
+        : `${sessionMins} minute${sessionMins !== 1 ? 's' : ''}`;
+
       const reply = [
-        `🔑 Here is your activity monitor key (valid for ${ttl} seconds):`,
+        `🔑 Here is your activity monitor key (enter within ${ttl} seconds):`,
         '',
         `\`${key}\``,
         '',
         `Open the activity page and enter this key when prompted:`,
         `${url}/activity`,
         '',
-        `After ${ttl} seconds you'll need to request a new key by sending \`activity_key\` again.`,
+        `Once entered, your session will remain active for up to ${sessionDesc} or until you fully refresh the page. You only need a new key if your session expires.`,
       ].join('\n');
 
       await message.reply(reply);
@@ -287,7 +296,8 @@ class MessageHandler {
           routedResult.finalResponse,
           routedResult.finalApi,
           processingMessage,
-          requester
+          requester,
+          isDM
         );
       } else {
         // ── Ollama path: chat with abilities context, then second evaluation ──
@@ -296,7 +306,8 @@ class MessageHandler {
           keywordConfig,
           processingMessage,
           requester,
-          conversationHistory
+          conversationHistory,
+          isDM
         );
       }
     } catch (error) {
@@ -774,7 +785,8 @@ class MessageHandler {
     keywordConfig: KeywordConfig,
     processingMessage: Message,
     requester: string,
-    conversationHistory: ChatMessage[]
+    conversationHistory: ChatMessage[],
+    isDM: boolean
   ): Promise<void> {
     const timeout = keywordConfig.timeout || config.getDefaultTimeout();
 
@@ -842,7 +854,7 @@ class MessageHandler {
     ) as OllamaResponse;
 
     if (!ollamaResult.success) {
-      await this.dispatchResponse(ollamaResult, 'ollama', processingMessage, requester);
+      await this.dispatchResponse(ollamaResult, 'ollama', processingMessage, requester, isDM);
       return;
     }
 
@@ -868,7 +880,8 @@ class MessageHandler {
           apiResult.finalResponse,
           apiResult.finalApi,
           processingMessage,
-          requester
+          requester,
+          isDM
         );
         return;
       }
@@ -894,7 +907,8 @@ class MessageHandler {
           apiResult.finalResponse,
           apiResult.finalApi,
           processingMessage,
-          requester
+          requester,
+          isDM
         );
         return;
       }
@@ -902,7 +916,7 @@ class MessageHandler {
 
     // No API keyword found — use Ollama response as-is
     logger.log('success', 'system', 'TWO-STAGE: No API intent detected in Ollama response — returning as direct chat');
-    await this.dispatchResponse(ollamaResult, 'ollama', processingMessage, requester);
+    await this.dispatchResponse(ollamaResult, 'ollama', processingMessage, requester, isDM);
   }
 
   /**
@@ -913,7 +927,8 @@ class MessageHandler {
     response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse,
     api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi',
     processingMessage: Message,
-    requester: string
+    requester: string,
+    isDM: boolean
   ): Promise<void> {
     if (!response.success) {
       const errorDetail = response.error ?? 'Unknown API error';
@@ -929,15 +944,15 @@ class MessageHandler {
     }
 
     if (api === 'comfyui') {
-      await this.handleComfyUIResponse(response as ComfyUIResponse, processingMessage, requester);
+      await this.handleComfyUIResponse(response as ComfyUIResponse, processingMessage, requester, isDM);
     } else if (api === 'accuweather') {
-      await this.handleAccuWeatherResponse(response as AccuWeatherResponse, processingMessage, requester);
+      await this.handleAccuWeatherResponse(response as AccuWeatherResponse, processingMessage, requester, isDM);
     } else if (api === 'nfl') {
-      await this.handleNFLResponse(response as NFLResponse, processingMessage, requester);
+      await this.handleNFLResponse(response as NFLResponse, processingMessage, requester, isDM);
     } else if (api === 'serpapi') {
-      await this.handleSerpApiResponse(response as SerpApiResponse, processingMessage, requester);
+      await this.handleSerpApiResponse(response as SerpApiResponse, processingMessage, requester, isDM);
     } else {
-      await this.handleOllamaResponse(response as OllamaResponse, processingMessage, requester);
+      await this.handleOllamaResponse(response as OllamaResponse, processingMessage, requester, isDM);
     }
   }
 
@@ -1013,7 +1028,8 @@ class MessageHandler {
   private async handleComfyUIResponse(
     apiResult: ComfyUIResponse,
     processingMessage: Message,
-    requester: string
+    requester: string,
+    _isDM: boolean
   ): Promise<void> {
     if (!apiResult.data?.images || apiResult.data.images.length === 0) {
       await processingMessage.edit('No images were generated.');
@@ -1108,7 +1124,8 @@ class MessageHandler {
   private async handleOllamaResponse(
     apiResult: OllamaResponse,
     processingMessage: Message,
-    requester: string
+    requester: string,
+    isDM: boolean
   ): Promise<void> {
     const text = apiResult.data?.text || 'No response generated.';
 
@@ -1125,7 +1142,7 @@ class MessageHandler {
       }
     }
 
-    activityEvents.emitBotReply('ollama', text);
+    activityEvents.emitBotReply('ollama', text, isDM);
 
     logger.logReply(
       requester,
@@ -1137,7 +1154,8 @@ class MessageHandler {
   private async handleAccuWeatherResponse(
     apiResult: AccuWeatherResponse,
     processingMessage: Message,
-    requester: string
+    requester: string,
+    isDM: boolean
   ): Promise<void> {
     const text = apiResult.data?.text || 'No weather data available.';
 
@@ -1154,7 +1172,7 @@ class MessageHandler {
       }
     }
 
-    activityEvents.emitBotReply('accuweather', text);
+    activityEvents.emitBotReply('accuweather', text, isDM);
 
     logger.logReply(
       requester,
@@ -1166,7 +1184,8 @@ class MessageHandler {
   private async handleNFLResponse(
     apiResult: NFLResponse,
     processingMessage: Message,
-    requester: string
+    requester: string,
+    isDM: boolean
   ): Promise<void> {
     const text = apiResult.data?.text || 'No NFL data available.';
 
@@ -1183,7 +1202,7 @@ class MessageHandler {
       }
     }
 
-    activityEvents.emitBotReply('nfl', text);
+    activityEvents.emitBotReply('nfl', text, isDM);
 
     logger.logReply(
       requester,
@@ -1198,7 +1217,8 @@ class MessageHandler {
   private async handleSerpApiResponse(
     apiResult: SerpApiResponse,
     processingMessage: Message,
-    requester: string
+    requester: string,
+    isDM: boolean
   ): Promise<void> {
     const text = apiResult.data?.text || 'No search results available.';
 
@@ -1215,7 +1235,7 @@ class MessageHandler {
       }
     }
 
-    activityEvents.emitBotReply('serpapi', text);
+    activityEvents.emitBotReply('serpapi', text, isDM);
 
     logger.logReply(
       requester,

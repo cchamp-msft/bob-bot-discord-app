@@ -209,11 +209,12 @@ class ActivityEventStore {
   }
 
   /** The bot sent a text reply. */
-  emitBotReply(api: string, responseText: string): ActivityEvent {
+  emitBotReply(api: string, responseText: string, isDM: boolean): ActivityEvent {
+    const loc = sanitizeLocation(isDM);
     return this.emit(
       'bot_reply',
-      `Replied via ${api}: ${responseText}`,
-      { api, characterCount: responseText.length }
+      `Replied via ${LOCATION_LABELS[loc]}: ${responseText}`,
+      { api, location: loc, characterCount: responseText.length }
     );
   }
 
