@@ -1414,7 +1414,8 @@ describe('ApiRouter', () => {
       // which now has the trigger message appended
       expect(mockApiExecute).toHaveBeenCalled();
       const userContent = mockApiExecute.mock.calls[0][2] as string;
-      expect(userContent).toContain('testuser: weather in Seattle');
+      expect(userContent).toContain('<context source="trigger">');
+      expect(userContent).toContain('<message role="user" speaker="testuser" speaker_type="requester">weather in Seattle</message>');
     });
 
     it('should form trigger message correctly with special characters in content', async () => {
@@ -1450,7 +1451,8 @@ describe('ApiRouter', () => {
 
       // Verify the trigger message content was properly passed through
       const userContent = mockApiExecute.mock.calls[0][2] as string;
-      expect(userContent).toContain('user123:');
+      expect(userContent).toContain('speaker="user123"');
+      expect(userContent).toContain('São Paulo &lt;tag&gt; &amp; "quotes"');
     });
   });
 

@@ -16,6 +16,13 @@ export function escapeXmlContent(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * Escape text for use in XML attribute values.
+ */
+function escapeXmlAttribute(text: string): string {
+  return escapeXmlContent(text).replace(/"/g, '&quot;');
+}
+
 // ── Types ────────────────────────────────────────────────────────
 
 /**
@@ -196,17 +203,110 @@ function formatConversationHistory(history: ChatMessage[]): string {
 
   const groups = groupMessagesBySource(history);
 
+  const inferredBotName = inferBotName();
+  const requesterName = inferRequesterName(history);
+  const thirdParties = inferThirdPartyNames(history, requesterName);
+  const participantsBlock = buildParticipantsBlock(inferredBotName, requesterName, thirdParties);
+
   // Always emit grouped blocks so every source is uniformly marked
   const blocks: string[] = [];
   for (const [source, msgs] of groups) {
     const lines = msgs.map(msg => {
-      const label = msg.role === 'assistant' ? 'Bob' : 'User';
-      return `${label}: ${escapeXmlContent(msg.content)}`;
+      const speaker = inferSpeakerName(msg, inferredBotName, requesterName);
+      const speakerType = inferSpeakerType(msg, speaker, requesterName);
+      const text = stripSpeakerPrefix(msg.content);
+      return `<message role="${msg.role}" speaker="${escapeXmlAttribute(speaker)}" speaker_type="${speakerType}">${escapeXmlContent(text)}</message>`;
     });
     blocks.push(`<context source="${source}">\n${lines.join('\n')}\n</context>`);
   }
 
-  return blocks.join('\n');
+  return [participantsBlock, ...blocks].join('\n');
+}
+
+function inferBotName(): string {
+  const persona = config.getOllamaSystemPrompt();
+  const match = persona.match(/\byou are\s+([A-Za-z0-9._-]+)/i);
+  const raw = match?.[1] ?? 'bob';
+  return raw.replace(/[.,!?;:]+$/g, '');
+}
+
+function parseSpeakerPrefix(content: string): { speaker: string; text: string } | null {
+  const match = content.match(/^([^:\n]{1,64}):\s+([\s\S]+)$/);
+  if (!match) return null;
+
+  const speaker = match[1].trim();
+  const text = match[2].trim();
+  if (!speaker || !text) return null;
+
+  return { speaker, text };
+}
+
+function stripSpeakerPrefix(content: string): string {
+  const parsed = parseSpeakerPrefix(content);
+  return parsed ? parsed.text : content;
+}
+
+function inferRequesterName(history: ChatMessage[]): string | null {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (msg.role !== 'user') continue;
+    if (msg.contextSource !== 'trigger') continue;
+    const parsed = parseSpeakerPrefix(msg.content);
+    if (parsed) return parsed.speaker;
+  }
+
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (msg.role !== 'user') continue;
+    const parsed = parseSpeakerPrefix(msg.content);
+    if (parsed) return parsed.speaker;
+  }
+
+  return null;
+}
+
+function inferThirdPartyNames(history: ChatMessage[], requesterName: string | null): string[] {
+  const names = new Set<string>();
+  for (const msg of history) {
+    if (msg.role !== 'user') continue;
+    const parsed = parseSpeakerPrefix(msg.content);
+    if (!parsed) continue;
+    if (requesterName && parsed.speaker.toLowerCase() === requesterName.toLowerCase()) {
+      continue;
+    }
+    names.add(parsed.speaker);
+  }
+  return [...names];
+}
+
+function inferSpeakerName(msg: ChatMessage, botName: string, requesterName: string | null): string {
+  if (msg.role === 'assistant') return botName;
+
+  const parsed = parseSpeakerPrefix(msg.content);
+  if (parsed) return parsed.speaker;
+
+  if (msg.contextSource === 'trigger' && requesterName) return requesterName;
+  if (requesterName) return requesterName;
+  return 'user';
+}
+
+function inferSpeakerType(msg: ChatMessage, speaker: string, requesterName: string | null): 'bot' | 'requester' | 'third_party' {
+  if (msg.role === 'assistant') return 'bot';
+  if (requesterName && speaker.toLowerCase() === requesterName.toLowerCase()) return 'requester';
+  return 'third_party';
+}
+
+function buildParticipantsBlock(botName: string, requesterName: string | null, thirdParties: string[]): string {
+  const requester = requesterName ?? 'unknown';
+  const thirdPartyCsv = thirdParties.length > 0 ? thirdParties.join(', ') : '';
+
+  return [
+    '<participants>',
+    `<bot_name>${escapeXmlContent(botName)}</bot_name>`,
+    `<requester_name>${escapeXmlContent(requester)}</requester_name>`,
+    `<third_parties>${escapeXmlContent(thirdPartyCsv)}</third_parties>`,
+    '</participants>',
+  ].join('\n');
 }
 
 // ── Current date/time helper ─────────────────────────────────────

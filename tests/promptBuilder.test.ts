@@ -238,8 +238,10 @@ describe('PromptBuilder', () => {
       });
 
       expect(content).toContain('<conversation_history>');
-      expect(content).toContain('User: Hey Bob');
-      expect(content).toContain('Bob: What do you want?');
+      expect(content).toContain('<participants>');
+      expect(content).toContain('<bot_name>Bob</bot_name>');
+      expect(content).toContain('<message role="user" speaker="user" speaker_type="third_party">Hey Bob</message>');
+      expect(content).toContain('<message role="assistant" speaker="Bob" speaker_type="bot">What do you want?</message>');
       expect(content).toContain('</conversation_history>');
       expect(content).toContain('<current_question>');
       expect(content).toContain('What is the score?');
@@ -284,7 +286,7 @@ describe('PromptBuilder', () => {
       });
 
       expect(content).not.toContain('You are a bot');
-      expect(content).toContain('User: Hi');
+      expect(content).toContain('<message role="user" speaker="user" speaker_type="third_party">Hi</message>');
     });
 
     it('should list keyword names in thinking_and_output_rules', () => {
@@ -320,11 +322,11 @@ describe('PromptBuilder', () => {
       });
 
       expect(content).toContain('<context source="channel">');
-      expect(content).toContain('User: Earlier msg');
+      expect(content).toContain('<message role="user" speaker="user" speaker_type="third_party">Earlier msg</message>');
       expect(content).toContain('<context source="reply">');
-      expect(content).toContain('Bob: Bot reply');
+      expect(content).toContain('<message role="assistant" speaker="Bob" speaker_type="bot">Bot reply</message>');
       expect(content).toContain('<context source="thread">');
-      expect(content).toContain('User: Thread msg');
+      expect(content).toContain('<message role="user" speaker="user" speaker_type="third_party">Thread msg</message>');
       expect(content).toContain('</context>');
     });
 
@@ -338,9 +340,25 @@ describe('PromptBuilder', () => {
       });
 
       expect(content).toContain('<context source="dm">');
-      expect(content).toContain('User: Msg 1');
-      expect(content).toContain('Bob: Msg 2');
+      expect(content).toContain('<message role="user" speaker="user" speaker_type="third_party">Msg 1</message>');
+      expect(content).toContain('<message role="assistant" speaker="Bob" speaker_type="bot">Msg 2</message>');
       expect(content).toContain('</context>');
+    });
+
+    it('should infer requester and third-party names from prefixed user messages', () => {
+      const content = buildUserContent({
+        userMessage: 'nfl scores',
+        conversationHistory: [
+          { role: 'user', content: 'alice: can you summarize this?', contextSource: 'reply' as const },
+          { role: 'assistant', content: 'Working on it.', contextSource: 'reply' as const },
+          { role: 'user', content: 'oeb: nfl scores', contextSource: 'trigger' as const },
+        ],
+      });
+
+      expect(content).toContain('<requester_name>oeb</requester_name>');
+      expect(content).toContain('<third_parties>alice</third_parties>');
+      expect(content).toContain('<message role="user" speaker="oeb" speaker_type="requester">nfl scores</message>');
+      expect(content).toContain('<message role="user" speaker="alice" speaker_type="third_party">can you summarize this?</message>');
     });
   });
 
