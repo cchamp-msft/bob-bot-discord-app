@@ -353,6 +353,8 @@ export interface PublicConfig {
     outputsHost: string;
     outputBaseUrl: string;
     activityKeyTtl: number;
+    outputsRateLimitWindowMs: number;
+    outputsRateLimitMax: number;
   };
   limits: {
     fileSizeThreshold: number;

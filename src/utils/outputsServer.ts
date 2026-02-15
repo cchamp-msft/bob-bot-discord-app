@@ -16,6 +16,55 @@ function securityHeaders(_req: Request, res: Response, next: NextFunction): void
   next();
 }
 
+// ── Lightweight in-memory sliding-window rate limiter ────────────────
+
+interface RateLimitEntry {
+  timestamps: number[];
+}
+
+/**
+ * Create an Express middleware that rate-limits requests by client IP.
+ * Uses a simple sliding-window counter stored in a Map (no external deps).
+ */
+function createRateLimiter(windowMs: number, max: number) {
+  const clients = new Map<string, RateLimitEntry>();
+
+  // Periodically prune expired entries to prevent unbounded memory growth
+  const pruneInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of clients) {
+      entry.timestamps = entry.timestamps.filter(t => now - t < windowMs);
+      if (entry.timestamps.length === 0) clients.delete(ip);
+    }
+  }, windowMs);
+  // Allow the Node process to exit even if the interval is still running
+  if (pruneInterval.unref) pruneInterval.unref();
+
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    const now = Date.now();
+    let entry = clients.get(ip);
+    if (!entry) {
+      entry = { timestamps: [] };
+      clients.set(ip, entry);
+    }
+
+    // Drop timestamps outside the current window
+    entry.timestamps = entry.timestamps.filter(t => now - t < windowMs);
+
+    if (entry.timestamps.length >= max) {
+      res.status(429).json({
+        error: 'Too Many Requests',
+        message: `Rate limit exceeded. Try again in ${Math.ceil(windowMs / 1000)} seconds.`,
+      });
+      return;
+    }
+
+    entry.timestamps.push(now);
+    next();
+  };
+}
+
 /**
  * Dedicated HTTP server for serving generated output files (images, etc.).
  * Binds to a public interface (default 0.0.0.0:3003) so Discord can fetch
@@ -51,19 +100,25 @@ class OutputsServer {
       res.status(403).json({ error: 'Forbidden' });
     });
 
+    // ── Rate limiter for filesystem-serving routes ──────────────────
+    const rateLimiter = createRateLimiter(
+      config.getOutputsRateLimitWindowMs(),
+      config.getOutputsRateLimitMax(),
+    );
+
     // ── Activity feed (key-protected) ───────────────────────────────
     // Serve the activity timeline page
     // Resolve to src/public (same pattern as httpServer's configurator.html)
     // so the path works both in ts-node (dev) and compiled dist/ (production).
     const publicDir = path.resolve(__dirname, '../../src/public');
-    this.app.get('/activity', (req, res) => {
+    this.app.get('/activity', rateLimiter, (req, res) => {
       // Allow the HTML page through — it will prompt for the key client-side
       res.sendFile(path.join(publicDir, 'activity.html'));
     });
 
     // Privacy policy API — returns raw markdown content for the overlay
     const privacyPolicyPath = path.resolve(__dirname, '../../PRIVACY_POLICY.md');
-    this.app.get('/api/privacy-policy', (_req, res) => {
+    this.app.get('/api/privacy-policy', rateLimiter, (_req, res) => {
       fs.readFile(privacyPolicyPath, 'utf-8', (err, data) => {
         if (err) {
           res.status(500).json({ error: 'Could not read privacy policy' });

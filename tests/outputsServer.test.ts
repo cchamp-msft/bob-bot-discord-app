@@ -25,6 +25,9 @@ jest.mock('../src/utils/config', () => ({
     getOutputsPort: () => 3003,
     getOutputsHost: () => '0.0.0.0',
     getOutputBaseUrl: () => 'http://localhost:3003',
+    // Use a tight rate limit so tests can trigger 429 without hundreds of requests
+    getOutputsRateLimitWindowMs: () => 60000,
+    getOutputsRateLimitMax: () => 5,
   },
 }));
 
@@ -405,5 +408,73 @@ describe('OutputsServer', () => {
     // Should have created a new session from the valid key
     expect(mockCreateSession).toHaveBeenCalled();
     expect(body.sessionToken).toBe('test-session-token');
+  });
+
+  // ── Rate limiting ──────────────────────────────────────────────
+  // The config mock sets max=5, windowMs=60000.
+  // /activity and /api/privacy-policy share the same limiter instance,
+  // so we test them together.  The previous tests already consumed some
+  // of the budget, so we use a dedicated describe with its own server.
+
+  describe('rate limiting', () => {
+    let rlBaseUrl: string;
+    let rlServer: http.Server | null = null;
+
+    // Spin up a *fresh* outputs-server instance so the rate limiter starts
+    // with a clean counter.  We cannot easily reset the limiter on the
+    // shared instance because it's captured at module level.
+    beforeAll(async () => {
+      // Re-require to get a fresh OutputsServer with a clean rate limiter.
+      // Because jest.mock is hoisted, the mocks are still active.
+      jest.isolateModules(() => {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { outputsServer: freshServer } = require('../src/utils/outputsServer');
+        rlBaseUrl = '';
+        rlServer = freshServer.getApp().listen(0, '127.0.0.1', () => {
+          const addr = (rlServer as any).address() as { port: number };
+          rlBaseUrl = `http://127.0.0.1:${addr.port}`;
+        });
+      });
+      // Wait for the server to start listening
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (rlBaseUrl) return resolve();
+          setTimeout(check, 10);
+        };
+        check();
+      });
+    });
+
+    afterAll(async () => {
+      await new Promise<void>((resolve) => {
+        if (!rlServer) return resolve();
+        rlServer.close(() => { rlServer = null; resolve(); });
+      });
+    });
+
+    it('/activity returns 429 after exceeding the rate limit', async () => {
+      // Send max (5) requests — all should succeed
+      for (let i = 0; i < 5; i++) {
+        const res = await fetch(`${rlBaseUrl}/activity`);
+        expect(res.status).toBe(200);
+      }
+      // 6th request should be rate-limited
+      const res = await fetch(`${rlBaseUrl}/activity`);
+      expect(res.status).toBe(429);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.error).toBe('Too Many Requests');
+    });
+
+    it('/api/privacy-policy shares the same rate-limit bucket', async () => {
+      // After the previous test the bucket is already exhausted
+      const res = await fetch(`${rlBaseUrl}/api/privacy-policy`);
+      expect(res.status).toBe(429);
+    });
+
+    it('non-rate-limited routes still respond normally under pressure', async () => {
+      // /health is NOT rate-limited
+      const res = await fetch(`${rlBaseUrl}/health`);
+      expect(res.status).toBe(200);
+    });
   });
 });

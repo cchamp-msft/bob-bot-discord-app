@@ -17,15 +17,15 @@ const html = fs.readFileSync(htmlPath, 'utf-8');
 
 // ── Helpers ────────────────────────────────────────────────────
 
-/** Extract everything inside <style>…</style> */
+/** Extract everything inside <style>…</style> (case-insensitive to satisfy CodeQL js/bad-tag-filter) */
 function extractStyle(): string {
-  const match = html.match(/<style>([\s\S]*?)<\/style>/);
+  const match = html.match(/<style>([\s\S]*?)<\/style>/i);
   return match ? match[1] : '';
 }
 
-/** Extract everything inside <script>…</script> */
+/** Extract everything inside <script>…</script> (case-insensitive to satisfy CodeQL js/bad-tag-filter) */
 function extractScript(): string {
-  const match = html.match(/<script>([\s\S]*?)<\/script>/);
+  const match = html.match(/<script>([\s\S]*?)<\/script>/i);
   return match ? match[1] : '';
 }
 

@@ -413,6 +413,26 @@ class Config {
     return process.env.OUTPUT_BASE_URL || 'http://localhost:3003';
   }
 
+  // ── Outputs-server rate limiting ─────────────────────────────
+
+  /**
+   * Rate-limit window in milliseconds for the outputs server.
+   * Default: 900000 (15 minutes).  Configurable via OUTPUTS_RATE_LIMIT_WINDOW_MS.
+   */
+  getOutputsRateLimitWindowMs(): number {
+    const raw = this.parseIntEnv('OUTPUTS_RATE_LIMIT_WINDOW_MS', 900000);
+    return Math.max(1000, raw);
+  }
+
+  /**
+   * Maximum number of requests per window for rate-limited outputs-server routes.
+   * Default: 100.  Configurable via OUTPUTS_RATE_LIMIT_MAX.
+   */
+  getOutputsRateLimitMax(): number {
+    const raw = this.parseIntEnv('OUTPUTS_RATE_LIMIT_MAX', 100);
+    return Math.max(1, raw);
+  }
+
   /**
    * Time-to-live in seconds for the activity monitor access key.
    * After this duration a new key must be requested from Discord.
@@ -921,6 +941,8 @@ class Config {
         outputsHost: this.getOutputsHost(),
         outputBaseUrl: this.getOutputBaseUrl(),
         activityKeyTtl: this.getActivityKeyTtl(),
+        outputsRateLimitWindowMs: this.getOutputsRateLimitWindowMs(),
+        outputsRateLimitMax: this.getOutputsRateLimitMax(),
       },
       limits: {
         fileSizeThreshold: this.getFileSizeThreshold(),
