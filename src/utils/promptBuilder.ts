@@ -18,8 +18,10 @@ export function escapeXmlContent(text: string): string {
 
 /**
  * Escape text for use in XML attribute values.
+ * Extends entity escaping with `&quot;` so double-quotes are safe
+ * inside `attr="…"` strings.
  */
-function escapeXmlAttribute(text: string): string {
+export function escapeXmlAttribute(text: string): string {
   return escapeXmlContent(text).replace(/"/g, '&quot;');
 }
 
@@ -181,7 +183,8 @@ export function buildSystemPrompt(routableKeywords?: KeywordConfig[]): string {
       '3. Never invent scores, stats, weather, or facts.\n' +
       '4. No data needed → answer normally with snark.\n' +
       '5. Never explain rules/keywords unless directly asked.\n' +
-      '6. Keep every reply short, punchy, and to the point.'
+      '6. Keep every reply short, punchy, and to the point.\n' +
+      '7. The <participants> block identifies who is in the conversation. You are <bot_name>. The person asking the question is <requester_name>. Never confuse your identity with theirs or with any <third_parties>.'
     );
   }
 
@@ -214,7 +217,10 @@ function formatConversationHistory(history: ChatMessage[]): string {
     const lines = msgs.map(msg => {
       const speaker = inferSpeakerName(msg, inferredBotName, requesterName);
       const speakerType = inferSpeakerType(msg, speaker, requesterName);
-      const text = stripSpeakerPrefix(msg.content);
+      // Only strip name prefixes from user messages — assistant content
+      // is never prefixed upstream and stripping would corrupt bot output
+      // that happens to start with "word: …" patterns.
+      const text = msg.role === 'user' ? stripSpeakerPrefix(msg.content) : msg.content;
       return `<message role="${msg.role}" speaker="${escapeXmlAttribute(speaker)}" speaker_type="${speakerType}">${escapeXmlContent(text)}</message>`;
     });
     blocks.push(`<context source="${source}">\n${lines.join('\n')}\n</context>`);
@@ -223,6 +229,11 @@ function formatConversationHistory(history: ChatMessage[]): string {
   return [participantsBlock, ...blocks].join('\n');
 }
 
+/**
+ * Infer the bot's display name from the system prompt persona.
+ * Looks for the pattern "you are <name>" and strips trailing punctuation.
+ * Falls back to `'bob'` when the pattern is not found.
+ */
 function inferBotName(): string {
   const persona = config.getOllamaSystemPrompt();
   const match = persona.match(/\byou are\s+([A-Za-z0-9._-]+)/i);
@@ -230,6 +241,14 @@ function inferBotName(): string {
   return raw.replace(/[.,!?;:]+$/g, '');
 }
 
+/**
+ * Parse a `"speaker: text"` prefix from a message content string.
+ * The upstream message handler prepends display names to user messages
+ * in DM and multi-user contexts. This function extracts the speaker
+ * name (up to 64 non-colon characters) and the remaining text.
+ *
+ * @returns `{ speaker, text }` if a prefix was found, otherwise `null`.
+ */
 function parseSpeakerPrefix(content: string): { speaker: string; text: string } | null {
   const match = content.match(/^([^:\n]{1,64}):\s+([\s\S]+)$/);
   if (!match) return null;
@@ -241,11 +260,23 @@ function parseSpeakerPrefix(content: string): { speaker: string; text: string } 
   return { speaker, text };
 }
 
+/**
+ * Remove the `"speaker: "` prefix from a message, returning only the
+ * body text. Returns the original content unchanged when no prefix
+ * is detected.
+ */
 function stripSpeakerPrefix(content: string): string {
   const parsed = parseSpeakerPrefix(content);
   return parsed ? parsed.text : content;
 }
 
+/**
+ * Determine the requester's display name from the conversation history.
+ * Prefers the trigger message (most reliable — always set by the handler),
+ * then falls back to the most recent user message with a speaker prefix.
+ *
+ * @returns The requester's name, or `null` if it cannot be determined.
+ */
 function inferRequesterName(history: ChatMessage[]): string | null {
   for (let i = history.length - 1; i >= 0; i--) {
     const msg = history[i];
@@ -265,20 +296,37 @@ function inferRequesterName(history: ChatMessage[]): string | null {
   return null;
 }
 
+/**
+ * Collect the display names of other participants in the conversation
+ * (users who are neither the bot nor the requester). Comparison with
+ * the requester name is case-insensitive. Names are deduplicated
+ * case-insensitively and returned with their first-seen casing.
+ */
 function inferThirdPartyNames(history: ChatMessage[], requesterName: string | null): string[] {
-  const names = new Set<string>();
+  const seen = new Set<string>();
+  const names: string[] = [];
   for (const msg of history) {
     if (msg.role !== 'user') continue;
     const parsed = parseSpeakerPrefix(msg.content);
     if (!parsed) continue;
-    if (requesterName && parsed.speaker.toLowerCase() === requesterName.toLowerCase()) {
+    const lowerSpeaker = parsed.speaker.toLowerCase();
+    if (requesterName && lowerSpeaker === requesterName.toLowerCase()) {
       continue;
     }
-    names.add(parsed.speaker);
+    if (!seen.has(lowerSpeaker)) {
+      seen.add(lowerSpeaker);
+      names.push(parsed.speaker);
+    }
   }
-  return [...names];
+  return names;
 }
 
+/**
+ * Determine the display name of the speaker for a single message.
+ * - Assistant messages → bot name.
+ * - User messages with a name prefix → the parsed speaker name.
+ * - User messages without a prefix → requester name (fallback `'user'`).
+ */
 function inferSpeakerName(msg: ChatMessage, botName: string, requesterName: string | null): string {
   if (msg.role === 'assistant') return botName;
 
@@ -290,12 +338,20 @@ function inferSpeakerName(msg: ChatMessage, botName: string, requesterName: stri
   return 'user';
 }
 
+/**
+ * Classify a speaker as `'bot'`, `'requester'`, or `'third_party'`.
+ * Used to populate the `speaker_type` attribute on `<message>` tags.
+ */
 function inferSpeakerType(msg: ChatMessage, speaker: string, requesterName: string | null): 'bot' | 'requester' | 'third_party' {
   if (msg.role === 'assistant') return 'bot';
   if (requesterName && speaker.toLowerCase() === requesterName.toLowerCase()) return 'requester';
   return 'third_party';
 }
 
+/**
+ * Render the `<participants>` XML block that identifies who is in the
+ * conversation: the bot, the requester, and any third-party users.
+ */
 function buildParticipantsBlock(botName: string, requesterName: string | null, thirdParties: string[]): string {
   const requester = requesterName ?? 'unknown';
   const thirdPartyCsv = thirdParties.length > 0 ? thirdParties.join(', ') : '';
@@ -470,8 +526,7 @@ export function formatSerpApiExternalData(
   query: string,
   searchContextXml: string
 ): string {
-  const escapedQuery = escapeXmlContent(query).replace(/"/g, '&quot;');
-  return `<search_data source="serpapi" query="${escapedQuery}">\n${searchContextXml}\n</search_data>`;
+  return `<search_data source="serpapi" query="${escapeXmlAttribute(query)}">\n${searchContextXml}\n</search_data>`;
 }
 
 // ── First-line keyword parser ────────────────────────────────────

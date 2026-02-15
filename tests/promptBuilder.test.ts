@@ -114,6 +114,7 @@ import {
   formatGenericExternalData,
   formatSerpApiExternalData,
   escapeXmlContent,
+  escapeXmlAttribute,
   getCurrentDateTimeTag,
 } from '../src/utils/promptBuilder';
 import { config } from '../src/utils/config';
@@ -222,6 +223,15 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('You are Bob');
       expect(prompt).not.toContain('Available external abilities');
       expect(prompt).not.toContain('Rules – follow exactly');
+    });
+
+    it('should include participant identity guidance in rules block', () => {
+      const prompt = buildSystemPrompt();
+
+      expect(prompt).toContain('<participants>');
+      expect(prompt).toContain('<bot_name>');
+      expect(prompt).toContain('<requester_name>');
+      expect(prompt).toContain('Never confuse your identity');
     });
   });
 
@@ -359,6 +369,59 @@ describe('PromptBuilder', () => {
       expect(content).toContain('<third_parties>alice</third_parties>');
       expect(content).toContain('<message role="user" speaker="oeb" speaker_type="requester">nfl scores</message>');
       expect(content).toContain('<message role="user" speaker="alice" speaker_type="third_party">can you summarize this?</message>');
+    });
+
+    it('should NOT strip speaker prefix from assistant messages', () => {
+      const content = buildUserContent({
+        userMessage: 'test',
+        conversationHistory: [
+          { role: 'assistant', content: 'Note: the game starts at 8pm', contextSource: 'dm' as const },
+        ],
+      });
+
+      // "Note: " should be preserved in assistant output, not stripped
+      expect(content).toContain('>Note: the game starts at 8pm</message>');
+    });
+
+    it('should show requester as unknown when no prefixed user messages exist', () => {
+      const content = buildUserContent({
+        userMessage: 'hello',
+        conversationHistory: [
+          { role: 'user', content: 'no prefix here', contextSource: 'channel' as const },
+          { role: 'assistant', content: 'reply', contextSource: 'channel' as const },
+        ],
+      });
+
+      expect(content).toContain('<requester_name>unknown</requester_name>');
+      expect(content).toContain('<third_parties></third_parties>');
+    });
+
+    it('should deduplicate third-party names case-insensitively', () => {
+      const content = buildUserContent({
+        userMessage: 'test',
+        conversationHistory: [
+          { role: 'user', content: 'Alice: first message', contextSource: 'channel' as const },
+          { role: 'user', content: 'alice: second message', contextSource: 'channel' as const },
+          { role: 'user', content: 'oeb: trigger', contextSource: 'trigger' as const },
+        ],
+      });
+
+      // Should only have one "Alice" entry (first-seen casing), not both
+      expect(content).toContain('<third_parties>Alice</third_parties>');
+      expect(content).not.toContain('Alice, alice');
+    });
+
+    it('should escape XML special characters in speaker names', () => {
+      const content = buildUserContent({
+        userMessage: 'test',
+        conversationHistory: [
+          { role: 'user', content: '<Bob>: hello there', contextSource: 'trigger' as const },
+        ],
+      });
+
+      // Speaker name should be attribute-escaped
+      expect(content).toContain('speaker="&lt;Bob&gt;"');
+      expect(content).toContain('<requester_name>&lt;Bob&gt;</requester_name>');
     });
   });
 
@@ -609,6 +672,18 @@ describe('PromptBuilder', () => {
 
     it('should leave normal text unchanged', () => {
       expect(escapeXmlContent('hello world')).toBe('hello world');
+    });
+  });
+
+  // ── escapeXmlAttribute ─────────────────────────────────────────
+
+  describe('escapeXmlAttribute', () => {
+    it('should escape ampersands, angle brackets, and double quotes', () => {
+      expect(escapeXmlAttribute('a < b & c > d "e"')).toBe('a &lt; b &amp; c &gt; d &quot;e&quot;');
+    });
+
+    it('should leave normal text unchanged', () => {
+      expect(escapeXmlAttribute('hello world')).toBe('hello world');
     });
   });
 
