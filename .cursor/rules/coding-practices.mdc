@@ -18,6 +18,7 @@ alwaysApply: true
 - Use a maximum of 50 characters for the first line.
 - Use a maximum of 72 characters for subsequent lines.
 - Include bullet points describing the changes in the commit to support the short description.
+- Never add a trailer about co-authoring by Cursor.
 - Use the following types (but not limited to):
   - feat: A new feature
   - fix: A bug fix
