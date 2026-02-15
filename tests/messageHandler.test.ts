@@ -221,7 +221,7 @@ describe('MessageHandler collectReplyChain', () => {
       author: { id: authorId, username: authorUsername },
       member: memberDisplayName ? { displayName: memberDisplayName } : null,
       reference: reference ? { messageId: reference.messageId } : null,
-      client: { user: { id: 'bot-id' } },
+      client: { user: { id: 'bot-id', username: 'BotUser' } },
       fetchReference: jest.fn().mockResolvedValue(fetchReferenceResult),
     };
   }
@@ -397,7 +397,7 @@ describe('MessageHandler shouldRespond — guild reply to bot', () => {
     }
     return {
       author: { bot: opts.authorBot ?? false, id: 'user-1', username: 'testuser' },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId, username: 'BotUser' } },
       channel: {
         type: opts.isDM ? 1 : 0, // 1 = DM, 0 = GuildText
         isThread: () => false,
@@ -467,7 +467,7 @@ describe('MessageHandler Discord mention stripping', () => {
     const botUserId = 'bot-123';
     return {
       author: { bot: false, id: 'user-1', username: 'testuser' },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId, username: 'BotUser' } },
       channel: {
         type: 0, // GuildText
         isThread: () => false,
@@ -723,7 +723,7 @@ describe('MessageHandler help keyword handling (model path)', () => {
     const botUserId = 'bot-123';
     return {
       author: { bot: false, id: 'user-1', username: 'testuser' },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId, username: 'BotUser' } },
       channel: {
         type: 0,
         isThread: () => false,
@@ -808,7 +808,7 @@ describe('MessageHandler built-in help keyword handling', () => {
     const botUserId = 'bot-123';
     return {
       author: { bot: false, id: 'user-1', username: 'testuser' },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId, username: 'BotUser' } },
       channel: {
         type: 0,
         isThread: () => false,
@@ -883,7 +883,7 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
     const botUserId = 'bot-123';
     return {
       author: { bot: false, id: 'user-1', username: 'testuser' },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId, username: 'BotUser' } },
       channel: {
         type: 0,
         isThread: () => false,
@@ -993,7 +993,7 @@ describe('MessageHandler buildImagePromptFromReply', () => {
     return {
       content,
       reference: { messageId: 'ref-msg-1' },
-      client: { user: { id: 'bot-id' } },
+      client: { user: { id: 'bot-id', username: 'BotUser' } },
       fetchReference: fetchError
         ? jest.fn().mockRejectedValue(new Error('Not found'))
         : jest.fn().mockResolvedValue({
@@ -1037,7 +1037,7 @@ describe('MessageHandler buildImagePromptFromReply', () => {
     const msg = {
       content: 'a cat',
       reference: {},
-      client: { user: { id: 'bot-id' } },
+      client: { user: { id: 'bot-id', username: 'BotUser' } },
       fetchReference: jest.fn(),
     };
     const result = await (messageHandler as any).buildImagePromptFromReply(msg, 'a cat');
@@ -1148,7 +1148,7 @@ describe('MessageHandler reply-only-keyword for comfyui', () => {
     const botUserId = 'bot-123';
     return {
       author: { bot: false, id: 'user-1', username: 'testuser' },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId, username: 'BotUser' } },
       channel: {
         type: 0, // GuildText
         isThread: () => false,
@@ -1205,7 +1205,7 @@ describe('MessageHandler first-word keyword routing', () => {
     const botUserId = 'bot-123';
     return {
       author: { bot: false, id: 'user-1', username: 'testuser' },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId, username: 'BotUser' } },
       channel: {
         type: 0,
         isThread: () => false,
@@ -1247,7 +1247,8 @@ describe('MessageHandler first-word keyword routing', () => {
       weatherKw,
       '45403',
       'testuser',
-      [{ role: 'user', content: 'testuser: 45403', contextSource: 'trigger' }]
+      [{ role: 'user', content: 'testuser: 45403', contextSource: 'trigger' }],
+      'BotUser'
     );
   });
 
@@ -1265,7 +1266,8 @@ describe('MessageHandler first-word keyword routing', () => {
       weatherReportKw,
       '28465',
       'testuser',
-      [{ role: 'user', content: 'testuser: 28465', contextSource: 'trigger' }]
+      [{ role: 'user', content: 'testuser: 28465', contextSource: 'trigger' }],
+      'BotUser'
     );
   });
 
@@ -1360,7 +1362,8 @@ describe('MessageHandler first-word keyword routing', () => {
       'testuser',
       expect.arrayContaining([
         expect.objectContaining({ role: 'user', contextSource: 'trigger' }),
-      ])
+      ]),
+      'BotUser'
     );
   });
 
@@ -1382,7 +1385,8 @@ describe('MessageHandler first-word keyword routing', () => {
       secondOpinionKw,
       'about AI',
       'testuser',
-      expect.any(Array)
+      expect.any(Array),
+      'BotUser'
     );
   });
 
@@ -1418,7 +1422,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
     const botUserId = 'bot-123';
     return {
       author: { bot: false, id: 'user-1', username: 'testuser' },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId, username: 'BotUser' } },
       channel: {
         type: 0,
         isThread: () => false,
@@ -1520,7 +1524,7 @@ describe('MessageHandler SerpAPI find content keyword routing', () => {
     const botUserId = 'bot-123';
     return {
       author: { bot: false, id: 'user-1', username: 'testuser' },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId, username: 'BotUser' } },
       channel: {
         type: 0,
         isThread: () => false,
@@ -1575,7 +1579,8 @@ describe('MessageHandler SerpAPI find content keyword routing', () => {
       expect.objectContaining({ keyword: 'find content', api: 'serpapi' }),
       'TypeScript generics',
       'testuser',
-      expect.any(Array)
+      expect.any(Array),
+      'BotUser'
     );
   });
 
@@ -1603,7 +1608,7 @@ describe('MessageHandler standalone help keyword uses actual config flag', () =>
     };
     return {
       author: { bot: false, id: 'user-1', username: 'testuser' },
-      client: { user: { id: 'bot-123' }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
+      client: { user: { id: 'bot-123', username: 'BotUser' }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
       channel: {
         type: 1,
         isThread: () => false,
@@ -1672,7 +1677,7 @@ describe('MessageHandler two-stage evaluation', () => {
     const botUserId = 'bot-123';
     return {
       author: { bot: false, id: 'user-1', username: 'testuser' },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId, username: 'BotUser' } },
       channel: {
         type: 0,
         isThread: () => false,
@@ -1738,7 +1743,8 @@ describe('MessageHandler two-stage evaluation', () => {
       weatherKeyword,
       'is it going to rain in Seattle',
       'testuser',
-      [{ role: 'user', content: 'testuser: is it going to rain in Seattle', contextSource: 'trigger' }]
+      [{ role: 'user', content: 'testuser: is it going to rain in Seattle', contextSource: 'trigger' }],
+      'BotUser'
     );
   });
 
@@ -1846,7 +1852,7 @@ describe('MessageHandler trigger message attribution', () => {
     const botUserId = 'bot-123';
     return {
       author: { bot: false, id: 'user-1', username },
-      client: { user: { id: botUserId } },
+      client: { user: { id: botUserId, username: 'BotUser' } },
       channel: {
         type: 0,
         isThread: () => false,
@@ -1895,7 +1901,8 @@ describe('MessageHandler trigger message attribution', () => {
           content: 'testuser: Seattle',
           contextSource: 'trigger',
         }),
-      ])
+      ]),
+      'BotUser'
     );
   });
 
@@ -1980,7 +1987,7 @@ describe('MessageHandler DM handling', () => {
     };
     return {
       author: { bot: false, id: 'user-1', username: 'dmuser' },
-      client: { user: { id: botUserId }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
+      client: { user: { id: botUserId, username: 'BotUser' }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
       channel: {
         type: 1, // ChannelType.DM
         messages: {
@@ -2074,7 +2081,7 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
     };
     return {
       author: { bot: false, id: 'user-1', username: 'nfluser' },
-      client: { user: { id: botUserId }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
+      client: { user: { id: botUserId, username: 'BotUser' }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
       channel: {
         type: 1, // ChannelType.DM
         messages: {
@@ -2184,7 +2191,7 @@ describe('MessageHandler — Context Evaluation integration', () => {
           fetch: jest.fn().mockResolvedValue(new Map()),
         },
       },
-      client: { user: { id: 'bot-123' } },
+      client: { user: { id: 'bot-123', username: 'BotUser' } },
       reference: hasReference ? { messageId: 'ref-1' } : null,
       reply: jest.fn().mockResolvedValue({
         edit: jest.fn(),
@@ -2275,7 +2282,7 @@ describe('MessageHandler collectChannelHistory', () => {
       id: 'current-msg',
       content: 'test',
       author: { id: 'user-1', bot: false, username: 'testuser' },
-      client: { user: { id: 'bot-id' } },
+      client: { user: { id: 'bot-id', username: 'BotUser' } },
       channel: {
         type: 0,
         isThread: () => isThread,
@@ -2503,7 +2510,7 @@ describe('MessageHandler collectChannelHistory — parameterized depth', () => {
       id: 'current-msg',
       content: 'test',
       author: { id: 'user-1', bot: false, username: 'testuser' },
-      client: { user: { id: 'bot-id' } },
+      client: { user: { id: 'bot-id', username: 'BotUser' } },
       channel: {
         type: 0,
         isThread: () => isThread,
@@ -2610,7 +2617,7 @@ describe('MessageHandler guild context — maxContextDepth = min(keyword, global
         },
         send: jest.fn(),
       },
-      client: { user: { id: 'bot-123' } },
+      client: { user: { id: 'bot-123', username: 'BotUser' } },
       reference: null,
       id: 'trigger-msg',
       reply: jest.fn().mockResolvedValue({
@@ -2702,7 +2709,7 @@ describe('MessageHandler thread source promotion', () => {
         },
         send: jest.fn(),
       },
-      client: { user: { id: 'bot-123' } },
+      client: { user: { id: 'bot-123', username: 'BotUser' } },
       reference: null, // No reply chain
       id: 'thread-trigger',
       reply: jest.fn().mockResolvedValue({
@@ -2775,7 +2782,7 @@ describe('MessageHandler thread source promotion', () => {
         },
         send: jest.fn(),
       },
-      client: { user: { id: 'bot-123' } },
+      client: { user: { id: 'bot-123', username: 'BotUser' } },
       reference: null,
       id: 'channel-trigger',
       reply: jest.fn().mockResolvedValue({
@@ -2872,7 +2879,7 @@ describe('MessageHandler collectDmHistory — keep-newest and dm metadata', () =
       id: 'current-dm',
       content: 'test dm',
       author: { id: 'user-1', bot: false, username: 'testuser' },
-      client: { user: { id: 'bot-id' } },
+      client: { user: { id: 'bot-id', username: 'BotUser' } },
       channel: {
         type: 1,
         messages: {
@@ -2940,7 +2947,7 @@ describe('MessageHandler collectDmHistory — ALLOW_BOT_INTERACTIONS filtering',
       id: 'current-dm',
       content: 'test dm',
       author: { id: 'user-1', bot: false, username: 'testuser' },
-      client: { user: { id: 'bot-id' } },
+      client: { user: { id: 'bot-id', username: 'BotUser' } },
       channel: {
         type: 1,
         messages: {
@@ -3035,7 +3042,7 @@ describe('MessageHandler collectChannelHistory — keep-newest under char budget
       id: 'current-msg',
       content: 'test',
       author: { id: 'user-1', bot: false, username: 'testuser' },
-      client: { user: { id: 'bot-id' } },
+      client: { user: { id: 'bot-id', username: 'BotUser' } },
       channel: {
         type: 0,
         isThread: () => isThread,
@@ -3089,7 +3096,7 @@ describe('MessageHandler collectChannelHistory — bot message filtering', () =>
       id: 'current-msg',
       content: 'test',
       author: { id: 'user-1', bot: false, username: 'testuser' },
-      client: { user: { id: 'bot-id' } },
+      client: { user: { id: 'bot-id', username: 'BotUser' } },
       channel: {
         type: 0,
         isThread: () => false,
@@ -3192,7 +3199,7 @@ describe('MessageHandler handleMessage — ALLOW_BOT_INTERACTIONS gating', () =>
       content: '<@bot-123> hello',
       mentions: { has: () => true },
       channel: { type: 0, isThread: () => false, messages: { cache: new Map(), fetch: jest.fn() } },
-      client: { user: { id: 'bot-123' } },
+      client: { user: { id: 'bot-123', username: 'BotUser' } },
       reference: null,
       id: 'bot-msg',
       reply: jest.fn(),
@@ -3230,7 +3237,7 @@ describe('MessageHandler handleMessage — ALLOW_BOT_INTERACTIONS gating', () =>
         messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
         send: jest.fn(),
       },
-      client: { user: { id: 'bot-123' } },
+      client: { user: { id: 'bot-123', username: 'BotUser' } },
       reference: null,
       id: 'bot-msg',
       reply: jest.fn().mockResolvedValue({
@@ -3254,7 +3261,7 @@ describe('MessageHandler handleMessage — ALLOW_BOT_INTERACTIONS gating', () =>
       content: 'My own message',
       mentions: { has: () => true },
       channel: { type: 0, isThread: () => false },
-      client: { user: { id: 'bot-123' } },
+      client: { user: { id: 'bot-123', username: 'BotUser' } },
       reference: null,
       id: 'self-msg',
       reply: jest.fn(),
@@ -3283,7 +3290,7 @@ describe('MessageHandler activity event emission', () => {
     return {
       author: { bot: false, id: 'user-1', username: 'testuser', displayName: 'testuser' },
       member: isDM ? null : { displayName: 'testuser' },
-      client: { user: { id: botUserId }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
+      client: { user: { id: botUserId, username: 'BotUser' }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
       channel: {
         type: isDM ? 1 : 0,
         isThread: () => false,
@@ -3635,7 +3642,7 @@ describe('MessageHandler DM guild-membership gate', () => {
     // A guild mention should bypass the DM gate entirely
     const msg: any = {
       author: { bot: false, id: 'user-1', username: 'guilduser', displayName: 'guilduser' },
-      client: { user: { id: 'bot-123' }, guilds: { cache: new Map() } },
+      client: { user: { id: 'bot-123', username: 'BotUser' }, guilds: { cache: new Map() } },
       channel: {
         type: 0, // GuildText
         isThread: () => false,
@@ -3682,7 +3689,7 @@ describe('MessageHandler activity_key keyword', () => {
     };
     return {
       author: { bot: false, id: 'user-1', username: 'keyuser', displayName: 'keyuser' },
-      client: { user: { id: 'bot-123' }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
+      client: { user: { id: 'bot-123', username: 'BotUser' }, guilds: { cache: new Map([['guild-shared', sharedGuild]]) } },
       channel: {
         type: 1, // DM
         isThread: () => false,
@@ -3706,7 +3713,7 @@ describe('MessageHandler activity_key keyword', () => {
   function createMentionMsg(content: string): any {
     return {
       author: { bot: false, id: 'user-1', username: 'keyuser', displayName: 'keyuser' },
-      client: { user: { id: 'bot-123' }, guilds: { cache: new Map() } },
+      client: { user: { id: 'bot-123', username: 'BotUser' }, guilds: { cache: new Map() } },
       channel: {
         type: 0, // GuildText
         isThread: () => false,

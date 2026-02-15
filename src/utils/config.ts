@@ -344,6 +344,15 @@ class Config {
     );
   }
 
+  /**
+   * Explicit override for the bot's display name used in prompt
+   * participant blocks. When non-empty, takes precedence over the
+   * Discord client's own display name.
+   */
+  getBotDisplayName(): string {
+    return (process.env.BOT_DISPLAY_NAME || '').trim();
+  }
+
   getDiscordToken(): string {
     return process.env.DISCORD_TOKEN || '';
   }
@@ -863,6 +872,7 @@ class Config {
     const prevAbilityRetryMaxRetries = this.getAbilityRetryMaxRetries();
     const prevAbilityRetryModel = this.getAbilityRetryModel();
     const prevAbilityRetryPrompt = this.getAbilityRetryPrompt();
+    const prevBotDisplayName = this.getBotDisplayName();
     const prevDefaultModel = this.getComfyUIDefaultModel();
     const prevDefaultWidth = this.getComfyUIDefaultWidth();
     const prevDefaultHeight = this.getComfyUIDefaultHeight();
@@ -935,6 +945,7 @@ class Config {
     if (this.getAbilityRetryMaxRetries() !== prevAbilityRetryMaxRetries) reloaded.push('ABILITY_RETRY_MAX_RETRIES');
     if (this.getAbilityRetryModel() !== prevAbilityRetryModel) reloaded.push('ABILITY_RETRY_MODEL');
     if (this.getAbilityRetryPrompt() !== prevAbilityRetryPrompt) reloaded.push('ABILITY_RETRY_PROMPT');
+    if (this.getBotDisplayName() !== prevBotDisplayName) reloaded.push('BOT_DISPLAY_NAME');
     if (this.getComfyUIDefaultModel() !== prevDefaultModel) reloaded.push('COMFYUI_DEFAULT_MODEL');
     if (this.getComfyUIDefaultWidth() !== prevDefaultWidth) reloaded.push('COMFYUI_DEFAULT_WIDTH');
     if (this.getComfyUIDefaultHeight() !== prevDefaultHeight) reloaded.push('COMFYUI_DEFAULT_HEIGHT');
@@ -971,6 +982,7 @@ class Config {
       discord: {
         clientId: process.env.DISCORD_CLIENT_ID || '',
         tokenConfigured: !!process.env.DISCORD_TOKEN,
+        botDisplayName: this.getBotDisplayName(),
       },
       apis: {
         comfyui: this.getComfyUIEndpoint(),

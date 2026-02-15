@@ -39,6 +39,8 @@ export interface PromptBuildOptions {
   externalData?: string;
   /** Override the list of enabled keyword abilities (defaults to config-derived list). */
   enabledKeywords?: KeywordConfig[];
+  /** Bot display name from the Discord client (used when no explicit override is configured). */
+  botDisplayName?: string;
 }
 
 /**
@@ -201,12 +203,12 @@ export function buildSystemPrompt(routableKeywords?: KeywordConfig[]): string {
  * where each piece of conversation originated.
  * Messages without a contextSource are placed in a generic block.
  */
-function formatConversationHistory(history: ChatMessage[]): string {
+function formatConversationHistory(history: ChatMessage[], discordBotName?: string): string {
   if (!history || history.length === 0) return '';
 
   const groups = groupMessagesBySource(history);
 
-  const inferredBotName = inferBotName();
+  const inferredBotName = inferBotName(discordBotName);
   const requesterName = inferRequesterName(history);
   const thirdParties = inferThirdPartyNames(history, requesterName);
   const participantsBlock = buildParticipantsBlock(inferredBotName, requesterName, thirdParties);
@@ -230,15 +232,31 @@ function formatConversationHistory(history: ChatMessage[]): string {
 }
 
 /**
- * Infer the bot's display name from the system prompt persona.
- * Looks for the pattern "you are <name>" and strips trailing punctuation.
- * Falls back to `'bob'` when the pattern is not found.
+ * Determine the bot's display name for prompt participant blocks.
+ *
+ * Priority:
+ * 1. Explicit `BOT_DISPLAY_NAME` config override (highest).
+ * 2. Discord client display name passed at the call site.
+ * 3. Regex extraction from the system prompt ("you are X").
+ * 4. Fallback `'bot'`.
  */
-function inferBotName(): string {
+export function inferBotName(discordBotName?: string): string {
+  // 1. Explicit config override
+  const override = config.getBotDisplayName();
+  if (override) return override;
+
+  // 2. Discord client display name
+  if (discordBotName) return discordBotName;
+
+  // 3. Regex fallback from system prompt
   const persona = config.getOllamaSystemPrompt();
   const match = persona.match(/\byou are\s+([A-Za-z0-9._-]+)/i);
-  const raw = match?.[1] ?? 'bob';
-  return raw.replace(/[.,!?;:]+$/g, '');
+  if (match) {
+    return match[1].replace(/[.,!?;:]+$/g, '');
+  }
+
+  // 4. Generic fallback
+  return 'bot';
 }
 
 /**
@@ -395,7 +413,7 @@ export function getCurrentDateTimeTag(now?: Date): string {
  * <current_question>, and <thinking_and_output_rules> blocks.
  */
 export function buildUserContent(options: PromptBuildOptions): string {
-  const { userMessage, conversationHistory, externalData, enabledKeywords } = options;
+  const { userMessage, conversationHistory, externalData, enabledKeywords, botDisplayName } = options;
   const routable = getRoutableKeywords(enabledKeywords);
 
   const parts: string[] = [];
@@ -405,7 +423,8 @@ export function buildUserContent(options: PromptBuildOptions): string {
 
   // ── <conversation_history> ──
   const historyText = formatConversationHistory(
-    (conversationHistory ?? []).filter(m => m.role !== 'system')
+    (conversationHistory ?? []).filter(m => m.role !== 'system'),
+    botDisplayName
   );
   if (historyText) {
     parts.push(`<conversation_history>\n${historyText}\n</conversation_history>`);
@@ -457,7 +476,7 @@ export function buildUserContent(options: PromptBuildOptions): string {
 export function assemblePrompt(options: PromptBuildOptions): AssembledPrompt {
   const routable = getRoutableKeywords(options.enabledKeywords);
   const systemContent = buildSystemPrompt(routable);
-  const userContent = buildUserContent(options);
+  const userContent = buildUserContent(options); // botDisplayName flows via options
 
   const messages: ChatMessage[] = [
     { role: 'system', content: systemContent },
@@ -607,13 +626,14 @@ export function assembleReprompt(options: PromptBuildOptions): AssembledPrompt {
   const systemContent = persona;
 
   // Build user content with external data but WITHOUT thinking_and_output_rules
-  const { userMessage, conversationHistory, externalData } = options;
+  const { userMessage, conversationHistory, externalData, botDisplayName } = options;
 
   const parts: string[] = [];
 
   // ── <conversation_history> ──
   const historyText = formatConversationHistory(
-    (conversationHistory ?? []).filter(m => m.role !== 'system')
+    (conversationHistory ?? []).filter(m => m.role !== 'system'),
+    botDisplayName
   );
   if (historyText) {
     parts.push(`<conversation_history>\n${historyText}\n</conversation_history>`);

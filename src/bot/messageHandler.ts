@@ -98,6 +98,12 @@ class MessageHandler {
     // name the user sees in the guild.  Falls back to username for DMs.
     const requester = message.member?.displayName ?? message.author.displayName ?? message.author.username;
 
+    // Resolve the bot's display name from the Discord client for use in
+    // prompt participant blocks (the explicit BOT_DISPLAY_NAME config
+    // override is checked inside inferBotName, but we provide the Discord
+    // fallback here).
+    const botDisplayName = message.client.user.displayName ?? message.client.user.username;
+
     // Extract message content — remove the bot's own mention first
     const mentionRegex = new RegExp(
       `<@!?${message.client.user.id}>`,
@@ -294,7 +300,8 @@ class MessageHandler {
           keywordConfig,
           content,
           requester,
-          historyWithTrigger
+          historyWithTrigger,
+          botDisplayName
         );
 
         await this.dispatchResponse(
@@ -312,7 +319,8 @@ class MessageHandler {
           processingMessage,
           requester,
           conversationHistory,
-          isDM
+          isDM,
+          botDisplayName
         );
       }
     } catch (error) {
@@ -791,7 +799,8 @@ class MessageHandler {
     processingMessage: Message,
     requester: string,
     conversationHistory: ChatMessage[],
-    isDM: boolean
+    isDM: boolean,
+    botDisplayName?: string
   ): Promise<void> {
     const timeout = keywordConfig.timeout || config.getDefaultTimeout();
 
@@ -822,6 +831,7 @@ class MessageHandler {
     const assembled = assemblePrompt({
       userMessage: content,
       conversationHistory: filteredHistory,
+      botDisplayName,
     });
 
     // Log abilities summary
@@ -878,7 +888,8 @@ class MessageHandler {
           parseResult.keywordConfig,
           content,
           requester,
-          filteredHistory.length > 0 ? filteredHistory : undefined
+          filteredHistory.length > 0 ? filteredHistory : undefined,
+          botDisplayName
         );
 
         await this.dispatchResponse(
@@ -905,7 +916,8 @@ class MessageHandler {
           secondClassification.keywordConfig,
           content,
           requester,
-          filteredHistory.length > 0 ? filteredHistory : undefined
+          filteredHistory.length > 0 ? filteredHistory : undefined,
+          botDisplayName
         );
 
         await this.dispatchResponse(

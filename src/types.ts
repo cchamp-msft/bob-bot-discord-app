@@ -312,6 +312,8 @@ export interface PublicConfig {
   discord: {
     clientId: string;
     tokenConfigured: boolean;
+    /** Explicit bot display name override (empty = use Discord display name). */
+    botDisplayName: string;
   };
   apis: {
     comfyui: string;

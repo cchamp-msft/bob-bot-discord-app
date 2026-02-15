@@ -88,6 +88,7 @@ jest.mock('../src/utils/config', () => ({
     getOllamaSystemPrompt: jest.fn(
       () => 'You are Bob. Rude but helpful Discord bot.'
     ),
+    getBotDisplayName: jest.fn(() => ''),
   },
 }));
 
@@ -109,6 +110,7 @@ import {
   assembleReprompt,
   buildAskPrompt,
   parseFirstLineKeyword,
+  inferBotName,
   formatAccuWeatherExternalData,
   formatNFLExternalData,
   formatGenericExternalData,
@@ -150,6 +152,37 @@ describe('PromptBuilder', () => {
       const routable = getRoutableKeywords(overrides);
       expect(routable).toHaveLength(1);
       expect(routable[0].keyword).toBe('custom');
+    });
+  });
+
+  // ── inferBotName ─────────────────────────────────────────────────
+
+  describe('inferBotName', () => {
+    it('should use config override (BOT_DISPLAY_NAME) when set', () => {
+      (config.getBotDisplayName as jest.Mock).mockReturnValueOnce('CustomBot');
+      expect(inferBotName('DiscordName')).toBe('CustomBot');
+    });
+
+    it('should use Discord display name when config override is empty', () => {
+      (config.getBotDisplayName as jest.Mock).mockReturnValueOnce('');
+      expect(inferBotName('DiscordName')).toBe('DiscordName');
+    });
+
+    it('should fall back to system prompt regex when no Discord name', () => {
+      (config.getBotDisplayName as jest.Mock).mockReturnValueOnce('');
+      expect(inferBotName()).toBe('Bob');
+    });
+
+    it('should fall back to "bot" when regex does not match and no Discord name', () => {
+      (config.getBotDisplayName as jest.Mock).mockReturnValueOnce('');
+      (config.getOllamaSystemPrompt as jest.Mock).mockReturnValueOnce('A helpful assistant.');
+      expect(inferBotName()).toBe('bot');
+    });
+
+    it('should strip trailing punctuation from regex match', () => {
+      (config.getBotDisplayName as jest.Mock).mockReturnValueOnce('');
+      (config.getOllamaSystemPrompt as jest.Mock).mockReturnValueOnce('You are Jeeves. A butler bot.');
+      expect(inferBotName()).toBe('Jeeves');
     });
   });
 
@@ -409,6 +442,19 @@ describe('PromptBuilder', () => {
       // Should only have one "Alice" entry (first-seen casing), not both
       expect(content).toContain('<third_parties>Alice</third_parties>');
       expect(content).not.toContain('Alice, alice');
+    });
+
+    it('should use botDisplayName for bot speaker when passed in options', () => {
+      const content = buildUserContent({
+        userMessage: 'Hello',
+        conversationHistory: [
+          { role: 'assistant', content: 'Hi there!', contextSource: 'dm' as const },
+        ],
+        botDisplayName: 'Marvin',
+      });
+
+      expect(content).toContain('<bot_name>Marvin</bot_name>');
+      expect(content).toContain('speaker="Marvin"');
     });
 
     it('should escape XML special characters in speaker names', () => {

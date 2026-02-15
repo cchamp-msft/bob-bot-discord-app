@@ -328,6 +328,10 @@
             </div>
           </div>
         </div>
+        <div class="field">
+          <label>Bot Display Name <span class="note">override for prompt identity — blank uses Discord display name</span></label>
+          <input type="text" id="bot_display_name" data-env="BOT_DISPLAY_NAME" placeholder="Blank uses Discord Display Name">
+        </div>
         <div class="bot-controls">
           <span class="status-label">
             <span class="dot stopped" id="botDot"></span>
@@ -1084,6 +1088,9 @@
       // Populate image response setting
       const irEmbed = document.getElementById('image_response_include_embed');
       irEmbed.value = cfg.imageResponse?.includeEmbed ? 'true' : 'false';
+
+      // Bot Display Name
+      document.getElementById('bot_display_name').value = cfg.discord.botDisplayName || '';
 
       // Token field is always empty (write-only) — just show placeholder
       document.getElementById('discord_token').value = '';

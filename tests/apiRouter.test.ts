@@ -20,6 +20,7 @@ jest.mock('../src/utils/config', () => ({
     getAbilityRetryModel: jest.fn(() => 'llama2'),
     getAbilityRetryPrompt: jest.fn(() => 'Refine the parameters. Return ONLY the refined parameters.'),
     getOllamaFinalPassPrompt: jest.fn(() => ''),
+    getBotDisplayName: jest.fn(() => ''),
   },
 }));
 
@@ -1010,7 +1011,7 @@ describe('ApiRouter', () => {
       });
 
       const controller = new AbortController();
-      await executeRoutedRequest(keyword, 'hello', 'testuser', undefined, controller.signal);
+      await executeRoutedRequest(keyword, 'hello', 'testuser', undefined, undefined, controller.signal);
 
       // requestQueue.execute should have been called with the signal as 6th arg
       expect(mockExecute).toHaveBeenCalledWith(
@@ -1034,7 +1035,7 @@ describe('ApiRouter', () => {
       });
 
       const controller = new AbortController();
-      await executeRoutedRequest(keyword, '', 'testuser', undefined, controller.signal);
+      await executeRoutedRequest(keyword, '', 'testuser', undefined, undefined, controller.signal);
 
       expect(mockExecute).toHaveBeenCalledWith(
         'nfl', 'testuser', 'nfl scores', 30,
@@ -1065,7 +1066,7 @@ describe('ApiRouter', () => {
       });
 
       const controller = new AbortController();
-      await executeRoutedRequest(keyword, 'what happened in the nfl?', 'testuser', undefined, controller.signal);
+      await executeRoutedRequest(keyword, 'what happened in the nfl?', 'testuser', undefined, undefined, controller.signal);
 
       // Both calls should receive the signal as 6th arg
       expect(mockExecute).toHaveBeenCalledTimes(2);
