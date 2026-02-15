@@ -351,6 +351,7 @@ export interface PublicConfig {
     httpHost: string;
     outputsPort: number;
     outputsHost: string;
+    outputsTrustProxy: string;
     outputBaseUrl: string;
     activityKeyTtl: number;
     outputsRateLimitWindowMs: number;

@@ -24,6 +24,7 @@ jest.mock('../src/utils/config', () => ({
   config: {
     getOutputsPort: () => 3003,
     getOutputsHost: () => '0.0.0.0',
+    getOutputsTrustProxy: () => false,
     getOutputBaseUrl: () => 'http://localhost:3003',
     // Use a tight rate limit so tests can trigger 429 without hundreds of requests
     getOutputsRateLimitWindowMs: () => 60000,
@@ -172,7 +173,7 @@ describe('OutputsServer', () => {
 
   // ── Trust proxy ──────────────────────────────────────────────
 
-  it('has trust proxy explicitly disabled', () => {
+  it('defaults trust proxy to disabled', () => {
     const app = outputsServer.getApp();
     expect(app.get('trust proxy')).toBe(false);
   });

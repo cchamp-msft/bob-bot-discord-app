@@ -97,6 +97,27 @@ describe('Config', () => {
       expect(config.getOutputsHost()).toBe('192.168.1.100');
     });
 
+    it('getOutputsTrustProxy should default to false', () => {
+      delete process.env.OUTPUTS_TRUST_PROXY;
+      expect(config.getOutputsTrustProxy()).toBe(false);
+    });
+
+    it('getOutputsTrustProxy should accept true and numeric hops', () => {
+      process.env.OUTPUTS_TRUST_PROXY = 'true';
+      expect(config.getOutputsTrustProxy()).toBe(true);
+
+      process.env.OUTPUTS_TRUST_PROXY = '1';
+      expect(config.getOutputsTrustProxy()).toBe(1);
+    });
+
+    it('getOutputsTrustProxy should fall back to false on invalid value', () => {
+      process.env.OUTPUTS_TRUST_PROXY = 'abc';
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      expect(config.getOutputsTrustProxy()).toBe(false);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('OUTPUTS_TRUST_PROXY'));
+      warnSpy.mockRestore();
+    });
+
     it('getHttpHost should return env value or default 127.0.0.1', () => {
       delete process.env.HTTP_HOST;
       expect(config.getHttpHost()).toBe('127.0.0.1');
@@ -312,6 +333,12 @@ describe('Config', () => {
       const pub = config.getPublicConfig();
       expect(pub.http.httpHost).toBe('0.0.0.0');
       expect(pub.http.outputsHost).toBe('192.168.1.50');
+    });
+
+    it('should include outputsTrustProxy in http section', () => {
+      process.env.OUTPUTS_TRUST_PROXY = '1';
+      const pub = config.getPublicConfig();
+      expect(pub.http.outputsTrustProxy).toBe('1');
     });
   });
 
@@ -1000,9 +1027,10 @@ describe('Config', () => {
       expect(result.requiresRestart).not.toContain('HTTP_HOST');
       expect(result.requiresRestart).not.toContain('OUTPUTS_PORT');
       expect(result.requiresRestart).not.toContain('OUTPUTS_HOST');
+      expect(result.requiresRestart).not.toContain('OUTPUTS_TRUST_PROXY');
     });
 
-    it('reload should include OUTPUTS_PORT, OUTPUTS_HOST, and HTTP_HOST in restart detection', () => {
+    it('reload should include outputs bind settings in restart detection', () => {
       // Verify the reload return type includes the new fields when they differ.
       // We force the private fields to a known value, then reload so that
       // the live env (from .env on disk) differs.
@@ -1010,6 +1038,7 @@ describe('Config', () => {
         httpHost: (config as any).httpHost,
         outputsPort: (config as any).outputsPort,
         outputsHostBound: (config as any).outputsHostBound,
+        outputsTrustProxyBound: (config as any).outputsTrustProxyBound,
       };
 
       try {
@@ -1017,16 +1046,19 @@ describe('Config', () => {
         (config as any).httpHost = '__FAKE_HOST__';
         (config as any).outputsPort = 99999;
         (config as any).outputsHostBound = '__FAKE_OUTPUTS_HOST__';
+        (config as any).outputsTrustProxyBound = '__FAKE_OUTPUTS_TRUST_PROXY__';
 
         const result = config.reload();
         expect(result.requiresRestart).toContain('HTTP_HOST');
         expect(result.requiresRestart).toContain('OUTPUTS_PORT');
         expect(result.requiresRestart).toContain('OUTPUTS_HOST');
+        expect(result.requiresRestart).toContain('OUTPUTS_TRUST_PROXY');
       } finally {
         // Restore
         (config as any).httpHost = original.httpHost;
         (config as any).outputsPort = original.outputsPort;
         (config as any).outputsHostBound = original.outputsHostBound;
+        (config as any).outputsTrustProxyBound = original.outputsTrustProxyBound;
         config.reload(); // re-stabilize
       }
     });

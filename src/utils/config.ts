@@ -409,6 +409,28 @@ class Config {
     return (process.env.OUTPUTS_HOST || '').trim() || '0.0.0.0';
   }
 
+  /**
+   * Trust proxy setting for the outputs server.
+   * Accepts:
+   *  - "false" (default): trust proxy disabled
+   *  - "true": trust all proxies
+   *  - integer string (e.g. "1", "2"): trust N proxy hops
+   */
+  getOutputsTrustProxy(): boolean | number {
+    const raw = (process.env.OUTPUTS_TRUST_PROXY || '').trim().toLowerCase();
+    if (!raw || raw === 'false') return false;
+    if (raw === 'true') return true;
+    if (/^\d+$/.test(raw)) {
+      const hops = parseInt(raw, 10);
+      return Number.isFinite(hops) ? hops : false;
+    }
+    logger.logWarn(
+      'config',
+      `Environment variable OUTPUTS_TRUST_PROXY has invalid value "${process.env.OUTPUTS_TRUST_PROXY}" — using false`,
+    );
+    return false;
+  }
+
   getOutputBaseUrl(): string {
     return process.env.OUTPUT_BASE_URL || 'http://localhost:3003';
   }
@@ -762,6 +784,7 @@ class Config {
     const prevOutputsPort = this.outputsPort;
     const prevHttpHost = this.httpHost;
     const prevOutputsHost = this.outputsHostBound;
+    const prevOutputsTrustProxy = this.outputsTrustProxyBound;
     const prevComfyUI = this.getComfyUIEndpoint();
     const prevOllama = this.getOllamaEndpoint();
     const prevAccuWeather = this.getAccuWeatherEndpoint();
@@ -824,6 +847,8 @@ class Config {
     if (newOutputsPort !== prevOutputsPort) requiresRestart.push('OUTPUTS_PORT');
     const newOutputsHost = this.getOutputsHost();
     if (newOutputsHost !== prevOutputsHost) requiresRestart.push('OUTPUTS_HOST');
+    const newOutputsTrustProxy = this.getOutputsTrustProxy();
+    if (newOutputsTrustProxy !== prevOutputsTrustProxy) requiresRestart.push('OUTPUTS_TRUST_PROXY');
 
     // Track Discord changes (manageable via start/stop, not restart)
     const newToken = process.env.DISCORD_TOKEN || '';
@@ -890,6 +915,8 @@ class Config {
   private httpHost = (process.env.HTTP_HOST || '').trim() || '127.0.0.1';
   /** Outputs bind host captured at construction time — changes require restart */
   private outputsHostBound = this.getOutputsHost();
+  /** Outputs trust-proxy mode captured at construction time — changes require restart */
+  private outputsTrustProxyBound = this.getOutputsTrustProxy();
 
   /**
    * Get a safe view of config for the configurator UI.
@@ -939,6 +966,7 @@ class Config {
         httpHost: this.getHttpHost(),
         outputsPort: this.getOutputsPort(),
         outputsHost: this.getOutputsHost(),
+        outputsTrustProxy: String(this.getOutputsTrustProxy()),
         outputBaseUrl: this.getOutputBaseUrl(),
         activityKeyTtl: this.getActivityKeyTtl(),
         outputsRateLimitWindowMs: this.getOutputsRateLimitWindowMs(),

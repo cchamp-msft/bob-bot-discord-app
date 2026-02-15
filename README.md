@@ -127,7 +127,7 @@ cp .env.example .env
 
 > All settings can be configured through the web configurator after starting the bot.
 > If you prefer, you can pre-fill `.env` values before starting:
-> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `HTTP_HOST`, `OUTPUTS_PORT`, `OUTPUTS_HOST`, `OUTPUT_BASE_URL`, `ACTIVITY_KEY_TTL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `ALLOW_BOT_INTERACTIONS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`, `SERPAPI_API_KEY`, `SERPAPI_ENDPOINT`, `SERPAPI_HL`, `SERPAPI_GL`, `SERPAPI_LOCATION`
+> `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `COMFYUI_ENDPOINT`, `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_SYSTEM_PROMPT`, `HTTP_PORT`, `HTTP_HOST`, `OUTPUTS_PORT`, `OUTPUTS_HOST`, `OUTPUTS_TRUST_PROXY`, `OUTPUT_BASE_URL`, `ACTIVITY_KEY_TTL`, `FILE_SIZE_THRESHOLD`, `DEFAULT_TIMEOUT`, `MAX_ATTACHMENTS`, `ERROR_MESSAGE`, `ERROR_RATE_LIMIT_MINUTES`, `REPLY_CHAIN_ENABLED`, `REPLY_CHAIN_MAX_DEPTH`, `REPLY_CHAIN_MAX_TOKENS`, `ALLOW_BOT_INTERACTIONS`, `IMAGE_RESPONSE_INCLUDE_EMBED`, `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, `COMFYUI_DEFAULT_HEIGHT`, `COMFYUI_DEFAULT_STEPS`, `COMFYUI_DEFAULT_CFG`, `COMFYUI_DEFAULT_SAMPLER`, `COMFYUI_DEFAULT_SCHEDULER`, `COMFYUI_DEFAULT_DENOISE`, `ACCUWEATHER_API_KEY`, `ACCUWEATHER_DEFAULT_LOCATION`, `ACCUWEATHER_ENDPOINT`, `NFL_BASE_URL`, `NFL_ENABLED`, `SERPAPI_API_KEY`, `SERPAPI_ENDPOINT`, `SERPAPI_HL`, `SERPAPI_GL`, `SERPAPI_LOCATION`
 
 ### Running the Bot
 
@@ -765,8 +765,11 @@ If no output is being returned and upon checking ComfyUI logs you see an excepti
 - When `ADMIN_TOKEN` is set, every configurator request must include an `Authorization: Bearer <token>` header
 
 ### Reverse proxy / SSL termination
-- Both HTTP servers explicitly set `trust proxy = false` — `req.ip` is always the direct socket address and cannot be spoofed via `X-Forwarded-For` headers
+- This app does **not** terminate TLS itself. Use a trusted reverse SSL/TLS proxy for public inbound ports
+- By default, both servers use `trust proxy = false` — `req.ip` is always the direct socket address and cannot be spoofed via `X-Forwarded-For` headers
+- `OUTPUTS_TRUST_PROXY` can be set for outputs-server client IP handling (`false`, `true`, or a hop count like `1`) when running behind a trusted proxy/load balancer
 - If the configurator must be reachable through a reverse proxy (e.g. for remote administration), **set `ADMIN_TOKEN`** to a strong random value (`openssl rand -hex 32`). Without it the only protection is the localhost IP check, which can be bypassed if the proxy forwards traffic from the same host
+- Never expose the configurator/admin port directly to the public internet. Keep it private and enforce strict IP filtering + authentication in the proxy layer
 - The outputs server (port 3003) is designed for public access — if placed behind a TLS-terminating proxy, set `OUTPUT_BASE_URL` to the external HTTPS URL so generated image links work correctly (e.g. `OUTPUT_BASE_URL=https://cdn.example.com`). The activity feed (`/activity`) serves static HTML publicly; `GET /api/activity` requires a valid rotating key obtained from the bot via Discord
 - Neither server enables `trust proxy` or reads `X-Forwarded-Proto` — HTTPS is assumed to be handled entirely upstream
 - Restrict the configurator's upstream proxy route to trusted IP ranges / authentication at the proxy layer as an additional defence in depth
@@ -774,7 +777,7 @@ If no output is being returned and upon checking ComfyUI logs you see an excepti
 ### Staging / deployment notes
 - The configurator server binds to `127.0.0.1` by default; the outputs server binds to `0.0.0.0`
 - Admin/configurator routes are guarded by `ADMIN_TOKEN` + localhost IP check; output files are served publicly
-- Changing `HTTP_PORT`, `HTTP_HOST`, `OUTPUTS_PORT`, or `OUTPUTS_HOST` requires a full process restart (the configurator will report this)
+- Changing `HTTP_PORT`, `HTTP_HOST`, `OUTPUTS_PORT`, `OUTPUTS_HOST`, or `OUTPUTS_TRUST_PROXY` requires a full process restart (the configurator will report this)
 
 ### Config changes not applying
 - **API endpoints & keywords**: Use configurator's "Save Changes" button (hot-reload, no restart)

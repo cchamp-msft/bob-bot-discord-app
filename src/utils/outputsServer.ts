@@ -29,9 +29,9 @@ class OutputsServer {
   constructor() {
     this.app = express();
 
-    // Explicitly disable trust proxy — this server intentionally binds on a
-    // public interface but should never interpret forwarded headers.
-    this.app.set('trust proxy', false);
+    // Trust-proxy remains disabled by default. Enable only when running behind
+    // a trusted reverse proxy and you need client-IP-aware rate limiting.
+    this.app.set('trust proxy', config.getOutputsTrustProxy());
 
     this.setupRoutes();
   }

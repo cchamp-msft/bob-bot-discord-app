@@ -602,6 +602,10 @@
           The <strong>Outputs</strong> server is a public-facing HTTP server that serves generated files (images, etc.) so Discord can fetch attachments.
           Changing any of these values requires a <strong>restart</strong>.
         </p>
+        <p style="font-size:0.75em;color:var(--warn);margin-bottom:10px">
+          Security note: this app does <strong>not</strong> terminate SSL/TLS. Use a trusted reverse SSL proxy for public inbound ports.
+          Do <strong>not</strong> expose the configurator to the public internet without strict IP filtering and strong admin authentication.
+        </p>
         <label style="display:block;font-size:0.85em;font-weight:600;margin-bottom:6px">Configurator (Admin)</label>
         <div class="field-row">
           <div class="field narrow">
@@ -628,6 +632,10 @@
         <div class="field" style="margin-top:10px">
           <label>Output Base URL <span class="note">URL Discord uses to fetch files from the outputs server</span></label>
           <input type="text" id="output_base_url" data-env="OUTPUT_BASE_URL" placeholder="http://localhost:3003">
+        </div>
+        <div class="field narrow" style="margin-top:10px">
+          <label>Outputs Trust Proxy <span class="note">restart · false, true, or proxy hop count (e.g. 1)</span></label>
+          <input type="text" id="outputs_trust_proxy" data-env="OUTPUTS_TRUST_PROXY" placeholder="false">
         </div>
         <div class="field narrow" style="margin-top:10px">
           <label>Activity Key TTL (seconds) <span class="note">how long a key stays valid · default 300</span></label>
@@ -881,6 +889,7 @@
       document.getElementById('http_host').value = cfg.http.httpHost || '';
       document.getElementById('outputs_port').value = cfg.http.outputsPort;
       document.getElementById('outputs_host').value = cfg.http.outputsHost || '';
+      document.getElementById('outputs_trust_proxy').value = cfg.http.outputsTrustProxy || 'false';
       document.getElementById('output_base_url').value = cfg.http.outputBaseUrl;
       document.getElementById('file_size_threshold').value = cfg.limits.fileSizeThreshold;
       document.getElementById('default_timeout').value = cfg.limits.defaultTimeout;
