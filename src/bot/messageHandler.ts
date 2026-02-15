@@ -292,7 +292,7 @@ class MessageHandler {
         // Append the triggering message so the model always knows who is asking.
         const historyWithTrigger: ChatMessage[] = [
           ...conversationHistory,
-          { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const },
+          { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true },
         ];
         activityEvents.emitRoutingDecision(keywordConfig.api, keywordConfig.keyword, 'keyword');
 
@@ -432,7 +432,8 @@ class MessageHandler {
     // Reverse so oldest message is first, and build final ChatMessage array
     return chain.reverse().map(entry => {
       // Prefix user messages with display name when multiple humans are in the chain
-      const content = (multiUser && entry.role === 'user' && entry.authorName)
+      const hasPfx = !!(multiUser && entry.role === 'user' && entry.authorName);
+      const content = hasPfx
         ? `${entry.authorName}: ${entry.content}`
         : entry.content;
       return {
@@ -441,6 +442,7 @@ class MessageHandler {
         contextSource: 'reply' as const,
         discordMessageId: entry.id,
         createdAtMs: entry.createdAt,
+        ...(hasPfx && { hasNamePrefix: true }),
       };
     });
   }
@@ -495,7 +497,8 @@ class MessageHandler {
         const role = msg.author.id === botId ? 'assistant' as const : 'user' as const;
         // Prefix user messages with display name so the model sees who said what,
         // matching the format used in the trigger message and guild context.
-        if (role === 'user') {
+        const isUserMsg = role === 'user';
+        if (isUserMsg) {
           const dmDisplayName = msg.author.displayName ?? msg.author.username;
           content = `${dmDisplayName}: ${content}`;
         }
@@ -503,6 +506,7 @@ class MessageHandler {
           role,
           content,
           contextSource: 'dm',
+          ...(isUserMsg && { hasNamePrefix: true }),
         });
       }
 
@@ -599,7 +603,8 @@ class MessageHandler {
         const role = isBot ? 'assistant' as const : 'user' as const;
 
         // Multi-user attribution
-        if (multiUser && !isBot) {
+        const hasPfx = !!(multiUser && !isBot);
+        if (hasPfx) {
           const displayName = msg.member?.displayName ?? msg.author.username;
           content = `${displayName}: ${content}`;
         }
@@ -618,6 +623,7 @@ class MessageHandler {
           contextSource,
           discordMessageId: msg.id,
           createdAtMs: msg.createdTimestamp,
+          ...(hasPfx && { hasNamePrefix: true }),
         });
       }
 
@@ -824,7 +830,7 @@ class MessageHandler {
     // This is done after context evaluation so it is never filtered out.
     filteredHistory = [
       ...filteredHistory,
-      { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const },
+      { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true },
     ];
 
     // Build the XML-tagged prompt with abilities context

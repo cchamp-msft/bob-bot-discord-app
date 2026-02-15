@@ -392,9 +392,9 @@ describe('PromptBuilder', () => {
       const content = buildUserContent({
         userMessage: 'nfl scores',
         conversationHistory: [
-          { role: 'user', content: 'alice: can you summarize this?', contextSource: 'reply' as const },
+          { role: 'user', content: 'alice: can you summarize this?', contextSource: 'reply' as const, hasNamePrefix: true },
           { role: 'assistant', content: 'Working on it.', contextSource: 'reply' as const },
-          { role: 'user', content: 'oeb: nfl scores', contextSource: 'trigger' as const },
+          { role: 'user', content: 'oeb: nfl scores', contextSource: 'trigger' as const, hasNamePrefix: true },
         ],
       });
 
@@ -433,9 +433,9 @@ describe('PromptBuilder', () => {
       const content = buildUserContent({
         userMessage: 'test',
         conversationHistory: [
-          { role: 'user', content: 'Alice: first message', contextSource: 'channel' as const },
-          { role: 'user', content: 'alice: second message', contextSource: 'channel' as const },
-          { role: 'user', content: 'oeb: trigger', contextSource: 'trigger' as const },
+          { role: 'user', content: 'Alice: first message', contextSource: 'channel' as const, hasNamePrefix: true },
+          { role: 'user', content: 'alice: second message', contextSource: 'channel' as const, hasNamePrefix: true },
+          { role: 'user', content: 'oeb: trigger', contextSource: 'trigger' as const, hasNamePrefix: true },
         ],
       });
 
@@ -461,13 +461,72 @@ describe('PromptBuilder', () => {
       const content = buildUserContent({
         userMessage: 'test',
         conversationHistory: [
-          { role: 'user', content: '<Bob>: hello there', contextSource: 'trigger' as const },
+          { role: 'user', content: '<Bob>: hello there', contextSource: 'trigger' as const, hasNamePrefix: true },
         ],
       });
 
       // Speaker name should be attribute-escaped
       expect(content).toContain('speaker="&lt;Bob&gt;"');
       expect(content).toContain('<requester_name>&lt;Bob&gt;</requester_name>');
+    });
+
+    it('should NOT parse colon content as speaker when hasNamePrefix is absent', () => {
+      const content = buildUserContent({
+        userMessage: 'hello',
+        conversationHistory: [
+          { role: 'user', content: "Summary: here's what happened", contextSource: 'channel' as const },
+        ],
+      });
+
+      // Without hasNamePrefix, "Summary" should NOT be treated as a speaker name
+      expect(content).not.toContain('speaker="Summary"');
+      expect(content).toContain('speaker="user"');
+      // Content should be preserved in full (not stripped)
+      expect(content).toContain("Summary: here's what happened</message>");
+    });
+
+    it('should parse colon content as speaker when hasNamePrefix is true', () => {
+      const content = buildUserContent({
+        userMessage: 'hello',
+        conversationHistory: [
+          { role: 'user', content: 'alice: hello everyone', contextSource: 'channel' as const, hasNamePrefix: true },
+          { role: 'user', content: 'bob: hello', contextSource: 'trigger' as const, hasNamePrefix: true },
+        ],
+      });
+
+      expect(content).toContain('speaker="alice"');
+      expect(content).toContain('speaker="bob"');
+      expect(content).toContain('<requester_name>bob</requester_name>');
+      // Prefix should be stripped from the message body
+      expect(content).toContain('>hello everyone</message>');
+    });
+
+    it('should identify requester from trigger message with hasNamePrefix', () => {
+      const content = buildUserContent({
+        userMessage: 'hello',
+        conversationHistory: [
+          { role: 'user', content: 'charlie: hello', contextSource: 'trigger' as const, hasNamePrefix: true },
+        ],
+      });
+
+      expect(content).toContain('<requester_name>charlie</requester_name>');
+      expect(content).toContain('speaker="charlie"');
+      expect(content).toContain('speaker_type="requester"');
+    });
+
+    it('should treat unprefixed single-user guild message as requester not third-party', () => {
+      const content = buildUserContent({
+        userMessage: 'test',
+        conversationHistory: [
+          { role: 'user', content: 'Note: this is important', contextSource: 'channel' as const },
+          { role: 'user', content: 'testuser: test', contextSource: 'trigger' as const, hasNamePrefix: true },
+        ],
+      });
+
+      // "Note" should NOT appear as a third party
+      expect(content).not.toContain('speaker="Note"');
+      expect(content).toContain('<third_parties></third_parties>');
+      expect(content).toContain('<requester_name>testuser</requester_name>');
     });
   });
 

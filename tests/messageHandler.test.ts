@@ -1247,7 +1247,7 @@ describe('MessageHandler first-word keyword routing', () => {
       weatherKw,
       '45403',
       'testuser',
-      [{ role: 'user', content: 'testuser: 45403', contextSource: 'trigger' }],
+      [{ role: 'user', content: 'testuser: 45403', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser'
     );
   });
@@ -1266,7 +1266,7 @@ describe('MessageHandler first-word keyword routing', () => {
       weatherReportKw,
       '28465',
       'testuser',
-      [{ role: 'user', content: 'testuser: 28465', contextSource: 'trigger' }],
+      [{ role: 'user', content: 'testuser: 28465', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser'
     );
   });
@@ -1743,7 +1743,7 @@ describe('MessageHandler two-stage evaluation', () => {
       weatherKeyword,
       'is it going to rain in Seattle',
       'testuser',
-      [{ role: 'user', content: 'testuser: is it going to rain in Seattle', contextSource: 'trigger' }],
+      [{ role: 'user', content: 'testuser: is it going to rain in Seattle', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser'
     );
   });
@@ -1952,6 +1952,7 @@ describe('MessageHandler trigger message attribution', () => {
       role: 'user',
       content: 'testuser: is it going to rain in Seattle',
       contextSource: 'trigger',
+      hasNamePrefix: true,
     });
   });
 

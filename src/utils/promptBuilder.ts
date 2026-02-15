@@ -222,7 +222,7 @@ function formatConversationHistory(history: ChatMessage[], discordBotName?: stri
       // Only strip name prefixes from user messages — assistant content
       // is never prefixed upstream and stripping would corrupt bot output
       // that happens to start with "word: …" patterns.
-      const text = msg.role === 'user' ? stripSpeakerPrefix(msg.content) : msg.content;
+      const text = msg.role === 'user' ? stripSpeakerPrefix(msg.content, msg.hasNamePrefix) : msg.content;
       return `<message role="${msg.role}" speaker="${escapeXmlAttribute(speaker)}" speaker_type="${speakerType}">${escapeXmlContent(text)}</message>`;
     });
     blocks.push(`<context source="${source}">\n${lines.join('\n')}\n</context>`);
@@ -265,9 +265,15 @@ export function inferBotName(discordBotName?: string): string {
  * in DM and multi-user contexts. This function extracts the speaker
  * name (up to 64 non-colon characters) and the remaining text.
  *
+ * @param content  - The raw message content.
+ * @param hasNamePrefix - When `false` or `undefined`, the function
+ *   returns `null` immediately to avoid false-positive parsing on
+ *   unprefixed messages (e.g. `"Summary: here's what happened"`).
  * @returns `{ speaker, text }` if a prefix was found, otherwise `null`.
  */
-function parseSpeakerPrefix(content: string): { speaker: string; text: string } | null {
+function parseSpeakerPrefix(content: string, hasNamePrefix?: boolean): { speaker: string; text: string } | null {
+  if (!hasNamePrefix) return null;
+
   const match = content.match(/^([^:\n]{1,64}):\s+([\s\S]+)$/);
   if (!match) return null;
 
@@ -281,10 +287,10 @@ function parseSpeakerPrefix(content: string): { speaker: string; text: string } 
 /**
  * Remove the `"speaker: "` prefix from a message, returning only the
  * body text. Returns the original content unchanged when no prefix
- * is detected.
+ * is detected (or when `hasNamePrefix` is falsy).
  */
-function stripSpeakerPrefix(content: string): string {
-  const parsed = parseSpeakerPrefix(content);
+function stripSpeakerPrefix(content: string, hasNamePrefix?: boolean): string {
+  const parsed = parseSpeakerPrefix(content, hasNamePrefix);
   return parsed ? parsed.text : content;
 }
 
@@ -300,14 +306,14 @@ function inferRequesterName(history: ChatMessage[]): string | null {
     const msg = history[i];
     if (msg.role !== 'user') continue;
     if (msg.contextSource !== 'trigger') continue;
-    const parsed = parseSpeakerPrefix(msg.content);
+    const parsed = parseSpeakerPrefix(msg.content, msg.hasNamePrefix);
     if (parsed) return parsed.speaker;
   }
 
   for (let i = history.length - 1; i >= 0; i--) {
     const msg = history[i];
     if (msg.role !== 'user') continue;
-    const parsed = parseSpeakerPrefix(msg.content);
+    const parsed = parseSpeakerPrefix(msg.content, msg.hasNamePrefix);
     if (parsed) return parsed.speaker;
   }
 
@@ -325,7 +331,7 @@ function inferThirdPartyNames(history: ChatMessage[], requesterName: string | nu
   const names: string[] = [];
   for (const msg of history) {
     if (msg.role !== 'user') continue;
-    const parsed = parseSpeakerPrefix(msg.content);
+    const parsed = parseSpeakerPrefix(msg.content, msg.hasNamePrefix);
     if (!parsed) continue;
     const lowerSpeaker = parsed.speaker.toLowerCase();
     if (requesterName && lowerSpeaker === requesterName.toLowerCase()) {
@@ -348,7 +354,7 @@ function inferThirdPartyNames(history: ChatMessage[], requesterName: string | nu
 function inferSpeakerName(msg: ChatMessage, botName: string, requesterName: string | null): string {
   if (msg.role === 'assistant') return botName;
 
-  const parsed = parseSpeakerPrefix(msg.content);
+  const parsed = parseSpeakerPrefix(msg.content, msg.hasNamePrefix);
   if (parsed) return parsed.speaker;
 
   if (msg.contextSource === 'trigger' && requesterName) return requesterName;

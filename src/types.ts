@@ -8,6 +8,14 @@ export interface ChatMessage {
   discordMessageId?: string;
   /** Message creation timestamp (ms) — used for stable chronological merge. */
   createdAtMs?: number;
+  /**
+   * Whether this message's content was explicitly prepended with a
+   * `"displayName: "` prefix by the handler. When true, `parseSpeakerPrefix`
+   * is allowed to extract the speaker name; when false/undefined, the
+   * content is treated as unprefixed to avoid false-positive parsing
+   * (e.g. "Summary: here's what happened" being split on the colon).
+   */
+  hasNamePrefix?: boolean;
 }
 
 /** Recognized API backend identifiers. */

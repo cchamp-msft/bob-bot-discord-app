@@ -317,7 +317,7 @@ export async function executeRoutedRequest(
     if (lastMsg?.contextSource !== 'trigger') {
       filteredHistory = [
         ...(filteredHistory ?? []),
-        { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const },
+        { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true },
       ];
     }
 
