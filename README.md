@@ -437,30 +437,71 @@ Extended fields in `config/keywords.json` (or `config/keywords.default.json`):
 {
   "keywords": [
     {
-      "keyword": "generate",
-      "api": "comfyui",
-      "timeout": 300,
-      "description": "Generate image using ComfyUI",
-      "abilityText": "generate images from text descriptions"
+      "keyword": "weather",
+      "api": "accuweather",
+      "timeout": 60,
+      "description": "Get current weather conditions and 5-day forecast",
+      "abilityText": "Get current weather conditions and 5-day forecast",
+      "abilityWhen": "User asks about weather or current conditions for a location.",
+      "abilityInputs": {
+        "mode": "explicit",
+        "required": ["location"],
+        "validation": "Location must be a valid worldwide city name, region, or US postal code.",
+        "examples": ["weather Dallas", "weather 90210"]
+      }
     },
     {
-      "keyword": "weather report",
-      "api": "accuweather",
-      "timeout": 120,
-      "description": "AI weather report",
-      "abilityText": "check current weather conditions and forecasts",
-      "accuweatherMode": "full",
-      "finalOllamaPass": true
+      "keyword": "nfl scores",
+      "api": "nfl",
+      "timeout": 30,
+      "description": "Get current NFL game scores",
+      "abilityText": "Get current NFL game scores",
+      "abilityWhen": "User asks about NFL scores or game results.",
+      "abilityInputs": {
+        "mode": "mixed",
+        "optional": ["date"],
+        "inferFrom": ["current_message"],
+        "validation": "Date must be YYYYMMDD or YYYY-MM-DD. If omitted, returns the most recent scoreboard."
+      },
+      "finalOllamaPass": true,
+      "allowEmptyContent": true
     }
   ]
 }
 ```
 
+#### Keyword Fields Reference
+
 | Field | Type | Description |
 |-------|------|-------------|
-| `abilityText` | `string` | Human-readable description of what this API can do, included in Ollama’s abilities context. In the configurator, this is set automatically from the Description field when the Ability checkbox is checked. |
-| `finalOllamaPass` | `boolean` | Pass the API result through Ollama for conversational refinement using the global final-pass model |
-| `accuweatherMode` | `'current' \| 'forecast' \| 'full'` | AccuWeather data scope: current conditions only, 5-day forecast only, or both (default: `full`) || `allowEmptyContent` | `boolean` | When `true`, the keyword works without additional user text (e.g. `nfl scores` with no date). When `false` or absent, the bot prompts the user to include content after the keyword. |
+| `keyword` | `string` | **Required.** The trigger word or phrase. |
+| `api` | `string` | **Required.** Target API: `comfyui`, `ollama`, `accuweather`, `nfl`, or `serpapi`. |
+| `timeout` | `number` | **Required.** Request timeout in seconds. |
+| `description` | `string` | **Required.** Human-readable description shown in the configurator. |
+| `abilityText` | `string` | Model-facing description of the ability. Falls back to `description` if omitted. Editable in the configurator detail row. |
+| `abilityWhen` | `string` | Model-facing guidance on when to choose this ability (e.g. "User asks about weather."). |
+| `abilityInputs` | `object` | Structured input guidance for the model. See sub-fields below. |
+| `finalOllamaPass` | `boolean` | Pass the API result through Ollama for conversational refinement using the global final-pass model. |
+| `allowEmptyContent` | `boolean` | When `true`, the keyword works without additional user text (e.g. `nfl scores` alone). When `false` or absent, the bot prompts the user to include content after the keyword. |
+| `accuweatherMode` | `'current' \| 'forecast' \| 'full'` | AccuWeather data scope (default: `full`). Only used when `api` is `accuweather`. |
+| `enabled` | `boolean` | Whether the keyword is active (default: `true`). |
+| `retry` | `object` | Per-keyword retry override. Sub-fields: `enabled` (bool), `maxRetries` (0-10), `model` (string), `prompt` (string). |
+| `contextFilterMinDepth` | `number` | Minimum context messages to always include (>= 1). |
+| `contextFilterMaxDepth` | `number` | Maximum context messages eligible for inclusion (>= 1). |
+
+**`abilityInputs` sub-fields:**
+
+| Sub-field | Type | Description |
+|-----------|------|-------------|
+| `mode` | `'explicit' \| 'implicit' \| 'mixed'` | **Required.** How inputs are provided: user must state them, inferred from context, or a mix. |
+| `required` | `string[]` | Required input names (e.g. `["location"]`). |
+| `optional` | `string[]` | Optional input names (e.g. `["date"]`). |
+| `inferFrom` | `string[]` | Sources to infer inputs from (e.g. `["current_message", "reply_target"]`). |
+| `validation` | `string` | Plain-language validation constraints for the model. |
+| `examples` | `string[]` | 1-2 short usage examples. |
+
+All keyword fields are surfaced in the configurator via an expandable detail row per keyword. Fields that already have data are auto-expanded on load.
+
 ### Global Final-Pass Model
 
 The `OLLAMA_FINAL_PASS_MODEL` environment variable (configurable in the configurator) specifies which Ollama model to use for all final-pass refinements. If not set, the default `OLLAMA_MODEL` is used.
