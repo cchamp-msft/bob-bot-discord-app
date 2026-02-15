@@ -79,6 +79,7 @@ import http from 'http';
 import { outputsServer } from '../src/utils/outputsServer';
 import { activityEvents } from '../src/utils/activityEvents';
 import { activityKeyManager } from '../src/utils/activityKeyManager';
+import { logger } from '../src/utils/logger';
 import type { Express } from 'express';
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -501,5 +502,32 @@ describe('OutputsServer', () => {
       const res = await fetch(`${rlBaseUrl}/health`);
       expect(res.status).toBe(200);
     });
+  });
+
+  // ── Global error handler (proxy 502 prevention) ────────────────
+
+  it('registers a global error handler to prevent proxy 502', () => {
+    const app = outputsServer.getApp();
+    // Express stores the error handler as a layer with arity 4 (err, req, res, next).
+    // Walk the router stack and confirm at least one 4-arg handler exists.
+    // Note: Express 5 uses `app.router.stack`, earlier versions use `app._router.stack`.
+    const stack: any[] = (app as any).router?.stack ?? (app as any)._router?.stack ?? [];
+    const errorHandlers = stack.filter(
+      (layer: any) => layer.handle && layer.handle.length === 4,
+    );
+    expect(errorHandlers.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // ── /api/activity auth-failure logging ───────────────────────
+
+  it('/api/activity logs debug info on auth failure', async () => {
+    (logger.logDebug as jest.Mock).mockClear();
+
+    await fetch(`${baseUrl}/api/activity?key=bad-key`);
+
+    expect(logger.logDebug).toHaveBeenCalledWith(
+      'outputs-server',
+      expect.stringContaining('Activity auth failed'),
+    );
   });
 });

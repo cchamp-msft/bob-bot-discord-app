@@ -815,6 +815,51 @@ If no output is being returned and upon checking ComfyUI logs you see an excepti
 - The configurator server never enables `trust proxy`. The outputs server enables it only when `OUTPUTS_TRUST_PROXY` is set — HTTPS is assumed to be handled entirely upstream
 - Restrict the configurator's upstream proxy route to trusted IP ranges / authentication at the proxy layer as an additional defence in depth
 
+#### Nginx example — Activity feed
+
+Below is a minimal Nginx `server` block for proxying the outputs server (including the `/activity` feed). Adjust `server_name` and certificate paths to match your environment.
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name bot.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/bot.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/bot.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3003;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Required `.env` settings when using the proxy:
+
+| Variable | Example | Purpose |
+|----------|---------|---------|
+| `OUTPUTS_TRUST_PROXY` | `1` | Trust one proxy hop so `req.ip` reflects the real client IP |
+| `OUTPUT_BASE_URL` | `https://bot.example.com` | Public URL used in Discord activity-key messages |
+
+Quick health checks after setup:
+
+```bash
+# Direct — should return {"status":"ok", ...}
+curl http://127.0.0.1:3003/health
+
+# Via proxy — same response over HTTPS
+curl https://bot.example.com/health
+
+# Activity page — should return HTML
+curl -I https://bot.example.com/activity
+
+# Activity API without key — should return 401
+curl https://bot.example.com/api/activity
+```
+
 ### Staging / deployment notes
 - The configurator server binds to `127.0.0.1` by default; the outputs server binds to `0.0.0.0`
 - Admin/configurator routes are guarded by `ADMIN_TOKEN` + localhost IP check; output files are served publicly

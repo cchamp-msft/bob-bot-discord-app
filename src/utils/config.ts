@@ -462,7 +462,21 @@ class Config {
   }
 
   getOutputBaseUrl(): string {
-    return process.env.OUTPUT_BASE_URL || 'http://localhost:3003';
+    const url = (process.env.OUTPUT_BASE_URL || 'http://localhost:3003').replace(/\/+$/, '');
+
+    // Warn when trust proxy is enabled but OUTPUT_BASE_URL still points at
+    // localhost — the links the bot sends to Discord won't be reachable from
+    // outside the host, which is almost certainly a misconfiguration.
+    if (this.getOutputsTrustProxy() && /localhost|127\.0\.0\.1/i.test(url)) {
+      logger.logWarn(
+        'config',
+        'OUTPUTS_TRUST_PROXY is enabled but OUTPUT_BASE_URL still points at localhost — '
+        + 'Activity links sent to Discord users will not be reachable. '
+        + 'Set OUTPUT_BASE_URL to your public proxy URL (e.g. https://bot.example.com).',
+      );
+    }
+
+    return url;
   }
 
   // ── Outputs-server rate limiting ─────────────────────────────

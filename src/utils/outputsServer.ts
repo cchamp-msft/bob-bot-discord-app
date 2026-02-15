@@ -1,5 +1,5 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
@@ -31,9 +31,17 @@ class OutputsServer {
 
     // Trust-proxy remains disabled by default. Enable only when running behind
     // a trusted reverse proxy and you need client-IP-aware rate limiting.
-    this.app.set('trust proxy', config.getOutputsTrustProxy());
+    const trustProxy = config.getOutputsTrustProxy();
+    this.app.set('trust proxy', trustProxy);
 
     this.setupRoutes();
+
+    // Log trust-proxy setting at construction time so operators can confirm
+    // the proxy configuration matches their deployment.
+    const proxyLabel = trustProxy === false ? 'disabled'
+      : trustProxy === true ? 'all proxies'
+      : `${trustProxy} hop(s)`;
+    logger.logDebug('system', `OUTPUTS-SERVER: trust proxy = ${proxyLabel}`);
   }
 
   private setupRoutes(): void {
@@ -60,6 +68,11 @@ class OutputsServer {
       standardHeaders: true,
       legacyHeaders: false,
       message: { error: 'Too Many Requests', message: 'Rate limit exceeded. Please try again later.' },
+      // Explicit key generator — when trust proxy is enabled, req.ip is the
+      // real client IP (from X-Forwarded-For); when disabled, req.ip is the
+      // proxy/direct-connect IP.  ipKeyGenerator normalises IPv6 subnets to
+      // prevent per-address bypass.
+      keyGenerator: (req: Request) => ipKeyGenerator(req.ip ?? req.socket.remoteAddress ?? 'unknown'),
     });
 
     // ── Activity feed (key-protected) ───────────────────────────────
@@ -116,6 +129,7 @@ class OutputsServer {
       }
 
       if (!authenticated) {
+        logger.logDebug('outputs-server', `Activity auth failed — ip=${req.ip}, forwarded-for=${req.headers['x-forwarded-for'] ?? 'none'}`);
         res.status(401).json({
           error: 'Unauthorized',
           message: 'A valid activity key is required. Send "activity_key" to the bot in Discord to get one.',
@@ -141,6 +155,17 @@ class OutputsServer {
     // 404 handler
     this.app.use((_req, res) => {
       res.status(404).json({ error: 'Not found' });
+    });
+
+    // Global error handler — ensures every request gets a JSON response even
+    // when an unexpected error occurs.  Without this, Express may drop the
+    // connection, causing a reverse proxy (e.g. Nginx) to return 502.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    this.app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+      logger.logError('outputs-server', `Unhandled error on ${req.method} ${req.path}: ${err.message}`);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Internal Server Error' });
+      }
     });
   }
 
