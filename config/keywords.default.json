@@ -5,7 +5,8 @@
       "api": "ollama",
       "timeout": 120,
       "description": "Explain what the bot can help with and how to use each capability",
-      "builtin": true
+      "builtin": true,
+      "allowEmptyContent": true
     },
     {
       "keyword": "activity_key",
@@ -20,14 +21,28 @@
       "api": "comfyui",
       "timeout": 600,
       "description": "Generate image using ComfyUI",
-      "abilityText": "Generate image using ComfyUI"
+      "abilityText": "Generate image using ComfyUI",
+      "abilityWhen": "User wants an image generated.",
+      "abilityInputs": {
+        "mode": "implicit",
+        "inferFrom": ["reply_target", "current_message"],
+        "validation": "Use the reply target text if present; otherwise use descriptive text from the current message. If no usable image prompt text can be inferred, ask the user what they want generated.",
+        "examples": ["generate a sunset over mountains"]
+      }
     },
     {
       "keyword": "imagine",
       "api": "comfyui",
       "timeout": 600,
       "description": "Generate image using ComfyUI",
-      "abilityText": "Generate image using ComfyUI"
+      "abilityText": "Generate image using ComfyUI",
+      "abilityWhen": "User wants an image generated using an alternate keyword.",
+      "abilityInputs": {
+        "mode": "implicit",
+        "inferFrom": ["reply_target", "current_message"],
+        "validation": "Use the reply target text if present; otherwise summarize the context into a relevant description for text to image.",
+        "examples": ["imagine a futuristic cityscape"]
+      }
     },
     {
       "keyword": "ask",
@@ -51,6 +66,13 @@
       "timeout": 60,
       "description": "Get current weather conditions and 5-day forecast",
       "abilityText": "Get current weather conditions and 5-day forecast",
+      "abilityWhen": "User asks about weather or current conditions for a location.",
+      "abilityInputs": {
+        "mode": "explicit",
+        "required": ["location"],
+        "validation": "Location must be a valid worldwide city name, region, or United States postal code.",
+        "examples": ["weather Dallas", "weather 90210", "weather London, UK"]
+      },
       "contextFilterMaxDepth": 1
     },
     {
@@ -58,6 +80,13 @@
       "api": "accuweather",
       "timeout": 60,
       "description": "Get 5-day weather forecast",
+      "abilityWhen": "User asks specifically for a multi-day weather forecast.",
+      "abilityInputs": {
+        "mode": "explicit",
+        "required": ["location"],
+        "validation": "Location must be a valid worldwide city name, region, or United States postal code.",
+        "examples": ["forecast Seattle"]
+      },
       "contextFilterMaxDepth": 1
     },
     {
@@ -65,6 +94,13 @@
       "api": "accuweather",
       "timeout": 60,
       "description": "Get current weather conditions",
+      "abilityWhen": "User asks specifically for current weather conditions only.",
+      "abilityInputs": {
+        "mode": "explicit",
+        "required": ["location"],
+        "validation": "Location must be a valid worldwide city name, region, or United States postal code.",
+        "examples": ["conditions Chicago"]
+      },
       "contextFilterMaxDepth": 1
     },
     {
@@ -73,6 +109,13 @@
       "timeout": 360,
       "description": "Get an AI-powered opinionated weather report",
       "abilityText": "Get an AI-powered opinionated weather report",
+      "abilityWhen": "User wants an opinionated or narrative weather report.",
+      "abilityInputs": {
+        "mode": "explicit",
+        "required": ["location"],
+        "validation": "Location must be a valid worldwide city name, region, or United States postal code.",
+        "examples": ["weather report Portland"]
+      },
       "finalOllamaPass": true,
       "contextFilterMaxDepth": 1
     },
@@ -82,7 +125,15 @@
       "timeout": 30,
       "description": "Get current NFL game scores. Optionally provide a date (YYYYMMDD or YYYY-MM-DD) to look up scores for a specific date; otherwise returns the most recent scoreboard.",
       "abilityText": "Get current NFL game scores. Optionally provide a date (YYYYMMDD or YYYY-MM-DD) to look up scores for a specific date; otherwise returns the most recent scoreboard.",
-      "finalOllamaPass": true
+      "abilityWhen": "User asks about NFL scores or game results.",
+      "abilityInputs": {
+        "mode": "mixed",
+        "optional": ["date"],
+        "inferFrom": ["current_message"],
+        "validation": "Date must be YYYYMMDD or YYYY-MM-DD. If omitted, returns the most recent scoreboard."
+      },
+      "finalOllamaPass": true,
+      "allowEmptyContent": true
     },
     {
       "keyword": "nfl news",
@@ -90,7 +141,15 @@
       "timeout": 30,
       "description": "Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl news chiefs').",
       "abilityText": "Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl news chiefs').",
-      "finalOllamaPass": true
+      "abilityWhen": "User asks about NFL news or headlines.",
+      "abilityInputs": {
+        "mode": "mixed",
+        "optional": ["filter"],
+        "inferFrom": ["current_message"],
+        "validation": "Filter is an optional NFL-related term to narrow results (e.g. team name). If omitted, returns all headlines."
+      },
+      "finalOllamaPass": true,
+      "allowEmptyContent": true
     },
     {
       "keyword": "analyze",
@@ -106,6 +165,14 @@
       "timeout": 60,
       "description": "Search the web for current information using Google",
       "abilityText": "Search the web for current information using Google",
+      "abilityWhen": "User needs current or real-time information from the web.",
+      "abilityInputs": {
+        "mode": "explicit",
+        "required": ["query"],
+        "inferFrom": ["current_message"],
+        "validation": "Query should be a concise search term or question suitable for a web search engine.",
+        "examples": ["search latest TypeScript release", "search Super Bowl winner 2026"]
+      },
       "finalOllamaPass": true,
       "contextFilterMaxDepth": 1
     },
@@ -114,7 +181,14 @@
       "api": "serpapi",
       "timeout": 60,
       "description": "Get a second opinion by searching the web using Google",
-      "abilityText": "Get a second opinion by searching the web using Google"
+      "abilityText": "Get a second opinion by searching the web using Google",
+      "abilityWhen": "User wants to verify or cross-check information with a web search.",
+      "abilityInputs": {
+        "mode": "explicit",
+        "required": ["query"],
+        "inferFrom": ["current_message"],
+        "validation": "Query should capture the claim or topic the user wants verified."
+      }
     },
     {
       "keyword": "find content",
@@ -122,6 +196,13 @@
       "timeout": 60,
       "description": "Find pertinent web content related to a topic using Google",
       "abilityText": "Find pertinent web content related to a topic using Google",
+      "abilityWhen": "User wants to discover web content, articles, or resources about a topic.",
+      "abilityInputs": {
+        "mode": "explicit",
+        "required": ["query"],
+        "inferFrom": ["current_message"],
+        "validation": "Query should describe the topic or subject the user wants content about."
+      },
       "contextFilterMaxDepth": 1
     }
   ]

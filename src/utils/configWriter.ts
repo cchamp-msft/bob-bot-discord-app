@@ -316,8 +316,8 @@ class ConfigWriter {
         if (entry.abilityText) clean.abilityText = entry.abilityText;
         if (entry.abilityWhen) clean.abilityWhen = entry.abilityWhen;
         if (entry.abilityInputs) clean.abilityInputs = entry.abilityInputs;
-        if (entry.finalOllamaPass) clean.finalOllamaPass = entry.finalOllamaPass;
-        if (entry.allowEmptyContent) clean.allowEmptyContent = entry.allowEmptyContent;
+        if (entry.finalOllamaPass !== undefined) clean.finalOllamaPass = entry.finalOllamaPass;
+        if (entry.allowEmptyContent !== undefined) clean.allowEmptyContent = entry.allowEmptyContent;
         if (entry.accuweatherMode) clean.accuweatherMode = entry.accuweatherMode;
         if (entry.enabled === false) clean.enabled = false;
         if (entry.retry) {

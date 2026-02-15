@@ -481,6 +481,30 @@ describe('ConfigWriter', () => {
       expect(content.keywords[0].contextFilterMaxDepth).toBeUndefined();
     });
 
+    it('should persist allowEmptyContent=true', async () => {
+      await configWriter.updateKeywords([
+        { ...validKeyword, allowEmptyContent: true },
+      ]);
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].allowEmptyContent).toBe(true);
+    });
+
+    it('should persist allowEmptyContent=false', async () => {
+      await configWriter.updateKeywords([
+        { ...validKeyword, allowEmptyContent: false },
+      ]);
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].allowEmptyContent).toBe(false);
+    });
+
+    it('should persist finalOllamaPass=false explicitly', async () => {
+      await configWriter.updateKeywords([
+        { ...validKeyword, finalOllamaPass: false },
+      ]);
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].finalOllamaPass).toBe(false);
+    });
+
     it('should reject custom help keyword when built-in help is enabled', async () => {
       const builtinHelp = { keyword: 'help', api: 'ollama' as const, timeout: 30, description: 'Help', builtin: true };
       const customHelp = { keyword: 'help', api: 'ollama' as const, timeout: 300, description: 'Custom help' };
