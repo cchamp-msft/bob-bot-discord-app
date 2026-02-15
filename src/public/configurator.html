@@ -263,6 +263,10 @@
     border-radius: 3px;
   }
   .kw-expand-btn:hover { color: var(--text); background: var(--surface2); }
+  /* Visual separator between keyword entry groups (main row + detail row) */
+  .kw-table tr.kw-separator-top > td {
+    border-top: 1px solid var(--border);
+  }
 
   /* Bot control bar */
   .bot-controls {
@@ -1126,8 +1130,6 @@
     // Derive detail-field values
     const ai = kw?.abilityInputs || {};
     const retry = kw?.retry || {};
-    const hasDetails = !!(kw?.abilityText || kw?.abilityWhen || kw?.abilityInputs || kw?.allowEmptyContent !== undefined || kw?.accuweatherMode || kw?.retry);
-
     tr.innerHTML = `
       <td style="text-align:center"><input type="checkbox" class="kw-enabled" ${isEnabled ? 'checked' : ''} title="${isBuiltin ? 'Enable or disable this built-in keyword' : 'Enable or disable this keyword'}"></td>
       <td><input type="text" class="kw-keyword" value="${esc(kw?.keyword || '')}" placeholder="keyword">${isBuiltin ? '<span class="kw-builtin-badge">built-in</span>' : ''}</td>
@@ -1153,7 +1155,7 @@
 
     // Details row
     const detailTr = document.createElement('tr');
-    detailTr.className = 'kw-details-row' + (hasDetails ? ' open' : '');
+    detailTr.className = 'kw-details-row';
     const colCount = tr.children.length;
     detailTr.innerHTML = `
       <td colspan="${colCount}">
@@ -1255,13 +1257,13 @@
     tr._detailRow = detailTr;
     detailTr._mainRow = tr;
 
+    // Add visual separator between keyword entries (skip the first row)
+    if (tbody.children.length > 0) {
+      tr.classList.add('kw-separator-top');
+    }
+
     tbody.appendChild(tr);
     tbody.appendChild(detailTr);
-
-    // Auto-open details row if it has configured data
-    if (hasDetails) {
-      tr.querySelector('.kw-expand-btn').textContent = '▾';
-    }
   }
 
   function toggleKwDetails(btn) {
