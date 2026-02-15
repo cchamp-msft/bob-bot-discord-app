@@ -102,6 +102,7 @@ jest.mock('../src/utils/activityEvents', () => ({
     emitError: jest.fn(),
     emitWarning: jest.fn(),
     emitContextDecision: jest.fn(),
+    emitFinalPassThought: jest.fn(),
     getRecent: jest.fn(() => []),
     clear: jest.fn(),
   },
@@ -3685,5 +3686,12 @@ describe('MessageHandler activity_key keyword', () => {
       'success', 'system',
       expect.stringContaining('ACTIVITY-KEY: Key issued to')
     );
+  });
+
+  it('should NOT emit message_received activity event for activity_key', async () => {
+    const msg = createDmMsg('activity_key');
+    await messageHandler.handleMessage(msg);
+
+    expect(activityEvents.emitMessageReceived).not.toHaveBeenCalled();
   });
 });

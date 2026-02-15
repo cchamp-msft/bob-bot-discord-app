@@ -65,6 +65,7 @@ jest.mock('../src/utils/activityEvents', () => ({
     emitError: jest.fn(),
     emitWarning: jest.fn(),
     emitContextDecision: jest.fn(),
+    emitFinalPassThought: jest.fn(),
     getRecent: jest.fn(() => []),
     clear: jest.fn(),
   },
@@ -76,6 +77,7 @@ import { KeywordConfig } from '../src/utils/config';
 import { accuweatherClient } from '../src/api/accuweatherClient';
 import { apiManager } from '../src/api';
 import { config } from '../src/utils/config';
+import { activityEvents } from '../src/utils/activityEvents';
 
 const mockExecute = requestQueue.execute as jest.MockedFunction<typeof requestQueue.execute>;
 const mockApiExecute = apiManager.executeRequest as jest.MockedFunction<typeof apiManager.executeRequest>;
@@ -668,6 +670,51 @@ describe('ApiRouter', () => {
       expect(result.finalApi).toBe('ollama');
       expect(result.stages).toHaveLength(2);
       expect(mockExecute).toHaveBeenCalledTimes(2);
+    });
+
+    it('should emit final-pass thought event before final Ollama call', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'generate',
+        api: 'comfyui',
+        timeout: 300,
+        description: 'Generate image',
+        finalOllamaPass: true,
+      };
+
+      // Primary: ComfyUI
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { images: ['http://example.com/img.png'] },
+      });
+
+      // Final pass: Ollama
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Beautiful image!' },
+      });
+
+      await executeRoutedRequest(keyword, 'draw a cat', 'testuser');
+
+      expect(activityEvents.emitFinalPassThought).toHaveBeenCalledWith('generate');
+    });
+
+    it('should not emit final-pass thought when primary API is Ollama', async () => {
+      const keyword: KeywordConfig = {
+        keyword: 'chat',
+        api: 'ollama',
+        timeout: 300,
+        description: 'Chat',
+        finalOllamaPass: true,
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Direct response' },
+      });
+
+      await executeRoutedRequest(keyword, 'hello', 'testuser');
+
+      expect(activityEvents.emitFinalPassThought).not.toHaveBeenCalled();
     });
 
     it('should skip final Ollama pass when primary API is already Ollama', async () => {

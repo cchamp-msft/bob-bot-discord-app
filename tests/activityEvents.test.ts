@@ -120,16 +120,18 @@ describe('ActivityEventStore', () => {
   // ── Ring buffer capacity ─────────────────────────────────────
 
   describe('capacity enforcement', () => {
-    it('evicts oldest events when buffer exceeds capacity', () => {
-      // Default capacity is 100
-      for (let i = 0; i < 110; i++) {
+    it('grooms buffer to 30 events (plus the newly pushed event)', () => {
+      // Grooming limit is 30; emit trims before pushing each new event.
+      // After 50 emits the buffer stays at 31 (30 after groom + 1 new push).
+      for (let i = 0; i < 50; i++) {
         activityEvents.emit('message_received', `event-${i}`);
       }
-      expect(activityEvents.size).toBe(100);
+      expect(activityEvents.size).toBe(31);
 
       const events = activityEvents.getRecent(200);
-      expect(events[0].narrative).toBe('event-10');
-      expect(events[events.length - 1].narrative).toBe('event-109');
+      // The newest event is event-49, and the oldest retained is 30 back
+      expect(events[events.length - 1].narrative).toBe('event-49');
+      expect(events[0].narrative).toBe('event-19');
     });
   });
 
@@ -173,10 +175,9 @@ describe('ActivityEventStore', () => {
       expect(ev.narrative).not.toContain('user');
     });
 
-    it('redacts sensitive content in message', () => {
+    it('preserves URLs in message content', () => {
       const ev = activityEvents.emitMessageReceived(true, 'check https://secret.api/v1 please');
-      expect(ev.narrative).not.toContain('https://secret.api/v1');
-      expect(ev.narrative).toContain('[redacted-url]');
+      expect(ev.narrative).toContain('https://secret.api/v1');
       expect(ev.narrative).toContain('check');
     });
   });
@@ -238,10 +239,9 @@ describe('ActivityEventStore', () => {
       expect(ev.metadata).toEqual({ api: 'ollama', location: 'server', characterCount: 12 });
     });
 
-    it('redacts sensitive content in response text', () => {
+    it('preserves URLs in response text', () => {
       const ev = activityEvents.emitBotReply('serpapi', 'Visit https://example.com for details', false);
-      expect(ev.narrative).not.toContain('https://example.com');
-      expect(ev.narrative).toContain('[redacted-url]');
+      expect(ev.narrative).toContain('https://example.com');
     });
   });
 
@@ -273,10 +273,10 @@ describe('ActivityEventStore', () => {
       expect(ev.narrative).toContain('something went wrong');
     });
 
-    it('custom context is included and sanitised', () => {
+    it('custom context is included with URLs preserved', () => {
       const ev = activityEvents.emitError('API timeout at https://secret.api/v1');
       expect(ev.narrative).toContain('API timeout');
-      expect(ev.narrative).not.toContain('https://secret.api/v1');
+      expect(ev.narrative).toContain('https://secret.api/v1');
     });
   });
 
@@ -297,9 +297,9 @@ describe('ActivityEventStore', () => {
 // ── Sanitisation unit tests ──────────────────────────────────────
 
 describe('redactSensitive', () => {
-  it('removes URLs', () => {
+  it('preserves URLs', () => {
     expect(redactSensitive('see https://api.example.com/v1/key?x=1 for details'))
-      .toBe('see [redacted-url] for details');
+      .toBe('see https://api.example.com/v1/key?x=1 for details');
   });
 
   it('removes Discord snowflake IDs', () => {
@@ -318,11 +318,11 @@ describe('redactSensitive', () => {
     expect(redactSensitive(text)).toBe(text);
   });
 
-  it('handles multiple sensitive items', () => {
+  it('handles multiple sensitive items but preserves URLs', () => {
     const input = 'user 12345678901234567890 at https://evil.com with token ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12';
     const result = redactSensitive(input);
     expect(result).not.toContain('12345678901234567890');
-    expect(result).not.toContain('https://evil.com');
+    expect(result).toContain('https://evil.com');
     expect(result).not.toContain('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12');
   });
 });
@@ -389,5 +389,72 @@ describe('emitContextDecision', () => {
   it('calculates percentage correctly', () => {
     const ev = activityEvents.emitContextDecision(1, 4, 'search');
     expect(ev.narrative).toContain('25%');
+  });
+});
+
+// ── Final-pass thought emitter ──────────────────────────────────
+
+describe('emitFinalPassThought', () => {
+  beforeEach(() => {
+    activityEvents.clear();
+  });
+
+  it('emits a routing_decision with final_pass subtype', () => {
+    const ev = activityEvents.emitFinalPassThought('weather');
+    expect(ev.type).toBe('routing_decision');
+    expect(ev.metadata.subtype).toBe('final_pass');
+    expect(ev.metadata.keyword).toBe('weather');
+    expect(ev.narrative).toBe('I am considering my response');
+  });
+});
+
+// ── Auto-grooming ───────────────────────────────────────────────
+
+describe('Auto-grooming', () => {
+  beforeEach(() => {
+    activityEvents.clear();
+  });
+
+  it('trims events older than 4 hours on next emit', () => {
+    // Manually emit an event and back-date its timestamp via the buffer.
+    // We use the fact that emit returns the event and it lives in the buffer.
+    const old = activityEvents.emit('message_received', 'stale');
+
+    // Back-date the event to 5 hours ago
+    const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
+    (old as any).timestamp = fiveHoursAgo;
+
+    // Emit another event — grooming should remove the stale one
+    activityEvents.emit('message_received', 'fresh');
+
+    const events = activityEvents.getRecent(200);
+    expect(events).toHaveLength(1);
+    expect(events[0].narrative).toBe('fresh');
+  });
+
+  it('keeps events younger than 4 hours', () => {
+    const recent = activityEvents.emit('message_received', 'recent');
+
+    // Back-date to 3 hours ago (within window)
+    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    (recent as any).timestamp = threeHoursAgo;
+
+    activityEvents.emit('message_received', 'new');
+
+    const events = activityEvents.getRecent(200);
+    expect(events).toHaveLength(2);
+  });
+
+  it('trims to 30 events when count exceeds limit', () => {
+    // Emit 35 events — after grooming the buffer should hold at most 31
+    // (30 after groom + 1 new push)
+    for (let i = 0; i < 35; i++) {
+      activityEvents.emit('message_received', `ev-${i}`);
+    }
+    expect(activityEvents.size).toBeLessThanOrEqual(31);
+
+    const events = activityEvents.getRecent(200);
+    // Most recent event is always retained
+    expect(events[events.length - 1].narrative).toBe('ev-34');
   });
 });

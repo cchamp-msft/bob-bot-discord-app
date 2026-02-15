@@ -10,6 +10,7 @@ import {
   StageResult,
   extractStageResult,
 } from './responseTransformer';
+import { activityEvents } from './activityEvents';
 import {
   assembleReprompt,
   escapeXmlContent,
@@ -291,6 +292,7 @@ export async function executeRoutedRequest(
     }
 
     logger.log('success', 'system', 'API-ROUTING: Final Ollama refinement pass');
+    activityEvents.emitFinalPassThought(keywordConfig.keyword);
 
     // Apply context filter for the final pass
     let filteredHistory = conversationHistory;

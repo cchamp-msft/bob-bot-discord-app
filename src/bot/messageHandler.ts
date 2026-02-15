@@ -115,9 +115,6 @@ class MessageHandler {
     //   <a:name:123> — animated emoji
     content = content.replace(/<@[!&]?\d+>|<#\d+>|<a?:\w+:\d+>/g, '').trim();
 
-    // Emit activity event with cleaned message content (no usernames or IDs)
-    activityEvents.emitMessageReceived(isDM, content);
-
     if (!content) {
       logger.logIgnored(requester, 'Empty message after mention removal');
       await message.reply(
@@ -129,6 +126,14 @@ class MessageHandler {
     // Find matching keyword at message start — fall back to two-stage Ollama evaluation
     let keywordConfig = this.findKeyword(content);
     const keywordMatched = keywordConfig !== undefined;
+
+    // Emit activity event with cleaned message content (no usernames or IDs).
+    // Suppress for standalone activity_key requests — those should not appear
+    // in the public activity feed.
+    const isActivityKey = keywordMatched && keywordConfig!.keyword.toLowerCase() === 'activity_key';
+    if (!isActivityKey) {
+      activityEvents.emitMessageReceived(isDM, content);
+    }
 
     if (keywordConfig) {
       logger.log('success', 'system', `KEYWORD: Matched "${keywordConfig.keyword}" at message start`);

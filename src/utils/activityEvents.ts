@@ -90,8 +90,6 @@ export function sanitizeLocation(isDM: boolean): LocationKind {
  */
 export function redactSensitive(text: string): string {
   let result = text;
-  // Remove URLs
-  result = result.replace(/https?:\/\/[^\s"')]+/gi, '[redacted-url]');
   // Remove Discord-style snowflake IDs (17-20 digit numbers)
   result = result.replace(/\b\d{17,20}\b/g, '[redacted-id]');
   // Remove API-key-like tokens (long hex/base64 strings)
@@ -103,6 +101,12 @@ export function redactSensitive(text: string): string {
 
 const DEFAULT_BUFFER_CAPACITY = 100;
 const DEFAULT_RECENT_COUNT = 50;
+
+/** Maximum age of an event before it is groomed from the buffer. */
+const MAX_EVENT_AGE_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+/** Soft grooming threshold — oldest events are trimmed when count exceeds this. */
+const GROOMING_EVENT_LIMIT = 30;
 
 /** Milliseconds within which identical routing decisions are suppressed. */
 const ROUTING_DEDUPE_WINDOW_MS = 5_000;
@@ -121,6 +125,22 @@ class ActivityEventStore {
   }
 
   /**
+   * Remove events older than `MAX_EVENT_AGE_MS` and trim to
+   * `GROOMING_EVENT_LIMIT`, whichever is more aggressive.
+   * Called automatically inside `emit()` so the buffer stays tidy
+   * without requiring external scheduling.
+   */
+  private groom(): void {
+    const cutoff = Date.now() - MAX_EVENT_AGE_MS;
+    this.buffer = this.buffer.filter(
+      e => new Date(e.timestamp).getTime() >= cutoff
+    );
+    if (this.buffer.length > GROOMING_EVENT_LIMIT) {
+      this.buffer = this.buffer.slice(-GROOMING_EVENT_LIMIT);
+    }
+  }
+
+  /**
    * Record a new activity event.
    * The narrative is always run through the redaction safety net.
    */
@@ -130,6 +150,9 @@ class ActivityEventStore {
     metadata: Record<string, string | number | boolean> = {},
     imageUrls: string[] = []
   ): ActivityEvent {
+    // Groom stale / excess events before adding the new one
+    this.groom();
+
     const event: ActivityEvent = {
       id: this.nextId++,
       timestamp: new Date().toISOString(),
@@ -139,6 +162,8 @@ class ActivityEventStore {
       imageUrls,
     };
     this.buffer.push(event);
+
+    // Hard cap — safety net in case grooming thresholds are relaxed later
     if (this.buffer.length > this.capacity) {
       this.buffer.splice(0, this.buffer.length - this.capacity);
     }
@@ -243,6 +268,19 @@ class ActivityEventStore {
       ? `Hmm, ${redactSensitive(context)}`
       : 'Hmm, that took longer than expected';
     return this.emit('warning', narrative);
+  }
+
+  // ── Final-pass thought ──────────────────────────────────────
+
+  /**
+   * Emit a thought indicating the bot is performing a final Ollama
+   * refinement pass on an API result.
+   */
+  emitFinalPassThought(keyword: string): ActivityEvent {
+    return this.emit('routing_decision', 'I am considering my response', {
+      subtype: 'final_pass',
+      keyword,
+    });
   }
 
   // ── Context evaluation thought ──────────────────────────────
