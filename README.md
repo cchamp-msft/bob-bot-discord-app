@@ -771,7 +771,7 @@ If no output is being returned and upon checking ComfyUI logs you see an excepti
 - If the configurator must be reachable through a reverse proxy (e.g. for remote administration), **set `ADMIN_TOKEN`** to a strong random value (`openssl rand -hex 32`). Without it the only protection is the localhost IP check, which can be bypassed if the proxy forwards traffic from the same host
 - Never expose the configurator/admin port directly to the public internet. Keep it private and enforce strict IP filtering + authentication in the proxy layer
 - The outputs server (port 3003) is designed for public access — if placed behind a TLS-terminating proxy, set `OUTPUT_BASE_URL` to the external HTTPS URL so generated image links work correctly (e.g. `OUTPUT_BASE_URL=https://cdn.example.com`). The activity feed (`/activity`) serves static HTML publicly; `GET /api/activity` requires a valid rotating key obtained from the bot via Discord
-- Neither server enables `trust proxy` or reads `X-Forwarded-Proto` — HTTPS is assumed to be handled entirely upstream
+- The configurator server never enables `trust proxy`. The outputs server enables it only when `OUTPUTS_TRUST_PROXY` is set — HTTPS is assumed to be handled entirely upstream
 - Restrict the configurator's upstream proxy route to trusted IP ranges / authentication at the proxy layer as an additional defence in depth
 
 ### Staging / deployment notes

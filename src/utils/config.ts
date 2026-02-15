@@ -414,7 +414,8 @@ class Config {
    * Accepts:
    *  - "false" (default): trust proxy disabled
    *  - "true": trust all proxies
-   *  - integer string (e.g. "1", "2"): trust N proxy hops
+   *  - positive integer string (e.g. "1", "2"): trust N proxy hops
+   *  - "0" is normalized to false (zero hops = disabled)
    */
   getOutputsTrustProxy(): boolean | number {
     const raw = (process.env.OUTPUTS_TRUST_PROXY || '').trim().toLowerCase();
@@ -422,7 +423,8 @@ class Config {
     if (raw === 'true') return true;
     if (/^\d+$/.test(raw)) {
       const hops = parseInt(raw, 10);
-      return Number.isFinite(hops) ? hops : false;
+      if (Number.isFinite(hops) && hops > 0) return hops;
+      return false;
     }
     logger.logWarn(
       'config',

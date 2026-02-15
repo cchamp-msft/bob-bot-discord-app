@@ -178,6 +178,30 @@ describe('OutputsServer', () => {
     expect(app.get('trust proxy')).toBe(false);
   });
 
+  it.each([
+    { value: true, label: 'true' },
+    { value: 1, label: 'numeric hop count (1)' },
+    { value: 2, label: 'numeric hop count (2)' },
+  ])('applies trust proxy = $label when configured', ({ value }) => {
+    let isolatedApp: Express;
+    jest.isolateModules(() => {
+      // Override the mock for this isolated module load
+      jest.mock('../src/utils/config', () => ({
+        config: {
+          getOutputsPort: () => 3003,
+          getOutputsHost: () => '0.0.0.0',
+          getOutputsTrustProxy: () => value,
+          getOutputBaseUrl: () => 'http://localhost:3003',
+          getOutputsRateLimitWindowMs: () => 60000,
+          getOutputsRateLimitMax: () => 5,
+        },
+      }));
+      const { outputsServer: freshServer } = require('../src/utils/outputsServer');
+      isolatedApp = freshServer.getApp();
+    });
+    expect(isolatedApp!.get('trust proxy')).toBe(value);
+  });
+
   // ── Security headers ─────────────────────────────────────────
 
   it('sets X-Content-Type-Options on responses', async () => {

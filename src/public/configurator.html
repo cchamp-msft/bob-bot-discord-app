@@ -635,7 +635,8 @@
         </div>
         <div class="field narrow" style="margin-top:10px">
           <label>Outputs Trust Proxy <span class="note">restart · false, true, or proxy hop count (e.g. 1)</span></label>
-          <input type="text" id="outputs_trust_proxy" data-env="OUTPUTS_TRUST_PROXY" placeholder="false">
+          <input type="text" id="outputs_trust_proxy" data-env="OUTPUTS_TRUST_PROXY" placeholder="false"
+                 pattern="^(false|true|[1-9]\d*)$" title="Enter false, true, or a positive integer hop count">
         </div>
         <div class="field narrow" style="margin-top:10px">
           <label>Activity Key TTL (seconds) <span class="note">how long a key stays valid · default 300</span></label>
@@ -1165,6 +1166,14 @@
   async function saveConfig() {
     const saveBtn = document.getElementById('saveBtn');
     const saveMsg = document.getElementById('saveMsg');
+
+    // Check native input validity (e.g. pattern mismatches) before saving
+    const invalidInput = document.querySelector('[data-env]:invalid');
+    if (invalidInput) {
+      invalidInput.reportValidity();
+      return;
+    }
+
     saveBtn.disabled = true;
     saveMsg.textContent = 'Saving…';
     saveMsg.className = 'msg';

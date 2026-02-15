@@ -7,6 +7,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { logger } from '../src/utils/logger';
 
 // We can't easily test the singleton since it loads on import.
 // Instead we test the Config class directly by re-creating instances
@@ -110,11 +111,16 @@ describe('Config', () => {
       expect(config.getOutputsTrustProxy()).toBe(1);
     });
 
+    it('getOutputsTrustProxy should normalize "0" to false', () => {
+      process.env.OUTPUTS_TRUST_PROXY = '0';
+      expect(config.getOutputsTrustProxy()).toBe(false);
+    });
+
     it('getOutputsTrustProxy should fall back to false on invalid value', () => {
       process.env.OUTPUTS_TRUST_PROXY = 'abc';
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = jest.spyOn(logger, 'logWarn').mockImplementation(() => {});
       expect(config.getOutputsTrustProxy()).toBe(false);
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('OUTPUTS_TRUST_PROXY'));
+      expect(warnSpy).toHaveBeenCalledWith('config', expect.stringContaining('OUTPUTS_TRUST_PROXY'));
       warnSpy.mockRestore();
     });
 
