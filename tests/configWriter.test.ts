@@ -505,6 +505,59 @@ describe('ConfigWriter', () => {
       expect(content.keywords[0].finalOllamaPass).toBe(false);
     });
 
+    it('should reject non-boolean allowEmptyContent', async () => {
+      await expect(
+        configWriter.updateKeywords([
+          { ...validKeyword, allowEmptyContent: 'yes' as any },
+        ])
+      ).rejects.toThrow('invalid allowEmptyContent');
+    });
+
+    it('should persist abilityWhen and abilityInputs together', async () => {
+      const full = {
+        ...validKeyword,
+        abilityText: 'Get weather data',
+        abilityWhen: 'User asks about weather.',
+        abilityInputs: {
+          mode: 'explicit' as const,
+          required: ['location'],
+          validation: 'Must be a city name or postal code.',
+          examples: ['weather Dallas'],
+        },
+        allowEmptyContent: false,
+      };
+      await configWriter.updateKeywords([full]);
+
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0]).toMatchObject({
+        abilityText: 'Get weather data',
+        abilityWhen: 'User asks about weather.',
+        abilityInputs: {
+          mode: 'explicit',
+          required: ['location'],
+          validation: 'Must be a city name or postal code.',
+          examples: ['weather Dallas'],
+        },
+        allowEmptyContent: false,
+      });
+    });
+
+    it('should persist retry configuration', async () => {
+      const full = {
+        ...validKeyword,
+        retry: { enabled: true, maxRetries: 3, model: 'llama3', prompt: 'try again' },
+      };
+      await configWriter.updateKeywords([full]);
+
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].retry).toEqual({
+        enabled: true,
+        maxRetries: 3,
+        model: 'llama3',
+        prompt: 'try again',
+      });
+    });
+
     it('should reject custom help keyword when built-in help is enabled', async () => {
       const builtinHelp = { keyword: 'help', api: 'ollama' as const, timeout: 30, description: 'Help', builtin: true };
       const customHelp = { keyword: 'help', api: 'ollama' as const, timeout: 300, description: 'Custom help' };

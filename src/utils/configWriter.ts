@@ -246,6 +246,9 @@ class ConfigWriter {
         if (entry.finalOllamaPass !== undefined && typeof entry.finalOllamaPass !== 'boolean') {
           throw new Error(`Keyword "${entry.keyword}" has invalid finalOllamaPass — must be a boolean`);
         }
+        if (entry.allowEmptyContent !== undefined && typeof entry.allowEmptyContent !== 'boolean') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid allowEmptyContent — must be a boolean`);
+        }
         if (entry.accuweatherMode !== undefined && entry.accuweatherMode !== 'current' && entry.accuweatherMode !== 'forecast' && entry.accuweatherMode !== 'full') {
           throw new Error(`Keyword "${entry.keyword}" has invalid accuweatherMode "${entry.accuweatherMode}" — must be "current", "forecast", or "full"`);
         }

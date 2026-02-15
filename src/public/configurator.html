@@ -212,6 +212,57 @@
     margin-left: 4px;
     vertical-align: middle;
   }
+  /* Keyword detail rows (expandable) */
+  .kw-details-row { display: none; }
+  .kw-details-row.open { display: table-row; }
+  .kw-details-row td { padding: 6px 8px 10px; }
+  .kw-details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px 12px;
+    font-size: 0.82em;
+  }
+  .kw-details-grid label {
+    display: block;
+    font-size: 0.75em;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+  }
+  .kw-details-grid input,
+  .kw-details-grid select,
+  .kw-details-grid textarea {
+    width: 100%;
+    padding: 5px 7px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    font-size: 0.92em;
+    font-family: inherit;
+  }
+  .kw-details-grid textarea { resize: vertical; min-height: 28px; }
+  .kw-details-grid .field-full { grid-column: 1 / -1; }
+  .kw-details-grid .field-half { grid-column: span 1; }
+  .kw-details-grid .section-label {
+    grid-column: 1 / -1;
+    font-size: 0.72em;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+    border-top: 1px solid var(--border);
+    padding-top: 4px;
+  }
+  .kw-expand-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 0.85em;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .kw-expand-btn:hover { color: var(--text); background: var(--surface2); }
 
   /* Bot control bar */
   .bot-controls {
@@ -720,6 +771,7 @@
               <th title="When checked, the API result is passed through Ollama for conversational refinement using the global Final Pass Model" style="text-align:center">Final Pass ℹ️</th>
               <th title="Per-keyword min/max depth overrides for Ollama context evaluation (always active when history exists)" style="text-align:center">Context Eval ℹ️</th>
               <th></th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="kwBody"></tbody>
@@ -1070,6 +1122,12 @@
     const isEnabled = kw ? kw.enabled !== false : true;
     if (isBuiltin) tr.classList.add('kw-builtin');
     tr.dataset.builtin = isBuiltin ? '1' : '';
+
+    // Derive detail-field values
+    const ai = kw?.abilityInputs || {};
+    const retry = kw?.retry || {};
+    const hasDetails = !!(kw?.abilityText || kw?.abilityWhen || kw?.abilityInputs || kw?.allowEmptyContent !== undefined || kw?.accuweatherMode || kw?.retry);
+
     tr.innerHTML = `
       <td style="text-align:center"><input type="checkbox" class="kw-enabled" ${isEnabled ? 'checked' : ''} title="${isBuiltin ? 'Enable or disable this built-in keyword' : 'Enable or disable this keyword'}"></td>
       <td><input type="text" class="kw-keyword" value="${esc(kw?.keyword || '')}" placeholder="keyword">${isBuiltin ? '<span class="kw-builtin-badge">built-in</span>' : ''}</td>
@@ -1089,14 +1147,137 @@
           <input type="number" class="kw-ctxMin" value="${kw?.contextFilterMinDepth ?? ''}" min="1" style="width:50px" title="Min depth — always included (default: 1)" placeholder="1">–<input type="number" class="kw-ctxMax" value="${kw?.contextFilterMaxDepth ?? ''}" min="1" style="width:50px" title="Max depth — max messages eligible (default: global reply chain max)" placeholder="auto">
         </span>
       </td>
-      <td>${isBuiltin ? '' : '<button class="btn-danger btn-sm" onclick="this.closest(\'tr\').remove();markDirty()">✕</button>'}</td>
+      <td>${isBuiltin ? '' : '<button class="btn-danger btn-sm" onclick="removeKeywordRow(this)">✕</button>'}</td>
+      <td><button class="kw-expand-btn" title="Show/hide advanced fields" onclick="toggleKwDetails(this)">▸</button></td>
     `;
-    // Attach dirty listeners to new row inputs
-    tr.querySelectorAll('input, select').forEach(el => {
-      el.addEventListener('input', markDirty);
-      el.addEventListener('change', markDirty);
+
+    // Details row
+    const detailTr = document.createElement('tr');
+    detailTr.className = 'kw-details-row' + (hasDetails ? ' open' : '');
+    const colCount = tr.children.length;
+    detailTr.innerHTML = `
+      <td colspan="${colCount}">
+        <div class="kw-details-grid">
+          <div class="section-label">Ability</div>
+          <div class="field-full">
+            <label>Ability Text <span style="color:var(--text-dim);font-weight:normal">(model-facing description; leave empty to use Description)</span></label>
+            <input type="text" class="kw-abilityText" value="${esc(kw?.abilityText || '')}" placeholder="(uses description)">
+          </div>
+          <div class="field-full">
+            <label>Ability When <span style="color:var(--text-dim);font-weight:normal">(when the model should pick this ability)</span></label>
+            <input type="text" class="kw-abilityWhen" value="${esc(kw?.abilityWhen || '')}" placeholder="e.g. User asks about weather">
+          </div>
+
+          <div class="section-label">Parameters</div>
+          <div class="field-half">
+            <label>Allow Empty Content</label>
+            <select class="kw-allowEmpty">
+              <option value="" ${kw?.allowEmptyContent === undefined ? 'selected' : ''}>default (requires content)</option>
+              <option value="true" ${kw?.allowEmptyContent === true ? 'selected' : ''}>yes — works standalone</option>
+              <option value="false" ${kw?.allowEmptyContent === false ? 'selected' : ''}>no — requires content</option>
+            </select>
+          </div>
+          <div class="field-half">
+            <label>Inputs Mode</label>
+            <select class="kw-aiMode">
+              <option value="" ${!ai.mode ? 'selected' : ''}>none</option>
+              <option value="explicit" ${ai.mode === 'explicit' ? 'selected' : ''}>explicit</option>
+              <option value="implicit" ${ai.mode === 'implicit' ? 'selected' : ''}>implicit</option>
+              <option value="mixed" ${ai.mode === 'mixed' ? 'selected' : ''}>mixed</option>
+            </select>
+          </div>
+          <div class="field-half">
+            <label>Required Inputs <span style="color:var(--text-dim);font-weight:normal">(comma-separated)</span></label>
+            <input type="text" class="kw-aiRequired" value="${esc((ai.required || []).join(', '))}" placeholder="e.g. location">
+          </div>
+          <div class="field-half">
+            <label>Optional Inputs <span style="color:var(--text-dim);font-weight:normal">(comma-separated)</span></label>
+            <input type="text" class="kw-aiOptional" value="${esc((ai.optional || []).join(', '))}" placeholder="e.g. date">
+          </div>
+          <div class="field-half">
+            <label>Infer From <span style="color:var(--text-dim);font-weight:normal">(comma-separated)</span></label>
+            <input type="text" class="kw-aiInferFrom" value="${esc((ai.inferFrom || []).join(', '))}" placeholder="e.g. current_message, reply_target">
+          </div>
+          <div class="field-full">
+            <label>Validation <span style="color:var(--text-dim);font-weight:normal">(constraint description for the model)</span></label>
+            <input type="text" class="kw-aiValidation" value="${esc(ai.validation || '')}" placeholder="e.g. Must be a city name or postal code">
+          </div>
+          <div class="field-full">
+            <label>Examples <span style="color:var(--text-dim);font-weight:normal">(comma-separated)</span></label>
+            <input type="text" class="kw-aiExamples" value="${esc((ai.examples || []).join(', '))}" placeholder="e.g. weather Dallas, weather 90210">
+          </div>
+
+          <div class="section-label">API-specific</div>
+          <div class="field-half">
+            <label>AccuWeather Mode <span style="color:var(--text-dim);font-weight:normal">(only for accuweather API)</span></label>
+            <select class="kw-accuweatherMode">
+              <option value="" ${!kw?.accuweatherMode ? 'selected' : ''}>default (full)</option>
+              <option value="current" ${kw?.accuweatherMode === 'current' ? 'selected' : ''}>current</option>
+              <option value="forecast" ${kw?.accuweatherMode === 'forecast' ? 'selected' : ''}>forecast</option>
+              <option value="full" ${kw?.accuweatherMode === 'full' ? 'selected' : ''}>full</option>
+            </select>
+          </div>
+
+          <div class="section-label">Retry</div>
+          <div class="field-half">
+            <label>Retry Enabled</label>
+            <select class="kw-retryEnabled">
+              <option value="" ${retry.enabled === undefined ? 'selected' : ''}>default (global)</option>
+              <option value="true" ${retry.enabled === true ? 'selected' : ''}>yes</option>
+              <option value="false" ${retry.enabled === false ? 'selected' : ''}>no</option>
+            </select>
+          </div>
+          <div class="field-half">
+            <label>Max Retries <span style="color:var(--text-dim);font-weight:normal">(0–10)</span></label>
+            <input type="number" class="kw-retryMax" value="${retry.maxRetries ?? ''}" min="0" max="10" placeholder="default">
+          </div>
+          <div class="field-half">
+            <label>Retry Model</label>
+            <input type="text" class="kw-retryModel" value="${esc(retry.model || '')}" placeholder="default">
+          </div>
+          <div class="field-full">
+            <label>Retry Prompt</label>
+            <input type="text" class="kw-retryPrompt" value="${esc(retry.prompt || '')}" placeholder="default (global)">
+          </div>
+        </div>
+      </td>
+    `;
+
+    // Attach dirty listeners to both rows
+    [tr, detailTr].forEach(row => {
+      row.querySelectorAll('input, select, textarea').forEach(el => {
+        el.addEventListener('input', markDirty);
+        el.addEventListener('change', markDirty);
+      });
     });
+
+    // Link the two rows
+    tr._detailRow = detailTr;
+    detailTr._mainRow = tr;
+
     tbody.appendChild(tr);
+    tbody.appendChild(detailTr);
+
+    // Auto-open details row if it has configured data
+    if (hasDetails) {
+      tr.querySelector('.kw-expand-btn').textContent = '▾';
+    }
+  }
+
+  function toggleKwDetails(btn) {
+    const mainRow = btn.closest('tr');
+    const detailRow = mainRow._detailRow;
+    if (!detailRow) return;
+    const isOpen = detailRow.classList.toggle('open');
+    btn.textContent = isOpen ? '▾' : '▸';
+  }
+
+  function removeKeywordRow(btn) {
+    const mainRow = btn.closest('tr');
+    const detailRow = mainRow._detailRow;
+    if (detailRow) detailRow.remove();
+    mainRow.remove();
+    markDirty();
   }
 
   // ── Missing defaults detection / sync ──────────────
@@ -1134,10 +1315,10 @@
   }
 
   function collectKeywords() {
-    const rows = document.querySelectorAll('#kwBody tr');
+    const rows = document.querySelectorAll('#kwBody tr:not(.kw-details-row)');
     const keywords = [];
     for (const row of rows) {
-      const keyword = row.querySelector('.kw-keyword').value.trim();
+      const keyword = row.querySelector('.kw-keyword')?.value?.trim();
       if (!keyword) continue;
       const isBuiltin = row.dataset.builtin === '1';
       const isEnabled = row.querySelector('.kw-enabled').checked;
@@ -1147,16 +1328,80 @@
         timeout: parseInt(row.querySelector('.kw-timeout').value, 10) || 300,
         description: row.querySelector('.kw-desc').value.trim() || keyword,
       };
+
+      // Main row fields
       const isAbility = row.querySelector('.kw-ability').checked;
-      if (isAbility) entry.abilityText = entry.description;
       const finalPass = row.querySelector('.kw-finalPass').checked;
       if (finalPass) entry.finalOllamaPass = true;
+      else if (row.querySelector('.kw-finalPass')) entry.finalOllamaPass = false;
       const minD = parseInt(row.querySelector('.kw-ctxMin').value, 10);
       const maxD = parseInt(row.querySelector('.kw-ctxMax').value, 10);
       if (!isNaN(minD) && minD >= 1) entry.contextFilterMinDepth = minD;
       if (!isNaN(maxD) && maxD >= 1) entry.contextFilterMaxDepth = maxD;
       if (isBuiltin) entry.builtin = true;
       if (!isEnabled) entry.enabled = false;
+
+      // Detail row fields
+      const detail = row._detailRow;
+      if (detail) {
+        // abilityText: use explicit field if set, else if Ability checkbox is on use description
+        const abilityTextVal = detail.querySelector('.kw-abilityText')?.value?.trim();
+        if (abilityTextVal) {
+          entry.abilityText = abilityTextVal;
+        } else if (isAbility) {
+          entry.abilityText = entry.description;
+        }
+
+        const abilityWhenVal = detail.querySelector('.kw-abilityWhen')?.value?.trim();
+        if (abilityWhenVal) entry.abilityWhen = abilityWhenVal;
+
+        // allowEmptyContent
+        const allowEmptyVal = detail.querySelector('.kw-allowEmpty')?.value;
+        if (allowEmptyVal === 'true') entry.allowEmptyContent = true;
+        else if (allowEmptyVal === 'false') entry.allowEmptyContent = false;
+
+        // abilityInputs
+        const aiMode = detail.querySelector('.kw-aiMode')?.value;
+        if (aiMode) {
+          const abilityInputs = { mode: aiMode };
+          const parseCSV = (sel) => {
+            const v = detail.querySelector(sel)?.value?.trim();
+            return v ? v.split(',').map(s => s.trim()).filter(Boolean) : [];
+          };
+          const req = parseCSV('.kw-aiRequired');
+          const opt = parseCSV('.kw-aiOptional');
+          const inf = parseCSV('.kw-aiInferFrom');
+          const val = detail.querySelector('.kw-aiValidation')?.value?.trim();
+          const ex = parseCSV('.kw-aiExamples');
+          if (req.length) abilityInputs.required = req;
+          if (opt.length) abilityInputs.optional = opt;
+          if (inf.length) abilityInputs.inferFrom = inf;
+          if (val) abilityInputs.validation = val;
+          if (ex.length) abilityInputs.examples = ex;
+          entry.abilityInputs = abilityInputs;
+        }
+
+        // accuweatherMode
+        const awMode = detail.querySelector('.kw-accuweatherMode')?.value;
+        if (awMode) entry.accuweatherMode = awMode;
+
+        // retry
+        const retryEnabled = detail.querySelector('.kw-retryEnabled')?.value;
+        const retryMax = parseInt(detail.querySelector('.kw-retryMax')?.value, 10);
+        const retryModel = detail.querySelector('.kw-retryModel')?.value?.trim();
+        const retryPrompt = detail.querySelector('.kw-retryPrompt')?.value?.trim();
+        const retry = {};
+        if (retryEnabled === 'true') retry.enabled = true;
+        else if (retryEnabled === 'false') retry.enabled = false;
+        if (!isNaN(retryMax) && retryMax >= 0 && retryMax <= 10) retry.maxRetries = retryMax;
+        if (retryModel) retry.model = retryModel;
+        if (retryPrompt) retry.prompt = retryPrompt;
+        if (Object.keys(retry).length > 0) entry.retry = retry;
+      } else {
+        // No detail row — use legacy behavior for abilityText
+        if (isAbility) entry.abilityText = entry.description;
+      }
+
       keywords.push(entry);
     }
     return keywords;
