@@ -450,13 +450,29 @@
 
   // ── Render ───────────────────────────────────────────────────
 
+  /**
+   * Format narrative text: thoughts and descriptive prefixes are
+   * italicized, but actual message content stays in normal style.
+   */
+  function formatNarrative(ev) {
+    if (ev.type === 'message_received' || ev.type === 'bot_reply') {
+      var colonIdx = ev.narrative.indexOf(': ');
+      if (colonIdx !== -1) {
+        var prefix = ev.narrative.substring(0, colonIdx + 1);
+        var content = ev.narrative.substring(colonIdx + 2);
+        return '<em>' + escapeHtml(prefix) + '</em> ' + escapeHtml(content);
+      }
+    }
+    return '<em>' + escapeHtml(ev.narrative) + '</em>';
+  }
+
   function createEventCard(ev) {
     const card = document.createElement('div');
     card.className = 'event ' + ev.type;
     card.dataset.id = ev.id;
 
     let html = '<div class="ts">' + formatTime(ev.timestamp) + '</div>';
-    html += '<div class="narrative"><span class="type-dot"></span>' + escapeHtml(ev.narrative) + '</div>';
+    html += '<div class="narrative"><span class="type-dot"></span>' + formatNarrative(ev) + '</div>';
 
     if (ev.imageUrls && ev.imageUrls.length > 0) {
       html += '<div class="images">';
