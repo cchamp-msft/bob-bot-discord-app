@@ -671,6 +671,37 @@ describe('Config', () => {
       const matches = config.getKeywords().filter((k: any) => k.keyword.toLowerCase() === 'activity_key');
       expect(matches).toHaveLength(1);
     });
+
+    it('should backfill allowEmptyContent on existing built-in help keyword from defaults', () => {
+      // Write a runtime config with help that does NOT have allowEmptyContent
+      const customKeywords = {
+        keywords: [
+          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+        ],
+      };
+      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      config.reload();
+
+      const helpKw = config.getKeywordConfig('help');
+      expect(helpKw).toBeDefined();
+      expect(helpKw!.allowEmptyContent).toBe(true);
+    });
+
+    it('should not overwrite existing allowEmptyContent on built-in keyword', () => {
+      // Write a runtime config with help that explicitly has allowEmptyContent: false
+      const customKeywords = {
+        keywords: [
+          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true, allowEmptyContent: false },
+        ],
+      };
+      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      config.reload();
+
+      const helpKw = config.getKeywordConfig('help');
+      expect(helpKw).toBeDefined();
+      // Should preserve the explicit false, not overwrite with default true
+      expect(helpKw!.allowEmptyContent).toBe(false);
+    });
   });
 
   describe('getPublicConfig includes defaultKeywords', () => {

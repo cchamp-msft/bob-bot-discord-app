@@ -302,6 +302,25 @@ class Config {
         added++;
         logger.log('success', 'config',
           `Merged missing built-in keyword "${b.keyword}" from defaults`);
+      } else {
+        // Backfill missing fields on existing built-in keywords from
+        // defaults so that new fields (e.g. allowEmptyContent added to
+        // "help") take effect even if the user's keywords.json predates
+        // the change.
+        const existing = this.keywords.find(
+          k => k.keyword.toLowerCase() === b.keyword.toLowerCase() && k.builtin
+        );
+        if (existing) {
+          let patched = false;
+          if (existing.allowEmptyContent === undefined && b.allowEmptyContent !== undefined) {
+            existing.allowEmptyContent = b.allowEmptyContent;
+            patched = true;
+          }
+          if (patched) {
+            logger.log('success', 'config',
+              `Backfilled missing fields on built-in keyword "${b.keyword}" from defaults`);
+          }
+        }
       }
     }
     if (added > 0) {
