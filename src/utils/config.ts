@@ -303,22 +303,31 @@ class Config {
         logger.log('success', 'config',
           `Merged missing built-in keyword "${b.keyword}" from defaults`);
       } else {
-        // Backfill missing fields on existing built-in keywords from
-        // defaults so that new fields (e.g. allowEmptyContent added to
-        // "help") take effect even if the user's keywords.json predates
-        // the change.
+        // Backfill missing metadata fields on existing built-in keywords
+        // from defaults so that new fields take effect even if the user's
+        // keywords.json predates the change.  Only undefined fields are
+        // patched — explicit runtime values (including false) are preserved.
+        const backfillFields: (keyof KeywordConfig)[] = [
+          'allowEmptyContent',
+          'abilityWhen',
+          'abilityInputs',
+          'abilityText',
+          'finalOllamaPass',
+        ];
         const existing = this.keywords.find(
           k => k.keyword.toLowerCase() === b.keyword.toLowerCase() && k.builtin
         );
         if (existing) {
-          let patched = false;
-          if (existing.allowEmptyContent === undefined && b.allowEmptyContent !== undefined) {
-            existing.allowEmptyContent = b.allowEmptyContent;
-            patched = true;
+          const patched: string[] = [];
+          for (const field of backfillFields) {
+            if (existing[field] === undefined && b[field] !== undefined) {
+              (existing as any)[field] = b[field];
+              patched.push(field);
+            }
           }
-          if (patched) {
+          if (patched.length > 0) {
             logger.log('success', 'config',
-              `Backfilled missing fields on built-in keyword "${b.keyword}" from defaults`);
+              `Backfilled missing fields on built-in keyword "${b.keyword}" from defaults: ${patched.join(', ')}`);
           }
         }
       }

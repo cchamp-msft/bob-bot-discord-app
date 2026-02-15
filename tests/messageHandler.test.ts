@@ -878,6 +878,111 @@ describe('MessageHandler built-in help keyword handling', () => {
   });
 });
 
+describe('MessageHandler standalone allowEmptyContent keywords', () => {
+  function createMentionedMessage(content: string): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username: 'testuser' },
+      client: { user: { id: botUserId } },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      guild: { name: 'TestGuild' },
+      mentions: { has: jest.fn(() => true) },
+      reference: null,
+      content,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+    };
+  }
+
+  const nflScoresKw = {
+    keyword: 'nfl scores',
+    api: 'nfl' as const,
+    timeout: 30,
+    description: 'Get current NFL game scores',
+    abilityText: 'Get current NFL game scores',
+    finalOllamaPass: true,
+    allowEmptyContent: true,
+  };
+  const nflNewsKw = {
+    keyword: 'nfl news',
+    api: 'nfl' as const,
+    timeout: 30,
+    description: 'Get latest NFL news headlines',
+    abilityText: 'Get latest NFL news headlines',
+    finalOllamaPass: true,
+    allowEmptyContent: true,
+  };
+  const chatKw = { keyword: 'chat', api: 'ollama' as const, timeout: 300, description: 'Chat' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getKeywords as jest.Mock).mockReturnValue([nflScoresKw, nflNewsKw, chatKw]);
+    (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
+      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+  });
+
+  it('should route standalone "nfl scores" without prompting for content (guild mention)', async () => {
+    const mockRouted = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+    mockRouted.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Cowboys 24, Eagles 17' } },
+      finalApi: 'nfl',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> nfl scores');
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).not.toHaveBeenCalledWith(
+      'Please include a prompt or question after the keyword!'
+    );
+    expect(mockRouted).toHaveBeenCalled();
+  });
+
+  it('should route standalone "nfl news" without prompting for content (guild mention)', async () => {
+    const mockRouted = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+    mockRouted.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Trade deadline approaches...' } },
+      finalApi: 'nfl',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> nfl news');
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).not.toHaveBeenCalledWith(
+      'Please include a prompt or question after the keyword!'
+    );
+    expect(mockRouted).toHaveBeenCalled();
+  });
+
+  it('should prompt for content when allowEmptyContent is absent', async () => {
+    const noEmptyKw = {
+      keyword: 'nfl scores',
+      api: 'nfl' as const,
+      timeout: 30,
+      description: 'Get current NFL game scores',
+    };
+    (config.getKeywords as jest.Mock).mockReturnValue([noEmptyKw, chatKw]);
+
+    const msg = createMentionedMessage('<@bot-123> nfl scores');
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).toHaveBeenCalledWith(
+      'Please include a prompt or question after the keyword!'
+    );
+  });
+});
+
 describe('MessageHandler buildImagePromptFromReply', () => {
   function createReplyMessage(
     content: string,

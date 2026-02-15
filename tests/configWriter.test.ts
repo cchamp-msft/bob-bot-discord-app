@@ -505,6 +505,18 @@ describe('ConfigWriter', () => {
       expect(content.keywords[0].finalOllamaPass).toBe(false);
     });
 
+    it('should omit finalOllamaPass when not provided (inherit default)', async () => {
+      await configWriter.updateKeywords([validKeyword]);
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].finalOllamaPass).toBeUndefined();
+    });
+
+    it('should omit allowEmptyContent when not provided (inherit default)', async () => {
+      await configWriter.updateKeywords([validKeyword]);
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].allowEmptyContent).toBeUndefined();
+    });
+
     it('should reject non-boolean allowEmptyContent', async () => {
       await expect(
         configWriter.updateKeywords([

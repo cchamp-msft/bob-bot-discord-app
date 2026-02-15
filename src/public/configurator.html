@@ -1333,7 +1333,6 @@
       const isAbility = row.querySelector('.kw-ability').checked;
       const finalPass = row.querySelector('.kw-finalPass').checked;
       if (finalPass) entry.finalOllamaPass = true;
-      else if (row.querySelector('.kw-finalPass')) entry.finalOllamaPass = false;
       const minD = parseInt(row.querySelector('.kw-ctxMin').value, 10);
       const maxD = parseInt(row.querySelector('.kw-ctxMax').value, 10);
       if (!isNaN(minD) && minD >= 1) entry.contextFilterMinDepth = minD;
