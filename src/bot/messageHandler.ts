@@ -1072,6 +1072,7 @@ class MessageHandler {
     // Process each image — collect attachable files
     let savedCount = 0;
     const attachments: { attachment: Buffer; name: string }[] = [];
+    const savedImagePaths: string[] = [];
 
     for (let i = 0; i < apiResult.data.images.length; i++) {
       const imageUrl = apiResult.data.images[i];
@@ -1100,6 +1101,14 @@ class MessageHandler {
             attachments.push({ attachment: fileBuffer, name: fileOutput.fileName });
           }
         }
+
+        // Collect relative path for the activity feed (same origin)
+        const baseUrl = config.getOutputBaseUrl();
+        const relativePath = fileOutput.url.startsWith(baseUrl)
+          ? fileOutput.url.slice(baseUrl.length)
+          : fileOutput.url;
+        savedImagePaths.push(relativePath);
+
         savedCount++;
       }
     }
@@ -1134,9 +1143,8 @@ class MessageHandler {
       }
     }
 
-    // Collect public image URLs for the activity feed (no local paths)
-    const publicImageUrls = apiResult.data.images.filter(u => u.startsWith('http'));
-    activityEvents.emitBotImageReply(apiResult.data.images.length, publicImageUrls);
+    // Pass saved-file relative paths to the activity feed (same origin as the activity page)
+    activityEvents.emitBotImageReply(apiResult.data.images.length, savedImagePaths);
 
     logger.logReply(
       requester,

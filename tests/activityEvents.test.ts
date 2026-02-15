@@ -247,7 +247,7 @@ describe('ActivityEventStore', () => {
 
   describe('emitBotImageReply', () => {
     it('singular image phrasing', () => {
-      const ev = activityEvents.emitBotImageReply(1, ['http://localhost:3003/img.png']);
+      const ev = activityEvents.emitBotImageReply(1, ['/img.png']);
       expect(ev.narrative).toContain('1 image');
       expect(ev.narrative).not.toContain('images');
       expect(ev.imageUrls).toHaveLength(1);
