@@ -31,7 +31,9 @@ alwaysApply: true
   - ci: Changes to our CI configuration files and scripts
   - build: Changes that affect the build system or external dependencies
 - When keyword "commitpls" is used in the prompt, expand it to mean "Please provide a commit message following the Conventional Commits format, including a short description and bullet points summarizing the changes made in this commit. If multiple logical changes were made, consider breaking them into separate commits for clarity."
-- Example:
+- Prefer `git add <specific files>`, but if adding all to confirm if the working tree is clean use `git add -A -v`
+- Example one-liner: git add file1 file2 && git commit -m "feat(config): keep this short" -m "- be explicit here" -m "- and here"
+- Example here-doc stylized:
 ```
 feat(config): keep this short
 
