@@ -1,0 +1,32 @@
+# Dependencies and build artifacts
+node_modules
+dist
+
+# Runtime state (mounted at run time)
+outputs
+.config
+.env
+.env.*
+!.env.example
+
+# Config written at runtime (mount or copy defaults)
+config/keywords.json
+
+# IDE and tooling
+.cursor
+.git
+.gitignore
+*.md
+!PRIVACY_POLICY.md
+
+# Tests and dev
+tests
+jest.config.ts
+*.test.ts
+*.spec.ts
+
+# Misc
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*

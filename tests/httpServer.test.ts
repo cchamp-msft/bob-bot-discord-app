@@ -67,7 +67,7 @@ jest.mock('../src/bot/discordManager', () => ({
   },
 }));
 
-// Dynamic mock for config so we can control ADMIN_TOKEN per test
+// Dynamic mock for config so we can control ADMIN_TOKEN and allowlist per test
 const mockConfig = {
   getHttpPort: () => 3000,
   getHttpHost: () => (process.env.HTTP_HOST || '').trim() || '127.0.0.1',
@@ -75,6 +75,8 @@ const mockConfig = {
   getOutputsHost: () => '0.0.0.0',
   getOutputBaseUrl: () => 'http://localhost:3003',
   getAdminToken: jest.fn(() => ''),
+  getConfiguratorAllowRemote: jest.fn(() => false),
+  getConfiguratorAllowedIps: jest.fn(() => [] as string[]),
   getPublicConfig: jest.fn(() => ({ http: { port: 3000, httpHost: '127.0.0.1', outputsPort: 3003, outputsHost: '0.0.0.0' } })),
   getApiEndpoint: jest.fn(() => 'http://localhost'),
   reload: jest.fn(() => ({ reloaded: [], requiresRestart: [] })),
@@ -122,13 +124,15 @@ describe('httpServer', () => {
   beforeEach(() => {
     process.env = { ...originalEnv };
     mockConfig.getAdminToken.mockReturnValue('');
+    mockConfig.getConfiguratorAllowRemote.mockReturnValue(false);
+    mockConfig.getConfiguratorAllowedIps.mockReturnValue([]);
   });
 
   afterAll(async () => {
     process.env = originalEnv;
     await stopTestServer();
     try { await httpServer.stop(); } catch { /* ignore */ }
-  });
+  }, 10000);
 
   // ── Bind host tests ──────────────────────────────────────────
 
@@ -244,5 +248,32 @@ describe('httpServer', () => {
   it('returns 404 for unknown routes', async () => {
     const res = await fetch(`${baseUrl}/nonexistent`);
     expect(res.status).toBe(404);
+  });
+
+  // ── CONFIGURATOR_ALLOW_REMOTE + allowlist ───────────────────────
+
+  it('start() throws when CONFIGURATOR_ALLOW_REMOTE is true and ADMIN_TOKEN is empty', () => {
+    mockConfig.getConfiguratorAllowRemote.mockReturnValue(true);
+    mockConfig.getAdminToken.mockReturnValue('');
+
+    expect(() => httpServer.start()).toThrow(/CONFIGURATOR_ALLOW_REMOTE.*ADMIN_TOKEN/);
+  });
+
+  it('when CONFIGURATOR_ALLOW_REMOTE is true and ADMIN_TOKEN is set, localhost + Bearer gets 200', async () => {
+    mockConfig.getConfiguratorAllowRemote.mockReturnValue(true);
+    mockConfig.getConfiguratorAllowedIps.mockReturnValue([]);
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/api/config`, {
+      headers: { Authorization: 'Bearer s3cret-tok3n' },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('configurator page (GET /configurator) does not require Bearer when from localhost', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/configurator`);
+    expect(res.status).toBe(200);
   });
 });

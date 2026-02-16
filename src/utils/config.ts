@@ -533,9 +533,31 @@ class Config {
    *
    * **Strongly recommended** when the configurator is reachable through a
    * reverse proxy, even if the proxy applies an IP allow-list.
+   * **Required** when CONFIGURATOR_ALLOW_REMOTE is true (e.g. Docker).
    */
   getAdminToken(): string {
     return (process.env.ADMIN_TOKEN || '').trim();
+  }
+
+  /**
+   * When true, configurator access is not restricted to localhost; instead
+   * CONFIGURATOR_ALLOWED_IPS is used. ADMIN_TOKEN must be set.
+   * Intended for Docker where the host browser is not localhost from the
+   * container's perspective.
+   */
+  getConfiguratorAllowRemote(): boolean {
+    return (process.env.CONFIGURATOR_ALLOW_REMOTE || '').trim().toLowerCase() === 'true';
+  }
+
+  /**
+   * Comma-separated list of IPs or CIDRs allowed when CONFIGURATOR_ALLOW_REMOTE
+   * is true. Example: "172.17.0.0/16,192.168.1.0/24" for Docker bridge and LAN.
+   * Whitespace around entries is trimmed. Empty entries are ignored.
+   */
+  getConfiguratorAllowedIps(): string[] {
+    const raw = (process.env.CONFIGURATOR_ALLOWED_IPS || '').trim();
+    if (!raw) return [];
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
   }
 
   getFileSizeThreshold(): number {

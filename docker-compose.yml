@@ -1,0 +1,19 @@
+# Bot-only: Ollama/ComfyUI run elsewhere. Set in .env:
+#   OLLAMA_ENDPOINT=http://host.docker.internal:11434
+#   COMFYUI_ENDPOINT=http://host.docker.internal:8190
+# For Docker Desktop (Windows/Mac). On Linux use host network or host IP.
+
+services:
+  bot:
+    build: .
+    image: bob-bot-discord-app:latest
+    env_file: .env
+    ports:
+      - "127.0.0.1:3000:3000"   # configurator (host-only)
+      - "3003:3003"              # outputs server
+    volumes:
+      - ./.env:/app/.env
+      - ./outputs:/app/outputs
+      - ./.config:/app/.config
+      - ./config:/app/config
+    restart: unless-stopped

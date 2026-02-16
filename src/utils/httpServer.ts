@@ -12,23 +12,81 @@ import { discordManager } from '../bot/discordManager';
 
 // ── Security middleware ──────────────────────────────────────────
 
+/** Check if an IPv4 address (dot-decimal or ::ffff:...) is inside a CIDR. Exported for tests. */
+export function ipv4InCidr(ip: string, cidr: string): boolean {
+  const normalized = ip.replace(/^::ffff:/i, '');
+  const parts = normalized.split('.');
+  if (parts.length !== 4) return false;
+  let ipNum = 0;
+  for (let i = 0; i < 4; i++) {
+    const n = parseInt(parts[i], 10);
+    if (!Number.isFinite(n) || n < 0 || n > 255) return false;
+    ipNum = (ipNum << 8) | n;
+  }
+  const slash = cidr.indexOf('/');
+  if (slash === -1) {
+    const cidrParts = cidr.split('.');
+    if (cidrParts.length !== 4) return false;
+    let cidrNum = 0;
+    for (let i = 0; i < 4; i++) {
+      const n = parseInt(cidrParts[i], 10);
+      if (!Number.isFinite(n) || n < 0 || n > 255) return false;
+      cidrNum = (cidrNum << 8) | n;
+    }
+    return ipNum === cidrNum;
+  }
+  const base = cidr.slice(0, slash).trim();
+  const prefixLen = parseInt(cidr.slice(slash + 1), 10);
+  if (!Number.isFinite(prefixLen) || prefixLen < 0 || prefixLen > 32) return false;
+  const baseParts = base.split('.');
+  if (baseParts.length !== 4) return false;
+  let baseNum = 0;
+  for (let i = 0; i < 4; i++) {
+    const n = parseInt(baseParts[i], 10);
+    if (!Number.isFinite(n) || n < 0 || n > 255) return false;
+    baseNum = (baseNum << 8) | n;
+  }
+  const mask = prefixLen === 0 ? 0 : 0xffffffff << (32 - prefixLen);
+  return (ipNum & mask) === (baseNum & mask);
+}
+
+/** Check if IP is localhost (any common form). */
+function isLocalhost(ip: string): boolean {
+  return (
+    ip === '127.0.0.1' ||
+    ip === '::1' ||
+    ip === '::ffff:127.0.0.1'
+  );
+}
+
 /**
- * Middleware that restricts access to localhost only.
+ * Returns true if the request IP is allowed by the configurator allowlist.
+ * When CONFIGURATOR_ALLOW_REMOTE is false, only localhost is allowed.
+ * When true, localhost plus CONFIGURATOR_ALLOWED_IPS entries are allowed.
+ */
+function isIpAllowedByConfig(ip: string): boolean {
+  if (isLocalhost(ip)) return true;
+  if (!config.getConfiguratorAllowRemote()) return false;
+  const allowed = config.getConfiguratorAllowedIps();
+  for (const entry of allowed) {
+    if (entry.includes('.') && (entry.includes('/') || entry.split('.').length === 4)) {
+      if (ipv4InCidr(ip, entry)) return true;
+    } else if (ip === entry) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Middleware that restricts access to localhost only (legacy mode).
  * Rejects forwarded-header spoofing: when Express `trust proxy` is disabled
  * (the default) `req.ip` equals `req.socket.remoteAddress`, so upstream
  * `X-Forwarded-For` headers cannot trick the check.
- *
- * This is the **secondary** guard — prefer ADMIN_TOKEN authentication when
- * the configurator is reachable through a reverse proxy.
  */
 function localhostOnly(req: Request, res: Response, next: NextFunction): void {
   const ip = req.ip || req.socket.remoteAddress || '';
-  const isLocal =
-    ip === '127.0.0.1' ||
-    ip === '::1' ||
-    ip === '::ffff:127.0.0.1';
-
-  if (!isLocal) {
+  if (!isLocalhost(ip)) {
     logger.logWarn('http', `Blocked non-local request to ${req.path} from ${ip}`);
     res.status(403).json({ error: 'Forbidden' });
     return;
@@ -37,8 +95,34 @@ function localhostOnly(req: Request, res: Response, next: NextFunction): void {
 }
 
 /**
+ * Middleware that allows access when IP is in the configurator allowlist
+ * (localhost or CONFIGURATOR_ALLOWED_IPS when CONFIGURATOR_ALLOW_REMOTE is true).
+ */
+function allowlistOnly(req: Request, res: Response, next: NextFunction): void {
+  const ip = req.ip || req.socket.remoteAddress || '';
+  if (!isIpAllowedByConfig(ip)) {
+    logger.logWarn('http', `Blocked non-allowed request to ${req.path} from ${ip}`);
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+}
+
+/**
+ * Network guard for configurator: localhost-only when CONFIGURATOR_ALLOW_REMOTE
+ * is false, otherwise allowlist-based (for Docker/host browser access).
+ */
+function networkGuard(req: Request, res: Response, next: NextFunction): void {
+  if (config.getConfiguratorAllowRemote()) {
+    allowlistOnly(req, res, next);
+  } else {
+    localhostOnly(req, res, next);
+  }
+}
+
+/**
  * Middleware that enforces bearer-token authentication when ADMIN_TOKEN is
- * configured. It is applied **before** localhostOnly so that proxied
+ * configured. It is applied **before** the network guard so that proxied
  * environments get a strong authn check even if the IP check passes.
  *
  * When ADMIN_TOKEN is unset (empty) the middleware is a no-op, preserving
@@ -49,7 +133,6 @@ function localhostOnly(req: Request, res: Response, next: NextFunction): void {
 function adminAuth(req: Request, res: Response, next: NextFunction): void {
   const expected = config.getAdminToken();
   if (!expected) {
-    // No token configured — fall through to localhostOnly guard
     next();
     return;
   }
@@ -58,7 +141,6 @@ function adminAuth(req: Request, res: Response, next: NextFunction): void {
   const match = header.match(/^Bearer\s+(\S+)$/i);
   const provided = match ? match[1] : '';
 
-  // Constant-time comparison (always compare equal-length buffers)
   const expectedBuf = Buffer.from(expected, 'utf8');
   const providedBuf = Buffer.from(provided, 'utf8');
   const lengthMatch = expectedBuf.length === providedBuf.length;
@@ -75,10 +157,17 @@ function adminAuth(req: Request, res: Response, next: NextFunction): void {
 }
 
 /**
- * Combined admin guard: token auth (if configured) then localhost check.
- * Attach both to every configurator / admin route.
+ * Guard for the configurator HTML page: network only (no Bearer required so
+ * the browser can load the page; when CONFIGURATOR_ALLOW_REMOTE is true,
+ * ADMIN_TOKEN is required for API calls and entered in the UI).
  */
-const adminGuard = [adminAuth, localhostOnly];
+const configuratorPageGuard = [networkGuard];
+
+/**
+ * Guard for configurator API routes: token auth then network check.
+ * APIs always require Bearer when ADMIN_TOKEN is set.
+ */
+const configuratorApiGuard = [adminAuth, networkGuard];
 
 /**
  * Remove common server fingerprint headers and add minimal security
@@ -137,25 +226,25 @@ class HttpServer {
     // Parse JSON bodies for API routes (increased limit for workflow uploads)
     this.app.use(express.json({ limit: '10mb' }));
 
-    // ── Configurator routes (admin-guarded) ──────────────────────
+    // ── Configurator routes ───────────────────────────────────────
 
-    // Serve the configurator SPA
-    this.app.get('/configurator', ...adminGuard, (_req, res) => {
+    // Serve the configurator SPA (network guard only; no Bearer so browser can load)
+    this.app.get('/configurator', ...configuratorPageGuard, (_req, res) => {
       res.sendFile(path.join(publicDir, 'configurator.html'));
     });
 
     // GET current config (safe view — no secrets)
-    this.app.get('/api/config', ...adminGuard, safeHandler(async (_req, res) => {
+    this.app.get('/api/config', ...configuratorApiGuard, safeHandler(async (_req, res) => {
       res.json(config.getPublicConfig());
     }));
 
     // GET status log for the console panel (tails today's log file)
-    this.app.get('/api/config/status', ...adminGuard, (_req, res) => {
+    this.app.get('/api/config/status', ...configuratorApiGuard, (_req, res) => {
       res.json({ lines: logger.getRecentLines() });
     });
 
     // GET test API connectivity
-    this.app.get('/api/config/test-connection/:api', ...adminGuard, safeHandler(async (req, res) => {
+    this.app.get('/api/config/test-connection/:api', ...configuratorApiGuard, safeHandler(async (req, res) => {
       const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
       if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather' && api !== 'nfl' && api !== 'serpapi') {
         res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", "accuweather", "nfl", or "serpapi"' });
@@ -217,7 +306,7 @@ class HttpServer {
     }));
 
     // POST upload ComfyUI workflow JSON
-    this.app.post('/api/config/upload-workflow', ...adminGuard, safeHandler(async (req, res) => {
+    this.app.post('/api/config/upload-workflow', ...configuratorApiGuard, safeHandler(async (req, res) => {
       const { workflow, filename } = req.body;
 
       if (!workflow || typeof workflow !== 'string') {
@@ -241,7 +330,7 @@ class HttpServer {
     }));
 
     // DELETE remove custom ComfyUI workflow (fall back to default)
-    this.app.delete('/api/config/workflow', ...adminGuard, safeHandler(async (_req, res) => {
+    this.app.delete('/api/config/workflow', ...configuratorApiGuard, safeHandler(async (_req, res) => {
       const deleted = configWriter.deleteWorkflow();
       if (deleted) {
         logger.log('success', 'configurator', 'Custom workflow removed — will use default workflow');
@@ -253,25 +342,25 @@ class HttpServer {
     }));
 
     // GET available ComfyUI samplers
-    this.app.get('/api/config/comfyui/samplers', ...adminGuard, safeHandler(async (_req, res) => {
+    this.app.get('/api/config/comfyui/samplers', ...configuratorApiGuard, safeHandler(async (_req, res) => {
       const samplers = await comfyuiClient.getSamplers();
       res.json(samplers);
     }));
 
     // GET available ComfyUI schedulers
-    this.app.get('/api/config/comfyui/schedulers', ...adminGuard, safeHandler(async (_req, res) => {
+    this.app.get('/api/config/comfyui/schedulers', ...configuratorApiGuard, safeHandler(async (_req, res) => {
       const schedulers = await comfyuiClient.getSchedulers();
       res.json(schedulers);
     }));
 
     // GET available ComfyUI checkpoints
-    this.app.get('/api/config/comfyui/checkpoints', ...adminGuard, safeHandler(async (_req, res) => {
+    this.app.get('/api/config/comfyui/checkpoints', ...configuratorApiGuard, safeHandler(async (_req, res) => {
       const checkpoints = await comfyuiClient.getCheckpoints();
       res.json(checkpoints);
     }));
 
     // GET export currently active workflow as ComfyUI API format JSON
-    this.app.get('/api/config/workflow/export', ...adminGuard, safeHandler(async (_req, res) => {
+    this.app.get('/api/config/workflow/export', ...configuratorApiGuard, safeHandler(async (_req, res) => {
       const result = await comfyuiClient.getExportWorkflow();
       if (!result) {
         res.status(400).json({
@@ -285,7 +374,7 @@ class HttpServer {
     }));
 
     // POST save default workflow parameters
-    this.app.post('/api/config/default-workflow', ...adminGuard, safeHandler(async (req, res) => {
+    this.app.post('/api/config/default-workflow', ...configuratorApiGuard, safeHandler(async (req, res) => {
       const body = req.body;
         const errors: string[] = [];
 
@@ -332,12 +421,12 @@ class HttpServer {
     // ── Discord control routes (admin-guarded) ──────────────────
 
     // GET Discord bot status
-    this.app.get('/api/discord/status', ...adminGuard, (_req, res) => {
+    this.app.get('/api/discord/status', ...configuratorApiGuard, (_req, res) => {
       res.json(discordManager.getStatus());
     });
 
     // POST start the Discord bot
-    this.app.post('/api/discord/start', ...adminGuard, safeHandler(async (_req, res) => {
+    this.app.post('/api/discord/start', ...configuratorApiGuard, safeHandler(async (_req, res) => {
       logger.log('success', 'configurator', 'Discord bot start requested');
       const result = await discordManager.start();
       logger.log(result.success ? 'success' : 'error', 'configurator', `Discord start: ${result.message}`);
@@ -345,7 +434,7 @@ class HttpServer {
     }));
 
     // POST stop the Discord bot
-    this.app.post('/api/discord/stop', ...adminGuard, safeHandler(async (_req, res) => {
+    this.app.post('/api/discord/stop', ...configuratorApiGuard, safeHandler(async (_req, res) => {
       logger.log('success', 'configurator', 'Discord bot stop requested');
       const result = await discordManager.stop();
       logger.log(result.success ? 'success' : 'error', 'configurator', `Discord stop: ${result.message}`);
@@ -353,7 +442,7 @@ class HttpServer {
     }));
 
     // POST test Discord token (does not persist or affect running bot)
-    this.app.post('/api/discord/test', ...adminGuard, safeHandler(async (req, res) => {
+    this.app.post('/api/discord/test', ...configuratorApiGuard, safeHandler(async (req, res) => {
       const { token } = req.body;
       if (!token || typeof token !== 'string') {
         res.status(400).json({ success: false, message: 'Token is required' });
@@ -368,7 +457,7 @@ class HttpServer {
     }));
 
     // POST save config changes
-    this.app.post('/api/config/save', ...adminGuard, safeHandler(async (req, res) => {
+    this.app.post('/api/config/save', ...configuratorApiGuard, safeHandler(async (req, res) => {
       const { env, keywords } = req.body;
         const messages: string[] = [];
 
@@ -411,7 +500,7 @@ class HttpServer {
     // ── Test routes (admin-guarded) ──────────────────────────────
 
     // POST test image generation — submit a prompt to ComfyUI and return results
-    this.app.post('/api/test/generate-image', ...adminGuard, safeHandler(async (req, res) => {
+    this.app.post('/api/test/generate-image', ...configuratorApiGuard, safeHandler(async (req, res) => {
       const { prompt } = req.body;
 
       if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
@@ -461,11 +550,18 @@ class HttpServer {
   }
 
   start(): void {
+    if (config.getConfiguratorAllowRemote() && !config.getAdminToken()) {
+      const msg = 'CONFIGURATOR_ALLOW_REMOTE is true but ADMIN_TOKEN is not set — set ADMIN_TOKEN when allowing remote configurator access (e.g. Docker).';
+      logger.logError('system', msg);
+      throw new Error(msg);
+    }
+
     const host = config.getHttpHost();
     const displayHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host;
+    const guardMode = config.getConfiguratorAllowRemote() ? 'allowlist' : 'localhost-only';
 
     this.server = this.app.listen(this.port, host, () => {
-      logger.log('success', 'system', `HTTP-SERVER: Configurator (localhost-only) on http://${displayHost}:${this.port}`);
+      logger.log('success', 'system', `HTTP-SERVER: Configurator (${guardMode}) on http://${displayHost}:${this.port}`);
       logger.log('success', 'system', `HTTP-SERVER: Configurator: http://${displayHost}:${this.port}/configurator`);
     });
   }
