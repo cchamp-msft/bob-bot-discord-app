@@ -297,7 +297,9 @@
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
   .bot-controls .spacer { flex: 1; }
   .btn-ok { background: var(--ok); color: #fff; }
+  .kw-ctx-label { font-size: 0.72em; color: var(--text-dim); vertical-align: middle; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 </head>
 <body>
 
@@ -758,6 +760,28 @@
         </div>
       </div>
     </section>
+    <!-- Message Flow Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">Message Flow Overview</h2>
+      <div class="body">
+        <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
+          How the bot processes an incoming @mention or DM.
+        </p>
+        <pre class="mermaid" style="background:transparent;text-align:center">
+flowchart LR
+    A["📨 Message"] --> B{"🔑 Keyword?"}
+    B -->|Yes| D["⚡ Route to API"]
+    B -->|No| C["🧠 Context Eval\n(Ollama)"]
+    C -->|"API detected"| D
+    C -->|"No API"| F["💬 Ollama reply"]
+    D --> E{"🔄 Final Pass?"}
+    E -->|Yes| G["🧠 Ollama\nrefinement"]
+    E -->|No| H["📤 Response"]
+    G --> H
+    F --> H
+        </pre>
+      </div>
+    </section>
     <!-- Keywords Section -->
     <section>
       <h2 class="open" onclick="toggleSection(this)">Keywords → API Routing</h2>
@@ -811,6 +835,7 @@
 </div>
 
 <script>
+  mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: { primaryColor: '#0f3460', primaryTextColor: '#eee', lineColor: '#e94560', secondaryColor: '#533483' } });
   // ── State ──────────────────────────────────────────
   let originalConfig = null;
   let dirty = false;
@@ -1155,7 +1180,7 @@
       <td style="text-align:center"><input type="checkbox" class="kw-ctxEval" ${kw?.contextFilterEnabled ? 'checked' : ''} title="Enable Ollama context evaluation for this keyword"></td>
       <td style="text-align:center">
         <span class="kw-ctx-depth">
-          <input type="number" class="kw-ctxMin" value="${kw?.contextFilterMinDepth ?? ''}" min="1" style="width:50px" title="Min depth — always included (default: 1)" placeholder="1">–<input type="number" class="kw-ctxMax" value="${kw?.contextFilterMaxDepth ?? ''}" min="1" style="width:50px" title="Max depth — max messages eligible (default: global reply chain max)" placeholder="auto">
+          <span class="kw-ctx-label">Min</span> <input type="number" class="kw-ctxMin" value="${kw?.contextFilterMinDepth ?? ''}" min="1" style="width:50px" title="Min depth — always included (default: 1)" placeholder="1"> <span class="kw-ctx-label">Max</span> <input type="number" class="kw-ctxMax" value="${kw?.contextFilterMaxDepth ?? ''}" min="1" style="width:50px" title="Max depth — max messages eligible (default: global reply chain max)" placeholder="auto">
         </span>
       </td>
       <td>${isBuiltin ? '' : '<button class="btn-danger btn-sm" onclick="removeKeywordRow(this)">✕</button>'}</td>
