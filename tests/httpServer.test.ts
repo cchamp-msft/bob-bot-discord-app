@@ -67,7 +67,7 @@ jest.mock('../src/bot/discordManager', () => ({
   },
 }));
 
-// Dynamic mock for config so we can control ADMIN_TOKEN per test
+// Dynamic mock for config so we can control ADMIN_TOKEN and allowlist per test
 const mockConfig = {
   getHttpPort: () => 3000,
   getHttpHost: () => (process.env.HTTP_HOST || '').trim() || '127.0.0.1',
@@ -75,6 +75,8 @@ const mockConfig = {
   getOutputsHost: () => '0.0.0.0',
   getOutputBaseUrl: () => 'http://localhost:3003',
   getAdminToken: jest.fn(() => ''),
+  getConfiguratorAllowRemote: jest.fn(() => false),
+  getConfiguratorAllowedIps: jest.fn(() => [] as string[]),
   getPublicConfig: jest.fn(() => ({ http: { port: 3000, httpHost: '127.0.0.1', outputsPort: 3003, outputsHost: '0.0.0.0' } })),
   getApiEndpoint: jest.fn(() => 'http://localhost'),
   reload: jest.fn(() => ({ reloaded: [], requiresRestart: [] })),
@@ -122,13 +124,15 @@ describe('httpServer', () => {
   beforeEach(() => {
     process.env = { ...originalEnv };
     mockConfig.getAdminToken.mockReturnValue('');
+    mockConfig.getConfiguratorAllowRemote.mockReturnValue(false);
+    mockConfig.getConfiguratorAllowedIps.mockReturnValue([]);
   });
 
   afterAll(async () => {
     process.env = originalEnv;
     await stopTestServer();
     try { await httpServer.stop(); } catch { /* ignore */ }
-  });
+  }, 10000);
 
   // ── Bind host tests ──────────────────────────────────────────
 
@@ -176,6 +180,16 @@ describe('httpServer', () => {
   it('sets X-Content-Type-Options on responses', async () => {
     const res = await fetch(`${baseUrl}/health`);
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
+  it('sets X-Frame-Options DENY on responses', async () => {
+    const res = await fetch(`${baseUrl}/health`);
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+  });
+
+  it('sets Referrer-Policy on responses', async () => {
+    const res = await fetch(`${baseUrl}/health`);
+    expect(res.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
   });
 
   it('does not expose X-Powered-By header', async () => {
@@ -244,5 +258,81 @@ describe('httpServer', () => {
   it('returns 404 for unknown routes', async () => {
     const res = await fetch(`${baseUrl}/nonexistent`);
     expect(res.status).toBe(404);
+  });
+
+  // ── CONFIGURATOR_ALLOW_REMOTE + allowlist ───────────────────────
+
+  it('start() throws when CONFIGURATOR_ALLOW_REMOTE is true and ADMIN_TOKEN is empty', () => {
+    mockConfig.getConfiguratorAllowRemote.mockReturnValue(true);
+    mockConfig.getAdminToken.mockReturnValue('');
+
+    expect(() => httpServer.start()).toThrow(/CONFIGURATOR_ALLOW_REMOTE.*ADMIN_TOKEN/);
+  });
+
+  it('when CONFIGURATOR_ALLOW_REMOTE is true and ADMIN_TOKEN is set, localhost + Bearer gets 200', async () => {
+    mockConfig.getConfiguratorAllowRemote.mockReturnValue(true);
+    mockConfig.getConfiguratorAllowedIps.mockReturnValue([]);
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/api/config`, {
+      headers: { Authorization: 'Bearer s3cret-tok3n' },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('configurator page (GET /configurator) does not require Bearer when from localhost', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/configurator`);
+    expect(res.status).toBe(200);
+  });
+
+  // ── State-changing routes require Bearer when ADMIN_TOKEN is set ──
+
+  it('POST /api/discord/start requires Bearer when ADMIN_TOKEN is set', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/api/discord/start`, { method: 'POST' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/discord/stop requires Bearer when ADMIN_TOKEN is set', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/api/discord/stop`, { method: 'POST' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/config/save requires Bearer when ADMIN_TOKEN is set', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/api/config/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/config/upload-workflow requires Bearer when ADMIN_TOKEN is set', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/api/config/upload-workflow`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow: '{}' }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/test/generate-image requires Bearer when ADMIN_TOKEN is set', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/api/test/generate-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'test' }),
+    });
+    expect(res.status).toBe(401);
   });
 });

@@ -301,10 +301,44 @@
   .kw-ctx-depth-stacked { display: flex; flex-direction: column; gap: 4px; }
   .kw-ctx-row { display: flex; align-items: center; gap: 4px; }
   .kw-ctx-row .kw-ctx-label { min-width: 26px; text-align: right; }
+
+  /* Admin token modal (remote configurator / Docker) */
+  #adminTokenModal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+  }
+  #adminTokenModal .modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+  }
+  #adminTokenModal h3 { margin-bottom: 12px; font-size: 1em; }
+  #adminTokenModal input { margin-bottom: 12px; }
+  #adminTokenModal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 </head>
 <body>
+
+<div id="adminTokenModal">
+  <div class="modal-box">
+    <h3>Admin token required</h3>
+    <p style="font-size:0.9em;color:var(--text-dim);margin-bottom:12px;">This configurator requires an admin token (e.g. when running in Docker). Enter the value of <code>ADMIN_TOKEN</code> from your server.</p>
+    <input type="password" id="adminTokenInput" placeholder="Paste admin token" autocomplete="off" style="width:100%;padding:8px;">
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="hideAdminTokenDialog()">Cancel</button>
+      <button class="btn-primary" onclick="submitAdminToken()">Submit</button>
+    </div>
+  </div>
+</div>
 
 <header>
   <span class="dot" id="statusDot"></span>
@@ -845,6 +879,47 @@ flowchart LR
   let originalConfig = null;
   let dirty = false;
 
+  // ── Admin token (for remote configurator, e.g. Docker) ─────────
+  const ADMIN_TOKEN_STORAGE_KEY = 'configurator_admin_token';
+
+  function getAuthHeaders() {
+    const t = sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
+    return t ? { 'Authorization': 'Bearer ' + t } : {};
+  }
+
+  function showAdminTokenDialog(onSuccess) {
+    const modal = document.getElementById('adminTokenModal');
+    if (!modal) return;
+    modal._onSuccess = onSuccess;
+    modal.style.display = 'flex';
+    document.getElementById('adminTokenInput').value = sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '';
+    document.getElementById('adminTokenInput').focus();
+  }
+
+  function hideAdminTokenDialog() {
+    const modal = document.getElementById('adminTokenModal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function submitAdminToken() {
+    const input = document.getElementById('adminTokenInput');
+    const token = (input && input.value || '').trim();
+    if (!token) return;
+    sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
+    hideAdminTokenDialog();
+    const modal = document.getElementById('adminTokenModal');
+    if (modal && typeof modal._onSuccess === 'function') modal._onSuccess();
+  }
+
+  async function apiFetch(url, options = {}) {
+    const headers = { ...(options.headers || {}), ...getAuthHeaders() };
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401 && url.startsWith('/api/')) {
+      showAdminTokenDialog(() => { loadConfig(); pollBotStatus(); });
+    }
+    return res;
+  }
+
   // ── Section toggle ─────────────────────────────────
   function toggleSection(h2) {
     h2.classList.toggle('open');
@@ -869,7 +944,7 @@ flowchart LR
 
   async function pollStatus() {
     try {
-      const res = await fetch('/api/config/status');
+      const res = await apiFetch('/api/config/status');
       const data = await res.json();
       consoleEl.innerHTML = '';
       for (const line of data.lines) {
@@ -888,7 +963,7 @@ flowchart LR
   // ── Bot status polling ─────────────────────────────
   async function pollBotStatus() {
     try {
-      const res = await fetch('/api/discord/status');
+      const res = await apiFetch('/api/discord/status');
       const data = await res.json();
       updateBotUI(data);
     } catch (e) {
@@ -973,7 +1048,8 @@ flowchart LR
   // ── Load config ────────────────────────────────────
   async function loadConfig() {
     try {
-      const res = await fetch('/api/config');
+      const res = await apiFetch('/api/config');
+      if (res.status === 401) return;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const cfg = await res.json();
       originalConfig = cfg;
@@ -1505,7 +1581,7 @@ flowchart LR
       // Collect keywords
       const keywords = collectKeywords();
 
-      const res = await fetch('/api/config/save', {
+      const res = await apiFetch('/api/config/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ env, keywords }),
@@ -1556,7 +1632,7 @@ flowchart LR
   async function testConnection(api) {
     conLog(`[${new Date().toISOString()}] Testing ${api} connection…`);
     try {
-      const res = await fetch(`/api/config/test-connection/${api}`);
+      const res = await apiFetch(`/api/config/test-connection/${api}`);
       const data = await res.json();
       if (data.healthy) {
         conLog(`  ✓ ${api} at ${data.endpoint} is reachable`, 'ok');
@@ -1669,7 +1745,7 @@ flowchart LR
     }
     conLog(`[${new Date().toISOString()}] Testing Discord token…`);
     try {
-      const res = await fetch('/api/discord/test', {
+      const res = await apiFetch('/api/discord/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token }),
@@ -1690,7 +1766,7 @@ flowchart LR
     conLog(`[${new Date().toISOString()}] Starting Discord bot…`);
     document.getElementById('btnStart').disabled = true;
     try {
-      const res = await fetch('/api/discord/start', { method: 'POST' });
+      const res = await apiFetch('/api/discord/start', { method: 'POST' });
       const data = await res.json();
       conLog(`  ${data.success ? '✓' : '✗'} ${data.message}`, data.success ? 'ok' : 'err');
       await pollStatus();
@@ -1709,7 +1785,7 @@ flowchart LR
     conLog(`[${new Date().toISOString()}] Stopping Discord bot…`);
     document.getElementById('btnStop').disabled = true;
     try {
-      const res = await fetch('/api/discord/stop', { method: 'POST' });
+      const res = await apiFetch('/api/discord/stop', { method: 'POST' });
       const data = await res.json();
       conLog(`  ${data.success ? '✓' : '✗'} ${data.message}`, data.success ? 'ok' : 'err');
       await pollStatus();
@@ -1732,7 +1808,7 @@ flowchart LR
     try {
       const text = await file.text();
 
-      const res = await fetch('/api/config/upload-workflow', {
+      const res = await apiFetch('/api/config/upload-workflow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workflow: text, filename: file.name }),
@@ -1770,9 +1846,9 @@ flowchart LR
     conLog(`[${new Date().toISOString()}] Discovering ComfyUI options…`);
     try {
       const [samplersRes, schedulersRes, checkpointsRes] = await Promise.all([
-        fetch('/api/config/comfyui/samplers'),
-        fetch('/api/config/comfyui/schedulers'),
-        fetch('/api/config/comfyui/checkpoints'),
+        apiFetch('/api/config/comfyui/samplers'),
+        apiFetch('/api/config/comfyui/schedulers'),
+        apiFetch('/api/config/comfyui/checkpoints'),
       ]);
 
       const samplers = await samplersRes.json();
@@ -1865,7 +1941,7 @@ flowchart LR
     conLog(`[${new Date().toISOString()}] Saving default workflow settings…`);
 
     try {
-      const res = await fetch('/api/config/default-workflow', {
+      const res = await apiFetch('/api/config/default-workflow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
@@ -1893,7 +1969,7 @@ flowchart LR
     if (!confirm('Remove the custom workflow? The default workflow settings will be used instead.')) return;
     conLog(`[${new Date().toISOString()}] Removing custom workflow…`);
     try {
-      const res = await fetch('/api/config/workflow', { method: 'DELETE' });
+      const res = await apiFetch('/api/config/workflow', { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         conLog('  ✓ ' + data.message, 'ok');
@@ -1914,7 +1990,7 @@ flowchart LR
     statusEl.innerHTML = '<span style="color:var(--warn)">Exporting…</span>';
     conLog(`[${new Date().toISOString()}] Exporting current workflow…`);
     try {
-      const res = await fetch('/api/config/workflow/export');
+      const res = await apiFetch('/api/config/workflow/export');
       const data = await res.json();
       if (data.success) {
         const blob = new Blob([JSON.stringify(data.workflow, null, 2)], { type: 'application/json' });
@@ -1989,7 +2065,7 @@ flowchart LR
     conLog(`[${new Date().toISOString()}] Test image generation started — "${prompt.substring(0, 80)}"…`);
 
     try {
-      const res = await fetch('/api/test/generate-image', {
+      const res = await apiFetch('/api/test/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt }),

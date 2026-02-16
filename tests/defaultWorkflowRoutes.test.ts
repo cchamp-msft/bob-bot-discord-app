@@ -59,6 +59,8 @@ jest.mock('../src/utils/config', () => ({
     reload: jest.fn(() => ({ reloaded: [], requiresRestart: [] })),
     getOllamaModel: jest.fn(() => ''),
     getAdminToken: jest.fn(() => ''),
+    getConfiguratorAllowRemote: jest.fn(() => false),
+    getConfiguratorAllowedIps: jest.fn(() => []),
   },
 }));
 

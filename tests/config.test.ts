@@ -1110,6 +1110,30 @@ describe('Config', () => {
       expect(config.getAdminToken()).toBe('my-secret');
     });
 
+    it('getConfiguratorAllowRemote returns false when unset or not "true"', () => {
+      delete process.env.CONFIGURATOR_ALLOW_REMOTE;
+      expect(config.getConfiguratorAllowRemote()).toBe(false);
+      process.env.CONFIGURATOR_ALLOW_REMOTE = 'false';
+      expect(config.getConfiguratorAllowRemote()).toBe(false);
+      process.env.CONFIGURATOR_ALLOW_REMOTE = '1';
+      expect(config.getConfiguratorAllowRemote()).toBe(false);
+    });
+
+    it('getConfiguratorAllowRemote returns true when set to "true"', () => {
+      process.env.CONFIGURATOR_ALLOW_REMOTE = 'true';
+      expect(config.getConfiguratorAllowRemote()).toBe(true);
+    });
+
+    it('getConfiguratorAllowedIps returns empty array when unset', () => {
+      delete process.env.CONFIGURATOR_ALLOWED_IPS;
+      expect(config.getConfiguratorAllowedIps()).toEqual([]);
+    });
+
+    it('getConfiguratorAllowedIps trims and filters empty entries', () => {
+      process.env.CONFIGURATOR_ALLOWED_IPS = ' 172.17.0.0/16 , 192.168.1.0/24 , ';
+      expect(config.getConfiguratorAllowedIps()).toEqual(['172.17.0.0/16', '192.168.1.0/24']);
+    });
+
     // ── Reload restart signaling for split-server fields ─────────
     // Note: reload() re-reads the .env file from disk with dotenv.config(),
     // so runtime process.env changes are overwritten. We verify the mechanism
