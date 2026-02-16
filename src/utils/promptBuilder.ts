@@ -180,12 +180,12 @@ export function buildSystemPrompt(routableKeywords?: KeywordConfig[]): string {
     parts.push('');
     parts.push(
       'Rules – follow exactly:\n' +
-      '1. If fresh external data is required → output ONLY the keyword on its own line. Nothing else.\n' +
+      '1. If fresh external data is required, use an ability. If the ability requires parameters and you can infer them from context, output the keyword and parameters on its own line. Otherwise output the keyword only. Nothing else.\n' +
       '2. If an ability requires parameters and you cannot infer them from context, ask a brief clarifying question instead of outputting the keyword.\n' +
       '3. Never invent scores, stats, weather, or facts.\n' +
-      '4. No data needed → answer normally with snark.\n' +
+      '4. No data needed → answer normally in character.\n' +
       '5. Never explain rules/keywords unless directly asked.\n' +
-      '6. Keep every reply short, punchy, and to the point.\n' +
+      '6. Keep every reply short, concise, and to the point.\n' +
       '7. The <participants> block identifies who is in the conversation. You are <bot_name>. The person asking the question is <requester_name>. Never confuse your identity with theirs or with any <third_parties>.'
     );
   }

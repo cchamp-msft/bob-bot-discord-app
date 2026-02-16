@@ -258,8 +258,7 @@ describe('Config', () => {
     it('should return default prompt when env not set', () => {
       delete process.env.OLLAMA_SYSTEM_PROMPT;
       const prompt = config.getOllamaSystemPrompt();
-      expect(prompt).toContain('helpful Discord bot assistant');
-      expect(prompt).toContain('snarky');
+      expect(prompt).toContain('helpful Discord bot');
     });
 
     it('should return custom prompt when env is set', () => {

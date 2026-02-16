@@ -37,7 +37,7 @@ Since `finalOllamaPass: true` and the primary API was `accuweather` (not `o
 -   `assembleReprompt()` --- builds the final prompt with:
     -   System: persona only (NO abilities/keyword rules --- prevents infinite loops)
     -   User: `<conversation_history>` + `<external_data>` + `<current_question>`
--   Ollama generates a conversational, snarky weather report using the real data
+-   Ollama generates a conversational weather report using the real data
 
 ### 5\. Response Dispatch
 
