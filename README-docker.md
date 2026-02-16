@@ -8,6 +8,11 @@ This document covers building and running the Discord bot in a Docker container.
    ```bash
    cp .env.example .env
    ```
+   Optional: copy Docker-specific overrides as a starting point:
+   ```bash
+   cp .env.example.docker .env.docker
+   ```
+   Then merge the values you need into `.env`.
 
 2. **Edit `.env` for Docker**
    - Set `HTTP_HOST=0.0.0.0` so the configurator can accept connections inside the container.
@@ -73,6 +78,66 @@ Change via `HTTP_PORT` and `OUTPUTS_PORT` in `.env` (and in `docker-compose.yml`
 
 - **Configurator**: When `CONFIGURATOR_ALLOW_REMOTE=true`, access is limited to IPs in `CONFIGURATOR_ALLOWED_IPS` (and localhost). Always set a strong `ADMIN_TOKEN` and use it in the browser when prompted. Do not expose port 3000 to the public internet.
 - **Outputs server**: Designed to be reachable (e.g. by Discord for image links). If you put it behind a reverse proxy, set `OUTPUTS_TRUST_PROXY` and `OUTPUT_BASE_URL` as in the main README.
+
+## SSL/TLS termination (practical and secure)
+
+This app does not terminate TLS itself. Keep the bot container on plain HTTP internally and terminate HTTPS at a trusted edge proxy (Nginx, Caddy, Traefik, cloud load balancer).
+
+### Recommended pattern
+
+1. **Keep app ports private**
+   - Keep `3000` (configurator) private/internal only.
+   - Keep `3003` reachable only by your proxy (or localhost if proxy runs on the host).
+2. **Terminate TLS at the proxy**
+   - Proxy forwards to `http://bot:3003` (same Docker network) or `http://127.0.0.1:3003` (host proxy model).
+3. **Set Docker/proxy env correctly**
+   - `OUTPUT_BASE_URL=https://your-public-host`
+   - `OUTPUTS_TRUST_PROXY=1` (or the exact hop count)
+   - `ADMIN_TOKEN=<strong-random-value>`
+4. **Do not publish configurator externally**
+   - If remote admin is required, keep strict allowlists and require `ADMIN_TOKEN`.
+
+### Minimal Nginx example (activity + outputs)
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name bot.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/bot.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/bot.example.com/privkey.pem;
+
+    # Outputs server: images + /activity + /api/activity
+    location / {
+        proxy_pass http://127.0.0.1:3003;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### Quick verification
+
+```bash
+# App direct (inside host)
+curl http://127.0.0.1:3003/health
+
+# Through TLS proxy
+curl https://bot.example.com/health
+
+# Activity page over TLS
+curl -I https://bot.example.com/activity
+
+# Activity API without key (expected 401)
+curl https://bot.example.com/api/activity
+```
+
+Security notes:
+- Never expose the configurator/admin surface directly to the public internet.
+- Set `OUTPUTS_TRUST_PROXY` only when requests pass through a trusted proxy path.
+- Keep certificate management in the proxy layer (e.g., Let's Encrypt automation).
 
 ## Common commands
 
