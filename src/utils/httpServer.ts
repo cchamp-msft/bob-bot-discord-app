@@ -177,6 +177,10 @@ function securityHeaders(_req: Request, res: Response, next: NextFunction): void
   res.removeHeader('X-Powered-By');
   // Prevent MIME-type sniffing
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Prevent clickjacking of the configurator
+  res.setHeader('X-Frame-Options', 'DENY');
+  // Limit referrer leakage (origin only when navigating cross-origin)
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   next();
 }
 

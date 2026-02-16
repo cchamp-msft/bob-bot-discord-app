@@ -182,6 +182,16 @@ describe('httpServer', () => {
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
   });
 
+  it('sets X-Frame-Options DENY on responses', async () => {
+    const res = await fetch(`${baseUrl}/health`);
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+  });
+
+  it('sets Referrer-Policy on responses', async () => {
+    const res = await fetch(`${baseUrl}/health`);
+    expect(res.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+  });
+
   it('does not expose X-Powered-By header', async () => {
     const res = await fetch(`${baseUrl}/health`);
     expect(res.headers.get('x-powered-by')).toBeNull();
@@ -275,5 +285,54 @@ describe('httpServer', () => {
 
     const res = await fetch(`${baseUrl}/configurator`);
     expect(res.status).toBe(200);
+  });
+
+  // ── State-changing routes require Bearer when ADMIN_TOKEN is set ──
+
+  it('POST /api/discord/start requires Bearer when ADMIN_TOKEN is set', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/api/discord/start`, { method: 'POST' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/discord/stop requires Bearer when ADMIN_TOKEN is set', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/api/discord/stop`, { method: 'POST' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/config/save requires Bearer when ADMIN_TOKEN is set', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/api/config/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/config/upload-workflow requires Bearer when ADMIN_TOKEN is set', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/api/config/upload-workflow`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow: '{}' }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/test/generate-image requires Bearer when ADMIN_TOKEN is set', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+
+    const res = await fetch(`${baseUrl}/api/test/generate-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'test' }),
+    });
+    expect(res.status).toBe(401);
   });
 });

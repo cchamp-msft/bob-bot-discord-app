@@ -44,4 +44,26 @@ describe('ipv4InCidr', () => {
     expect(ipv4InCidr('192.168.1.1', '192.168.1.0/33')).toBe(false);
     expect(ipv4InCidr('192.168.1.1', '192.168.1.0/-1')).toBe(false);
   });
+
+  it('matches /0 CIDR (entire address space)', () => {
+    expect(ipv4InCidr('1.2.3.4', '0.0.0.0/0')).toBe(true);
+    expect(ipv4InCidr('255.255.255.255', '0.0.0.0/0')).toBe(true);
+  });
+
+  it('matches /8 CIDR', () => {
+    expect(ipv4InCidr('10.0.0.1', '10.0.0.0/8')).toBe(true);
+    expect(ipv4InCidr('10.255.255.255', '10.0.0.0/8')).toBe(true);
+    expect(ipv4InCidr('11.0.0.1', '10.0.0.0/8')).toBe(false);
+  });
+
+  it('returns false for empty strings', () => {
+    expect(ipv4InCidr('', '192.168.1.0/24')).toBe(false);
+    expect(ipv4InCidr('192.168.1.1', '')).toBe(false);
+    expect(ipv4InCidr('', '')).toBe(false);
+  });
+
+  it('returns false for IPv6 addresses (not mapped)', () => {
+    expect(ipv4InCidr('::1', '127.0.0.0/8')).toBe(false);
+    expect(ipv4InCidr('fe80::1', '0.0.0.0/0')).toBe(false);
+  });
 });

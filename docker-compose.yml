@@ -8,11 +8,18 @@ services:
     build: .
     image: bob-bot-discord-app:latest
     env_file: .env
+    user: "bobbot:bobbot"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "127.0.0.1:3000:3000"   # configurator (host-only)
-      - "3003:3003"              # outputs server
+      - "127.0.0.1:3003:3003"   # outputs server (reverse-proxy)
     volumes:
-      - ./.env:/app/.env
       - ./outputs:/app/outputs
       - ./.config:/app/.config
       - ./config:/app/config

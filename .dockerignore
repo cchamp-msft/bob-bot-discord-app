@@ -28,5 +28,8 @@ jest.config.ts
 # Misc
 .DS_Store
 Thumbs.db
+docker-compose.yml
+Dockerfile
+.dockerignore
 *.log
 npm-debug.log*
