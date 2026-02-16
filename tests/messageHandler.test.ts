@@ -46,6 +46,7 @@ jest.mock('../src/utils/logger', () => ({
     logRequest: jest.fn(),
     logReply: jest.fn(),
     logError: jest.fn(),
+    logWarn: jest.fn(),
     logIncoming: jest.fn(),
     logIgnored: jest.fn(),
     logDefault: jest.fn(),
@@ -86,6 +87,7 @@ jest.mock('../src/utils/promptBuilder', () => ({
 
 jest.mock('../src/utils/apiRouter', () => ({
   executeRoutedRequest: jest.fn(),
+  inferAbilityParameters: jest.fn(),
 }));
 
 jest.mock('../src/utils/contextEvaluator', () => ({
@@ -120,7 +122,7 @@ jest.mock('../src/utils/activityKeyManager', () => ({
 
 import { config } from '../src/utils/config';
 import { classifyIntent, buildAbilitiesContext } from '../src/utils/keywordClassifier';
-import { executeRoutedRequest } from '../src/utils/apiRouter';
+import { executeRoutedRequest, inferAbilityParameters } from '../src/utils/apiRouter';
 import { assemblePrompt, parseFirstLineKeyword } from '../src/utils/promptBuilder';
 import { activityEvents } from '../src/utils/activityEvents';
 
@@ -3532,6 +3534,157 @@ describe('MessageHandler activity event emission', () => {
     expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
       'serpapi', 'search', 'two-stage-classify'
     );
+  });
+
+  it('infers parameters via inferAbilityParameters when fallback classifier matches keyword with required inputs', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const mockInfer = inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>;
+    const weatherKeyword = {
+      keyword: 'weather',
+      api: 'accuweather' as const,
+      timeout: 60,
+      description: 'Get weather',
+      abilityInputs: {
+        mode: 'explicit' as const,
+        required: ['location'],
+        examples: ['weather Dallas'],
+      },
+    };
+
+    // Ollama first-pass returns text that mentions weather
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Bangkok. You can thank me later for not making you...' },
+    });
+
+    // parseFirstLineKeyword does NOT match
+    mockParseFirstLineKeyword.mockReturnValueOnce({
+      keywordConfig: null, parsedLine: '', matched: false,
+    });
+
+    // classifyIntent matches weather
+    mockClassifyIntent.mockResolvedValueOnce({
+      keywordConfig: weatherKeyword,
+      wasClassified: true,
+    });
+
+    // inferAbilityParameters extracts location
+    mockInfer.mockResolvedValueOnce('Bangkok');
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Sunny, 35°C in Bangkok' } },
+      finalApi: 'accuweather',
+      stages: [],
+    });
+
+    const msg = createMsg('what is the capital of Thailand?');
+    await messageHandler.handleMessage(msg);
+
+    // Should have called inferAbilityParameters
+    expect(mockInfer).toHaveBeenCalledWith(
+      weatherKeyword,
+      'what is the capital of Thailand?',
+      expect.any(String)
+    );
+
+    // Should route with inferred "Bangkok" not the full user message
+    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
+      weatherKeyword,
+      'Bangkok',
+      expect.any(String),
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it('falls back to original content when inference returns null for keyword with required inputs', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const mockInfer = inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>;
+    const weatherKeyword = {
+      keyword: 'weather',
+      api: 'accuweather' as const,
+      timeout: 60,
+      description: 'Get weather',
+      abilityInputs: {
+        mode: 'explicit' as const,
+        required: ['location'],
+        examples: ['weather Dallas'],
+      },
+    };
+
+    // Ollama first-pass
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Let me check the weather for you' },
+    });
+
+    mockParseFirstLineKeyword.mockReturnValueOnce({
+      keywordConfig: null, parsedLine: '', matched: false,
+    });
+
+    mockClassifyIntent.mockResolvedValueOnce({
+      keywordConfig: weatherKeyword,
+      wasClassified: true,
+    });
+
+    // Inference fails
+    mockInfer.mockResolvedValueOnce(null);
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Weather data...' } },
+      finalApi: 'accuweather',
+      stages: [],
+    });
+
+    const msg = createMsg('tell me about weather');
+    await messageHandler.handleMessage(msg);
+
+    // Should fall back to original content
+    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
+      weatherKeyword,
+      'tell me about weather',
+      expect.any(String),
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it('skips inference for keywords without required inputs', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const mockInfer = inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>;
+    const searchKeyword = {
+      keyword: 'search',
+      api: 'serpapi' as const,
+      timeout: 60,
+      description: 'Search web',
+      // No abilityInputs.required
+    };
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Let me search that for you' },
+    });
+
+    mockParseFirstLineKeyword.mockReturnValueOnce({
+      keywordConfig: null, parsedLine: '', matched: false,
+    });
+
+    mockClassifyIntent.mockResolvedValueOnce({
+      keywordConfig: searchKeyword,
+      wasClassified: true,
+    });
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Results...' } },
+      finalApi: 'serpapi',
+      stages: [],
+    });
+
+    const msg = createMsg('find latest news about AI');
+    await messageHandler.handleMessage(msg);
+
+    // Should NOT have called inferAbilityParameters
+    expect(mockInfer).not.toHaveBeenCalled();
   });
 
   it('emits bot_reply for text responses', async () => {

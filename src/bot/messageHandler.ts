@@ -11,7 +11,7 @@ import { fileHandler } from '../utils/fileHandler';
 import { ChatMessage, NFLResponse } from '../types';
 import { chunkText } from '../utils/chunkText';
 import { classifyIntent } from '../utils/keywordClassifier';
-import { executeRoutedRequest } from '../utils/apiRouter';
+import { executeRoutedRequest, inferAbilityParameters } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
 import { assemblePrompt, parseFirstLineKeyword } from '../utils/promptBuilder';
 import { activityEvents } from '../utils/activityEvents';
@@ -922,13 +922,34 @@ class MessageHandler {
       const secondClassification = await classifyIntent(ollamaText, requester);
 
       if (secondClassification.keywordConfig && secondClassification.keywordConfig.api !== 'ollama') {
+        const matchedKw = secondClassification.keywordConfig;
         logger.log('success', 'system',
-          `TWO-STAGE: Fallback classifier matched "${secondClassification.keywordConfig.keyword}" — executing ${secondClassification.keywordConfig.api} API`);
-        activityEvents.emitRoutingDecision(secondClassification.keywordConfig.api, secondClassification.keywordConfig.keyword, 'two-stage-classify');
+          `TWO-STAGE: Fallback classifier matched "${matchedKw.keyword}" — executing ${matchedKw.api} API`);
+        activityEvents.emitRoutingDecision(matchedKw.api, matchedKw.keyword, 'two-stage-classify');
+
+        // When the ability has required inputs, the raw user content is
+        // unlikely to be a valid direct parameter (e.g. "what is the
+        // capital of Thailand?" is not a city name).  Use Ollama to
+        // infer the concrete parameter from the original message.
+        let routedInput = content;
+        const hasRequiredInputs = matchedKw.abilityInputs?.required &&
+          matchedKw.abilityInputs.required.length > 0;
+
+        if (hasRequiredInputs) {
+          const inferred = await inferAbilityParameters(matchedKw, content, requester);
+          if (inferred) {
+            routedInput = inferred;
+            logger.log('success', 'system',
+              `TWO-STAGE: Inferred parameter "${inferred}" for "${matchedKw.keyword}"`);
+          } else {
+            logger.logWarn('system',
+              `TWO-STAGE: Could not infer parameter for "${matchedKw.keyword}" — using original content`);
+          }
+        }
 
         const apiResult = await executeRoutedRequest(
-          secondClassification.keywordConfig,
-          content,
+          matchedKw,
+          routedInput,
           requester,
           filteredHistory.length > 0 ? filteredHistory : undefined,
           botDisplayName

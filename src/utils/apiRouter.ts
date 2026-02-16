@@ -53,6 +53,125 @@ function shouldRetryAbility(_keywordConfig: KeywordConfig, result: { success: bo
   return RETRYABLE_CODES.has(result.errorCode ?? '');
 }
 
+// ── Ability parameter inference ────────────────────────────────
+
+/**
+ * Build a system prompt for parameter inference.
+ * Instructs Ollama to extract the required ability input from user content.
+ */
+function buildInferenceSystemPrompt(keywordConfig: KeywordConfig): string {
+  if (keywordConfig.api === 'accuweather') {
+    return [
+      'You extract a location from the user\u2019s message for a weather API.',
+      '',
+      'Rules \u2014 follow exactly:',
+      '1) Output ONLY the location string. No explanations, no prefixes, no keywords.',
+      '2) If the user references a place indirectly (e.g. "capital of Thailand"), resolve it to the concrete name (e.g. "Bangkok").',
+      '3) Prefer: "City, Region, Country" format. A zip code is acceptable if the user provided one.',
+      '4) If no location can be inferred at all, output exactly: NONE',
+    ].join('\n');
+  }
+
+  // Generic inference prompt for other abilities
+  return [
+    'You extract the required parameters from the user\u2019s message for an external ability.',
+    '',
+    'Rules \u2014 follow exactly:',
+    '1) Output ONLY the extracted parameter value(s). No explanations, no prefixes.',
+    '2) If the user references something indirectly, resolve it to a concrete value.',
+    '3) If no parameter can be inferred, output exactly: NONE',
+  ].join('\n');
+}
+
+/**
+ * Build the user prompt for parameter inference.
+ */
+function buildInferenceUserPrompt(keywordConfig: KeywordConfig, content: string): string {
+  return [
+    '<ability_context>',
+    renderAbilityInputsForPrompt(keywordConfig),
+    '</ability_context>',
+    '',
+    `<user_message>${escapeXmlContent(content)}</user_message>`,
+    '',
+    'Extract the required parameter from the user message above. Output ONLY the value.',
+  ].join('\n');
+}
+
+/**
+ * Infer ability parameters from user content using Ollama.
+ *
+ * When the two-stage fallback classifier matches a keyword but no inline
+ * parameters were provided, this function asks Ollama to extract the
+ * required inputs from the user\u2019s original message based on the
+ * keyword\u2019s ability metadata.
+ *
+ * @returns The inferred parameter string, or null if inference failed or
+ *          the model could not extract a meaningful value.
+ */
+export async function inferAbilityParameters(
+  keywordConfig: KeywordConfig,
+  content: string,
+  requester: string,
+  signal?: AbortSignal
+): Promise<string | null> {
+  const systemPrompt = buildInferenceSystemPrompt(keywordConfig);
+  const userPrompt = buildInferenceUserPrompt(keywordConfig, content);
+  const retryModel = keywordConfig.retry?.model || config.getAbilityRetryModel();
+
+  logger.log('success', 'system',
+    `INFER-PARAMS: Inferring parameters for "${keywordConfig.keyword}" from user content`);
+
+  try {
+    const result = await requestQueue.execute(
+      'ollama',
+      requester,
+      `${keywordConfig.keyword}:infer-params`,
+      keywordConfig.timeout || config.getDefaultTimeout(),
+      (queueSignal) => {
+        const combinedSignal = signal
+          ? AbortSignal.any([signal, queueSignal])
+          : queueSignal;
+
+        return apiManager.executeRequest(
+          'ollama',
+          requester,
+          userPrompt,
+          keywordConfig.timeout || config.getDefaultTimeout(),
+          retryModel,
+          [{ role: 'system', content: systemPrompt }],
+          combinedSignal,
+          undefined,
+          { includeSystemPrompt: false }
+        );
+      }
+    ) as OllamaResponse;
+
+    if (!result.success || !result.data?.text) {
+      logger.logWarn('system',
+        `INFER-PARAMS: Inference failed for "${keywordConfig.keyword}": ${result.error ?? 'no response'}`);
+      return null;
+    }
+
+    const raw = result.data.text.trim();
+    const inferred = stripWrappingQuotes(normalizeOneLine(raw));
+
+    if (!inferred || inferred.toLowerCase() === 'none') {
+      logger.log('success', 'system',
+        `INFER-PARAMS: Could not infer parameters for "${keywordConfig.keyword}" — model returned NONE`);
+      return null;
+    }
+
+    logger.log('success', 'system',
+      `INFER-PARAMS: Inferred "${inferred}" for "${keywordConfig.keyword}"`);
+    return inferred;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.logError('system', `INFER-PARAMS: Inference error for "${keywordConfig.keyword}": ${msg}`);
+    return null;
+  }
+}
+
 function renderAbilityInputsForPrompt(keywordConfig: KeywordConfig): string {
   const parts: string[] = [];
   parts.push(`Ability keyword: ${keywordConfig.keyword}`);

@@ -28,6 +28,7 @@ src/
     ├── config.ts         # Configuration loader (with hot-reload)
     ├── configWriter.ts   # Configuration persistence layer
     ├── logger.ts         # Unified logging system (console + file + configurator tail)
+    ├── threadContext.ts  # Per-queue-item thread ID via AsyncLocalStorage
     ├── fileHandler.ts    # File output management
     ├── requestQueue.ts   # Request queue with API availability tracking
     ├── httpServer.ts     # Express HTTP server for configurator (localhost-only)
@@ -50,6 +51,7 @@ tests/
 ├── configWriter.test.ts  # Config writer unit tests
 ├── fileHandler.test.ts   # File handler unit tests
 ├── logger.test.ts        # Logger unit tests
+├── threadContext.test.ts  # Thread context / correlation ID tests
 └── requestQueue.test.ts  # Request queue unit tests
 
 outputs/
@@ -100,7 +102,9 @@ The bot uses a two-stage evaluation flow to intelligently route requests. Keywor
 1. **Regex matching** (fast path) — checked first for explicit keywords like "generate" or "weather"
 2. **AI classification** (fallback) — if no regex match, Ollama analyzes the message intent and maps it to a registered keyword
 3. **Direct API routing** — if a non-Ollama keyword is matched (regex or AI), the request is sent directly to the primary API
-4. **Two-stage evaluation** — if an Ollama keyword is matched (e.g., "chat", "ask") or no keyword is matched, the request is sent to Ollama with an abilities context describing available API capabilities. Ollama's response is then re-evaluated via `classifyIntent()` — if it references an API keyword, that API is executed automatically
+4. **Two-stage evaluation** — if an Ollama keyword is matched (e.g., "chat", "ask") or no keyword is matched, the request is sent to Ollama with an abilities context describing available API capabilities. Ollama's response is then re-evaluated:
+   - *Stage 2a*: `parseFirstLineKeyword()` checks if the first line of Ollama's response matches an API keyword (with optional inline parameters)
+   - *Stage 2b*: `classifyIntent()` as fallback — if no first-line keyword match, AI classification is used. When the matched ability has `abilityInputs.required`, `inferAbilityParameters()` extracts the concrete parameter (e.g., resolving "capital of Thailand" → "Bangkok") before routing.
 5. **Final refinement** (optional) — if a keyword has `finalOllamaPass: true`, the API result is sent through Ollama for a conversational response
 
 ### Example Flows
@@ -108,6 +112,7 @@ The bot uses a two-stage evaluation flow to intelligently route requests. Keywor
 - **Simple**: `generate` → ComfyUI (direct API call)
 - **Weather→AI**: `weather report` (AccuWeather) → `finalOllamaPass: true` → Ollama formats the weather data
 - **Two-stage**: User says "is it going to rain?" → no keyword match → Ollama with abilities → response mentions weather → AccuWeather triggered → Ollama formats result
+- **Two-stage with inference**: User says "what is the capital of Thailand?" → Ollama mentions weather → classifier detects "weather" → `inferAbilityParameters()` resolves "Bangkok" → AccuWeather called with "Bangkok"
 - **AI-classified**: User says "can you draw a sunset?" → AI identifies intent as "generate" → routes to ComfyUI
 - **No API match**: User says "tell me a joke" → Ollama with abilities → response has no API keywords → Ollama response returned directly
 

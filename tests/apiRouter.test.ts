@@ -72,7 +72,7 @@ jest.mock('../src/utils/activityEvents', () => ({
   },
 }));
 
-import { executeRoutedRequest } from '../src/utils/apiRouter';
+import { executeRoutedRequest, inferAbilityParameters } from '../src/utils/apiRouter';
 import { requestQueue } from '../src/utils/requestQueue';
 import { KeywordConfig } from '../src/utils/config';
 import { accuweatherClient } from '../src/api/accuweatherClient';
@@ -1510,6 +1510,109 @@ describe('ApiRouter', () => {
 
       // No routing_decision emitted from apiRouter at all
       expect(activityEvents.emitRoutingDecision).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('inferAbilityParameters', () => {
+    const weatherKeyword: KeywordConfig = {
+      keyword: 'weather',
+      api: 'accuweather',
+      timeout: 60,
+      description: 'Get weather',
+      abilityInputs: {
+        mode: 'explicit',
+        required: ['location'],
+        validation: 'Location must be a valid worldwide city name, region, or United States postal code.',
+        examples: ['weather Dallas', 'weather 90210', 'weather London, UK'],
+      },
+    };
+
+    it('should return inferred parameter when Ollama extracts a value', async () => {
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Bangkok' },
+      });
+
+      const result = await inferAbilityParameters(
+        weatherKeyword,
+        'what is the capital of Thailand?',
+        'testuser'
+      );
+
+      expect(result).toBe('Bangkok');
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return null when Ollama returns NONE', async () => {
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'NONE' },
+      });
+
+      const result = await inferAbilityParameters(
+        weatherKeyword,
+        'what is the meaning of life?',
+        'testuser'
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when Ollama returns empty text', async () => {
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: '' },
+      });
+
+      const result = await inferAbilityParameters(
+        weatherKeyword,
+        'some random question',
+        'testuser'
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when Ollama request fails', async () => {
+      mockExecute.mockResolvedValueOnce({
+        success: false,
+        error: 'Model unavailable',
+      });
+
+      const result = await inferAbilityParameters(
+        weatherKeyword,
+        'weather in paris',
+        'testuser'
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it('should strip wrapping quotes from inferred output', async () => {
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: '"Seattle, WA"' },
+      });
+
+      const result = await inferAbilityParameters(
+        weatherKeyword,
+        'what\'s it like in Seattle?',
+        'testuser'
+      );
+
+      expect(result).toBe('Seattle, WA');
+    });
+
+    it('should return null when executor throws', async () => {
+      mockExecute.mockRejectedValueOnce(new Error('Network error'));
+
+      const result = await inferAbilityParameters(
+        weatherKeyword,
+        'weather london',
+        'testuser'
+      );
+
+      expect(result).toBeNull();
     });
   });
 });

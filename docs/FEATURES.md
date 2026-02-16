@@ -46,6 +46,7 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 - ✅ Smart file handling (attachments for small files, URL links for large)
 - ✅ HTTP server for file serving
 - ✅ Comprehensive request logging with date/requester/status tracking
+- ✅ **Thread ID correlation** — each request-queue execution gets a 4-character hex thread ID (`[a1b2]`) in log lines, enabling easy correlation of related log entries across classify → route → API execution chains
 - ✅ Organized output directory structure with date formatting
 - ✅ **Configurable image response format** — embed block with internal link is optional (disabled by default)
 
@@ -58,6 +59,7 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 
 - ✅ **Global final-pass model** — configurable Ollama model for all final-pass refinements
 - ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
+- ✅ **Ability parameter inference** — when two-stage fallback detects an API keyword with required inputs, Ollama infers concrete parameters from user context before routing (e.g., resolving "capital of Thailand" → "Bangkok" for weather)
 - ✅ **NFL commands** — `nfl scores` (current or date-specific) and `nfl news` (with optional keyword filter)
 
 ## Monitoring & Privacy
