@@ -12,6 +12,7 @@ import * as os from 'os';
 // module and override the private logsDir before testing.
 
 import { logger } from '../src/utils/logger';
+import { runWithThreadId } from '../src/utils/threadContext';
 
 describe('Logger', () => {
   let tempDir: string;
@@ -113,6 +114,24 @@ describe('Logger', () => {
       expect(lines[2]).toContain('[warn] [warn]');
       expect(lines[3]).toContain('[warn] [busy]');
       expect(lines[4]).toContain('[warn] [timeout]');
+    });
+
+    it('should include a thread tag when called inside a thread context', () => {
+      runWithThreadId('a1b2', () => {
+        logger.log('success', 'testuser', 'threaded log');
+      });
+
+      const content = readLatestLog();
+      expect(content).toContain('[testuser] [a1b2]');
+      expect(content).toContain('threaded log');
+    });
+
+    it('should omit thread tag when called outside a thread context', () => {
+      logger.log('success', 'testuser', 'no thread');
+
+      const content = readLatestLog();
+      // Should NOT have a thread tag bracket pair after requester
+      expect(content).toMatch(/\[testuser\] no thread/);
     });
   });
 

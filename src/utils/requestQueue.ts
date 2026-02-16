@@ -1,4 +1,5 @@
 import { logger } from './logger';
+import { generateThreadId, runWithThreadId } from './threadContext';
 
 interface QueueEntry<T = unknown> {
   api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
@@ -119,6 +120,7 @@ class RequestQueue {
 
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
+      const threadId = generateThreadId();
 
       try {
         const timeoutPromise = new Promise<never>((_, reject) => {
@@ -133,10 +135,12 @@ class RequestQueue {
           ? AbortSignal.any([controller.signal, entry.callerSignal])
           : controller.signal;
 
-        const result = await Promise.race([
-          entry.executor(effectiveSignal),
-          timeoutPromise,
-        ]);
+        const result = await runWithThreadId(threadId, () =>
+          Promise.race([
+            entry.executor(effectiveSignal),
+            timeoutPromise,
+          ])
+        );
         entry.resolve(result);
       } catch (error) {
         if (

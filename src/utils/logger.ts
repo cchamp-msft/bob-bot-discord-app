@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { getThreadId } from './threadContext';
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 export type LogStatus = 'success' | 'error' | 'warn' | 'busy' | 'timeout' | 'debug';
@@ -57,7 +58,9 @@ class Logger {
       data,
     };
 
-    const logLine = `[${entry.timestamp}] [${entry.level}] [${entry.status}] [${entry.requester}] ${entry.data}`;
+    const threadId = getThreadId();
+    const threadTag = threadId ? ` [${threadId}]` : '';
+    const logLine = `[${entry.timestamp}] [${entry.level}] [${entry.status}] [${entry.requester}]${threadTag} ${entry.data}`;
 
     // Write to console (same line as file)
     switch (level) {
