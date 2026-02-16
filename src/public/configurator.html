@@ -298,6 +298,9 @@
   .bot-controls .spacer { flex: 1; }
   .btn-ok { background: var(--ok); color: #fff; }
   .kw-ctx-label { font-size: 0.72em; color: var(--text-dim); vertical-align: middle; }
+  .kw-ctx-depth-stacked { display: flex; flex-direction: column; gap: 4px; }
+  .kw-ctx-row { display: flex; align-items: center; gap: 4px; }
+  .kw-ctx-row .kw-ctx-label { min-width: 26px; text-align: right; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 </head>
@@ -346,11 +349,10 @@
       </div>
     </section>
 
-    <!-- API Endpoints Section -->
+    <!-- ComfyUI Section -->
     <section>
-      <h2 class="open" onclick="toggleSection(this)">API Endpoints</h2>
+      <h2 class="open" onclick="toggleSection(this)">ComfyUI</h2>
       <div class="body open">
-        <!-- ComfyUI -->
         <div class="field-row">
           <div class="field">
             <label>ComfyUI Endpoint</label>
@@ -473,10 +475,20 @@
             <div id="testGenImages" style="display:flex;flex-wrap:wrap;gap:10px"></div>
           </div>
         </div>
+        <div class="field narrow">
+          <label>Include Embed in Image Responses <span class="note">Shows internal View link; off by default</span></label>
+          <select id="image_response_include_embed" data-env="IMAGE_RESPONSE_INCLUDE_EMBED" onchange="markDirty()">
+            <option value="false">No</option>
+            <option value="true">Yes</option>
+          </select>
+        </div>
+      </div>
+    </section>
 
-        <hr style="border-color:var(--border);margin:16px 0">
-
-        <!-- Ollama -->
+    <!-- Ollama Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">Ollama</h2>
+      <div class="body">
         <div class="field-row">
           <div class="field">
             <label>Ollama Endpoint</label>
@@ -724,13 +736,6 @@
           <label>Max Attachments per Message <span class="note">1–10, Discord limit is 10</span></label>
           <input type="number" id="max_attachments" data-env="MAX_ATTACHMENTS" placeholder="10" min="1" max="10">
         </div>
-        <div class="field narrow">
-          <label>Include Embed in Image Responses <span class="note">Shows internal View link; off by default</span></label>
-          <select id="image_response_include_embed" data-env="IMAGE_RESPONSE_INCLUDE_EMBED" onchange="markDirty()">
-            <option value="false">No</option>
-            <option value="true">Yes</option>
-          </select>
-        </div>
       </div>
     </section>
     <!-- Reply Chain Section -->
@@ -835,7 +840,7 @@ flowchart LR
 </div>
 
 <script>
-  mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: { primaryColor: '#0f3460', primaryTextColor: '#eee', lineColor: '#e94560', secondaryColor: '#533483' } });
+  mermaid.initialize({ startOnLoad: false, theme: 'dark', themeVariables: { primaryColor: '#0f3460', primaryTextColor: '#eee', lineColor: '#e94560', secondaryColor: '#533483' } });
   // ── State ──────────────────────────────────────────
   let originalConfig = null;
   let dirty = false;
@@ -844,6 +849,11 @@ flowchart LR
   function toggleSection(h2) {
     h2.classList.toggle('open');
     h2.nextElementSibling.classList.toggle('open');
+    // Render any un-rendered Mermaid diagrams when section opens
+    if (h2.classList.contains('open')) {
+      const diagrams = h2.nextElementSibling.querySelectorAll('pre.mermaid:not([data-processed])');
+      if (diagrams.length) mermaid.run({ nodes: Array.from(diagrams) });
+    }
   }
 
   // ── Console ────────────────────────────────────────
@@ -1179,8 +1189,9 @@ flowchart LR
       <td style="text-align:center"><input type="checkbox" class="kw-finalPass" ${kw?.finalOllamaPass ? 'checked' : ''} title="Pass API result through Ollama for conversational refinement"></td>
       <td style="text-align:center"><input type="checkbox" class="kw-ctxEval" ${kw?.contextFilterEnabled ? 'checked' : ''} title="Enable Ollama context evaluation for this keyword"></td>
       <td style="text-align:center">
-        <span class="kw-ctx-depth">
-          <span class="kw-ctx-label">Min</span> <input type="number" class="kw-ctxMin" value="${kw?.contextFilterMinDepth ?? ''}" min="1" style="width:50px" title="Min depth — always included (default: 1)" placeholder="1"> <span class="kw-ctx-label">Max</span> <input type="number" class="kw-ctxMax" value="${kw?.contextFilterMaxDepth ?? ''}" min="1" style="width:50px" title="Max depth — max messages eligible (default: global reply chain max)" placeholder="auto">
+        <span class="kw-ctx-depth kw-ctx-depth-stacked">
+          <span class="kw-ctx-row"><span class="kw-ctx-label">Min</span> <input type="number" class="kw-ctxMin" value="${kw?.contextFilterMinDepth ?? ''}" min="1" style="width:50px" title="Min depth — always included (default: 1)" placeholder="1"></span>
+          <span class="kw-ctx-row"><span class="kw-ctx-label">Max</span> <input type="number" class="kw-ctxMax" value="${kw?.contextFilterMaxDepth ?? ''}" min="1" style="width:50px" title="Max depth — max messages eligible (default: global reply chain max)" placeholder="auto"></span>
         </span>
       </td>
       <td>${isBuiltin ? '' : '<button class="btn-danger btn-sm" onclick="removeKeywordRow(this)">✕</button>'}</td>

@@ -4,6 +4,7 @@
  * These tests parse the raw configurator.html source to verify that:
  * 1. Keyword detail rows are collapsed by default (no auto-open).
  * 2. Visual separators exist between keyword entry groups.
+ * 3. Ctx Depth Min/Max are rendered as two stacked rows.
  */
 
 import * as fs from 'fs';
@@ -73,5 +74,32 @@ describe('Keywords — visual separators', () => {
     // The script must add the separator class when tbody already has children
     expect(script).toContain('kw-separator-top');
     expect(script).toMatch(/tbody\.children\.length\s*>\s*0/);
+  });
+});
+
+// ── Ctx Depth Min/Max: two-row stacked layout ─────────────────
+
+describe('Keywords — Ctx Depth two-row layout', () => {
+  const script = extractScript();
+  const css = extractStyle();
+
+  it('renders Min and Max as separate kw-ctx-row elements', () => {
+    // Each row should be its own .kw-ctx-row span
+    const minRow = script.match(/kw-ctx-row.*kw-ctx-label.*Min.*kw-ctxMin/);
+    const maxRow = script.match(/kw-ctx-row.*kw-ctx-label.*Max.*kw-ctxMax/);
+    expect(minRow).not.toBeNull();
+    expect(maxRow).not.toBeNull();
+  });
+
+  it('uses the stacked container class for vertical layout', () => {
+    expect(script).toContain('kw-ctx-depth-stacked');
+  });
+
+  it('CSS defines stacked layout for .kw-ctx-depth-stacked', () => {
+    expect(css).toMatch(/\.kw-ctx-depth-stacked\s*\{[^}]*flex-direction:\s*column/);
+  });
+
+  it('CSS defines row layout for .kw-ctx-row', () => {
+    expect(css).toMatch(/\.kw-ctx-row\s*\{[^}]*display:\s*flex/);
   });
 });

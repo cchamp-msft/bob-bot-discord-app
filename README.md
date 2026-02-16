@@ -216,20 +216,15 @@ Events are written as sanitized first-person narratives (e.g. *"Someone wants my
 - **Bot Token**: Write-only field — token is never displayed or logged, only persisted to `.env`
 - **Start/Stop Controls**: Connect or disconnect the bot from Discord without restarting the process
 - **Connection Status**: Live indicator showing stopped / connecting / running / error
-- **API Endpoints**: Configure ComfyUI/Ollama/AccuWeather/NFL URLs with live connection testing
+- **ComfyUI**: Endpoint, workflow upload, default workflow builder, discovery, export, test image generation, and image response embed toggle — all in one collapsible section
+- **Ollama**: Endpoint, model selection, system prompt, final pass model/prompt, and ability logging — collapsible section
 - **AccuWeather**: API key (write-only), default location, endpoint configuration, and test connection with location resolution
 - **NFL**: Enabled toggle, endpoint configuration, and test connection (no API key needed — ESPN public API)
-- **Ollama Model Selection**: Test connection auto-discovers available models; select and save desired model
-- **Ollama System Prompt**: Configurable system prompt sets the bot's personality; reset-to-default button included
-- **ComfyUI Workflow Upload**: Upload a workflow JSON file with `%prompt%` placeholder validation
-- **Default Workflow Builder**: Configure a basic text-to-image workflow with checkpoint model, image size, steps, sampler, scheduler, and denoise — no manual JSON editing required
-- **ComfyUI Discovery**: Auto-detect available checkpoints, samplers, and schedulers from the connected ComfyUI instance
-- **Workflow Export**: Download the currently active workflow as ComfyUI API format JSON for external testing
 - **Error Handling**: Configure user-facing error message and rate limit interval
 - **HTTP Server**: Adjust configurator port and output base URL
 - **Two-Server Architecture**: Configurator runs on localhost:3000 (secure), outputs server on 0.0.0.0:3003 (public, for Discord image fetching)
 - **Limits**: Set file size threshold, default timeout, and max attachments per message
-- **Image Response**: Toggle whether image responses include the embed block with internal View link (off by default)
+- **Message Flow Overview**: Interactive Mermaid diagram showing the bot's message processing pipeline
 - **Keywords Management**: Add/edit/remove keyword→API mappings with custom timeouts
 - **Status Console**: Real-time log view tailing today's log file, showing all events (startup, requests, errors, config changes) with color-coded levels
 
