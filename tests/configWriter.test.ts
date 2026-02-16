@@ -311,26 +311,6 @@ describe('ConfigWriter', () => {
       const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
       expect(content.keywords[0].abilityText).toBeUndefined();
       expect(content.keywords[0].finalOllamaPass).toBeUndefined();
-      expect(content.keywords[0].accuweatherMode).toBeUndefined();
-    });
-
-    it('should accept valid accuweatherMode values', async () => {
-      for (const mode of ['current', 'forecast', 'full'] as const) {
-        await configWriter.updateKeywords([
-          { ...validKeyword, api: 'accuweather', accuweatherMode: mode },
-        ]);
-
-        const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-        expect(content.keywords[0].accuweatherMode).toBe(mode);
-      }
-    });
-
-    it('should reject invalid accuweatherMode value', async () => {
-      await expect(
-        configWriter.updateKeywords([
-          { ...validKeyword, api: 'accuweather', accuweatherMode: 'invalid' as any },
-        ])
-      ).rejects.toThrow('invalid accuweatherMode');
     });
 
     it('should strip unknown fields like routeApi on save', async () => {

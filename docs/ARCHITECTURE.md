@@ -110,7 +110,7 @@ The bot uses a two-stage evaluation flow to intelligently route requests. Keywor
 ### Example Flows
 
 - **Simple**: `generate` → ComfyUI (direct API call)
-- **Weather→AI**: `weather report` (AccuWeather) → `finalOllamaPass: true` → Ollama formats the weather data
+- **Weather direct route**: `weather Seattle` → AccuWeather (shared routed API path)
 - **Two-stage**: User says "is it going to rain?" → no keyword match → Ollama with abilities → response mentions weather → AccuWeather triggered → Ollama formats result
 - **Two-stage with inference**: User says "what is the capital of Thailand?" → Ollama mentions weather → classifier detects "weather" → `inferAbilityParameters()` resolves "Bangkok" → AccuWeather called with "Bangkok"
 - **AI-classified**: User says "can you draw a sunset?" → AI identifies intent as "generate" → routes to ComfyUI

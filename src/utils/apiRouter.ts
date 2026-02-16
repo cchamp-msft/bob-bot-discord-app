@@ -33,24 +33,9 @@ function stripWrappingQuotes(text: string): string {
   return t;
 }
 
-/**
- * Structured error codes emitted by API clients for retry gating.
- * Using codes instead of substring matching prevents silent breakage
- * when error text is reworded.
- */
-export const RETRYABLE_ERROR_CODES = {
-  ACCUWEATHER_NO_LOCATION: 'ACCUWEATHER_NO_LOCATION',
-  ACCUWEATHER_UNKNOWN_LOCATION: 'ACCUWEATHER_UNKNOWN_LOCATION',
-} as const;
-
-export type RetryableErrorCode = typeof RETRYABLE_ERROR_CODES[keyof typeof RETRYABLE_ERROR_CODES];
-
-/** Set of error codes that qualify for parameter-refinement retry. */
-const RETRYABLE_CODES: ReadonlySet<string> = new Set(Object.values(RETRYABLE_ERROR_CODES));
-
-function shouldRetryAbility(_keywordConfig: KeywordConfig, result: { success: boolean; errorCode?: string }): boolean {
+function shouldRetryAbility(result: { success: boolean }): boolean {
   if (result.success) return false;
-  return RETRYABLE_CODES.has(result.errorCode ?? '');
+  return true;
 }
 
 // ── Ability parameter inference ────────────────────────────────
@@ -191,24 +176,8 @@ function renderAbilityInputsForPrompt(keywordConfig: KeywordConfig): string {
 }
 
 function buildRetrySystemPrompt(keywordConfig: KeywordConfig): string {
-  // Specialized guidance for AccuWeather: must output a *specific* location string.
-  if (keywordConfig.api === 'accuweather') {
-    return [
-      'You refine parameters for an external weather ability (AccuWeather).',
-      'The ability failed to resolve the location. Your job: return a better location string.',
-      '',
-      'Rules — follow exactly:',
-      '1) Output ONLY the refined location string. No explanations. No prefixes.',
-      '2) Keep it as close as possible to the user\'s original intent, but make it more specific.',
-      '3) Prefer: "City, State" (US) or "City, Region, Country" (non-US). Zip code is OK if user provided one.',
-      '4) Expand abbreviations when helpful. If ambiguous, choose the most common match, but stay faithful.',
-      '5) Do not invent a new unrelated location.',
-    ].join('\n');
-  }
-
-  // Generic fallback (kept for future global enablement across more abilities).
   return [
-    'You refine parameters for an external ability so it can succeed.',
+    `You refine parameters for an external ability (${keywordConfig.api}) so it can succeed.`,
     'Rules — follow exactly:',
     '1) Output ONLY the refined parameters. No explanations.',
     '2) Stay as close as possible to the original intent; only add specificity/format fixes.',
@@ -310,7 +279,7 @@ export async function executeRoutedRequest(
           undefined,
           conversationHistory?.length ? conversationHistory : undefined,
           sig,
-          keywordConfig.accuweatherMode,
+          undefined,
           undefined,
           keywordConfig.keyword
         ),
@@ -323,7 +292,7 @@ export async function executeRoutedRequest(
   stages.push(primaryExtracted);
 
   // ── Retry loop (parameter refinement) ────────────────────────
-  if (!primaryResult.success && effectiveRetryEnabled && effectiveMaxRetries > 0 && shouldRetryAbility(keywordConfig, primaryResult)) {
+  if (!primaryResult.success && effectiveRetryEnabled && effectiveMaxRetries > 0 && shouldRetryAbility(primaryResult)) {
     logger.logWarn('system', `API-ROUTING: ${keywordConfig.api} failed; attempting parameter refinement retries (maxRetries=${effectiveMaxRetries})`);
 
     for (let attempt = 1; attempt <= effectiveMaxRetries; attempt++) {
@@ -389,7 +358,7 @@ export async function executeRoutedRequest(
         break;
       }
 
-      if (!shouldRetryAbility(keywordConfig, primaryResult)) {
+      if (!shouldRetryAbility(primaryResult)) {
         logger.logWarn('system', `API-ROUTING: ${keywordConfig.api} failed after retry attempt ${attempt} with non-retryable error; stopping retries`);
         break;
       }

@@ -249,9 +249,6 @@ class ConfigWriter {
         if (entry.allowEmptyContent !== undefined && typeof entry.allowEmptyContent !== 'boolean') {
           throw new Error(`Keyword "${entry.keyword}" has invalid allowEmptyContent — must be a boolean`);
         }
-        if (entry.accuweatherMode !== undefined && entry.accuweatherMode !== 'current' && entry.accuweatherMode !== 'forecast' && entry.accuweatherMode !== 'full') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid accuweatherMode "${entry.accuweatherMode}" — must be "current", "forecast", or "full"`);
-        }
         if (entry.enabled !== undefined && typeof entry.enabled !== 'boolean') {
           throw new Error(`Keyword "${entry.keyword}" has invalid enabled — must be a boolean`);
         }
@@ -321,7 +318,6 @@ class ConfigWriter {
         if (entry.abilityInputs) clean.abilityInputs = entry.abilityInputs;
         if (entry.finalOllamaPass !== undefined) clean.finalOllamaPass = entry.finalOllamaPass;
         if (entry.allowEmptyContent !== undefined) clean.allowEmptyContent = entry.allowEmptyContent;
-        if (entry.accuweatherMode) clean.accuweatherMode = entry.accuweatherMode;
         if (entry.enabled === false) clean.enabled = false;
         if (entry.retry) {
           // Whitelist known retry keys to prevent config drift from unknown properties.

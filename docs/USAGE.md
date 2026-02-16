@@ -78,7 +78,7 @@ This enables automatic ability routing. For example:
 - You ask: `@BobBot what's the weather like in Seattle?`
 - First stage: Ollama recognizes this as a weather question
 - The response triggers the weather API automatically
-- You get an AI-powered weather report
+- You get weather details using AccuWeather data
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for technical details on the two-stage evaluation system.
 
@@ -126,15 +126,13 @@ The bot provides real-time weather data via AccuWeather.
 @BobBot weather Seattle
 @BobBot forecast for 90210
 @BobBot conditions in London
-@BobBot weather report New York
 ```
 
 **Slash command** (supports default location):
 ```
-/weather                          # Default location, full report
-/weather location: Chicago        # Specified location, full report
-/weather location: 90210 type: forecast   # Zip code, forecast only
-/weather type: current            # Default location, current conditions
+/weather                          # Default location
+/weather location: Chicago        # Specified location
+/weather location: 90210          # Zip code
 ```
 
 **Location formats supported**:

@@ -64,9 +64,9 @@
       "keyword": "weather",
       "api": "accuweather",
       "timeout": 60,
-      "description": "Get current weather conditions and 5-day forecast",
-      "abilityText": "Get current weather conditions and 5-day forecast",
-      "abilityWhen": "User asks about weather or current conditions for a location.",
+      "description": "Get weather details including current conditions and forecast",
+      "abilityText": "Get weather details including current conditions and forecast",
+      "abilityWhen": "User asks about weather details for a location, including temperature, precipitation, wind, and multi-day outlook.",
       "abilityInputs": {
         "mode": "explicit",
         "required": ["location"],
@@ -80,7 +80,8 @@
       "api": "accuweather",
       "timeout": 60,
       "description": "Get 5-day weather forecast",
-      "abilityWhen": "User asks specifically for a multi-day weather forecast.",
+      "abilityText": "Get the multi-day weather outlook for a location",
+      "abilityWhen": "User asks for forecast details, upcoming weather, or day-by-day outlook.",
       "abilityInputs": {
         "mode": "explicit",
         "required": ["location"],
@@ -94,29 +95,14 @@
       "api": "accuweather",
       "timeout": 60,
       "description": "Get current weather conditions",
-      "abilityWhen": "User asks specifically for current weather conditions only.",
+      "abilityText": "Get current weather conditions for a location",
+      "abilityWhen": "User asks for current weather, temperature, humidity, wind, or right-now conditions.",
       "abilityInputs": {
         "mode": "explicit",
         "required": ["location"],
         "validation": "Location must be a valid worldwide city name, region, or United States postal code.",
         "examples": ["conditions Chicago"]
       },
-      "contextFilterMaxDepth": 1
-    },
-    {
-      "keyword": "weather report",
-      "api": "accuweather",
-      "timeout": 360,
-      "description": "Get an AI-powered opinionated weather report",
-      "abilityText": "Get an AI-powered opinionated weather report",
-      "abilityWhen": "User wants an opinionated or narrative weather report.",
-      "abilityInputs": {
-        "mode": "explicit",
-        "required": ["location"],
-        "validation": "Location must be a valid worldwide city name, region, or United States postal code.",
-        "examples": ["weather report Portland"]
-      },
-      "finalOllamaPass": true,
       "contextFilterMaxDepth": 1
     },
     {

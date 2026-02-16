@@ -729,12 +729,12 @@ class MessageHandler {
   /**
    * Match a keyword only at the very start of the message.
    * Keywords are sorted longest-first so multi-word keywords like
-   * "weather report" take priority over shorter ones like "weather".
+   * "nfl scores" take priority over shorter overlaps.
    * Disabled keywords (enabled === false) are skipped.
    */
   private findKeyword(content: string): KeywordConfig | undefined {
     const lowerContent = content.toLowerCase();
-    // Sort longest keyword first so "weather report" wins over "weather"
+    // Sort longest keyword first so more specific multi-word keywords win.
     const sorted = [...config.getKeywords()]
       .filter((k) => k.enabled !== false)
       .sort(

@@ -1,4 +1,4 @@
-Walkthrough: `@BobBot weather report for Seattle`
+Walkthrough: `@BobBot weather Seattle`
 -------------------------------------------------
 
 ### 1\. Discord Event → MessageHandler
@@ -11,9 +11,9 @@ The Discord.js `messageCreate` event fires and calls `messageHandler.handleMe
 
 File: `messageHandler.ts`
 
--   The `@mention` is stripped → `content = "weather report for Seattle"`
--   `findKeyword()` sorts keywords longest-first, so `"weather report"** (15 chars) matches before **`"weather" (7 chars)
--   `keywordConfig` = `{ keyword: 'weather report', api: 'accuweather', finalOllamaPass: true, timeout: 360 }`
+-   The `@mention` is stripped → `content = "weather Seattle"`
+-   `findKeyword()` matches `"weather"` at the start of the message
+-   `keywordConfig` = `{ keyword: 'weather', api: 'accuweather', timeout: 60 }`
 -   Since `api !== 'ollama'` → `apiKeywordMatched = true` → takes the direct API routing path
 
 ### 3\. API Router --- Primary Request
@@ -37,7 +37,7 @@ Since `finalOllamaPass: true` and the primary API was `accuweather` (not `o
 -   `assembleReprompt()` --- builds the final prompt with:
     -   System: persona only (NO abilities/keyword rules --- prevents infinite loops)
     -   User: `<conversation_history>` + `<external_data>` + `<current_question>`
--   Ollama generates a conversational weather report using the real data
+-   If `finalOllamaPass` is enabled on a keyword, Ollama can refine the API result conversationally
 
 ### 5\. Response Dispatch
 
@@ -49,7 +49,7 @@ The `RoutedResult` returns with `finalApi: 'ollama'`, so `dispatchResponse()
 
 File: `messageHandler.ts`
 
-The `⏳ Processing...` message is edited in-place with the final AI-generated weather report, chunked if necessary for Discord's message limits.
+The `⏳ Processing...` message is edited in-place with the final weather response, chunked if necessary for Discord's message limits.
 
 * * * * *
 
@@ -79,7 +79,7 @@ Example Flows (Summary)
 
 | Scenario | Path |
 | --- | --- |
-| `weather report for Seattle` | Regex match → AccuWeather API → Final Ollama pass → Discord reply |
+| `weather Seattle` | Regex match → AccuWeather API → Discord reply |
 | `generate a sunset` | Regex match → ComfyUI API → Discord reply (images) |
 | `weather 45403` | Regex match → AccuWeather API → Discord reply (raw data) |
 | `is it going to rain?` | No regex match → Two-stage: Ollama w/ abilities → keyword detected → AccuWeather → Final pass → Discord reply |

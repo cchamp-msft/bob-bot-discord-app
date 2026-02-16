@@ -19,7 +19,6 @@ Keywords define how the bot routes requests to different APIs. They can be confi
 | `abilityInputs` | `object` | Structured input guidance for the model. See sub-fields below. |
 | `finalOllamaPass` | `boolean` | Pass the API result through Ollama for conversational refinement using the global final-pass model. |
 | `allowEmptyContent` | `boolean` | When `true`, the keyword works without additional user text (e.g. `nfl scores` alone). When `false` or absent, the bot prompts the user to include content after the keyword. |
-| `accuweatherMode` | `'current' \| 'forecast' \| 'full'` | AccuWeather data scope (default: `full`). Only used when `api` is `accuweather`. |
 | `enabled` | `boolean` | Whether the keyword is active (default: `true`). |
 | `retry` | `object` | Per-keyword retry override. Sub-fields: `enabled` (bool), `maxRetries` (0-10), `model` (string), `prompt` (string). |
 | `contextFilterEnabled` | `boolean` | Enable Ollama context evaluation for this keyword (default: `false`). |

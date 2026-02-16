@@ -103,32 +103,29 @@ When a user says "weather in Seattle", the bot extracts "Seattle", resolves it v
 
 ### Weather Keywords
 
-Four default weather keywords are configured in `config/keywords.default.json`. All require a location parameter:
+Three default weather keywords are configured in `config/keywords.default.json`. All route through the same AccuWeather path and are advertised to Ollama as specialized weather abilities:
 
-| Keyword | Mode | Behavior |
-|---------|------|----------|
-| `weather <location>` | full | Direct weather report (current + forecast) |
-| `forecast <location>` | forecast | Direct 5-day forecast only |
-| `conditions <location>` | current | Direct current conditions only |
-| `weather report <location>` | full | Weather data routed through Ollama for AI-powered report |
+| Keyword | Behavior |
+|---------|----------|
+| `weather <location>` | General weather details (current conditions + forecast data) |
+| `forecast <location>` | Forecast-focused weather query |
+| `conditions <location>` | Current-conditions-focused weather query |
 
 > **Note:** Unlike the `/weather` slash command which falls back to `ACCUWEATHER_DEFAULT_LOCATION`, keyword-based weather commands require a location. Sending just `weather` with no location will prompt the user to include a query.
 
 ### Weather Slash Command
 
-The `/weather` slash command supports two optional parameters. When no location is specified, it falls back to `ACCUWEATHER_DEFAULT_LOCATION`:
+The `/weather` slash command supports an optional `location` parameter. When no location is specified, it falls back to `ACCUWEATHER_DEFAULT_LOCATION`:
 
 ```
-/weather                          # Default location, full report
-/weather location: Chicago        # Specified location, full report
-/weather location: 90210 type: forecast   # Zip code, forecast only
-/weather type: current            # Default location, current conditions
+/weather                          # Default location
+/weather location: Chicago        # Specified location
+/weather location: 90210          # Zip code
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `location` | string (optional) | City name, zip code, or location key |
-| `type` | choice (optional) | `current`, `forecast`, or `full` (default: `full`) |
 
 ## NFL Configuration
 

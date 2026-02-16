@@ -576,7 +576,8 @@ describe('MessageHandler findKeyword (start-anchored)', () => {
   }
 
   const weatherKw = { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Weather' };
-  const weatherReportKw = { keyword: 'weather report', api: 'accuweather', timeout: 360, description: 'Weather report', finalOllamaPass: true };
+  const nflKw = { keyword: 'nfl', api: 'nfl', timeout: 30, description: 'NFL generic' };
+  const nflScoresKw = { keyword: 'nfl scores', api: 'nfl', timeout: 30, description: 'NFL scores' };
   const generateKw = { keyword: 'generate', api: 'comfyui', timeout: 600, description: 'Generate image' };
   const helpKw = { keyword: 'help', api: 'ollama', timeout: 30, description: 'Help', builtin: true, allowEmptyContent: true };
   const chatKw = { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat' };
@@ -601,14 +602,20 @@ describe('MessageHandler findKeyword (start-anchored)', () => {
     expect(result).toBeUndefined();
   });
 
-  it('should match "weather report" over "weather" due to length priority', () => {
-    setKeywords([weatherKw, weatherReportKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('weather report 28465');
-    expect(result).toBe(weatherReportKw);
+  it('should match longer multi-word keyword over shorter overlap', () => {
+    setKeywords([nflKw, nflScoresKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('nfl scores 20251116');
+    expect(result).toBe(nflScoresKw);
   });
 
-  it('should match "weather" when message starts with weather but not weather report', () => {
-    setKeywords([weatherKw, weatherReportKw, chatKw]);
+  it('should match shorter keyword when longer overlap does not match', () => {
+    setKeywords([nflKw, nflScoresKw, chatKw]);
+    const result = (messageHandler as any).findKeyword('nfl preseason update');
+    expect(result).toBe(nflKw);
+  });
+
+  it('should match "weather" when message starts with weather', () => {
+    setKeywords([weatherKw, chatKw]);
     const result = (messageHandler as any).findKeyword('weather 45403');
     expect(result).toBe(weatherKw);
   });
@@ -1227,12 +1234,13 @@ describe('MessageHandler first-word keyword routing', () => {
   }
 
   const weatherKw = { keyword: 'weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
-  const weatherReportKw = { keyword: 'weather report', api: 'accuweather' as const, timeout: 360, description: 'AI weather report', finalOllamaPass: true };
+  const nflKw = { keyword: 'nfl' as const, api: 'nfl' as const, timeout: 30, description: 'NFL generic' };
+  const nflScoresKw = { keyword: 'nfl scores' as const, api: 'nfl' as const, timeout: 30, description: 'NFL scores' };
   const generateKw = { keyword: 'generate', api: 'comfyui' as const, timeout: 300, description: 'Image gen' };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([weatherKw, weatherReportKw, generateKw]);
+    (config.getKeywords as jest.Mock).mockReturnValue([weatherKw, nflKw, nflScoresKw, generateKw]);
   });
 
   it('should route to API when keyword is at message start', async () => {
@@ -1256,19 +1264,19 @@ describe('MessageHandler first-word keyword routing', () => {
 
   it('should prefer longer keyword when both match at start', async () => {
     mockExecuteRoutedRequest.mockResolvedValueOnce({
-      finalResponse: { success: true, data: { text: 'Weather report' } },
-      finalApi: 'ollama',
+      finalResponse: { success: true, data: { text: 'Scores' } },
+      finalApi: 'nfl',
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> weather report 28465');
+    const msg = createMentionedMessage('<@bot-123> nfl scores 20251116');
     await messageHandler.handleMessage(msg);
 
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      weatherReportKw,
-      '28465',
+      nflScoresKw,
+      '20251116',
       'testuser',
-      [{ role: 'user', content: 'testuser: 28465', contextSource: 'trigger', hasNamePrefix: true }],
+      [{ role: 'user', content: 'testuser: 20251116', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser'
     );
   });
@@ -1951,11 +1959,11 @@ describe('MessageHandler trigger message attribution', () => {
   it('should not duplicate trigger message when two-stage path routes to API with finalOllamaPass', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
-    const weatherReportKw = {
-      keyword: 'weather report',
+    const weatherKwWithFinalPass = {
+      keyword: 'weather',
       api: 'accuweather' as const,
       timeout: 120,
-      description: 'AI weather report',
+      description: 'Weather',
       finalOllamaPass: true,
     };
     (config.getKeywords as jest.Mock).mockReturnValue([]);
@@ -1963,13 +1971,13 @@ describe('MessageHandler trigger message attribution', () => {
     // Stage 1: Ollama response
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
-      data: { text: 'weather report\nLet me check the weather for you.' },
+      data: { text: 'weather\nLet me check the weather for you.' },
     });
 
-    // parseFirstLineKeyword matches "weather report"
+    // parseFirstLineKeyword matches "weather"
     mockParseFirstLineKeyword.mockReturnValueOnce({
-      keywordConfig: weatherReportKw,
-      parsedLine: 'weather report',
+      keywordConfig: weatherKwWithFinalPass,
+      parsedLine: 'weather',
       matched: true,
     });
 

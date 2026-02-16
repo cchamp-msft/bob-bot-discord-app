@@ -1254,17 +1254,6 @@ flowchart LR
             <input type="text" class="kw-aiExamples" value="${esc((ai.examples || []).join(', '))}" placeholder="e.g. weather Dallas, weather 90210">
           </div>
 
-          <div class="section-label">API-specific</div>
-          <div class="field-half">
-            <label>AccuWeather Mode <span style="color:var(--text-dim);font-weight:normal">(only for accuweather API)</span></label>
-            <select class="kw-accuweatherMode">
-              <option value="" ${!kw?.accuweatherMode ? 'selected' : ''}>default (full)</option>
-              <option value="current" ${kw?.accuweatherMode === 'current' ? 'selected' : ''}>current</option>
-              <option value="forecast" ${kw?.accuweatherMode === 'forecast' ? 'selected' : ''}>forecast</option>
-              <option value="full" ${kw?.accuweatherMode === 'full' ? 'selected' : ''}>full</option>
-            </select>
-          </div>
-
           <div class="section-label">Retry</div>
           <div class="field-half">
             <label>Retry Enabled</label>
@@ -1428,10 +1417,6 @@ flowchart LR
           if (ex.length) abilityInputs.examples = ex;
           entry.abilityInputs = abilityInputs;
         }
-
-        // accuweatherMode
-        const awMode = detail.querySelector('.kw-accuweatherMode')?.value;
-        if (awMode) entry.accuweatherMode = awMode;
 
         // retry
         const retryEnabled = detail.querySelector('.kw-retryEnabled')?.value;

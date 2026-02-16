@@ -273,22 +273,10 @@ class WeatherCommand extends BaseCommand {
         .setName('location')
         .setDescription('City name, zip code, or location key (uses default if omitted)')
         .setRequired(false)
-    )
-    .addStringOption((option) =>
-      option
-        .setName('type')
-        .setDescription('Type of weather data to fetch')
-        .addChoices(
-          { name: 'Current Conditions', value: 'current' },
-          { name: '5-Day Forecast', value: 'forecast' },
-          { name: 'Full Report', value: 'full' }
-        )
-        .setRequired(false)
     );
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const location = interaction.options.getString('location') || '';
-    const type = (interaction.options.getString('type') || 'full') as 'current' | 'forecast' | 'full';
     const requester = interaction.user.username;
 
     // Defer reply as ephemeral
@@ -298,7 +286,7 @@ class WeatherCommand extends BaseCommand {
     const prompt = location ? `weather in ${location}` : 'weather';
 
     // Log the request
-    logger.logRequest(requester, `[weather] ${type} — ${location || '(default location)'}`);
+    logger.logRequest(requester, `[weather] full — ${location || '(default location)'}`);
 
     await interaction.editReply({
       content: '⏳ Fetching weather data…',
@@ -311,7 +299,7 @@ class WeatherCommand extends BaseCommand {
         requester,
         'weather',
         timeout,
-        (signal) => apiManager.executeRequest('accuweather', requester, prompt, timeout, undefined, undefined, signal, type) as Promise<AccuWeatherResponse>
+        (signal) => apiManager.executeRequest('accuweather', requester, prompt, timeout, undefined, undefined, signal) as Promise<AccuWeatherResponse>
       );
 
       if (!apiResult.success) {

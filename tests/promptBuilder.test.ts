@@ -11,8 +11,8 @@ jest.mock('../src/utils/config', () => ({
         keyword: 'weather',
         api: 'accuweather',
         timeout: 60,
-        description: 'Get current weather conditions and 5-day forecast',
-        abilityText: 'Current conditions and 5-day forecast.',
+        description: 'Get weather details including current conditions and forecast',
+        abilityText: 'Weather details including current conditions and forecast.',
         abilityWhen: 'User asks about weather.',
         abilityInputs: {
           mode: 'explicit',
@@ -22,11 +22,10 @@ jest.mock('../src/utils/config', () => ({
         },
       },
       {
-        keyword: 'weather report',
-        api: 'accuweather',
-        timeout: 360,
-        description: 'Get an AI-powered opinionated weather report',
-        finalOllamaPass: true,
+        keyword: 'nfl',
+        api: 'nfl',
+        timeout: 30,
+        description: 'Generic NFL lookup',
       },
       {
         keyword: 'nfl scores',
@@ -133,8 +132,9 @@ describe('PromptBuilder', () => {
       const routable = getRoutableKeywords();
       const names = routable.map(k => k.keyword);
 
-      // Included: weather, weather report, nfl scores, nfl news, generate
+      // Included: weather, nfl, nfl scores, nfl news, generate
       expect(names).toContain('weather');
+      expect(names).toContain('nfl');
       expect(names).toContain('nfl scores');
       expect(names).toContain('nfl news');
       expect(names).toContain('generate');
@@ -196,7 +196,7 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('Available external abilities');
       // Structured format: keyword, What, When, Inputs
       expect(prompt).toContain('- weather');
-      expect(prompt).toContain('  What: Current conditions and 5-day forecast.');
+      expect(prompt).toContain('  What: Weather details including current conditions and forecast.');
       expect(prompt).toContain('  When: User asks about weather.');
       expect(prompt).toContain('  Inputs: Explicit.');
       expect(prompt).toContain('    Required: location.');
@@ -632,10 +632,10 @@ describe('PromptBuilder', () => {
       expect(result.keywordConfig?.keyword).toBe('nfl scores');
     });
 
-    it('should prefer longest keyword match (weather report over weather)', () => {
-      const result = parseFirstLineKeyword('weather report');
+    it('should prefer longest keyword match (nfl scores over nfl)', () => {
+      const result = parseFirstLineKeyword('nfl scores');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('weather report');
+      expect(result.keywordConfig?.keyword).toBe('nfl scores');
     });
 
     it('should NOT match if first line is a normal sentence', () => {

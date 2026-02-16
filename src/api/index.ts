@@ -23,7 +23,7 @@ class ApiManager {
     model?: string,
     conversationHistory?: ChatMessage[],
     signal?: AbortSignal,
-    accuweatherMode?: 'current' | 'forecast' | 'full',
+    _accuweatherMode?: 'current' | 'forecast' | 'full',
     ollamaOptions?: OllamaRequestOptions,
     /** NFL keyword — required when api is 'nfl'. */
     nflKeyword?: string
@@ -31,7 +31,7 @@ class ApiManager {
     if (api === 'comfyui') {
       return await comfyuiClient.generateImage(data, requester, signal, _timeout);
     } else if (api === 'accuweather') {
-      return await accuweatherClient.getWeather(data, requester, accuweatherMode || 'full');
+      return await accuweatherClient.getWeather(data, requester, 'full');
     } else if (api === 'nfl') {
       return await nflClient.handleRequest(data, nflKeyword || 'nfl scores', signal);
     } else if (api === 'serpapi') {

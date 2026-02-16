@@ -52,8 +52,8 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 
 ## Weather Features
 
-- ✅ **Weather slash command** — `/weather` command with optional location and report type parameters
-- ✅ **Weather→AI routing** — weather data piped through Ollama for AI-powered weather reports via `finalOllamaPass`
+- ✅ **Weather slash command** — `/weather` command with optional location
+- ✅ **Unified weather routing** — weather keywords route through AccuWeather via the shared API routing path
 
 ## Advanced Configuration
 

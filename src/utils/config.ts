@@ -58,8 +58,6 @@ export interface KeywordConfig {
   finalOllamaPass?: boolean;
   /** When true, this keyword can be invoked with no additional user content (e.g. 'nfl scores' alone). */
   allowEmptyContent?: boolean;
-  /** AccuWeather data mode: which data to fetch. Only used when api is 'accuweather'. */
-  accuweatherMode?: 'current' | 'forecast' | 'full';
   /** Whether this keyword is currently enabled. Defaults to true when omitted. */
   enabled?: boolean;
   /** Optional per-keyword retry override (global defaults exist). */
@@ -185,9 +183,6 @@ class Config {
         }
         if (entry.allowEmptyContent !== undefined && typeof entry.allowEmptyContent !== 'boolean') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid allowEmptyContent — must be a boolean`);
-        }
-        if (entry.accuweatherMode !== undefined && entry.accuweatherMode !== 'current' && entry.accuweatherMode !== 'forecast' && entry.accuweatherMode !== 'full') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid accuweatherMode "${entry.accuweatherMode}" — must be "current", "forecast", or "full"`);
         }
         if (entry.enabled !== undefined && typeof entry.enabled !== 'boolean') {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid enabled — must be a boolean`);
