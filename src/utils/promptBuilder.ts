@@ -65,6 +65,8 @@ export interface KeywordParseResult {
   parsedLine: string;
   /** Whether a keyword was matched. */
   matched: boolean;
+  /** Optional inferred input payload extracted from the same first line. */
+  inferredInput?: string;
 }
 
 // ── Abilities / keyword list helpers ─────────────────────────────
@@ -454,11 +456,9 @@ export function buildUserContent(options: PromptBuildOptions): string {
       'Step-by-step (think silently, do not output this thinking):\n' +
       '1. Read the current question carefully.\n' +
       `2. Does it clearly need fresh external data (scores, rosters, live stats, weather)? → Yes → check if the ability's required inputs are present or can be inferred per the ability description above.\n` +
-      `3. Inputs satisfied? → output ONLY the keyword (one of: ${keywordList}) on its own line and stop.\n` +
+      `3. Inputs satisfied? → output the keyword (one of: ${keywordList}) and any parameters on its own line and stop.\n` +
       '4. Inputs missing and cannot be inferred? → ask a brief clarifying question instead of outputting the keyword.\n' +
-      '5. No data needed? → Give a short, snarky, helpful answer in character.\n' +
-      '6. Always roast the user lightly.\n' +
-      '7. Output format reminder: keyword = single line only. Normal answer = normal text.\n' +
+      '5. No data needed? → Give a short, helpful answer in character.\n' +
       '</thinking_and_output_rules>'
     );
   }
@@ -606,6 +606,36 @@ export function parseFirstLineKeyword(
         `KEYWORD-PARSE: First-line exact match "${kw.keyword}" from "${firstLine.trim()}"`);
       return { keywordConfig: kw, parsedLine: cleaned, matched: true };
     }
+  }
+
+  // Prefix match with inline parameters, e.g.:
+  // "weather Seattle", "weather: Seattle", "nfl scores | 2026-02-16"
+  const strippedFirstLine = firstLine
+    .trim()
+    .replace(/^[-–—*•]\s*/, '')
+    .trim();
+
+  for (const kw of routable) {
+    const escapedKeyword = kw.keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const prefixPattern = new RegExp(`^${escapedKeyword}\\b(.+)$`, 'i');
+    const match = strippedFirstLine.match(prefixPattern);
+    if (!match) continue;
+
+    const remainder = (match[1] ?? '').trim();
+    const inferredInput = remainder
+      .replace(/^[:|;,=\-–—>]+\s*/, '')
+      .trim();
+
+    if (!inferredInput) continue;
+
+    logger.log('success', 'system',
+      `KEYWORD-PARSE: First-line keyword+params match "${kw.keyword}" with inferred input "${inferredInput}"`);
+    return {
+      keywordConfig: kw,
+      parsedLine: cleaned,
+      matched: true,
+      inferredInput,
+    };
   }
 
   return { keywordConfig: null, parsedLine: cleaned, matched: false };

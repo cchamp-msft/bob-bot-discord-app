@@ -702,6 +702,20 @@ describe('PromptBuilder', () => {
       expect(result.matched).toBe(true);
       expect(result.keywordConfig?.keyword).toBe('nfl news');
     });
+
+    it('should extract inferred input from colon-delimited first line', () => {
+      const result = parseFirstLineKeyword('weather: Seattle, WA');
+      expect(result.matched).toBe(true);
+      expect(result.keywordConfig?.keyword).toBe('weather');
+      expect(result.inferredInput).toBe('Seattle, WA');
+    });
+
+    it('should extract inferred input from whitespace-delimited first line', () => {
+      const result = parseFirstLineKeyword('nfl scores 2026-02-16');
+      expect(result.matched).toBe(true);
+      expect(result.keywordConfig?.keyword).toBe('nfl scores');
+      expect(result.inferredInput).toBe('2026-02-16');
+    });
   });
 
   // ── External data formatters ────────────────────────────────────

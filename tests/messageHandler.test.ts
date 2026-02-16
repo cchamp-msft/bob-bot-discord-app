@@ -1748,6 +1748,46 @@ describe('MessageHandler two-stage evaluation', () => {
     );
   });
 
+  it('should route using inferred first-line parameters when provided by parser', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+
+    const weatherKeyword = {
+      keyword: 'weather',
+      api: 'accuweather' as const,
+      timeout: 60,
+      description: 'Get weather',
+    };
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'weather: Seattle, WA\nLet me check that.' },
+    });
+
+    mockParseFirstLineKeyword.mockReturnValueOnce({
+      keywordConfig: weatherKeyword,
+      parsedLine: 'weather seattle wa',
+      matched: true,
+      inferredInput: 'Seattle, WA',
+    });
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Sunny in Seattle' } },
+      finalApi: 'accuweather',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> is it going to rain in Seattle');
+    await messageHandler.handleMessage(msg);
+
+    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
+      weatherKeyword,
+      'Seattle, WA',
+      'testuser',
+      [{ role: 'user', content: 'testuser: is it going to rain in Seattle', contextSource: 'trigger', hasNamePrefix: true }],
+      'BotUser'
+    );
+  });
+
   it('should return Ollama response when second classification finds no API keyword', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 

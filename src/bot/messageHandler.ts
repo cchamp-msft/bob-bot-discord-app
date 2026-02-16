@@ -890,13 +890,17 @@ class MessageHandler {
       const parseResult = parseFirstLineKeyword(ollamaText);
 
       if (parseResult.matched && parseResult.keywordConfig) {
+        const routedInput = (parseResult.inferredInput && parseResult.inferredInput.trim().length > 0)
+          ? parseResult.inferredInput
+          : content;
+
         logger.log('success', 'system',
           `TWO-STAGE: First-line keyword match "${parseResult.keywordConfig.keyword}" — executing ${parseResult.keywordConfig.api} API`);
         activityEvents.emitRoutingDecision(parseResult.keywordConfig.api, parseResult.keywordConfig.keyword, 'two-stage-parse');
 
         const apiResult = await executeRoutedRequest(
           parseResult.keywordConfig,
-          content,
+          routedInput,
           requester,
           filteredHistory.length > 0 ? filteredHistory : undefined,
           botDisplayName
