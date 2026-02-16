@@ -366,15 +366,15 @@ In all cases, context is sent to Ollama using the `/api/chat` endpoint with prop
 - Circular references are detected and traversal stops
 - Bot responses are sent as **plain text** (not embed blocks) for a conversational feel
 
-### Context Evaluation (Always Active)
+### Context Evaluation (Per-Keyword Toggle)
 
-The bot includes an **Ollama-powered context evaluator** that automatically determines how much reply-chain history is relevant before including it. This improves response quality when conversations shift topics.
+The bot includes an **Ollama-powered context evaluator** that determines how much conversation history is relevant before including it. This improves response quality when conversations shift topics.
 
-Context evaluation runs whenever there is reply-chain, channel, or DM history — no per-keyword toggle is needed. Individual keywords may optionally override the default depth settings.
+Context evaluation is **opt-in per keyword** via the `contextFilterEnabled` field (or the **Ctx Eval** checkbox in the configurator). When omitted, it defaults to `false` — context evaluation is skipped and the full collected history is passed through. Built-in keywords are unaffected by this setting.
 
 #### How It Works
 
-1. After the reply chain / channel / DM history is collected and collated, the context evaluator sends the messages to Ollama along with the current user prompt.
+1. After the reply chain / channel / DM history is collected and collated, the context evaluator sends the messages to Ollama along with the current user prompt — **only when `contextFilterEnabled` is `true` for the matched keyword**.
 2. Ollama determines which of the most recent messages are topically relevant. Messages tagged as primary (reply chain / thread) are signaled as higher-importance.
 3. The most recent `contextFilterMinDepth` messages are **always included**, even if off-topic — this guarantees a baseline of context.
 4. Ollama may include up to `contextFilterMaxDepth` messages total if they remain on-topic.
@@ -389,16 +389,18 @@ These optional fields in `config/keywords.json` (runtime, or `config/keywords.de
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `contextFilterEnabled` | `boolean` | `false` | Enable Ollama context evaluation for this keyword |
 | `contextFilterMinDepth` | `integer` | `1` | Minimum most-recent messages to always include (>= 1) |
 | `contextFilterMaxDepth` | `integer` | Global `REPLY_CHAIN_MAX_DEPTH` | Maximum messages eligible for inclusion (>= 1) |
 
-Example keyword entry with depth overrides:
+Example keyword entry with context evaluation enabled and depth overrides:
 ```json
 {
   "keyword": "chat",
   "api": "ollama",
   "timeout": 300,
   "description": "Chat with Ollama AI",
+  "contextFilterEnabled": true,
   "contextFilterMinDepth": 2,
   "contextFilterMaxDepth": 8
 }
@@ -406,8 +408,8 @@ Example keyword entry with depth overrides:
 
 #### Where the Evaluator Applies
 
-- **Direct Ollama chat** (two-stage evaluation, stage 1) — filters history before the initial Ollama call.
-- **Final Ollama pass** (for non-Ollama API keywords with `finalOllamaPass: true`) — filters history before the refinement call.
+- **Direct Ollama chat** (two-stage evaluation, stage 1) — filters history before the initial Ollama call, only when `contextFilterEnabled` is `true`.
+- **Final Ollama pass** (for non-Ollama API keywords with `finalOllamaPass: true`) — always filters history before the refinement call (unaffected by per-keyword toggle).
 - If the primary API was already Ollama, the final pass is skipped (no double-filtering).
 
 #### Notes

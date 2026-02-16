@@ -810,9 +810,10 @@ class MessageHandler {
   ): Promise<void> {
     const timeout = keywordConfig.timeout || config.getDefaultTimeout();
 
-    // Apply context filter (Ollama-based relevance evaluation) before building the prompt.
+    // Apply context filter (Ollama-based relevance evaluation) before building the prompt,
+    // only when the keyword has contextFilterEnabled set to true.
     let filteredHistory = conversationHistory;
-    if (conversationHistory.length > 0) {
+    if (keywordConfig.contextFilterEnabled && conversationHistory.length > 0) {
       const preFilterCount = conversationHistory.filter(m => m.role !== 'system').length;
       logger.log('success', 'system',
         `TWO-STAGE: Context before eval: ${conversationHistory.length} total (${preFilterCount} non-system)`);
@@ -824,6 +825,9 @@ class MessageHandler {
       );
       logger.log('success', 'system',
         `TWO-STAGE: Context after eval: ${filteredHistory.length} messages (system messages excluded)`);
+    } else if (!keywordConfig.contextFilterEnabled && conversationHistory.length > 0) {
+      logger.log('success', 'system',
+        `TWO-STAGE: Context eval skipped (contextFilterEnabled is off for "${keywordConfig.keyword}")`);
     }
 
     // Append the triggering message to context so the model knows who is asking.

@@ -69,7 +69,7 @@ Key Functions by File
 | `promptBuilder.ts` | `parseFirstLineKeyword()` | Parses Ollama output for keyword trigger |
 | `keywordClassifier.ts` | `classifyIntent()` | AI fallback classifier (two-stage path) |
 | `keywordClassifier.ts` | `buildAbilitiesContext()` | Generates abilities context for Ollama |
-| `contextEvaluator.ts` | `evaluateContextWindow()` | Filters conversation history for relevance |
+| `contextEvaluator.ts` | `evaluateContextWindow()` | Filters conversation history for relevance (per-keyword opt-in via `contextFilterEnabled`) |
 | `responseTransformer.ts` | `extractStageResult()` | Normalizes API responses for stage tracking |
 
 * * * * *

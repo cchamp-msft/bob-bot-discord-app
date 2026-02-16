@@ -334,8 +334,7 @@ class ConfigWriter {
           if (Object.keys(cleanRetry).length > 0) clean.retry = cleanRetry;
         }
         if (entry.builtin) clean.builtin = true;
-        // contextFilterEnabled is deprecated (context eval is always active);
-        // accepted on input for backward compat but no longer persisted.
+        if (entry.contextFilterEnabled === true) clean.contextFilterEnabled = true;
         if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMinDepth >= 1) clean.contextFilterMinDepth = entry.contextFilterMinDepth;
         if (entry.contextFilterMaxDepth !== undefined && entry.contextFilterMaxDepth >= 1) clean.contextFilterMaxDepth = entry.contextFilterMaxDepth;
         return clean;

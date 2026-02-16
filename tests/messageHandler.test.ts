@@ -2170,11 +2170,12 @@ describe('MessageHandler — Context Evaluation integration', () => {
   const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
   const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
 
-  const weatherKw = {
-    keyword: 'weather',
-    api: 'accuweather' as const,
-    timeout: 60,
-    description: 'Weather',
+  const ctxEvalKw = {
+    keyword: 'chat',
+    api: 'ollama' as const,
+    timeout: 300,
+    description: 'Chat',
+    contextFilterEnabled: true,
     contextFilterMinDepth: 1,
     contextFilterMaxDepth: 5,
   };
@@ -2207,7 +2208,7 @@ describe('MessageHandler — Context Evaluation integration', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([weatherKw]);
+    (config.getKeywords as jest.Mock).mockReturnValue([ctxEvalKw]);
     (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
     mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
   });
@@ -2226,7 +2227,7 @@ describe('MessageHandler — Context Evaluation integration', () => {
       data: { text: 'Just chatting!' },
     });
 
-    const msg = createMentionedMsg('<@bot-123> hello there');
+    const msg = createMentionedMsg('<@bot-123> chat hello there');
     // channel.messages.fetch returns empty — no channel context
     await messageHandler.handleMessage(msg as any);
 
@@ -2247,7 +2248,7 @@ describe('MessageHandler — Context Evaluation integration', () => {
       data: { text: 'Chatting with context!' },
     });
 
-    const msg = createMentionedMsg('<@bot-123> hello there');
+    const msg = createMentionedMsg('<@bot-123> chat hello there');
 
     // Channel has prior messages
     const channelHistory = new Map([
@@ -2265,6 +2266,51 @@ describe('MessageHandler — Context Evaluation integration', () => {
 
     // Channel history was collected → evaluator should be called
     expect(mockEvaluate).toHaveBeenCalled();
+  });
+
+  it('should skip evaluateContextWindow when contextFilterEnabled is false', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const { classifyIntent } = require('../src/utils/keywordClassifier');
+    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+
+    // Override with keyword that has contextFilterEnabled omitted (defaults to false)
+    const noEvalKw = {
+      keyword: 'weather',
+      api: 'accuweather' as const,
+      timeout: 60,
+      description: 'Weather',
+      contextFilterMinDepth: 1,
+      contextFilterMaxDepth: 5,
+      // contextFilterEnabled intentionally omitted → defaults to false
+    };
+    (config.getKeywords as jest.Mock).mockReturnValue([noEvalKw]);
+
+    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Chatting without eval!' },
+    });
+
+    const msg = createMentionedMsg('<@bot-123> hello there');
+
+    // Channel has prior messages
+    const channelHistory = new Map([
+      ['ch-1', {
+        id: 'ch-1',
+        content: 'Earlier channel message',
+        author: { id: 'user-2', bot: false, username: 'other' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+    msg.channel.messages.fetch.mockResolvedValue(channelHistory);
+
+    await messageHandler.handleMessage(msg as any);
+
+    // contextFilterEnabled is off → evaluator should NOT be called even with history
+    expect(mockEvaluate).not.toHaveBeenCalled();
   });
 });
 
@@ -2572,6 +2618,7 @@ describe('MessageHandler guild context — maxContextDepth = min(keyword, global
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
+      contextFilterEnabled: true,
       contextFilterMaxDepth: 5,
     };
     (config.getKeywords as jest.Mock).mockReturnValue([kw]);
@@ -2662,6 +2709,7 @@ describe('MessageHandler thread source promotion', () => {
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
+      contextFilterEnabled: true,
     };
     (config.getKeywords as jest.Mock).mockReturnValue([kw]);
 
@@ -2699,7 +2747,7 @@ describe('MessageHandler thread source promotion', () => {
 
     const msg = {
       author: { id: 'user-1', bot: false, username: 'testuser', displayName: 'TestUser' },
-      content: '<@bot-123> hello thread',
+      content: '<@bot-123> chat hello thread',
       mentions: { has: () => true },
       channel: {
         type: 0,
@@ -2742,6 +2790,7 @@ describe('MessageHandler thread source promotion', () => {
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
+      contextFilterEnabled: true,
     };
     (config.getKeywords as jest.Mock).mockReturnValue([kw]);
 
@@ -2772,7 +2821,7 @@ describe('MessageHandler thread source promotion', () => {
 
     const msg = {
       author: { id: 'user-1', bot: false, username: 'testuser', displayName: 'TestUser' },
-      content: '<@bot-123> hello channel',
+      content: '<@bot-123> chat hello channel',
       mentions: { has: () => true },
       channel: {
         type: 0,

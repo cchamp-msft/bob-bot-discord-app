@@ -75,10 +75,8 @@ export interface KeywordConfig {
   };
   /** Whether this keyword is a built-in that cannot be edited or deleted — only toggled on/off. */
   builtin?: boolean;
-  /**
-   * @deprecated Context evaluation is always active. This field is accepted
-   * for backward compatibility but ignored at runtime. Remove from new configs.
-   */
+  /** When true, the two-stage Ollama context evaluation is applied before building the prompt.
+   *  Defaults to false when omitted. Built-in keywords are unaffected. */
   contextFilterEnabled?: boolean;
   /** Minimum number of most-recent context messages to always include (depth counted from newest). Must be >= 1. Defaults to 1. */
   contextFilterMinDepth?: number;

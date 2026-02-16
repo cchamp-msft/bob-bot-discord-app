@@ -381,8 +381,14 @@ describe('ConfigWriter', () => {
       ).rejects.toThrow('invalid builtin');
     });
 
-    it('should accept but not persist deprecated contextFilterEnabled field', async () => {
+    it('should persist contextFilterEnabled when true', async () => {
       await configWriter.updateKeywords([{ ...validKeyword, contextFilterEnabled: true }]);
+      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content.keywords[0].contextFilterEnabled).toBe(true);
+    });
+
+    it('should not persist contextFilterEnabled when false or omitted', async () => {
+      await configWriter.updateKeywords([{ ...validKeyword, contextFilterEnabled: false }]);
       const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
       expect(content.keywords[0].contextFilterEnabled).toBeUndefined();
     });
