@@ -4,7 +4,7 @@ import { requestQueue } from './requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { accuweatherClient } from '../api/accuweatherClient';
 import { serpApiClient } from '../api/serpApiClient';
-import { ChatMessage, NFLResponse } from '../types';
+import { ChatMessage, NFLResponse, MemeResponse } from '../types';
 import { evaluateContextWindow } from './contextEvaluator';
 import {
   StageResult,
@@ -215,9 +215,9 @@ function buildRetryUserPrompt(args: {
  */
 export interface RoutedResult {
   /** The final API response to present to the user. */
-  finalResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse;
+  finalResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse;
   /** The API type that produced the final response (for handler dispatch). */
-  finalApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
+  finalApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
   /** Intermediate stage results (for debugging/logging). */
   stages: StageResult[];
 }
@@ -255,7 +255,7 @@ export async function executeRoutedRequest(
 
   // ── Primary API request ───────────────────────────────────────
   logger.log('success', 'system', `API-ROUTING: Executing ${keywordConfig.api} request for "${keywordConfig.keyword}"`);
-  const apiType = keywordConfig.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
+  const apiType = keywordConfig.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
   const originalContent = content;
   let attemptContent = content;
   const attemptedInputs = new Set<string>([attemptContent.trim().toLowerCase()]);
@@ -284,7 +284,7 @@ export async function executeRoutedRequest(
           keywordConfig.keyword
         ),
       signal
-    ) as ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse;
+    ) as ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse;
   };
 
   let primaryResult = await runAbility('', attemptContent);

@@ -1,19 +1,19 @@
 import { ComfyUIResponse } from '../api/comfyuiClient';
 import { OllamaResponse } from '../api/ollamaClient';
-import { AccuWeatherResponse, NFLResponse, SerpApiResponse } from '../types';
+import { AccuWeatherResponse, NFLResponse, SerpApiResponse, MemeResponse } from '../types';
 
 /**
  * Unified result from any API stage in a routed pipeline.
  */
 export interface StageResult {
   /** The type of API that produced this result. */
-  sourceApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'external';
+  sourceApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'external';
   /** Extracted text content (from Ollama, AccuWeather, NFL, or future text-based APIs). */
   text?: string;
   /** Extracted image URLs (from ComfyUI). */
   images?: string[];
   /** The raw API response for final handling. */
-  rawResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse;
+  rawResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse;
 }
 
 /**
@@ -77,11 +77,23 @@ export function extractFromSerpApi(response: SerpApiResponse): StageResult {
 }
 
 /**
+ * Extract usable content from a Meme API response.
+ */
+export function extractFromMeme(response: MemeResponse): StageResult {
+  return {
+    sourceApi: 'meme',
+    text: response.data?.text ?? undefined,
+    images: response.data?.imageUrl ? [response.data.imageUrl] : undefined,
+    rawResponse: response,
+  };
+}
+
+/**
  * Extract a StageResult from any API response based on the API type.
  */
 export function extractStageResult(
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi',
-  response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme',
+  response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse
 ): StageResult {
   if (api === 'comfyui') {
     return extractFromComfyUI(response as ComfyUIResponse);
@@ -94,6 +106,9 @@ export function extractStageResult(
   }
   if (api === 'serpapi') {
     return extractFromSerpApi(response as SerpApiResponse);
+  }
+  if (api === 'meme') {
+    return extractFromMeme(response as MemeResponse);
   }
   return extractFromOllama(response as OllamaResponse);
 }

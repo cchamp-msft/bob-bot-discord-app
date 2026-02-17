@@ -4,10 +4,20 @@ import { outputsServer } from './utils/outputsServer';
 import { logger } from './utils/logger';
 import { discordManager } from './bot/discordManager';
 import { comfyuiClient } from './api/comfyuiClient';
+import { memeClient } from './api/memeClient';
 
 // Start HTTP servers immediately (configurator + outputs available without Discord)
 httpServer.start();
 outputsServer.start();
+
+// Initialise meme template cache if enabled (non-blocking background fetch)
+if (config.getMemeEnabled()) {
+  memeClient.initialise().catch((e) =>
+    logger.logError('system', `Meme template initialisation failed: ${e}`)
+  );
+} else {
+  logger.log('success', 'system', 'Meme API disabled — skipping template cache initialisation');
+}
 
 // Auto-connect to Discord if token is configured
 const token = process.env.DISCORD_TOKEN;
@@ -34,6 +44,9 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
 
   try { comfyuiClient.close(); } catch (e) {
     logger.logError('system', `Error closing ComfyUI client: ${e}`);
+  }
+  try { memeClient.destroy(); } catch (e) {
+    logger.logError('system', `Error stopping meme refresh timer: ${e}`);
   }
   try { await discordManager.destroy(); } catch (e) {
     logger.logError('system', `Error destroying Discord client: ${e}`);

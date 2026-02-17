@@ -177,17 +177,17 @@
       }
     },
     {
-      "keyword": "find content",
-      "api": "serpapi",
+      "keyword": "meme",
+      "api": "meme",
       "timeout": 60,
-      "description": "Find pertinent web content related to a topic using Google",
-      "abilityText": "Find pertinent web content related to a topic using Google",
-      "abilityWhen": "User wants to discover web content, articles, or resources about a topic.",
+      "description": "Create funny meme images from popular templates",
+      "abilityText": "Create funny meme images",
+      "abilityWhen": "User wants a meme generated, asks for a meme, or describes a funny image macro.",
       "abilityInputs": {
-        "mode": "explicit",
-        "required": ["query"],
-        "inferFrom": ["current_message"],
-        "validation": "Query should describe the topic or subject the user wants content about."
+        "mode": "implicit",
+        "inferFrom": ["current_message", "reply_target"],
+        "validation": "Output must be: templateName | top text | bottom text. Choose the most fitting meme template for the user's intent. If the user names a specific template, use it; otherwise pick the best match.",
+        "examples": ["meme drake | studying for exams | browsing memes", "meme one does not simply | walk into mordor"]
       },
       "contextFilterMaxDepth": 1
     }

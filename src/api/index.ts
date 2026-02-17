@@ -3,10 +3,11 @@ import { ollamaClient, OllamaResponse, OllamaHealthResult } from './ollamaClient
 import { accuweatherClient } from './accuweatherClient';
 import { nflClient } from './nflClient';
 import { serpApiClient } from './serpApiClient';
+import { memeClient } from './memeClient';
 import { config } from '../utils/config';
-import { ChatMessage, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult } from '../types';
+import { ChatMessage, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult } from '../types';
 
-export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult };
+export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult };
 
 /** Options forwarded to ollamaClient.generate() when api === 'ollama'. */
 export interface OllamaRequestOptions {
@@ -16,7 +17,7 @@ export interface OllamaRequestOptions {
 
 class ApiManager {
   async executeRequest(
-    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'external',
+    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'external',
     requester: string,
     data: string,
     _timeout: number,
@@ -27,7 +28,7 @@ class ApiManager {
     ollamaOptions?: OllamaRequestOptions,
     /** NFL keyword — required when api is 'nfl'. */
     nflKeyword?: string
-  ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse> {
+  ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse> {
     if (api === 'comfyui') {
       return await comfyuiClient.generateImage(data, requester, signal, _timeout);
     } else if (api === 'accuweather') {
@@ -36,6 +37,8 @@ class ApiManager {
       return await nflClient.handleRequest(data, nflKeyword || 'nfl scores', signal);
     } else if (api === 'serpapi') {
       return await serpApiClient.handleRequest(data, nflKeyword || 'search', signal);
+    } else if (api === 'meme') {
+      return await memeClient.handleRequest(data, nflKeyword || 'meme', signal);
     } else if (api === 'external') {
       // Stub for future external API integrations
       throw new Error('External API routing is not yet implemented');
@@ -64,6 +67,7 @@ class ApiManager {
     accuweatherClient.refresh();
     nflClient.refresh();
     serpApiClient.refresh();
+    memeClient.refresh();
   }
 
   async checkNflHealth(): Promise<NFLHealthResult> {
@@ -89,6 +93,13 @@ class ApiManager {
    */
   async testSerpApiConnection(): Promise<SerpApiHealthResult> {
     return await serpApiClient.testConnection();
+  }
+
+  /**
+   * Test Meme API connection and return health status with template count.
+   */
+  async checkMemeHealth(): Promise<MemeHealthResult> {
+    return await memeClient.testConnection();
   }
 
   /**

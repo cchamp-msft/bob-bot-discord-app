@@ -1,6 +1,6 @@
 # Bob Bot - Discord AI Integration
 
-A Discord bot that monitors @mentions and DMs, routes keyword-matched requests to ComfyUI, Ollama, AccuWeather, ESPN NFL, and SerpAPI (Google Search) APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
+A Discord bot that monitors @mentions and DMs, routes keyword-matched requests to ComfyUI, Ollama, AccuWeather, ESPN NFL, SerpAPI (Google Search), and Memegen (meme images) APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
 
 ## Features
 
@@ -13,6 +13,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ AccuWeather integration for real-time weather data
 - ✅ **NFL game data** — live scores and news via ESPN
 - ✅ **Web search** — Google Search via SerpAPI with AI Overview support
+- ✅ **Meme generation** — create meme images via memegen.link with cached templates
 - ✅ **Web-based configurator** — localhost-only SPA for managing all settings
 - ✅ **Two-stage evaluation** — intelligent API routing with automatic ability discovery
 
@@ -47,7 +48,7 @@ src/
 ├── index.ts              # Main bot entry point
 ├── bot/                  # Discord client and message handling
 ├── commands/             # Slash command definitions
-├── api/                  # API clients (ComfyUI, Ollama, AccuWeather, NFL, SerpAPI)
+├── api/                  # API clients (ComfyUI, Ollama, AccuWeather, NFL, SerpAPI, Meme)
 ├── public/               # Web configurator and activity feed
 └── utils/                # Config, logging, file handling, routing, queuing
 
@@ -73,6 +74,7 @@ outputs/                  # Generated files and logs
 @BobBot !weather Seattle
 @BobBot !nfl scores
 @BobBot !search latest AI news
+@BobBot !meme drake | writing docs | generating memes
 ```
 
 **Slash commands:**
@@ -116,7 +118,7 @@ npm run test:watch
 - **[Quick Start Guide](docs/QUICKSTART.md)** — Get up and running in minutes
 - **[Complete Feature List](docs/FEATURES.md)** — All bot capabilities
 - **[Usage Guide](docs/USAGE.md)** — How to use the bot with examples
-- **[API Integration](docs/API_INTEGRATION.md)** — Configure ComfyUI, Ollama, AccuWeather, NFL, SerpAPI
+- **[API Integration](docs/API_INTEGRATION.md)** — Configure ComfyUI, Ollama, AccuWeather, NFL, SerpAPI, Meme
 - **[Web Configurator](docs/CONFIGURATOR.md)** — Web UI, activity feed, reverse proxy setup
 - **[Architecture](docs/ARCHITECTURE.md)** — Technical details, routing, context management
 - **[Advanced Features](docs/ADVANCED.md)** — Keyword configuration, context evaluation, debugging

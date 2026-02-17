@@ -42,6 +42,17 @@ jest.mock('../src/api/nflClient', () => {
   return { nflClient: client };
 });
 
+jest.mock('../src/api/memeClient', () => {
+  const client = {
+    refresh: jest.fn(),
+    handleRequest: jest.fn(),
+    testConnection: jest.fn(),
+    initialise: jest.fn(),
+    destroy: jest.fn(),
+  };
+  return { memeClient: client };
+});
+
 jest.mock('../src/utils/config', () => ({
   config: {
     getOllamaModel: jest.fn(() => 'llama2'),
@@ -52,6 +63,8 @@ jest.mock('../src/utils/config', () => ({
     getNflEnabled: jest.fn(() => false),
     getSerpApiEndpoint: jest.fn(() => 'https://serpapi.com'),
     getSerpApiKey: jest.fn(() => ''),
+    getMemeEndpoint: jest.fn(() => 'https://api.memegen.link'),
+    getMemeEnabled: jest.fn(() => true),
   },
 }));
 
@@ -59,6 +72,7 @@ import { apiManager } from '../src/api/index';
 import { ollamaClient } from '../src/api/ollamaClient';
 import { comfyuiClient } from '../src/api/comfyuiClient';
 import { nflClient } from '../src/api/nflClient';
+import { memeClient } from '../src/api/memeClient';
 
 describe('ApiManager', () => {
   beforeEach(() => {
@@ -72,6 +86,7 @@ describe('ApiManager', () => {
       expect(ollamaClient.refresh).toHaveBeenCalledTimes(1);
       expect(comfyuiClient.refresh).toHaveBeenCalledTimes(1);
       expect(nflClient.refresh).toHaveBeenCalledTimes(1);
+      expect(memeClient.refresh).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -141,6 +156,29 @@ describe('ApiManager', () => {
       expect(ollamaClient.generate).toHaveBeenCalledWith(
         'hello', 'user1', 'llama2', undefined, undefined, { includeSystemPrompt: false }
       );
+    });
+    it('should route meme requests to memeClient', async () => {
+      (memeClient.handleRequest as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { text: 'One does not simply walk into Mordor', imageUrl: 'https://api.memegen.link/images/mordor.png' },
+      });
+
+      const result = await apiManager.executeRequest('meme', 'user1', 'mordor | one does not simply', 60);
+
+      expect(memeClient.handleRequest).toHaveBeenCalled();
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('checkMemeHealth', () => {
+    it('should delegate to memeClient.testConnection', async () => {
+      const mockResult = { healthy: true, templateCount: 100 };
+      (memeClient.testConnection as jest.Mock).mockResolvedValue(mockResult);
+
+      const result = await apiManager.checkMemeHealth();
+
+      expect(result).toEqual(mockResult);
+      expect(memeClient.testConnection).toHaveBeenCalledTimes(1);
     });
   });
 

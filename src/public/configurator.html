@@ -609,6 +609,26 @@
       </div>
     </section>
 
+    <!-- Meme Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">Meme API (memegen.link)</h2>
+      <div class="body">
+        <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
+          Powered by <a href="https://memegen.link" target="_blank" style="color:var(--accent)">memegen.link</a> — free, no API key required.
+          Templates are cached locally and refreshed every 7 days.
+          Use keyword <code style="color:var(--accent)">!meme</code>.
+        </p>
+        <div class="field">
+          <label>Enabled</label>
+          <select id="meme_enabled" data-env="MEME_ENABLED">
+            <option value="false">Off</option>
+            <option value="true">On</option>
+          </select>
+        </div>
+        <div id="memeTestResult" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
+      </div>
+    </section>
+
     <!-- SerpAPI Section -->
     <section>
       <h2 onclick="toggleSection(this)">SerpAPI (Google Search)</h2>
@@ -1081,6 +1101,7 @@ flowchart LR
       // Populate NFL fields
       document.getElementById('nfl_enabled').value = cfg.apis.nflEnabled ? 'true' : 'false';
       document.getElementById('nfl_endpoint').value = cfg.apis.nfl || '';
+      document.getElementById('meme_enabled').value = cfg.apis.memeEnabled ? 'true' : 'false';
 
       // Populate SerpAPI fields
       document.getElementById('serpapi_endpoint').value = cfg.apis.serpapi || '';
@@ -1183,6 +1204,7 @@ flowchart LR
         <option value="accuweather" ${kw?.api === 'accuweather' ? 'selected' : ''}>accuweather</option>
         <option value="nfl" ${kw?.api === 'nfl' ? 'selected' : ''}>nfl</option>
         <option value="serpapi" ${kw?.api === 'serpapi' ? 'selected' : ''}>serpapi</option>
+        <option value="meme" ${kw?.api === 'meme' ? 'selected' : ''}>meme</option>
       </select></td>
       <td><input type="number" class="kw-timeout" value="${kw?.timeout || 300}" style="width:70px"></td>
       <td><input type="text" class="kw-desc" value="${esc(kw?.description || '')}" placeholder="description"></td>

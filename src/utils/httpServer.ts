@@ -156,9 +156,9 @@ class HttpServer {
 
     // GET test API connectivity
     this.app.get('/api/config/test-connection/:api', ...adminGuard, safeHandler(async (req, res) => {
-      const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
-      if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather' && api !== 'nfl' && api !== 'serpapi') {
-        res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", "accuweather", "nfl", or "serpapi"' });
+      const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
+      if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather' && api !== 'nfl' && api !== 'serpapi' && api !== 'meme') {
+        res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", "accuweather", "nfl", "serpapi", or "meme"' });
         return;
       }
 
@@ -202,6 +202,15 @@ class HttpServer {
             logger.logError('configurator', `Connection test: serpapi — FAILED${result.error ? ': ' + result.error : ''}`);
           }
           res.json({ api, endpoint, healthy: result.healthy, error: result.error });
+        } else if (api === 'meme') {
+          const result = await apiManager.checkMemeHealth();
+          const endpoint = config.getApiEndpoint('meme');
+          if (result.healthy) {
+            logger.log('success', 'configurator', `Connection test: meme — OK (${result.templateCount ?? 0} templates)`);
+          } else {
+            logger.logError('configurator', `Connection test: meme — FAILED${result.error ? ': ' + result.error : ''}`);
+          }
+          res.json({ api, endpoint, healthy: result.healthy, templateCount: result.templateCount, error: result.error });
         } else {
           const healthy = await apiManager.checkApiHealth(api);
           const endpoint = config.getApiEndpoint(api as 'comfyui' | 'ollama' | 'accuweather');

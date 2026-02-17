@@ -52,7 +52,7 @@ export interface AbilityInputs {
 
 export interface KeywordConfig {
   keyword: string;
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
   timeout: number;
   description: string;
   /** Human-readable description of this keyword's API ability, provided to Ollama as context so it can suggest using this API when relevant. */
@@ -148,8 +148,8 @@ class Config {
         if (!entry.keyword || typeof entry.keyword !== 'string') {
           throw new Error(`keywords.json: invalid keyword entry — missing "keyword" string`);
         }
-        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather' && entry.api !== 'nfl' && entry.api !== 'serpapi') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", "nfl", or "serpapi"`);
+        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather' && entry.api !== 'nfl' && entry.api !== 'serpapi' && entry.api !== 'meme') {
+          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", "nfl", "serpapi", or "meme"`);
         }
         if (typeof entry.timeout !== 'number' || entry.timeout <= 0) {
           throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid timeout — must be a positive number`);
@@ -409,6 +409,16 @@ class Config {
 
   getNflEnabled(): boolean {
     return process.env.NFL_ENABLED !== 'false';
+  }
+
+  // ── Meme (memegen.link) configuration ─────────────────
+
+  getMemeEndpoint(): string {
+    return process.env.MEME_BASE_URL || 'https://api.memegen.link';
+  }
+
+  getMemeEnabled(): boolean {
+    return process.env.MEME_ENABLED !== 'false';
   }
 
   // ── SerpAPI configuration ────────────────────────────────
@@ -833,11 +843,12 @@ class Config {
     return parsed;
   }
 
-  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi'): string {
+  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme'): string {
     if (api === 'comfyui') return this.getComfyUIEndpoint();
     if (api === 'accuweather') return this.getAccuWeatherEndpoint();
     if (api === 'nfl') return this.getNflEndpoint();
     if (api === 'serpapi') return this.getSerpApiEndpoint();
+    if (api === 'meme') return this.getMemeEndpoint();
     return this.getOllamaEndpoint();
   }
 
@@ -882,6 +893,8 @@ class Config {
     const prevNflLoggingLevel = this.getNflLoggingLevel();
     const prevNflEndpoint = this.getNflEndpoint();
     const prevNflEnabled = this.getNflEnabled();
+    const prevMemeEndpoint = this.getMemeEndpoint();
+    const prevMemeEnabled = this.getMemeEnabled();
     const prevSerpApiKey = this.getSerpApiKey();
     const prevSerpApiEndpoint = this.getSerpApiEndpoint();
     const prevSerpApiHl = this.getSerpApiHl();
@@ -955,6 +968,8 @@ class Config {
     if (this.getNflLoggingLevel() !== prevNflLoggingLevel) reloaded.push('NFL_LOGGING_LEVEL');
     if (this.getNflEndpoint() !== prevNflEndpoint) reloaded.push('NFL_BASE_URL');
     if (this.getNflEnabled() !== prevNflEnabled) reloaded.push('NFL_ENABLED');
+    if (this.getMemeEndpoint() !== prevMemeEndpoint) reloaded.push('MEME_BASE_URL');
+    if (this.getMemeEnabled() !== prevMemeEnabled) reloaded.push('MEME_ENABLED');
     if (this.getSerpApiKey() !== prevSerpApiKey) reloaded.push('SERPAPI_API_KEY');
     if (this.getSerpApiEndpoint() !== prevSerpApiEndpoint) reloaded.push('SERPAPI_ENDPOINT');
     if (this.getSerpApiHl() !== prevSerpApiHl) reloaded.push('SERPAPI_HL');
@@ -1017,6 +1032,7 @@ class Config {
         accuweatherApiKeyConfigured: !!this.getAccuWeatherApiKey(),
         nfl: this.getNflEndpoint(),
         nflEnabled: this.getNflEnabled(),
+        memeEnabled: this.getMemeEnabled(),
         serpapi: this.getSerpApiEndpoint(),
         serpapiApiKeyConfigured: !!this.getSerpApiKey(),
         serpapiHl: this.getSerpApiHl(),

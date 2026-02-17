@@ -19,7 +19,7 @@ export interface ChatMessage {
 }
 
 /** Recognized API backend identifiers. */
-export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
+export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
 
 // ── AccuWeather response types ─────────────────────────────────
 
@@ -315,6 +315,40 @@ export interface SerpApiHealthResult {
   error?: string;
 }
 
+// ── Meme (memegen.link) response types ──────────────────────────
+
+/** A single meme template from the memegen.link API. */
+export interface MemeTemplate {
+  id: string;
+  name: string;
+  lines: number;
+  overlays: number;
+  styles: string[];
+  blank: string;
+  example: {
+    text: string[];
+    url: string;
+  };
+  source: string;
+}
+
+/** Meme API response structure returned by memeClient. */
+export interface MemeResponse {
+  success: boolean;
+  data?: {
+    text: string;
+    imageUrl?: string;
+  };
+  error?: string;
+}
+
+/** Health-check result for Meme API connectivity test. */
+export interface MemeHealthResult {
+  healthy: boolean;
+  templateCount?: number;
+  error?: string;
+}
+
 /** Safe (no secrets) config snapshot returned by GET /api/config. */
 export interface PublicConfig {
   discord: {
@@ -336,6 +370,7 @@ export interface PublicConfig {
     accuweatherApiKeyConfigured: boolean;
     nfl: string;
     nflEnabled: boolean;
+    memeEnabled: boolean;
     serpapi: string;
     serpapiApiKeyConfigured: boolean;
     serpapiHl: string;

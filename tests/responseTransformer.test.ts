@@ -6,12 +6,14 @@
 import {
   extractFromComfyUI,
   extractFromOllama,
+  extractFromMeme,
   extractStageResult,
   buildFinalPassPrompt,
   StageResult,
 } from '../src/utils/responseTransformer';
 import { ComfyUIResponse } from '../src/api/comfyuiClient';
 import { OllamaResponse } from '../src/api/ollamaClient';
+import { MemeResponse } from '../src/types';
 
 describe('ResponseTransformer', () => {
   describe('extractFromComfyUI', () => {
@@ -97,6 +99,49 @@ describe('ResponseTransformer', () => {
     });
   });
 
+  describe('extractFromMeme', () => {
+    it('should extract text and imageUrl from a successful Meme response', () => {
+      const response: MemeResponse = {
+        success: true,
+        data: {
+          text: 'One does not simply walk into Mordor',
+          imageUrl: 'https://api.memegen.link/images/mordor.png',
+        },
+      };
+
+      const result = extractFromMeme(response);
+
+      expect(result.sourceApi).toBe('meme');
+      expect(result.text).toBe('One does not simply walk into Mordor');
+      expect(result.images).toEqual(['https://api.memegen.link/images/mordor.png']);
+      expect(result.rawResponse).toBe(response);
+    });
+
+    it('should handle response with no data', () => {
+      const response: MemeResponse = {
+        success: false,
+        error: 'Template not found',
+      };
+
+      const result = extractFromMeme(response);
+
+      expect(result.text).toBeUndefined();
+      expect(result.images).toBeUndefined();
+    });
+
+    it('should handle response with text but no imageUrl', () => {
+      const response: MemeResponse = {
+        success: true,
+        data: { text: 'Some meme text' },
+      };
+
+      const result = extractFromMeme(response);
+
+      expect(result.text).toBe('Some meme text');
+      expect(result.images).toBeUndefined();
+    });
+  });
+
   describe('extractStageResult', () => {
     it('should dispatch to ComfyUI extractor for comfyui api', () => {
       const response: ComfyUIResponse = {
@@ -120,6 +165,22 @@ describe('ResponseTransformer', () => {
 
       expect(result.sourceApi).toBe('ollama');
       expect(result.text).toBe('Test response');
+    });
+
+    it('should dispatch to Meme extractor for meme api', () => {
+      const response: MemeResponse = {
+        success: true,
+        data: {
+          text: 'Meme text here',
+          imageUrl: 'https://api.memegen.link/images/test.png',
+        },
+      };
+
+      const result = extractStageResult('meme', response);
+
+      expect(result.sourceApi).toBe('meme');
+      expect(result.text).toBe('Meme text here');
+      expect(result.images).toEqual(['https://api.memegen.link/images/test.png']);
     });
   });
 

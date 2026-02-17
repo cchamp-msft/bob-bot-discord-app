@@ -199,8 +199,8 @@ class ConfigWriter {
         }
         keywordNames.add(normalized);
 
-        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather' && entry.api !== 'nfl' && entry.api !== 'serpapi') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", "nfl", or "serpapi"`);
+        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather' && entry.api !== 'nfl' && entry.api !== 'serpapi' && entry.api !== 'meme') {
+          throw new Error(`Keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", "nfl", "serpapi", or "meme"`);
         }
         if (typeof entry.timeout !== 'number' || entry.timeout <= 0) {
           throw new Error(`Keyword "${entry.keyword}" has invalid timeout — must be a positive number`);

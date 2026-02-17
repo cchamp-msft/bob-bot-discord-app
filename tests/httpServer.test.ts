@@ -41,6 +41,7 @@ jest.mock('../src/api', () => ({
     testOllamaConnection: jest.fn(),
     testAccuWeatherConnection: jest.fn(),
     checkNflHealth: jest.fn(),
+    checkMemeHealth: jest.fn(),
     testSerpApiConnection: jest.fn(),
     checkApiHealth: jest.fn(),
     refreshClients: jest.fn(),

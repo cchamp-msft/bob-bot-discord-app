@@ -221,6 +221,44 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for AI Overview troubleshooting tip
 @BobBot !second opinion what is machine learning
 ```
 
+## Meme (memegen.link) Configuration
+
+The bot integrates with [memegen.link](https://memegen.link) for meme image generation using popular templates. No API key is required.
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MEME_ENABLED` | No | Enable/disable meme features (default: `true`) |
+| `MEME_BASE_URL` | No | Base URL override (default: `https://api.memegen.link`) |
+
+### Template Cache
+
+On startup (when `MEME_ENABLED` is `true`), the bot downloads the full template list from the API and caches it locally at `.config/meme-templates.json`. The cache includes a timestamp and is automatically refreshed every 7 days.
+
+- If a fresh cache exists on disk, no API call is made at startup
+- If the cache is stale (>7 days), templates are loaded from disk immediately and refreshed in the background
+- If the cache is missing, templates are fetched from the API before the bot accepts meme requests
+- The cache is only overwritten after a successful download
+
+### Keywords
+
+| Keyword | Behavior |
+|---------|----------|
+| `!meme <template> \| <top text> \| <bottom text>` | Generate a meme image |
+
+Use pipe (`|`), slash (`/`), or newline to separate the template name from text lines.
+
+### Usage Examples
+
+```
+@BobBot !meme drake | writing docs | generating memes
+@BobBot !meme distracted boyfriend | old framework | developer | new framework
+@BobBot !meme one does not simply | walk into mordor
+```
+
+The bot finds the closest matching template by name or ID and returns the generated meme image URL, which Discord auto-embeds as an inline image.
+
 ## Testing API Connections
 
 All API endpoints can be tested through the web configurator:
@@ -236,6 +274,7 @@ Successful tests will show:
 - **AccuWeather**: Location resolution test
 - **NFL**: Connection confirmed
 - **SerpAPI**: Connection confirmed
+- **Meme**: Connection confirmed with template count
 
 ## Next Steps
 

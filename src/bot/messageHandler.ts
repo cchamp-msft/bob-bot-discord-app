@@ -8,7 +8,7 @@ import { logger } from '../utils/logger';
 import { requestQueue } from '../utils/requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { fileHandler } from '../utils/fileHandler';
-import { ChatMessage, NFLResponse } from '../types';
+import { ChatMessage, NFLResponse, MemeResponse } from '../types';
 import { chunkText } from '../utils/chunkText';
 import { classifyIntent } from '../utils/keywordClassifier';
 import { executeRoutedRequest, inferAbilityParameters } from '../utils/apiRouter';
@@ -1001,8 +1001,8 @@ class MessageHandler {
    * Handles error responses uniformly.
    */
   private async dispatchResponse(
-    response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse,
-    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi',
+    response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse,
+    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme',
     processingMessage: Message,
     requester: string,
     isDM: boolean
@@ -1028,6 +1028,8 @@ class MessageHandler {
       await this.handleNFLResponse(response as NFLResponse, processingMessage, requester, isDM);
     } else if (api === 'serpapi') {
       await this.handleSerpApiResponse(response as SerpApiResponse, processingMessage, requester, isDM);
+    } else if (api === 'meme') {
+      await this.handleMemeResponse(response as MemeResponse, processingMessage, requester, isDM);
     } else {
       await this.handleOllamaResponse(response as OllamaResponse, processingMessage, requester, isDM);
     }
@@ -1328,6 +1330,37 @@ class MessageHandler {
       `SerpAPI response sent: ${text.length} characters`,
       text
     );
+  }
+
+  /**
+   * Handle Meme API response — display the generated meme image URL.
+   * If an imageUrl is present, show it directly so Discord auto-embeds the image.
+   */
+  private async handleMemeResponse(
+    apiResult: MemeResponse,
+    processingMessage: Message,
+    requester: string,
+    isDM: boolean
+  ): Promise<void> {
+    const imageUrl = apiResult.data?.imageUrl;
+    const text = apiResult.data?.text || 'No meme generated.';
+
+    if (imageUrl) {
+      // Post the image URL directly so Discord auto-embeds it
+      await processingMessage.edit({ content: imageUrl, embeds: [], allowedMentions: { parse: [] } });
+      activityEvents.emitBotReply('meme', imageUrl, isDM);
+      logger.logReply(requester, `Meme generated: ${imageUrl}`, imageUrl);
+    } else {
+      const chunks = chunkText(text);
+      await processingMessage.edit({ content: chunks[0], embeds: [], allowedMentions: { parse: [] } });
+      for (let i = 1; i < chunks.length; i++) {
+        if ('send' in processingMessage.channel) {
+          await processingMessage.channel.send({ content: chunks[i], allowedMentions: { parse: [] } });
+        }
+      }
+      activityEvents.emitBotReply('meme', text, isDM);
+      logger.logReply(requester, `Meme response sent: ${text.length} characters`, text);
+    }
   }
 }
 
