@@ -19,6 +19,7 @@ jest.mock('../src/utils/logger', () => ({
 
 import { requestQueue } from '../src/utils/requestQueue';
 import { logger } from '../src/utils/logger';
+import { getThreadId, runWithThreadId } from '../src/utils/threadContext';
 
 describe('RequestQueue', () => {
   // Reset active state between tests by accessing private fields
@@ -336,6 +337,43 @@ describe('RequestQueue', () => {
       await expect(p1).resolves.toBe('first');
       await expect(p2).rejects.toThrow('cancelled');
       expect(executorCalled).toBe(false);
+    });
+
+    it('should append queued thread ID to an existing parent thread context', async () => {
+      const threadId = await runWithThreadId('3b76', async () =>
+        requestQueue.execute(
+          'comfyui',
+          'user1',
+          'generate',
+          10,
+          async () => getThreadId()
+        )
+      );
+
+      expect(threadId).toMatch(/^3b76:[0-9a-f]{4}$/);
+    });
+
+    it('should cumulatively append nested queued thread IDs across API hops', async () => {
+      const ids = await requestQueue.execute(
+        'ollama',
+        'user1',
+        'ask',
+        10,
+        async () => {
+          const outerThreadId = getThreadId();
+          const innerThreadId = await requestQueue.execute(
+            'comfyui',
+            'user1',
+            'generate',
+            10,
+            async () => getThreadId()
+          );
+          return { outerThreadId, innerThreadId };
+        }
+      );
+
+      expect(ids.outerThreadId).toMatch(/^[0-9a-f]{4}$/);
+      expect(ids.innerThreadId).toMatch(new RegExp(`^${ids.outerThreadId}:[0-9a-f]{4}$`));
     });
   });
 });

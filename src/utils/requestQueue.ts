@@ -1,5 +1,5 @@
 import { logger } from './logger';
-import { generateThreadId, runWithThreadId } from './threadContext';
+import { generateThreadId, getThreadId, runWithThreadId } from './threadContext';
 
 interface QueueEntry<T = unknown> {
   api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi';
@@ -11,6 +11,8 @@ interface QueueEntry<T = unknown> {
   reject: (reason: unknown) => void;
   /** Optional external signal from the caller for cooperative cancellation. */
   callerSignal?: AbortSignal;
+  /** Captured parent thread context at enqueue time (if any). */
+  parentThreadId?: string;
 }
 
 class RequestQueue {
@@ -81,6 +83,7 @@ class RequestQueue {
     callerSignal?: AbortSignal
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
+      const parentThreadId = getThreadId();
       const entry: QueueEntry<T> = {
         api,
         requester,
@@ -90,6 +93,7 @@ class RequestQueue {
         resolve,
         reject,
         callerSignal,
+        parentThreadId,
       };
 
       this.getQueue(api).push(entry as unknown as QueueEntry);
@@ -120,7 +124,10 @@ class RequestQueue {
 
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const threadId = generateThreadId();
+      const threadIdPart = generateThreadId();
+      const threadId = entry.parentThreadId
+        ? `${entry.parentThreadId}:${threadIdPart}`
+        : threadIdPart;
 
       try {
         const timeoutPromise = new Promise<never>((_, reject) => {
