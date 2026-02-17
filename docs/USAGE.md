@@ -8,16 +8,16 @@ This guide shows you how to use Bob Bot to interact with AI, generate images, ge
 
 Mention the bot with a keyword and prompt:
 ```
-@BobBot generate a beautiful sunset landscape
-@BobBot ask what is the meaning of life?
-@BobBot weather in Seattle
-@BobBot forecast for 90210
-@BobBot nfl scores
-@BobBot nfl scores 20260208
-@BobBot nfl news
-@BobBot nfl news chiefs
-@BobBot search what is the weather like today
-@BobBot second opinion on climate change
+@BobBot !generate a beautiful sunset landscape
+@BobBot !ask what is the meaning of life?
+@BobBot !weather in Seattle
+@BobBot !forecast for 90210
+@BobBot !nfl scores
+@BobBot !nfl scores 20260208
+@BobBot !nfl news
+@BobBot !nfl news chiefs
+@BobBot !search what is the weather like today
+@BobBot !second opinion on climate change
 ```
 
 The bot replies inline — the initial "Processing" message is edited in-place with the final response.
@@ -38,16 +38,16 @@ Use slash commands for ephemeral responses (visible only to you):
 
 ## Keywords and Routing
 
-The bot uses keywords to route requests to different APIs:
+The bot uses keywords prefixed with `!` to route requests to different APIs:
 
 | Keyword | API | Example |
 |---------|-----|---------|
-| `generate`, `draw`, `image` | ComfyUI | `@BobBot generate a sunset` |
-| `ask`, `tell me`, `what` | Ollama | `@BobBot ask what is recursion?` |
-| `weather`, `forecast`, `conditions` | AccuWeather | `@BobBot weather Seattle` |
-| `nfl scores`, `nfl news` | ESPN NFL | `@BobBot nfl scores` |
-| `search` | SerpAPI | `@BobBot search latest AI news` |
-| `second opinion` | SerpAPI (AI Overview only) | `@BobBot second opinion on quantum computing` |
+| `!generate`, `!draw`, `!image` | ComfyUI | `@BobBot !generate a sunset` |
+| `!ask`, `!tell me`, `!what` | Ollama | `@BobBot !ask what is recursion?` |
+| `!weather`, `!forecast`, `!conditions` | AccuWeather | `@BobBot !weather Seattle` |
+| `!nfl scores`, `!nfl news` | ESPN NFL | `@BobBot !nfl scores` |
+| `!search` | SerpAPI | `@BobBot !search latest AI news` |
+| `!second opinion` | SerpAPI (AI Overview only) | `@BobBot !second opinion on quantum computing` |
 
 Keywords are configurable via the web configurator. See [ADVANCED.md](ADVANCED.md) for keyword configuration details.
 
@@ -102,14 +102,14 @@ The bot uses ComfyUI for AI image generation.
 
 **Basic usage**:
 ```
-@BobBot generate a beautiful sunset landscape
-@BobBot draw a cyberpunk city at night
+@BobBot !generate a beautiful sunset landscape
+@BobBot !draw a cyberpunk city at night
 ```
 
 **Reply-based generation**: Reply to a message with an image keyword to combine the quoted content with your prompt:
 ```
 [Original message: "I love mountains"]
-[Your reply]: @BobBot generate this
+[Your reply]: @BobBot !generate this
 [Result: Image of mountains]
 ```
 
@@ -123,9 +123,9 @@ The bot provides real-time weather data via AccuWeather.
 
 **Keyword-based queries** (require location):
 ```
-@BobBot weather Seattle
-@BobBot forecast for 90210
-@BobBot conditions in London
+@BobBot !weather Seattle
+@BobBot !forecast for 90210
+@BobBot !conditions in London
 ```
 
 **Slash command** (supports default location):
@@ -148,16 +148,16 @@ The bot provides NFL game scores and news via ESPN's public API.
 
 **Scores**:
 ```
-@BobBot nfl scores                # Current week
-@BobBot nfl scores 20260208       # Specific date (YYYYMMDD)
-@BobBot nfl scores 2026-02-08     # Specific date (YYYY-MM-DD)
+@BobBot !nfl scores                # Current week
+@BobBot !nfl scores 20260208       # Specific date (YYYYMMDD)
+@BobBot !nfl scores 2026-02-08     # Specific date (YYYY-MM-DD)
 ```
 
 **News**:
 ```
-@BobBot nfl news                  # Latest 5 articles
-@BobBot nfl news chiefs           # Filter by keyword
-@BobBot nfl news trade            # Filter by keyword
+@BobBot !nfl news                  # Latest 5 articles
+@BobBot !nfl news chiefs           # Filter by keyword
+@BobBot !nfl news trade            # Filter by keyword
 ```
 
 No API key required — ESPN provides public access.
@@ -170,14 +170,14 @@ The bot provides web search via Google Search through SerpAPI.
 
 **Full search results**:
 ```
-@BobBot search latest AI news
-@BobBot search best restaurants in Seattle
+@BobBot !search latest AI news
+@BobBot !search best restaurants in Seattle
 ```
 
 **AI Overview only** (Google's AI-generated summary):
 ```
-@BobBot second opinion on quantum computing
-@BobBot second opinion what is machine learning
+@BobBot !second opinion on quantum computing
+@BobBot !second opinion what is machine learning
 ```
 
 > **Note**: AI Overview availability is locale-dependent. Configure `SERPAPI_HL` (language) and `SERPAPI_GL` (country) for best results. Optional `SERPAPI_LOCATION` can further improve coverage.
@@ -189,7 +189,7 @@ See [API_INTEGRATION.md](API_INTEGRATION.md) for SerpAPI configuration and [TROU
 The bot includes a public activity feed showing its decision-making process as first-person narrative events.
 
 **Getting access**:
-1. Send `activity_key` to the bot (DM or @mention)
+1. Send `!activity_key` to the bot (DM or @mention)
 2. The bot replies with a temporary key and URL
 3. Open the URL and enter the key when prompted
 

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { KeywordConfig, ConfigData } from './config';
+import { KeywordConfig, ConfigData, COMMAND_PREFIX } from './config';
 import { isUIFormat, convertUIToAPIFormat } from '../api/comfyuiClient';
 
 interface EnvUpdate {
@@ -296,10 +296,11 @@ class ConfigWriter {
       }
 
       // Enforce: custom "help" keyword is only allowed when the built-in help keyword is disabled
-      const builtinHelp = keywords.find(k => k.builtin && k.keyword.toLowerCase() === 'help');
+      const helpKeyword = `${COMMAND_PREFIX}help`;
+      const builtinHelp = keywords.find(k => k.builtin && k.keyword.toLowerCase() === helpKeyword);
       const builtinHelpEnabled = builtinHelp ? builtinHelp.enabled !== false : false;
       if (builtinHelpEnabled) {
-        const customHelpIndex = keywords.findIndex(k => !k.builtin && k.keyword.toLowerCase() === 'help');
+        const customHelpIndex = keywords.findIndex(k => !k.builtin && k.keyword.toLowerCase() === helpKeyword);
         if (customHelpIndex !== -1) {
           throw new Error('Cannot save a custom "help" keyword while the built-in help keyword is enabled — disable the built-in help keyword first');
         }

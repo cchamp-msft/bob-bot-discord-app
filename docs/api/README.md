@@ -1,6 +1,6 @@
 # Message & API Routing Flow
 
-This document illustrates the complete message and API routing flow in bob-bot-discord-app, using the **`@BobBot weather Seattle`** prompt as a concrete example. This keyword touches an ability and routes through AccuWeather using the shared API path.
+This document illustrates the complete message and API routing flow in bob-bot-discord-app, using the **`@BobBot !weather Seattle`** prompt as a concrete example. This keyword touches an ability and routes through AccuWeather using the shared API path.
 
 ---
 
@@ -9,7 +9,7 @@ This document illustrates the complete message and API routing flow in bob-bot-d
 ```mermaid
 flowchart TD
     subgraph Discord["Discord (External)"]
-        A["👤 User sends:<br/><code>@BobBot weather Seattle</code>"]
+        A["👤 User sends:<br/><code>@BobBot !weather Seattle</code>"]
     end
 
     subgraph DiscordManager["discordManager.ts — Event Listener"]
@@ -17,11 +17,11 @@ flowchart TD
     end
 
     subgraph MessageHandler["messageHandler.ts — handleMessage()"]
-        C["Strip @mention → content = <b>'weather Seattle'</b>"]
+        C["Strip @mention → content = <b>'!weather Seattle'</b>"]
         D["Collect conversation history<br/><code>collectReplyChain()</code> or <code>collectDmHistory()</code>"]
         E{"<b>findKeyword(content)</b><br/>Regex match at start of message?<br/><i>sorted longest-first</i>"}
 
-        E1["✅ Match: <b>'weather'</b><br/><code>api: 'accuweather'</code>"]
+        E1["✅ Match: <b>'!weather'</b><br/><code>api: 'accuweather'</code>"]
         E2["❌ No regex match<br/><i>(would enter two-stage path)</i>"]
 
         F{"<code>apiKeywordMatched?</code><br/>keywordConfig.api !== 'ollama'?"}
@@ -89,7 +89,7 @@ flowchart TD
     end
 
     A --> B --> C --> D --> E
-    E -->|"'weather' matches regex"| E1
+    E -->|"'!weather' matches regex"| E1
     E -->|"e.g. 'is it going to rain?'"| E2
     E1 --> F
     F -->|"accuweather ≠ ollama"| G
@@ -141,7 +141,7 @@ flowchart TD
 
 ---
 
-## Walkthrough: `@BobBot weather Seattle`
+## Walkthrough: `@BobBot !weather Seattle`
 
 ### 1. Discord Event → MessageHandler
 **File:** `discordManager.ts` → `messageHandler.ts`
@@ -151,9 +151,9 @@ The Discord.js `messageCreate` event fires and calls `messageHandler.handleMessa
 ### 2. Content Extraction & Keyword Matching
 **File:** `messageHandler.ts`
 
-- The `@mention` is stripped → `content = "weather Seattle"`
-- `findKeyword()` matches **`"weather"** at the start of the message
-- `keywordConfig` = `{ keyword: 'weather', api: 'accuweather', timeout: 60 }`
+- The `@mention` is stripped → `content = "!weather Seattle"`
+- `findKeyword()` matches **`"!weather"`** at the start of the message
+- `keywordConfig` = `{ keyword: '!weather', api: 'accuweather', timeout: 60 }`
 - Since `api !== 'ollama'` → `apiKeywordMatched = true` → takes the **direct API routing path**
 
 ### 3. API Router — Primary Request
@@ -212,9 +212,9 @@ The `⏳ Processing...` message is edited in-place with the final weather respon
 
 | Scenario | Path |
 |----------|------|
-| **`weather Seattle`** | Regex match → AccuWeather API → Discord reply |
-| **`generate a sunset`** | Regex match → ComfyUI API → Discord reply (images) |
-| **`weather 45403`** | Regex match → AccuWeather API → Discord reply (raw data) |
+| **`!weather Seattle`** | Regex match → AccuWeather API → Discord reply |
+| **`!generate a sunset`** | Regex match → ComfyUI API → Discord reply (images) |
+| **`!weather 45403`** | Regex match → AccuWeather API → Discord reply (raw data) |
 | **`is it going to rain?`** | No regex match → Two-stage: Ollama w/ abilities → keyword detected → AccuWeather → Final pass → Discord reply |
 | **`tell me a joke`** | No regex match → Two-stage: Ollama w/ abilities → no keyword → Ollama response returned directly |
-| **`nfl scores`** | Regex match → NFL API → Final Ollama pass → Discord reply |
+| **`!nfl scores`** | Regex match → NFL API → Final Ollama pass → Discord reply |

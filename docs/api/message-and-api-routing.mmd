@@ -1,6 +1,6 @@
 flowchart TD
     subgraph Discord["Discord (External)"]
-        A["👤 User sends:<br/><code>@BobBot weather Seattle</code>"]
+        A["👤 User sends:<br/><code>@BobBot !weather Seattle</code>"]
     end
 
     subgraph DiscordManager["discordManager.ts — Event Listener"]
@@ -8,11 +8,11 @@ flowchart TD
     end
 
     subgraph MessageHandler["messageHandler.ts — handleMessage()"]
-        C["Strip @mention → content = <b>'weather Seattle'</b>"]
+        C["Strip @mention → content = <b>'!weather Seattle'</b>"]
         D["Collect conversation history<br/><code>collectReplyChain()</code> or <code>collectDmHistory()</code>"]
         E{"<b>findKeyword(content)</b><br/>Regex match at start of message?<br/><i>sorted longest-first</i>"}
 
-        E1["✅ Match: <b>'weather'</b><br/><code>api: 'accuweather'</code>"]
+        E1["✅ Match: <b>'!weather'</b><br/><code>api: 'accuweather'</code>"]
         E2["❌ No regex match<br/><i>(would enter two-stage path)</i>"]
 
         F{"<code>apiKeywordMatched?</code><br/>keywordConfig.api !== 'ollama'?"}
@@ -80,7 +80,7 @@ flowchart TD
     end
 
     A --> B --> C --> D --> E
-    E -->|"'weather' matches regex"| E1
+    E -->|"'!weather' matches regex"| E1
     E -->|"e.g. 'is it going to rain?'"| E2
     E1 --> F
     F -->|"accuweather ≠ ollama"| G

@@ -99,7 +99,7 @@ The bot uses a two-stage evaluation flow to intelligently route requests. Keywor
 
 ### How It Works
 
-1. **Regex matching** (fast path) — checked first for explicit keywords like "generate" or "weather"
+1. **Regex matching** (fast path) — checked first for explicit keywords like `!generate` or `!weather`
 2. **AI classification** (fallback) — if no regex match, Ollama analyzes the message intent and maps it to a registered keyword
 3. **Direct API routing** — if a non-Ollama keyword is matched (regex or AI), the request is sent directly to the primary API
 4. **Two-stage evaluation** — if an Ollama keyword is matched (e.g., "chat", "ask") or no keyword is matched, the request is sent to Ollama with an abilities context describing available API capabilities. Ollama's response is then re-evaluated:
@@ -109,11 +109,11 @@ The bot uses a two-stage evaluation flow to intelligently route requests. Keywor
 
 ### Example Flows
 
-- **Simple**: `generate` → ComfyUI (direct API call)
-- **Weather direct route**: `weather Seattle` → AccuWeather (shared routed API path)
+- **Simple**: `!generate` → ComfyUI (direct API call)
+- **Weather direct route**: `!weather Seattle` → AccuWeather (shared routed API path)
 - **Two-stage**: User says "is it going to rain?" → no keyword match → Ollama with abilities → response mentions weather → AccuWeather triggered → Ollama formats result
-- **Two-stage with inference**: User says "what is the capital of Thailand?" → Ollama mentions weather → classifier detects "weather" → `inferAbilityParameters()` resolves "Bangkok" → AccuWeather called with "Bangkok"
-- **AI-classified**: User says "can you draw a sunset?" → AI identifies intent as "generate" → routes to ComfyUI
+- **Two-stage with inference**: User says "what is the capital of Thailand?" → Ollama mentions weather → classifier detects `!weather` → `inferAbilityParameters()` resolves "Bangkok" → AccuWeather called with "Bangkok"
+- **AI-classified**: User says "can you draw a sunset?" → AI identifies intent as `!generate` → routes to ComfyUI
 - **No API match**: User says "tell me a joke" → Ollama with abilities → response has no API keywords → Ollama response returned directly
 
 ### Error Handling
@@ -169,7 +169,7 @@ In all cases, context is sent to Ollama using the `/api/chat` endpoint with prop
 - **DMs** automatically include recent DM channel messages as context (same depth/token limits apply, tagged as `dm`, no guild channel-context feature)
 - **Other bots** are excluded from context history by default — set `ALLOW_BOT_INTERACTIONS=true` to include them and allow the bot to respond to other bots' messages
 - **ComfyUI** image generation uses single-level reply context — the replied-to message content is prepended to the prompt
-- Routing keywords (e.g., "generate", "imagine") are stripped from the prompt before submission to the image model
+- Routing keywords (e.g., `!generate`, `!imagine`) are stripped from the prompt before submission to the image model
 - Deleted or inaccessible messages in the chain are skipped gracefully
 - Circular references are detected and traversal stops
 - Bot responses are sent as **plain text** (not embed blocks) for a conversational feel
@@ -211,7 +211,7 @@ These optional fields in `config/keywords.json` override the global defaults for
 
 - **System messages** (abilities context, system prompts) are excluded from depth counting and always preserved at the front of the history.
 - **Persona isolation**: The context evaluator and keyword classifier use their own dedicated system prompts — the global Ollama persona/system prompt is only included in user-facing chat responses, not in internal tool calls.
-- **Performance**: Context evaluation adds one Ollama call per request to determine relevance. This is most beneficial for keywords with long reply chains (e.g., `chat`, discussion-style keywords). For short, single-turn interactions the overhead is minimal.
+- **Performance**: Context evaluation adds one Ollama call per request to determine relevance. This is most beneficial for keywords with long reply chains (e.g., `!chat`, discussion-style keywords). For short, single-turn interactions the overhead is minimal.
 - **Failure behavior**: If the evaluation call fails or returns an unexpected response, the full unfiltered history is used as a graceful fallback — the bot never drops context silently.
 
 ## API Rate Limiting

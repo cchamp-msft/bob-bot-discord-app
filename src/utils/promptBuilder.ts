@@ -1,4 +1,4 @@
-import { config, KeywordConfig, AbilityInputs } from './config';
+import { config, KeywordConfig, AbilityInputs, COMMAND_PREFIX } from './config';
 import { logger } from './logger';
 import { ChatMessage } from '../types';
 import { groupMessagesBySource } from './contextFormatter';
@@ -182,7 +182,7 @@ export function buildSystemPrompt(routableKeywords?: KeywordConfig[]): string {
     parts.push('');
     parts.push(
       'Rules – follow exactly:\n' +
-      '1. If fresh external data is required, use an ability. If the ability requires parameters and you can infer them from context, output the keyword and parameters on its own line. Otherwise output the keyword only. Nothing else.\n' +
+      `1. If fresh external data is required, use an ability. Output the keyword prefixed with "${COMMAND_PREFIX}" (e.g. ${COMMAND_PREFIX}weather Dallas) on its own line. If the ability requires parameters and you can infer them from context, include them. Otherwise output the keyword only. Nothing else.\n` +
       '2. If an ability requires parameters and you cannot infer them from context, ask a brief clarifying question instead of outputting the keyword.\n' +
       '3. Never invent scores, stats, weather, or facts.\n' +
       '4. No data needed → answer normally in character.\n' +
@@ -456,7 +456,7 @@ export function buildUserContent(options: PromptBuildOptions): string {
       'Step-by-step (think silently, do not output this thinking):\n' +
       '1. Read the current question carefully.\n' +
       `2. Does it clearly need fresh external data (scores, rosters, live stats, weather)? → Yes → check if the ability's required inputs are present or can be inferred per the ability description above.\n` +
-      `3. Inputs satisfied? → output the keyword (one of: ${keywordList}) and any parameters on its own line and stop.\n` +
+      `3. Inputs satisfied? → output the keyword with "${COMMAND_PREFIX}" prefix (one of: ${keywordList}) and any parameters on its own line and stop.\n` +
       '4. Inputs missing and cannot be inferred? → ask a brief clarifying question instead of outputting the keyword.\n' +
       '5. No data needed? → Give a short, helpful answer in character.\n' +
       '</thinking_and_output_rules>'
@@ -586,7 +586,7 @@ export function parseFirstLineKeyword(
   if (!firstLine) return nullResult;
 
   // Normalize: trim, lowercase, strip punctuation and leading bullet markers
-  const cleaned = firstLine
+  let cleaned = firstLine
     .trim()
     .toLowerCase()
     .replace(/^[-–—*•]\s*/, '')
@@ -599,9 +599,14 @@ export function parseFirstLineKeyword(
   const routable = getRoutableKeywords(overrideKeywords)
     .sort((a, b) => b.keyword.length - a.keyword.length);
 
-  // Exact match against cleaned first line
+  // Exact match against cleaned first line (with or without command prefix)
   for (const kw of routable) {
-    if (cleaned === kw.keyword.toLowerCase()) {
+    const kwLower = kw.keyword.toLowerCase();
+    // Strip the command prefix from the keyword for matching purposes
+    const kwBare = kwLower.startsWith(COMMAND_PREFIX) ? kwLower.slice(COMMAND_PREFIX.length) : kwLower;
+    // The model may emit the keyword with or without the prefix
+    const cleanedBare = cleaned.startsWith(COMMAND_PREFIX) ? cleaned.slice(COMMAND_PREFIX.length) : cleaned;
+    if (cleanedBare === kwBare) {
       logger.log('success', 'system',
         `KEYWORD-PARSE: First-line exact match "${kw.keyword}" from "${firstLine.trim()}"`);
       return { keywordConfig: kw, parsedLine: cleaned, matched: true };
@@ -609,33 +614,39 @@ export function parseFirstLineKeyword(
   }
 
   // Prefix match with inline parameters, e.g.:
-  // "weather Seattle", "weather: Seattle", "nfl scores | 2026-02-16"
+  // "!weather Seattle", "weather: Seattle", "!nfl scores | 2026-02-16"
   const strippedFirstLine = firstLine
     .trim()
     .replace(/^[-–—*•]\s*/, '')
     .trim();
 
   for (const kw of routable) {
-    const escapedKeyword = kw.keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const prefixPattern = new RegExp(`^${escapedKeyword}\\b(.+)$`, 'i');
-    const match = strippedFirstLine.match(prefixPattern);
-    if (!match) continue;
+    const kwLower = kw.keyword.toLowerCase();
+    const kwBare = kwLower.startsWith(COMMAND_PREFIX) ? kwLower.slice(COMMAND_PREFIX.length) : kwLower;
 
-    const remainder = (match[1] ?? '').trim();
-    const inferredInput = remainder
-      .replace(/^[:|;,=\-–—>]+\s*/, '')
-      .trim();
+    // Try matching with prefix first, then without
+    for (const variant of [`${COMMAND_PREFIX}${kwBare}`, kwBare]) {
+      const escapedKeyword = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const prefixPattern = new RegExp(`^${escapedKeyword}\\b(.+)$`, 'i');
+      const match = strippedFirstLine.match(prefixPattern);
+      if (!match) continue;
 
-    if (!inferredInput) continue;
+      const remainder = (match[1] ?? '').trim();
+      const inferredInput = remainder
+        .replace(/^[:|;,=\-–—>]+\s*/, '')
+        .trim();
 
-    logger.log('success', 'system',
-      `KEYWORD-PARSE: First-line keyword+params match "${kw.keyword}" with inferred input "${inferredInput}"`);
-    return {
-      keywordConfig: kw,
-      parsedLine: cleaned,
-      matched: true,
-      inferredInput,
-    };
+      if (!inferredInput) continue;
+
+      logger.log('success', 'system',
+        `KEYWORD-PARSE: First-line keyword+params match "${kw.keyword}" with inferred input "${inferredInput}"`);
+      return {
+        keywordConfig: kw,
+        parsedLine: cleaned,
+        matched: true,
+        inferredInput,
+      };
+    }
   }
 
   return { keywordConfig: null, parsedLine: cleaned, matched: false };

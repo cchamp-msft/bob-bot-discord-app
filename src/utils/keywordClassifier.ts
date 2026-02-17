@@ -1,4 +1,4 @@
-import { config, KeywordConfig } from './config';
+import { config, KeywordConfig, COMMAND_PREFIX } from './config';
 import { logger } from './logger';
 import { ollamaClient, OllamaResponse } from '../api/ollamaClient';
 import { requestQueue } from './requestQueue';
@@ -97,16 +97,23 @@ export async function classifyIntent(
 
     // Strip any accidental punctuation or quotes from the response
     const cleaned = rawResult.replace(/["""''`.,!?;:]/g, '').trim();
+    // Strip the command prefix if the model included it
+    const cleanedBare = cleaned.startsWith(COMMAND_PREFIX) ? cleaned.slice(COMMAND_PREFIX.length) : cleaned;
 
     logger.log('success', 'system', `CLASSIFIER: Ollama returned keyword "${cleaned}"`);
 
-    if (cleaned === 'none') {
+    if (cleaned === 'none' || cleanedBare === 'none') {
       return { keywordConfig: null, wasClassified: true };
     }
 
     // Look up the keyword config by matching against registered keywords
+    // Support both prefixed and bare keyword matches
     const matched = keywords.find(
-      (k) => k.keyword.toLowerCase() === cleaned
+      (k) => {
+        const kwLower = k.keyword.toLowerCase();
+        const kwBare = kwLower.startsWith(COMMAND_PREFIX) ? kwLower.slice(COMMAND_PREFIX.length) : kwLower;
+        return kwLower === cleaned || kwBare === cleanedBare;
+      }
     );
 
     if (!matched) {
@@ -148,7 +155,7 @@ export function buildAbilitiesContext(): string {
     'You have access to the following abilities through external APIs:',
     ...abilities,
     '',
-    'If the user\'s request requires one of these abilities, include ONLY the keyword on its own line (e.g. "weather") so the request can be routed to the correct API.',
+    `If the user\'s request requires one of these abilities, include ONLY the keyword on its own line prefixed with "${COMMAND_PREFIX}" (e.g. "${COMMAND_PREFIX}weather") so the request can be routed to the correct API.`,
     'Do not fabricate data for these abilities — if an ability is needed, state the keyword and let the API handle it.',
   ].join('\n');
 }

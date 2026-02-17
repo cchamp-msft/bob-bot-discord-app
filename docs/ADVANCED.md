@@ -18,7 +18,7 @@ Keywords define how the bot routes requests to different APIs. They can be confi
 | `abilityWhen` | `string` | Model-facing guidance on when to choose this ability (e.g. "User asks about weather."). |
 | `abilityInputs` | `object` | Structured input guidance for the model. See sub-fields below. |
 | `finalOllamaPass` | `boolean` | Pass the API result through Ollama for conversational refinement using the global final-pass model. |
-| `allowEmptyContent` | `boolean` | When `true`, the keyword works without additional user text (e.g. `nfl scores` alone). When `false` or absent, the bot prompts the user to include content after the keyword. |
+| `allowEmptyContent` | `boolean` | When `true`, the keyword works without additional user text (e.g. `!nfl scores` alone). When `false` or absent, the bot prompts the user to include content after the keyword. |
 | `enabled` | `boolean` | Whether the keyword is active (default: `true`). |
 | `retry` | `object` | Per-keyword retry override. Sub-fields: `enabled` (bool), `maxRetries` (0-10), `model` (string), `prompt` (string). |
 | `contextFilterEnabled` | `boolean` | Enable Ollama context evaluation for this keyword (default: `false`). |
@@ -42,7 +42,7 @@ The `abilityInputs` object provides structured guidance to the AI about what inp
 
 ```json
 {
-  "keyword": "weather",
+  "keyword": "!weather",
   "api": "accuweather",
   "timeout": 60,
   "description": "Get current weather conditions and 5-day forecast",
@@ -52,7 +52,7 @@ The `abilityInputs` object provides structured guidance to the AI about what inp
     "mode": "explicit",
     "required": ["location"],
     "validation": "Location must be a valid worldwide city name, region, or US postal code.",
-    "examples": ["weather Dallas", "weather 90210"]
+    "examples": ["!weather Dallas", "!weather 90210"]
   },
   "contextFilterEnabled": false
 }
@@ -62,7 +62,7 @@ Example with final Ollama pass:
 
 ```json
 {
-  "keyword": "nfl scores",
+  "keyword": "!nfl scores",
   "api": "nfl",
   "timeout": 30,
   "description": "Get current NFL game scores",
@@ -83,7 +83,7 @@ Example with context evaluation enabled:
 
 ```json
 {
-  "keyword": "chat",
+  "keyword": "!chat",
   "api": "ollama",
   "timeout": 300,
   "description": "Chat with Ollama AI",
@@ -133,7 +133,7 @@ Context evaluation is **opt-in per keyword** via the `contextFilterEnabled` fiel
 
 ```json
 {
-  "keyword": "chat",
+  "keyword": "!chat",
   "api": "ollama",
   "contextFilterEnabled": true,
   "contextFilterMinDepth": 2,
@@ -160,8 +160,8 @@ Context evaluation is **opt-in per keyword** via the `contextFilterEnabled` fiel
 
 ### Best Practices
 
-- **Enable for conversational keywords**: Keywords like "chat" or "discuss" benefit most from context evaluation
-- **Disable for single-turn queries**: Keywords like "weather" or "generate" don't need context evaluation
+- **Enable for conversational keywords**: Keywords like `!chat` or `!ask` benefit most from context evaluation
+- **Disable for single-turn queries**: Keywords like `!weather` or `!generate` don't need context evaluation
 - **Tune depth limits**: Higher `contextFilterMaxDepth` allows more context but adds processing time
 - **Consider token budgets**: Context evaluation adds one Ollama call per request
 
@@ -243,7 +243,7 @@ Configure per-keyword timeouts in `config/keywords.json`:
 
 ```json
 {
-  "keyword": "generate",
+  "keyword": "!generate",
   "api": "comfyui",
   "timeout": 300
 }
@@ -263,7 +263,7 @@ ACTIVITY_KEY_TTL=300
 ```
 
 - `ACTIVITY_KEY_TTL`: Key expiration time in seconds (default: 300 / 5 minutes)
-- Keys are requested by sending `activity_key` to the bot via Discord
+- Keys are requested by sending `!activity_key` to the bot via Discord
 - Keys rotate automatically after expiration
 
 ## Testing

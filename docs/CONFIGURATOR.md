@@ -17,7 +17,7 @@ The bot runs two independent HTTP servers:
 
 The outputs server hosts a privacy-first activity timeline at `/activity` that shows the bot's decision-making as first-person narrative events. Access to the activity data API is protected by a rotating key that must be requested from the bot via Discord.
 
-**Getting access**: Send `activity_key` to the bot (DM or @mention). The bot replies with a temporary key and the activity page URL. Enter the key when prompted on the activity page. Keys expire after `ACTIVITY_KEY_TTL` seconds (default 300 / 5 minutes, configurable in the HTTP Server section of the configurator).
+**Getting access**: Send `!activity_key` to the bot (DM or @mention). The bot replies with a temporary key and the activity page URL. Enter the key when prompted on the activity page. Keys expire after `ACTIVITY_KEY_TTL` seconds (default 300 / 5 minutes, configurable in the HTTP Server section of the configurator).
 
 | Endpoint | Description |
 |----------|------------|

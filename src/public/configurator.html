@@ -584,7 +584,7 @@
       <div class="body">
         <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
           Powered by ESPN's public API — no API key required.
-          Provides live NFL scores and news. Use keywords <code style="color:var(--accent)">nfl scores</code> (optionally with a date like <code style="color:var(--accent)">nfl scores 20260208</code>) or <code style="color:var(--accent)">nfl news</code> (optionally with a filter like <code style="color:var(--accent)">nfl news draft</code>).
+          Provides live NFL scores and news. Use keywords <code style="color:var(--accent)">!nfl scores</code> (optionally with a date like <code style="color:var(--accent)">!nfl scores 20260208</code>) or <code style="color:var(--accent)">!nfl news</code> (optionally with a filter like <code style="color:var(--accent)">!nfl news draft</code>).
         </p>
         <div class="field">
           <label>Enabled</label>
@@ -616,7 +616,7 @@
         <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
           Get a free API key at <a href="https://serpapi.com/" target="_blank" style="color:var(--accent)">serpapi.com</a>.
           Provides Google Search results including AI Overview, Knowledge Graph, and organic results.
-          Use keywords <code style="color:var(--accent)">search</code> or <code style="color:var(--accent)">second opinion</code>.
+          Use keywords <code style="color:var(--accent)">!search</code> or <code style="color:var(--accent)">!second opinion</code>.
         </p>
         <div class="field">
           <label>API Key <span class="note">write-only — never displayed</span></label>
@@ -774,7 +774,7 @@
         </p>
         <pre class="mermaid" style="background:transparent;text-align:center">
 flowchart LR
-    A["📨 Message"] --> B{"🔑 Keyword?"}
+    A["📨 Message"] --> B{"!keyword?"}
     B -->|Yes| D["⚡ Route to API"]
     B -->|No| C["🧠 Context Eval\n(Ollama)"]
     C -->|"API detected"| D
@@ -792,7 +792,8 @@ flowchart LR
       <h2 class="open" onclick="toggleSection(this)">Keywords → API Routing</h2>
       <div class="body open">
         <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
-          Map @mention keywords to APIs. When <strong>Ability</strong> is checked, the keyword's description is included
+          Map @mention keywords to APIs. Keywords must start with <code>!</code> (e.g. <code>!weather</code>).
+          When <strong>Ability</strong> is checked, the keyword's description is included
           as context so Ollama can suggest using that API even when the keyword isn't typed explicitly.
           <strong>Final Pass</strong> sends the API result back through Ollama for conversational refinement.
         </p>
@@ -1175,7 +1176,7 @@ flowchart LR
     const retry = kw?.retry || {};
     tr.innerHTML = `
       <td style="text-align:center"><input type="checkbox" class="kw-enabled" ${isEnabled ? 'checked' : ''} title="${isBuiltin ? 'Enable or disable this built-in keyword' : 'Enable or disable this keyword'}"></td>
-      <td><input type="text" class="kw-keyword" value="${esc(kw?.keyword || '')}" placeholder="keyword">${isBuiltin ? '<span class="kw-builtin-badge">built-in</span>' : ''}</td>
+      <td><input type="text" class="kw-keyword" value="${esc(kw?.keyword || '')}" placeholder="!keyword">${isBuiltin ? '<span class="kw-builtin-badge">built-in</span>' : ''}</td>
       <td><select class="kw-api">
         <option value="comfyui" ${kw?.api === 'comfyui' ? 'selected' : ''}>comfyui</option>
         <option value="ollama" ${kw?.api === 'ollama' ? 'selected' : ''}>ollama</option>

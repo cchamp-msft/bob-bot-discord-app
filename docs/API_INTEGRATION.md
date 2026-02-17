@@ -107,11 +107,11 @@ Three default weather keywords are configured in `config/keywords.default.json`.
 
 | Keyword | Behavior |
 |---------|----------|
-| `weather <location>` | General weather details (current conditions + forecast data) |
-| `forecast <location>` | Forecast-focused weather query |
-| `conditions <location>` | Current-conditions-focused weather query |
+| `!weather <location>` | General weather details (current conditions + forecast data) |
+| `!forecast <location>` | Forecast-focused weather query |
+| `!conditions <location>` | Current-conditions-focused weather query |
 
-> **Note:** Unlike the `/weather` slash command which falls back to `ACCUWEATHER_DEFAULT_LOCATION`, keyword-based weather commands require a location. Sending just `weather` with no location will prompt the user to include a query.
+> **Note:** Unlike the `/weather` slash command which falls back to `ACCUWEATHER_DEFAULT_LOCATION`, keyword-based weather commands require a location. Sending just `!weather` with no location will prompt the user to include a query.
 
 ### Weather Slash Command
 
@@ -144,24 +144,24 @@ Two NFL keywords are configured in `config/keywords.default.json`:
 
 | Keyword | Behavior |
 |---------|----------|
-| `nfl scores` | Lists all games for the current week. Supports date lookups: `nfl scores 20260208` or `nfl scores 2026-02-08` |
-| `nfl news` | Shows the latest NFL news headlines. Supports keyword filtering: `nfl news chiefs` |
+| `!nfl scores` | Lists all games for the current week. Supports date lookups: `!nfl scores 20260208` or `!nfl scores 2026-02-08` |
+| `!nfl news` | Shows the latest NFL news headlines. Supports keyword filtering: `!nfl news chiefs` |
 
 Both keywords have `allowEmptyContent: true`, so they work without additional text.
 
 ### Date-Based Score Lookups
 
 Use `YYYYMMDD` or `YYYY-MM-DD` format to look up scores for a specific date:
-- `nfl scores 20260208` — scores for games on February 8, 2026
-- `nfl scores 2026-02-08` — same, with dashes
+- `!nfl scores 20260208` — scores for games on February 8, 2026
+- `!nfl scores 2026-02-08` — same, with dashes
 
 When no date is provided, the current week's scoreboard is shown.
 
 ### News Filtering
 
-Add a search term after `nfl news` to filter articles by headline or description:
-- `nfl news chiefs` — only articles mentioning "chiefs"
-- `nfl news trade` — only articles mentioning "trade"
+Add a search term after `!nfl news` to filter articles by headline or description:
+- `!nfl news chiefs` — only articles mentioning "chiefs"
+- `!nfl news trade` — only articles mentioning "trade"
 
 Without a filter, the 5 most recent articles are shown.
 
@@ -193,8 +193,8 @@ Two SerpAPI keywords are configured:
 
 | Keyword | Behavior |
 |---------|----------|
-| `search <query>` | Full Google Search results (organic results, snippets, etc.) |
-| `second opinion <query>` | AI Overview only (Google's AI-generated summary) |
+| `!search <query>` | Full Google Search results (organic results, snippets, etc.) |
+| `!second opinion <query>` | AI Overview only (Google's AI-generated summary) |
 
 ### AI Overview Availability
 
@@ -211,14 +211,14 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for AI Overview troubleshooting tip
 
 **Full search**:
 ```
-@BobBot search latest AI news
-@BobBot search best restaurants in Seattle
+@BobBot !search latest AI news
+@BobBot !search best restaurants in Seattle
 ```
 
 **AI Overview only**:
 ```
-@BobBot second opinion on quantum computing
-@BobBot second opinion what is machine learning
+@BobBot !second opinion on quantum computing
+@BobBot !second opinion what is machine learning
 ```
 
 ## Testing API Connections

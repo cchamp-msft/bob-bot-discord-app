@@ -112,9 +112,9 @@ After changing any restart-required setting, stop the process and run `npm run d
 
 ## SerpAPI / AI Overview Issues
 
-### AI Overview ("second opinion") not working
+### AI Overview ("!second opinion") not working
 
-**Symptoms**: `second opinion` queries don't return AI Overview summaries.
+**Symptoms**: `!second opinion` queries don't return AI Overview summaries.
 
 **Enable debug logging**:
 

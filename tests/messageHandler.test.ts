@@ -19,6 +19,7 @@ jest.mock('discord.js', () => ({
 }));
 
 jest.mock('../src/utils/config', () => ({
+  COMMAND_PREFIX: '!',
   config: {
     getErrorRateLimitMinutes: jest.fn(() => 1), // 1 minute for test speed
     getErrorMessage: jest.fn(() => 'Test error message'),
@@ -525,48 +526,48 @@ describe('MessageHandler Discord mention stripping', () => {
 
 describe('MessageHandler stripKeyword', () => {
   it('should strip the first occurrence of the keyword (case-insensitive)', () => {
-    const result = (messageHandler as any).stripKeyword('generate a beautiful sunset', 'generate');
+    const result = (messageHandler as any).stripKeyword('!generate a beautiful sunset', '!generate');
     expect(result).toBe('a beautiful sunset');
   });
 
   it('should strip only the first occurrence when keyword appears multiple times', () => {
-    const result = (messageHandler as any).stripKeyword('generate the word generate in a sentence', 'generate');
+    const result = (messageHandler as any).stripKeyword('!generate the word generate in a sentence', '!generate');
     expect(result).toBe('the word generate in a sentence');
   });
 
   it('should be case-insensitive', () => {
-    const result = (messageHandler as any).stripKeyword('GENERATE a cat picture', 'generate');
+    const result = (messageHandler as any).stripKeyword('!GENERATE a cat picture', '!generate');
     expect(result).toBe('a cat picture');
   });
 
   it('should handle keyword at end of string', () => {
-    const result = (messageHandler as any).stripKeyword('please generate', 'generate');
+    const result = (messageHandler as any).stripKeyword('!generate please', '!generate');
     expect(result).toBe('please');
   });
 
   it('should handle keyword in the middle of string', () => {
-    const result = (messageHandler as any).stripKeyword('please imagine a dog', 'imagine');
+    const result = (messageHandler as any).stripKeyword('!imagine please a dog', '!imagine');
     expect(result).toBe('please a dog');
   });
 
   it('should return empty string when content is only the keyword', () => {
-    const result = (messageHandler as any).stripKeyword('generate', 'generate');
+    const result = (messageHandler as any).stripKeyword('!generate', '!generate');
     expect(result).toBe('');
   });
 
   it('should not strip partial word matches', () => {
-    const result = (messageHandler as any).stripKeyword('regenerate the image', 'generate');
+    const result = (messageHandler as any).stripKeyword('regenerate the image', '!generate');
     expect(result).toBe('regenerate the image');
   });
 
   it('should handle special regex characters in keyword', () => {
-    const result = (messageHandler as any).stripKeyword('use draw.io to generate', 'draw.io');
+    const result = (messageHandler as any).stripKeyword('!draw.io use to generate', '!draw.io');
     expect(result).toBe('use to generate');
   });
 
   it('should collapse multiple spaces after stripping', () => {
-    const result = (messageHandler as any).stripKeyword('please  generate  a cat', 'generate');
-    expect(result).toBe('please a cat');
+    const result = (messageHandler as any).stripKeyword('!generate  please  a cat', '!generate');
+    expect(result).toBe('please  a cat');
   });
 });
 
@@ -575,18 +576,18 @@ describe('MessageHandler findKeyword (start-anchored)', () => {
     (config.getKeywords as jest.Mock).mockReturnValue(keywords);
   }
 
-  const weatherKw = { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Weather' };
-  const nflKw = { keyword: 'nfl', api: 'nfl', timeout: 30, description: 'NFL generic' };
-  const nflScoresKw = { keyword: 'nfl scores', api: 'nfl', timeout: 30, description: 'NFL scores' };
-  const generateKw = { keyword: 'generate', api: 'comfyui', timeout: 600, description: 'Generate image' };
-  const helpKw = { keyword: 'help', api: 'ollama', timeout: 30, description: 'Help', builtin: true, allowEmptyContent: true };
-  const chatKw = { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat' };
+  const weatherKw = { keyword: '!weather', api: 'accuweather', timeout: 60, description: 'Weather' };
+  const nflKw = { keyword: '!nfl', api: 'nfl', timeout: 30, description: 'NFL generic' };
+  const nflScoresKw = { keyword: '!nfl scores', api: 'nfl', timeout: 30, description: 'NFL scores' };
+  const generateKw = { keyword: '!generate', api: 'comfyui', timeout: 600, description: 'Generate image' };
+  const helpKw = { keyword: '!help', api: 'ollama', timeout: 30, description: 'Help', builtin: true, allowEmptyContent: true };
+  const chatKw = { keyword: '!chat', api: 'ollama', timeout: 300, description: 'Chat' };
 
   afterEach(() => jest.restoreAllMocks());
 
   it('should match keyword at the start of message', () => {
     setKeywords([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('weather 45403');
+    const result = (messageHandler as any).findKeyword('!weather 45403');
     expect(result).toBe(weatherKw);
   });
 
@@ -604,31 +605,31 @@ describe('MessageHandler findKeyword (start-anchored)', () => {
 
   it('should match longer multi-word keyword over shorter overlap', () => {
     setKeywords([nflKw, nflScoresKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('nfl scores 20251116');
+    const result = (messageHandler as any).findKeyword('!nfl scores 20251116');
     expect(result).toBe(nflScoresKw);
   });
 
   it('should match shorter keyword when longer overlap does not match', () => {
     setKeywords([nflKw, nflScoresKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('nfl preseason update');
+    const result = (messageHandler as any).findKeyword('!nfl preseason update');
     expect(result).toBe(nflKw);
   });
 
   it('should match "weather" when message starts with weather', () => {
     setKeywords([weatherKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('weather 45403');
+    const result = (messageHandler as any).findKeyword('!weather 45403');
     expect(result).toBe(weatherKw);
   });
 
   it('should match "generate" at message start', () => {
     setKeywords([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('generate a cat picture');
+    const result = (messageHandler as any).findKeyword('!generate a cat picture');
     expect(result).toBe(generateKw);
   });
 
   it('should be case-insensitive', () => {
     setKeywords([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('WEATHER 45403');
+    const result = (messageHandler as any).findKeyword('!WEATHER 45403');
     expect(result).toBe(weatherKw);
   });
 
@@ -640,7 +641,7 @@ describe('MessageHandler findKeyword (start-anchored)', () => {
 
   it('should return undefined when no keywords configured', () => {
     setKeywords([]);
-    const result = (messageHandler as any).findKeyword('weather 45403');
+    const result = (messageHandler as any).findKeyword('!weather 45403');
     expect(result).toBeUndefined();
   });
 
@@ -653,32 +654,32 @@ describe('MessageHandler findKeyword (start-anchored)', () => {
   it('should skip disabled keywords', () => {
     const disabledWeather = { ...weatherKw, enabled: false };
     setKeywords([disabledWeather, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('weather 45403');
+    const result = (messageHandler as any).findKeyword('!weather 45403');
     expect(result).toBeUndefined();
   });
 
   it('should match enabled keyword when a different keyword is disabled', () => {
     const disabledChat = { ...chatKw, enabled: false };
     setKeywords([weatherKw, generateKw, disabledChat]);
-    const result = (messageHandler as any).findKeyword('weather 45403');
+    const result = (messageHandler as any).findKeyword('!weather 45403');
     expect(result).toBe(weatherKw);
   });
 
   it('should match standalone help keyword', () => {
     setKeywords([helpKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('help');
+    const result = (messageHandler as any).findKeyword('!help');
     expect(result).toBe(helpKw);
   });
 
   it('should match help keyword case-insensitively', () => {
     setKeywords([helpKw, generateKw, chatKw]);
-    expect((messageHandler as any).findKeyword('Help')).toBe(helpKw);
-    expect((messageHandler as any).findKeyword('HELP')).toBe(helpKw);
+    expect((messageHandler as any).findKeyword('!Help')).toBe(helpKw);
+    expect((messageHandler as any).findKeyword('!HELP')).toBe(helpKw);
   });
 
   it('should NOT match help keyword when followed by more text', () => {
     setKeywords([helpKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('help me with this');
+    const result = (messageHandler as any).findKeyword('!help me with this');
     expect(result).toBeUndefined();
   });
 });
@@ -692,34 +693,34 @@ describe('MessageHandler buildHelpPromptForModel', () => {
 
   it('should include enabled capabilities and their descriptions', () => {
     setKeywords([
-      { keyword: 'help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
-      { keyword: 'generate', api: 'comfyui', timeout: 600, description: 'Generate image using ComfyUI' },
-      { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
+      { keyword: '!help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
+      { keyword: '!generate', api: 'comfyui', timeout: 600, description: 'Generate image using ComfyUI' },
+      { keyword: '!weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
     ]);
 
     const result = (messageHandler as any).buildHelpPromptForModel();
     expect(result).toContain('The user asked for help.');
     expect(result).toContain('Available keyword capabilities:');
-    expect(result).toContain('- generate: Generate image using ComfyUI');
-    expect(result).toContain('- weather: Get weather');
-    expect(result).not.toContain('- help:');
+    expect(result).toContain('- !generate: Generate image using ComfyUI');
+    expect(result).toContain('- !weather: Get weather');
+    expect(result).not.toContain('- !help:');
   });
 
   it('should exclude disabled keywords', () => {
     setKeywords([
-      { keyword: 'help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
-      { keyword: 'generate', api: 'comfyui', timeout: 600, description: 'Generate image', enabled: false },
-      { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
+      { keyword: '!help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
+      { keyword: '!generate', api: 'comfyui', timeout: 600, description: 'Generate image', enabled: false },
+      { keyword: '!weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
     ]);
 
     const result = (messageHandler as any).buildHelpPromptForModel();
-    expect(result).not.toContain('- generate:');
-    expect(result).toContain('- weather:');
+    expect(result).not.toContain('- !generate:');
+    expect(result).toContain('- !weather:');
   });
 
   it('should include fallback line when no non-help keywords are configured', () => {
     setKeywords([
-      { keyword: 'help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
+      { keyword: '!help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
     ]);
 
     const result = (messageHandler as any).buildHelpPromptForModel();
@@ -752,14 +753,14 @@ describe('MessageHandler help keyword handling (model path)', () => {
   }
 
   const helpKw = {
-    keyword: 'help',
+    keyword: '!help',
     api: 'ollama' as const,
     timeout: 30,
     description: 'Show help',
     builtin: true,
     allowEmptyContent: true,
   };
-  const generateKw = { keyword: 'generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
+  const generateKw = { keyword: '!generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -777,7 +778,7 @@ describe('MessageHandler help keyword handling (model path)', () => {
       data: { text: 'Here is what I can help with.' },
     });
 
-    const msg = createMentionedMessage('<@bot-123> help');
+    const msg = createMentionedMessage('<@bot-123> !help');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).toHaveBeenNthCalledWith(1, '⏳ Processing your request...');
@@ -836,8 +837,8 @@ describe('MessageHandler built-in help keyword handling', () => {
     };
   }
 
-  const helpKw = { keyword: 'help', api: 'ollama' as const, timeout: 30, description: 'Show help', builtin: true, allowEmptyContent: true };
-  const generateKw = { keyword: 'generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
+  const helpKw = { keyword: '!help', api: 'ollama' as const, timeout: 30, description: 'Show help', builtin: true, allowEmptyContent: true };
+  const generateKw = { keyword: '!generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -912,7 +913,7 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
   }
 
   const nflScoresKw = {
-    keyword: 'nfl scores',
+    keyword: '!nfl scores',
     api: 'nfl' as const,
     timeout: 30,
     description: 'Get current NFL game scores',
@@ -921,7 +922,7 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
     allowEmptyContent: true,
   };
   const nflNewsKw = {
-    keyword: 'nfl news',
+    keyword: '!nfl news',
     api: 'nfl' as const,
     timeout: 30,
     description: 'Get latest NFL news headlines',
@@ -929,7 +930,7 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
     finalOllamaPass: true,
     allowEmptyContent: true,
   };
-  const chatKw = { keyword: 'chat', api: 'ollama' as const, timeout: 300, description: 'Chat' };
+  const chatKw = { keyword: '!chat', api: 'ollama' as const, timeout: 300, description: 'Chat' };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -948,7 +949,7 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> nfl scores');
+    const msg = createMentionedMessage('<@bot-123> !nfl scores');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).not.toHaveBeenCalledWith(
@@ -965,7 +966,7 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> nfl news');
+    const msg = createMentionedMessage('<@bot-123> !nfl news');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).not.toHaveBeenCalledWith(
@@ -976,14 +977,14 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
 
   it('should prompt for content when allowEmptyContent is absent', async () => {
     const noEmptyKw = {
-      keyword: 'nfl scores',
+      keyword: '!nfl scores',
       api: 'nfl' as const,
       timeout: 30,
       description: 'Get current NFL game scores',
     };
     (config.getKeywords as jest.Mock).mockReturnValue([noEmptyKw, chatKw]);
 
-    const msg = createMentionedMessage('<@bot-123> nfl scores');
+    const msg = createMentionedMessage('<@bot-123> !nfl scores');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).toHaveBeenCalledWith(
@@ -1181,7 +1182,7 @@ describe('MessageHandler reply-only-keyword for comfyui', () => {
 
   it('should use quoted content when user replies with only the keyword', async () => {
     (config.getKeywords as jest.Mock).mockReturnValue([
-      { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Image gen' },
+      { keyword: '!generate', api: 'comfyui', timeout: 300, description: 'Image gen' },
     ]);
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValue({
@@ -1190,7 +1191,7 @@ describe('MessageHandler reply-only-keyword for comfyui', () => {
     });
 
     const msg = createComfyUIReplyMessage(
-      '<@bot-123> generate',
+      '<@bot-123> !generate',
       'a beautiful sunset'
     );
 
@@ -1233,10 +1234,10 @@ describe('MessageHandler first-word keyword routing', () => {
     };
   }
 
-  const weatherKw = { keyword: 'weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
-  const nflKw = { keyword: 'nfl' as const, api: 'nfl' as const, timeout: 30, description: 'NFL generic' };
-  const nflScoresKw = { keyword: 'nfl scores' as const, api: 'nfl' as const, timeout: 30, description: 'NFL scores' };
-  const generateKw = { keyword: 'generate', api: 'comfyui' as const, timeout: 300, description: 'Image gen' };
+  const weatherKw = { keyword: '!weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
+  const nflKw = { keyword: '!nfl' as const, api: 'nfl' as const, timeout: 30, description: 'NFL generic' };
+  const nflScoresKw = { keyword: '!nfl scores' as const, api: 'nfl' as const, timeout: 30, description: 'NFL scores' };
+  const generateKw = { keyword: '!generate', api: 'comfyui' as const, timeout: 300, description: 'Image gen' };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1250,7 +1251,7 @@ describe('MessageHandler first-word keyword routing', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> weather 45403');
+    const msg = createMentionedMessage('<@bot-123> !weather 45403');
     await messageHandler.handleMessage(msg);
 
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
@@ -1269,7 +1270,7 @@ describe('MessageHandler first-word keyword routing', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> nfl scores 20251116');
+    const msg = createMentionedMessage('<@bot-123> !nfl scores 20251116');
     await messageHandler.handleMessage(msg);
 
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
@@ -1309,7 +1310,7 @@ describe('MessageHandler first-word keyword routing', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> generate something');
+    const msg = createMentionedMessage('<@bot-123> !generate something');
     await messageHandler.handleMessage(msg);
 
     const processingMessage = await msg.reply.mock.results[0].value;
@@ -1353,8 +1354,8 @@ describe('MessageHandler first-word keyword routing', () => {
   // ── SerpAPI "second opinion" routing regression ─────────────
 
   it('should route "second opinion" keyword to SerpAPI via executeRoutedRequest', async () => {
-    const searchKw = { keyword: 'search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
-    const secondOpinionKw = { keyword: 'second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
+    const searchKw = { keyword: '!search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
+    const secondOpinionKw = { keyword: '!second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
     (config.getKeywords as jest.Mock).mockReturnValue([searchKw, secondOpinionKw, weatherKw, generateKw]);
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
@@ -1363,7 +1364,7 @@ describe('MessageHandler first-word keyword routing', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> second opinion is water wet');
+    const msg = createMentionedMessage('<@bot-123> !second opinion is water wet');
     await messageHandler.handleMessage(msg);
 
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
@@ -1378,8 +1379,8 @@ describe('MessageHandler first-word keyword routing', () => {
   });
 
   it('should prefer "second opinion" (longer) over "search" when both match at start', async () => {
-    const searchKw = { keyword: 'search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
-    const secondOpinionKw = { keyword: 'second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
+    const searchKw = { keyword: '!search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
+    const secondOpinionKw = { keyword: '!second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
     (config.getKeywords as jest.Mock).mockReturnValue([searchKw, secondOpinionKw]);
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
@@ -1388,7 +1389,7 @@ describe('MessageHandler first-word keyword routing', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> second opinion about AI');
+    const msg = createMentionedMessage('<@bot-123> !second opinion about AI');
     await messageHandler.handleMessage(msg);
 
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
@@ -1401,8 +1402,8 @@ describe('MessageHandler first-word keyword routing', () => {
   });
 
   it('should NOT route to SerpAPI when "second opinion" appears in the middle of the message', async () => {
-    const searchKw = { keyword: 'search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
-    const secondOpinionKw = { keyword: 'second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
+    const searchKw = { keyword: '!search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
+    const secondOpinionKw = { keyword: '!second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
     (config.getKeywords as jest.Mock).mockReturnValue([searchKw, secondOpinionKw, weatherKw, generateKw]);
 
     const { requestQueue } = require('../src/utils/requestQueue');
@@ -1426,7 +1427,7 @@ describe('MessageHandler first-word keyword routing', () => {
 describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () => {
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
 
-  const secondOpinionKw = { keyword: 'second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
+  const secondOpinionKw = { keyword: '!second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
 
   function createMentionedMessage(content: string): any {
     const botUserId = 'bot-123';
@@ -1469,7 +1470,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> second opinion niche topic');
+    const msg = createMentionedMessage('<@bot-123> !second opinion niche topic');
     await messageHandler.handleMessage(msg);
 
     const processingMessage = await msg.reply.mock.results[0].value;
@@ -1497,7 +1498,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> second opinion restricted');
+    const msg = createMentionedMessage('<@bot-123> !second opinion restricted');
     await messageHandler.handleMessage(msg);
 
     const processingMessage = await msg.reply.mock.results[0].value;
@@ -1515,7 +1516,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> second opinion test');
+    const msg = createMentionedMessage('<@bot-123> !second opinion test');
     await messageHandler.handleMessage(msg);
 
     const processingMessage = await msg.reply.mock.results[0].value;
@@ -1528,7 +1529,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
 describe('MessageHandler SerpAPI find content keyword routing', () => {
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
 
-  const findContentKw = { keyword: 'find content', api: 'serpapi' as const, timeout: 60, description: 'Find pertinent web content', contextFilterMaxDepth: 1 };
+  const findContentKw = { keyword: '!find content', api: 'serpapi' as const, timeout: 60, description: 'Find pertinent web content', contextFilterMaxDepth: 1 };
 
   function createMentionedMessage(content: string): any {
     const botUserId = 'bot-123';
@@ -1575,7 +1576,7 @@ describe('MessageHandler SerpAPI find content keyword routing', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> find content TypeScript generics');
+    const msg = createMentionedMessage('<@bot-123> !find content TypeScript generics');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).toHaveBeenNthCalledWith(1, '⏳ Processing your request...');
@@ -1586,7 +1587,7 @@ describe('MessageHandler SerpAPI find content keyword routing', () => {
       })
     );
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ keyword: 'find content', api: 'serpapi' }),
+      expect.objectContaining({ keyword: '!find content', api: 'serpapi' }),
       'TypeScript generics',
       'testuser',
       expect.any(Array),
@@ -1596,7 +1597,7 @@ describe('MessageHandler SerpAPI find content keyword routing', () => {
 
   it('should reject "find content" with no extra text (allowEmptyContent absent)', async () => {
     const { logger } = require('../src/utils/logger');
-    const msg = createMentionedMessage('<@bot-123> find content');
+    const msg = createMentionedMessage('<@bot-123> !find content');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).toHaveBeenCalledWith(
@@ -1609,7 +1610,7 @@ describe('MessageHandler SerpAPI find content keyword routing', () => {
 describe('MessageHandler standalone help keyword uses actual config flag', () => {
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
 
-  const helpKw = { keyword: 'help', api: 'ollama' as const, timeout: 120, description: 'Show help', builtin: true, allowEmptyContent: true };
+  const helpKw = { keyword: '!help', api: 'ollama' as const, timeout: 120, description: 'Show help', builtin: true, allowEmptyContent: true };
 
   function createDmMessage(content: string): any {
     const sharedGuild = {
@@ -1665,10 +1666,10 @@ describe('MessageHandler standalone help keyword uses actual config flag', () =>
 
   it('should reject standalone "help" when allowEmptyContent is absent', async () => {
     const { logger } = require('../src/utils/logger');
-    const helpNoEmpty = { keyword: 'help', api: 'ollama' as const, timeout: 120, description: 'Show help', builtin: true };
+    const helpNoEmpty = { keyword: '!help', api: 'ollama' as const, timeout: 120, description: 'Show help', builtin: true };
     (config.getKeywords as jest.Mock).mockReturnValue([helpNoEmpty]);
 
-    const msg = createDmMessage('help');
+    const msg = createDmMessage('!help');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).toHaveBeenCalledWith(
@@ -1724,7 +1725,7 @@ describe('MessageHandler two-stage evaluation', () => {
 
     // classifyIntent call (on Ollama response) matches weather
     const weatherKeyword = {
-      keyword: 'weather',
+      keyword: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -1762,7 +1763,7 @@ describe('MessageHandler two-stage evaluation', () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
     const weatherKeyword = {
-      keyword: 'weather',
+      keyword: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -1836,7 +1837,7 @@ describe('MessageHandler two-stage evaluation', () => {
 
     // classifyIntent (on Ollama response) returns an ollama keyword (should be treated as no API match)
     mockClassifyIntent.mockResolvedValueOnce({
-      keywordConfig: { keyword: 'chat', api: 'ollama' as const, timeout: 300, description: 'Chat' },
+      keywordConfig: { keyword: '!chat', api: 'ollama' as const, timeout: 300, description: 'Chat' },
       wasClassified: true,
     });
 
@@ -1928,7 +1929,7 @@ describe('MessageHandler trigger message attribution', () => {
   });
 
   it('should append trigger message with contextSource for direct keyword path', async () => {
-    const weatherKw = { keyword: 'weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
+    const weatherKw = { keyword: '!weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
     (config.getKeywords as jest.Mock).mockReturnValue([weatherKw]);
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
@@ -1937,7 +1938,7 @@ describe('MessageHandler trigger message attribution', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> weather Seattle');
+    const msg = createMentionedMessage('<@bot-123> !weather Seattle');
     await messageHandler.handleMessage(msg);
 
     // Should have trigger message with contextSource: 'trigger'
@@ -1960,7 +1961,7 @@ describe('MessageHandler trigger message attribution', () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
     const weatherKwWithFinalPass = {
-      keyword: 'weather',
+      keyword: '!weather',
       api: 'accuweather' as const,
       timeout: 120,
       description: 'Weather',
@@ -2007,7 +2008,7 @@ describe('MessageHandler trigger message attribution', () => {
   });
 
   it('should properly form trigger message when content has special characters', async () => {
-    const weatherKw = { keyword: 'weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
+    const weatherKw = { keyword: '!weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
     (config.getKeywords as jest.Mock).mockReturnValue([weatherKw]);
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
@@ -2017,7 +2018,7 @@ describe('MessageHandler trigger message attribution', () => {
     });
 
     const specialContent = 'São Paulo <script>alert("xss")</script> & "quotes" \'apostrophes\'';
-    const msg = createMentionedMessage(`<@bot-123> weather ${specialContent}`);
+    const msg = createMentionedMessage(`<@bot-123> !weather ${specialContent}`);
     await messageHandler.handleMessage(msg);
 
     const callArgs = mockExecuteRoutedRequest.mock.calls[0];
@@ -2157,9 +2158,9 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (config.getKeywords as jest.Mock).mockReturnValue([
-      { keyword: 'nfl scores', api: 'nfl', timeout: 30, description: 'All scores', allowEmptyContent: true },
-      { keyword: 'nfl news', api: 'nfl', timeout: 30, description: 'NFL news', allowEmptyContent: true },
-      { keyword: 'generate', api: 'comfyui', timeout: 60, description: 'Generate image' },
+      { keyword: '!nfl scores', api: 'nfl', timeout: 30, description: 'All scores', allowEmptyContent: true },
+      { keyword: '!nfl news', api: 'nfl', timeout: 30, description: 'NFL news', allowEmptyContent: true },
+      { keyword: '!generate', api: 'comfyui', timeout: 60, description: 'Generate image' },
     ]);
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
       .mockResolvedValue({ keywordConfig: null, wasClassified: false });
@@ -2175,7 +2176,7 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
       stages: [],
     });
 
-    const msg = createDmMessage('nfl scores');
+    const msg = createDmMessage('!nfl scores');
     await messageHandler.handleMessage(msg);
 
     // Should NOT show the "please include a prompt" message
@@ -2188,7 +2189,7 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
 
   it('should still reject empty content for keywords without allowEmptyContent', async () => {
     const { logger } = require('../src/utils/logger');
-    const msg = createDmMessage('generate');
+    const msg = createDmMessage('!generate');
     await messageHandler.handleMessage(msg);
 
     // Should show the "please include a prompt" message
@@ -2206,7 +2207,7 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
       stages: [],
     });
 
-    const msg = createDmMessage('nfl news');
+    const msg = createDmMessage('!nfl news');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).not.toHaveBeenCalledWith(
@@ -2221,7 +2222,7 @@ describe('MessageHandler — Context Evaluation integration', () => {
   const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
 
   const ctxEvalKw = {
-    keyword: 'chat',
+    keyword: '!chat',
     api: 'ollama' as const,
     timeout: 300,
     description: 'Chat',
@@ -2298,7 +2299,7 @@ describe('MessageHandler — Context Evaluation integration', () => {
       data: { text: 'Chatting with context!' },
     });
 
-    const msg = createMentionedMsg('<@bot-123> chat hello there');
+    const msg = createMentionedMsg('<@bot-123> !chat hello there');
 
     // Channel has prior messages
     const channelHistory = new Map([
@@ -2325,7 +2326,7 @@ describe('MessageHandler — Context Evaluation integration', () => {
 
     // Override with keyword that has contextFilterEnabled omitted (defaults to false)
     const noEvalKw = {
-      keyword: 'weather',
+      keyword: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Weather',
@@ -2664,7 +2665,7 @@ describe('MessageHandler guild context — maxContextDepth = min(keyword, global
   it('should cap collated context at min(keywordMax, globalMax)', async () => {
     // Keyword has contextFilterMaxDepth = 5, global = 30 → effective = 5
     const kw = {
-      keyword: 'chat',
+      keyword: '!chat',
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
@@ -2704,7 +2705,7 @@ describe('MessageHandler guild context — maxContextDepth = min(keyword, global
 
     const msg = {
       author: { id: 'user-1', bot: false, username: 'testuser', displayName: 'TestUser' },
-      content: '<@bot-123> chat hello',
+      content: '<@bot-123> !chat hello',
       mentions: { has: () => true },
       channel: {
         type: 0,
@@ -2755,7 +2756,7 @@ describe('MessageHandler thread source promotion', () => {
 
   it('should promote thread history to primary when no reply chain exists', async () => {
     const kw = {
-      keyword: 'chat',
+      keyword: '!chat',
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
@@ -2797,7 +2798,7 @@ describe('MessageHandler thread source promotion', () => {
 
     const msg = {
       author: { id: 'user-1', bot: false, username: 'testuser', displayName: 'TestUser' },
-      content: '<@bot-123> chat hello thread',
+      content: '<@bot-123> !chat hello thread',
       mentions: { has: () => true },
       channel: {
         type: 0,
@@ -2836,7 +2837,7 @@ describe('MessageHandler thread source promotion', () => {
 
   it('should NOT promote channel history to primary when in a non-thread channel', async () => {
     const kw = {
-      keyword: 'chat',
+      keyword: '!chat',
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
@@ -2871,7 +2872,7 @@ describe('MessageHandler thread source promotion', () => {
 
     const msg = {
       author: { id: 'user-1', bot: false, username: 'testuser', displayName: 'TestUser' },
-      content: '<@bot-123> chat hello channel',
+      content: '<@bot-123> !chat hello channel',
       mentions: { has: () => true },
       channel: {
         type: 0,
@@ -3447,7 +3448,7 @@ describe('MessageHandler activity event emission', () => {
 
   it('emits routing_decision on keyword match path', async () => {
     const weatherKeyword = {
-      keyword: 'weather',
+      keyword: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -3460,18 +3461,18 @@ describe('MessageHandler activity event emission', () => {
       stages: [],
     });
 
-    const msg = createMsg('weather Seattle');
+    const msg = createMsg('!weather Seattle');
     await messageHandler.handleMessage(msg);
 
     expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
-      'accuweather', 'weather', 'keyword'
+      'accuweather', '!weather', 'keyword'
     );
   });
 
   it('emits routing_decision on two-stage keyword parse', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const weatherKeyword = {
-      keyword: 'weather',
+      keyword: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -3500,14 +3501,14 @@ describe('MessageHandler activity event emission', () => {
     await messageHandler.handleMessage(msg);
 
     expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
-      'accuweather', 'weather', 'two-stage-parse'
+      'accuweather', '!weather', 'two-stage-parse'
     );
   });
 
   it('emits routing_decision on two-stage classify fallback', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const searchKeyword = {
-      keyword: 'search',
+      keyword: '!search',
       api: 'serpapi' as const,
       timeout: 60,
       description: 'Search web',
@@ -3540,7 +3541,7 @@ describe('MessageHandler activity event emission', () => {
     await messageHandler.handleMessage(msg);
 
     expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
-      'serpapi', 'search', 'two-stage-classify'
+      'serpapi', '!search', 'two-stage-classify'
     );
   });
 
@@ -3548,7 +3549,7 @@ describe('MessageHandler activity event emission', () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const mockInfer = inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>;
     const weatherKeyword = {
-      keyword: 'weather',
+      keyword: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -3609,7 +3610,7 @@ describe('MessageHandler activity event emission', () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const mockInfer = inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>;
     const weatherKeyword = {
-      keyword: 'weather',
+      keyword: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -3661,7 +3662,7 @@ describe('MessageHandler activity event emission', () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const mockInfer = inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>;
     const searchKeyword = {
-      keyword: 'search',
+      keyword: '!search',
       api: 'serpapi' as const,
       timeout: 60,
       description: 'Search web',
@@ -3723,7 +3724,7 @@ describe('MessageHandler activity event emission', () => {
 
   it('emits error when dispatch receives failed response', async () => {
     const weatherKeyword = {
-      keyword: 'weather',
+      keyword: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -3736,7 +3737,7 @@ describe('MessageHandler activity event emission', () => {
       stages: [],
     });
 
-    const msg = createMsg('weather asdfasdf');
+    const msg = createMsg('!weather asdfasdf');
     await messageHandler.handleMessage(msg);
 
     expect(activityEvents.emitError).toHaveBeenCalledWith(
@@ -3925,7 +3926,7 @@ describe('MessageHandler activity_key keyword', () => {
   const { activityKeyManager } = require('../src/utils/activityKeyManager');
 
   const activityKeyKw = {
-    keyword: 'activity_key',
+    keyword: '!activity_key',
     api: 'ollama' as const,
     timeout: 10,
     description: 'Request a temporary access key for the activity monitor',
@@ -3996,7 +3997,7 @@ describe('MessageHandler activity_key keyword', () => {
   });
 
   it('should issue a key and reply when standalone "activity_key" is sent via DM', async () => {
-    const msg = createDmMsg('activity_key');
+    const msg = createDmMsg('!activity_key');
     await messageHandler.handleMessage(msg);
 
     expect(activityKeyManager.issueKey).toHaveBeenCalled();
@@ -4009,7 +4010,7 @@ describe('MessageHandler activity_key keyword', () => {
   });
 
   it('should issue a key via guild @mention', async () => {
-    const msg = createMentionMsg('<@bot-123> activity_key');
+    const msg = createMentionMsg('<@bot-123> !activity_key');
     await messageHandler.handleMessage(msg);
 
     expect(activityKeyManager.issueKey).toHaveBeenCalled();
@@ -4025,7 +4026,7 @@ describe('MessageHandler activity_key keyword', () => {
       data: { text: 'I do not know what that means.' },
     });
 
-    const msg = createDmMsg('activity_key something');
+    const msg = createDmMsg('!activity_key something');
     await messageHandler.handleMessage(msg);
 
     // It should NOT have issued a key — it doesn't match the standalone keyword
@@ -4033,7 +4034,7 @@ describe('MessageHandler activity_key keyword', () => {
   });
 
   it('should include the activity URL in the reply', async () => {
-    const msg = createDmMsg('activity_key');
+    const msg = createDmMsg('!activity_key');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).toHaveBeenCalledWith(
@@ -4042,7 +4043,7 @@ describe('MessageHandler activity_key keyword', () => {
   });
 
   it('should log the key issuance', async () => {
-    const msg = createDmMsg('activity_key');
+    const msg = createDmMsg('!activity_key');
     await messageHandler.handleMessage(msg);
 
     expect(logger.log).toHaveBeenCalledWith(
@@ -4052,7 +4053,7 @@ describe('MessageHandler activity_key keyword', () => {
   });
 
   it('should NOT emit message_received activity event for activity_key', async () => {
-    const msg = createDmMsg('activity_key');
+    const msg = createDmMsg('!activity_key');
     await messageHandler.handleMessage(msg);
 
     expect(activityEvents.emitMessageReceived).not.toHaveBeenCalled();

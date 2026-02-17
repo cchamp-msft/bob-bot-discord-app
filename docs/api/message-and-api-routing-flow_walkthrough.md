@@ -1,4 +1,4 @@
-Walkthrough: `@BobBot weather Seattle`
+Walkthrough: `@BobBot !weather Seattle`
 -------------------------------------------------
 
 ### 1\. Discord Event → MessageHandler
@@ -11,9 +11,9 @@ The Discord.js `messageCreate` event fires and calls `messageHandler.handleMe
 
 File: `messageHandler.ts`
 
--   The `@mention` is stripped → `content = "weather Seattle"`
--   `findKeyword()` matches `"weather"` at the start of the message
--   `keywordConfig` = `{ keyword: 'weather', api: 'accuweather', timeout: 60 }`
+-   The `@mention` is stripped → `content = "!weather Seattle"`
+-   `findKeyword()` matches `"!weather"` at the start of the message
+-   `keywordConfig` = `{ keyword: '!weather', api: 'accuweather', timeout: 60 }`
 -   Since `api !== 'ollama'` → `apiKeywordMatched = true` → takes the direct API routing path
 
 ### 3\. API Router --- Primary Request
@@ -79,9 +79,9 @@ Example Flows (Summary)
 
 | Scenario | Path |
 | --- | --- |
-| `weather Seattle` | Regex match → AccuWeather API → Discord reply |
-| `generate a sunset` | Regex match → ComfyUI API → Discord reply (images) |
-| `weather 45403` | Regex match → AccuWeather API → Discord reply (raw data) |
+| `!weather Seattle` | Regex match → AccuWeather API → Discord reply |
+| `!generate a sunset` | Regex match → ComfyUI API → Discord reply (images) |
+| `!weather 45403` | Regex match → AccuWeather API → Discord reply (raw data) |
 | `is it going to rain?` | No regex match → Two-stage: Ollama w/ abilities → keyword detected → AccuWeather → Final pass → Discord reply |
 | `tell me a joke` | No regex match → Two-stage: Ollama w/ abilities → no keyword → Ollama response returned directly |
-| `nfl scores` | Regex match → NFL API → Final Ollama pass → Discord reply |
+| `!nfl scores` | Regex match → NFL API → Final Ollama pass → Discord reply |

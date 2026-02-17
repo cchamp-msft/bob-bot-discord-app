@@ -3,7 +3,7 @@ import {
   EmbedBuilder,
   ChannelType,
 } from 'discord.js';
-import { config, KeywordConfig } from '../utils/config';
+import { config, KeywordConfig, COMMAND_PREFIX } from '../utils/config';
 import { logger } from '../utils/logger';
 import { requestQueue } from '../utils/requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
@@ -129,14 +129,15 @@ class MessageHandler {
       return;
     }
 
-    // Find matching keyword at message start — fall back to two-stage Ollama evaluation
+    // Find matching keyword at message start — only matches !prefixed commands.
+    // Messages without the command prefix go through two-stage Ollama evaluation.
     let keywordConfig = this.findKeyword(content);
     const keywordMatched = keywordConfig !== undefined;
 
     // Emit activity event with cleaned message content (no usernames or IDs).
     // Suppress for standalone activity_key requests — those should not appear
     // in the public activity feed.
-    const isActivityKey = keywordMatched && keywordConfig!.keyword.toLowerCase() === 'activity_key';
+    const isActivityKey = keywordMatched && keywordConfig!.keyword.toLowerCase() === `${COMMAND_PREFIX}activity_key`;
     if (!isActivityKey) {
       activityEvents.emitMessageReceived(isDM, content);
     }
@@ -189,17 +190,17 @@ class MessageHandler {
       }
     }
 
-    // Route standalone "help" through the normal model path with explicit guidance.
+    // Route standalone "!help" through the normal model path with explicit guidance.
     // This avoids static hardcoded help output while still giving the model
     // concrete topics/usage hints to summarize for the user.
-    if (keywordMatched && keywordConfig.keyword.toLowerCase() === 'help') {
+    if (keywordMatched && keywordConfig.keyword.toLowerCase() === `${COMMAND_PREFIX}help`) {
       content = this.buildHelpPromptForModel();
     }
 
-    // Route standalone "activity_key" — issue a new rotating key and DM it
+    // Route standalone "!activity_key" — issue a new rotating key and DM it
     // back to the user. This short-circuits before Ollama/API routing since
     // no model interaction is needed.
-    if (keywordMatched && keywordConfig.keyword.toLowerCase() === 'activity_key') {
+    if (keywordMatched && keywordConfig.keyword.toLowerCase() === `${COMMAND_PREFIX}activity_key`) {
       const key = activityKeyManager.issueKey();
       const ttl = config.getActivityKeyTtl();
       const sessionMaxTime = config.getActivitySessionMaxTime();
@@ -727,13 +728,21 @@ class MessageHandler {
   }
 
   /**
-   * Match a keyword only at the very start of the message.
+   * Match a keyword only when the message starts with the command prefix (!).
    * Keywords are sorted longest-first so multi-word keywords like
-   * "nfl scores" take priority over shorter overlaps.
+   * "!nfl scores" take priority over shorter overlaps.
    * Disabled keywords (enabled === false) are skipped.
+   *
+   * Messages without the command prefix are NOT matched here — they are
+   * routed through the two-stage Ollama evaluation for inference-first
+   * parameter extraction.
    */
   private findKeyword(content: string): KeywordConfig | undefined {
-    const lowerContent = content.toLowerCase();
+    const lowerContent = content.toLowerCase().trim();
+
+    // Only match if the message starts with the command prefix
+    if (!lowerContent.startsWith(COMMAND_PREFIX)) return undefined;
+
     // Sort longest keyword first so more specific multi-word keywords win.
     const sorted = [...config.getKeywords()]
       .filter((k) => k.enabled !== false)
@@ -744,15 +753,14 @@ class MessageHandler {
       const keyword = k.keyword.toLowerCase().trim();
       if (!keyword) return false;
 
-      // Built-in help is intentionally standalone-only.
-      // "help" should match, but "help me ..." should not.
-      if (keyword === 'help') {
-        return lowerContent.trim() === 'help';
+      // Built-in !help is intentionally standalone-only.
+      if (keyword === `${COMMAND_PREFIX}help`) {
+        return lowerContent === `${COMMAND_PREFIX}help`;
       }
 
-      // Built-in activity_key is standalone-only, same as help.
-      if (keyword === 'activity_key') {
-        return lowerContent.trim() === 'activity_key';
+      // Built-in !activity_key is standalone-only, same as help.
+      if (keyword === `${COMMAND_PREFIX}activity_key`) {
+        return lowerContent === `${COMMAND_PREFIX}activity_key`;
       }
 
       const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -890,9 +898,26 @@ class MessageHandler {
       const parseResult = parseFirstLineKeyword(ollamaText);
 
       if (parseResult.matched && parseResult.keywordConfig) {
-        const routedInput = (parseResult.inferredInput && parseResult.inferredInput.trim().length > 0)
+        let routedInput = (parseResult.inferredInput && parseResult.inferredInput.trim().length > 0)
           ? parseResult.inferredInput
           : content;
+
+        // When the model matched a keyword but no inline params were provided,
+        // and the keyword has required inputs, use Ollama to infer parameters
+        // from the user's natural language message.
+        const hasRequiredInputs = parseResult.keywordConfig.abilityInputs?.required &&
+          parseResult.keywordConfig.abilityInputs.required.length > 0;
+        if (hasRequiredInputs && (!parseResult.inferredInput || parseResult.inferredInput.trim().length === 0)) {
+          const inferred = await inferAbilityParameters(parseResult.keywordConfig, content, requester);
+          if (inferred) {
+            routedInput = inferred;
+            logger.log('success', 'system',
+              `TWO-STAGE: Inferred parameter "${inferred}" for "${parseResult.keywordConfig.keyword}"`);
+          } else {
+            logger.logWarn('system',
+              `TWO-STAGE: Could not infer parameter for "${parseResult.keywordConfig.keyword}" — using original content`);
+          }
+        }
 
         logger.log('success', 'system',
           `TWO-STAGE: First-line keyword match "${parseResult.keywordConfig.keyword}" — executing ${parseResult.keywordConfig.api} API`);
@@ -1015,7 +1040,7 @@ class MessageHandler {
   buildHelpPromptForModel(): string {
     const keywords = config
       .getKeywords()
-      .filter(k => k.enabled !== false && k.keyword.toLowerCase() !== 'help');
+      .filter(k => k.enabled !== false && k.keyword.toLowerCase() !== `${COMMAND_PREFIX}help`);
 
     const capabilityLines = keywords.length > 0
       ? keywords.map(k => `- ${k.keyword}: ${k.description}`).join('\n')
@@ -1023,7 +1048,7 @@ class MessageHandler {
 
     return [
       'The user asked for help.',
-      'Explain what topics/capabilities this bot supports and how to use them.',
+      `Explain what topics/capabilities this bot supports and how to use them. All direct commands must start with the "${COMMAND_PREFIX}" prefix (e.g. ${COMMAND_PREFIX}weather Dallas). Users can also describe what they need in natural language and the bot will infer the right action.`,
       'Keep the response concise and practical with examples where useful.',
       '',
       'Available keyword capabilities:',
@@ -1032,13 +1057,14 @@ class MessageHandler {
   }
 
   /**
-   * Remove the first occurrence of the routing keyword from the content.
-   * Preserves surrounding whitespace and trims the result.
+   * Remove the first occurrence of the routing keyword (including prefix)
+   * from the content. Preserves surrounding whitespace and trims the result.
    */
   stripKeyword(content: string, keyword: string): string {
     const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
-    return content.replace(pattern, '').replace(/\s+/g, ' ').trim();
+    // Match the keyword with or without the command prefix at the start
+    const pattern = new RegExp(`^${escaped}\\b\\s*`, 'i');
+    return content.replace(pattern, '').trim();
   }
 
   /**

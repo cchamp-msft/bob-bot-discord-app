@@ -686,7 +686,7 @@ describe('Config', () => {
       expect(helpKw!.allowEmptyContent).toBe(true);
     });
 
-    it('should not overwrite existing allowEmptyContent on built-in keyword', () => {
+    it('should overwrite existing allowEmptyContent on built-in keyword with default value', () => {
       // Write a runtime config with help that explicitly has allowEmptyContent: false
       const customKeywords = {
         keywords: [
@@ -698,8 +698,8 @@ describe('Config', () => {
 
       const helpKw = config.getKeywordConfig('help');
       expect(helpKw).toBeDefined();
-      // Should preserve the explicit false, not overwrite with default true
-      expect(helpKw!.allowEmptyContent).toBe(false);
+      // Default values win — default help has allowEmptyContent: true
+      expect(helpKw!.allowEmptyContent).toBe(true);
     });
 
     it('should backfill abilityWhen from defaults when missing on existing built-in', () => {
@@ -720,8 +720,8 @@ describe('Config', () => {
       expect(helpKw!.allowEmptyContent).toBe(true);
     });
 
-    it('should not overwrite explicit runtime values for any backfill field', () => {
-      // Write a runtime config with help that has explicit values for backfillable fields
+    it('should overwrite runtime values with defaults for fields defined in defaults', () => {
+      // Write a runtime config with help that has explicit values for sync fields
       const customKeywords = {
         keywords: [
           {
@@ -740,8 +740,9 @@ describe('Config', () => {
 
       const helpKw = config.getKeywordConfig('help');
       expect(helpKw).toBeDefined();
-      // Explicit runtime values must be preserved, not overwritten by defaults
-      expect(helpKw!.allowEmptyContent).toBe(false);
+      // Default values win for fields defined in defaults (help default has allowEmptyContent: true)
+      expect(helpKw!.allowEmptyContent).toBe(true);
+      // Fields NOT in the default are retained (help default has no abilityText)
       expect(helpKw!.abilityText).toBe('Custom help text');
     });
 
@@ -797,7 +798,8 @@ describe('Config', () => {
         const loaded = config.getKeywordConfig('envkw');
         expect(loaded).toBeDefined();
         expect(loaded!.description).toBe('Loaded from env path');
-        expect(config.getKeywordConfig('generate')).toBeUndefined();
+        // Default sync merges ALL keywords from defaults, so 'generate' is present
+        expect(config.getKeywordConfig('generate')).toBeDefined();
       } finally {
         delete process.env.KEYWORDS_CONFIG_PATH;
         config.reload();

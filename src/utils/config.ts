@@ -27,6 +27,13 @@ function normalizeEscapedEnvVars(): void {
 
 normalizeEscapedEnvVars();
 
+/**
+ * The prefix character required for direct keyword invocation in messages.
+ * Natural language messages (without this prefix) go through model inference.
+ * Model-emitted directives also use this prefix.
+ */
+export const COMMAND_PREFIX = '!';
+
 /** Structured guidance for how a keyword's inputs are inferred and validated. */
 export interface AbilityInputs {
   /** How inputs are provided: 'implicit' (inferred from context), 'explicit' (user must provide), 'mixed' (some inferred, some required). */
@@ -234,13 +241,14 @@ class Config {
         }
       }
 
-      // Enforce: custom "help" keyword is only allowed when the built-in help keyword is disabled
-      const builtinHelp = config.keywords.find(k => k.builtin && k.keyword.toLowerCase() === 'help');
+      // Enforce: custom \"help\" keyword is only allowed when the built-in help keyword is disabled
+      const helpKeyword = `${COMMAND_PREFIX}help`;
+      const builtinHelp = config.keywords.find(k => k.builtin && k.keyword.toLowerCase() === helpKeyword);
       const builtinHelpEnabled = builtinHelp ? builtinHelp.enabled !== false : false;
       if (builtinHelpEnabled) {
-        const customHelp = config.keywords.find(k => !k.builtin && k.keyword.toLowerCase() === 'help');
+        const customHelp = config.keywords.find(k => !k.builtin && k.keyword.toLowerCase() === helpKeyword);
         if (customHelp) {
-          logger.logWarn('config', 'Ignoring custom "help" keyword because the built-in help keyword is enabled');
+          logger.logWarn('config', 'Ignoring custom \"help\" keyword because the built-in help keyword is enabled');
           config.keywords = config.keywords.filter(k => k !== customHelp);
         }
       }
@@ -278,62 +286,81 @@ class Config {
   }
 
   /**
-   * Ensure every built-in keyword from the default template is present
-   * in the runtime keyword list.  Missing built-ins are appended so
-   * features like `activity_key` work even if the user's keywords.json
-   * was created before that keyword existed.
+   * Synchronize runtime keywords with defaults using default-preferred
+   * conflict resolution:
+   * - Overlapping keywords: default field values win (field-by-field merge)
+   * - Missing keywords from defaults: appended to runtime
+   * - Runtime-only keywords: retained
    */
   private mergeDefaultBuiltins(): void {
     const defaults = this.getDefaultKeywords();
-    const builtins = defaults.filter(d => d.builtin);
-    const existingKeys = new Set(this.keywords.map(k => k.keyword.toLowerCase()));
+    const existingByKey = new Map(
+      this.keywords.map(k => [k.keyword.toLowerCase(), k])
+    );
+
+    /** Fields where the default value takes precedence over runtime. */
+    const syncFields: (keyof KeywordConfig)[] = [
+      'api',
+      'timeout',
+      'description',
+      'abilityText',
+      'abilityWhen',
+      'abilityInputs',
+      'finalOllamaPass',
+      'allowEmptyContent',
+      'builtin',
+      'contextFilterEnabled',
+      'contextFilterMinDepth',
+      'contextFilterMaxDepth',
+    ];
+
     let added = 0;
-    for (const b of builtins) {
-      if (!existingKeys.has(b.keyword.toLowerCase())) {
-        this.keywords.push(b);
-        existingKeys.add(b.keyword.toLowerCase());
+    let synced = 0;
+
+    for (const def of defaults) {
+      const key = def.keyword.toLowerCase();
+      const existing = existingByKey.get(key);
+
+      if (!existing) {
+        // New keyword from defaults — append
+        this.keywords.push({ ...def });
+        existingByKey.set(key, def);
         added++;
         logger.log('success', 'config',
-          `Merged missing built-in keyword "${b.keyword}" from defaults`);
+          `Merged missing keyword "${def.keyword}" from defaults`);
       } else {
-        // Backfill missing metadata fields on existing built-in keywords
-        // from defaults so that new fields take effect even if the user's
-        // keywords.json predates the change.  Only undefined fields are
-        // patched — explicit runtime values (including false) are preserved.
-        const backfillFields: (keyof KeywordConfig)[] = [
-          'allowEmptyContent',
-          'abilityWhen',
-          'abilityInputs',
-          'abilityText',
-          'finalOllamaPass',
-        ];
-        const existing = this.keywords.find(
-          k => k.keyword.toLowerCase() === b.keyword.toLowerCase() && k.builtin
-        );
-        if (existing) {
-          const patched: string[] = [];
-          for (const field of backfillFields) {
-            if (existing[field] === undefined && b[field] !== undefined) {
-              (existing as any)[field] = b[field];
-              patched.push(field);
-            }
+        // Existing keyword — default values win field-by-field
+        const patched: string[] = [];
+        for (const field of syncFields) {
+          if (def[field] !== undefined && JSON.stringify(existing[field]) !== JSON.stringify(def[field])) {
+            (existing as any)[field] = (def as any)[field];
+            patched.push(field);
           }
-          if (patched.length > 0) {
-            logger.log('success', 'config',
-              `Backfilled missing fields on built-in keyword "${b.keyword}" from defaults: ${patched.join(', ')}`);
-          }
+        }
+        if (patched.length > 0) {
+          synced++;
+          logger.log('success', 'config',
+            `Synced default values on keyword "${def.keyword}": ${patched.join(', ')}`);
         }
       }
     }
-    if (added > 0) {
+
+    if (added > 0 || synced > 0) {
       logger.log('success', 'config',
-        `Merged ${added} missing built-in keyword(s) from defaults — total: ${this.keywords.length}`);
+        `Default sync complete — added: ${added}, updated: ${synced}, total: ${this.keywords.length}`);
     }
   }
 
   getKeywordConfig(keyword: string): KeywordConfig | undefined {
+    const normalized = keyword.toLowerCase();
+    // Support lookup by keyword with or without the command prefix
+    const withPrefix = normalized.startsWith(COMMAND_PREFIX) ? normalized : `${COMMAND_PREFIX}${normalized}`;
+    const withoutPrefix = normalized.startsWith(COMMAND_PREFIX) ? normalized.slice(COMMAND_PREFIX.length) : normalized;
     return this.keywords.find(
-      (k) => k.keyword.toLowerCase() === keyword.toLowerCase()
+      (k) => {
+        const kw = k.keyword.toLowerCase();
+        return kw === withPrefix || kw === withoutPrefix || kw === normalized;
+      }
     );
   }
 
