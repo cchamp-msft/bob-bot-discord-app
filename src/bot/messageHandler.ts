@@ -110,6 +110,22 @@ class MessageHandler {
     return content.replace(/^[^:\n]{1,64}:\s+/, '').trim();
   }
 
+  private isKeywordOnlyInvocation(content: string, keyword: string): boolean {
+    const normalizedKeyword = keyword
+      .toLowerCase()
+      .trim()
+      .replace(/^!+/, '');
+
+    const normalizedContent = content
+      .toLowerCase()
+      .trim()
+      .replace(/^[@!]+/, '')
+      .replace(/[!?.,:;]+$/g, '')
+      .trim();
+
+    return normalizedContent === normalizedKeyword;
+  }
+
   private deriveImagePromptFromContext(content: string, history: ChatMessage[]): string | null {
     const trimmed = content.trim();
 
@@ -285,7 +301,8 @@ class MessageHandler {
     const apiKeywordMatched = keywordMatched && keywordConfig!.api !== 'ollama';
 
     if (!keywordConfig) {
-      keywordConfig = {
+      const configuredChat = this.findEnabledKeywordByName('chat');
+      keywordConfig = configuredChat ?? {
         keyword: 'chat',
         api: 'ollama',
         timeout: config.getDefaultTimeout(),
@@ -1058,9 +1075,15 @@ class MessageHandler {
         // original user content/context rather than trusting model-authored
         // inline remainder text (which may include extra conversational chatter).
         if (shouldPreferContentInference && parseResult.inferredInput) {
-          logger.log('success', 'system',
-            `TWO-STAGE: Ignoring inline inferred input for "${parseResult.keywordConfig.keyword}" and preferring context-based inference`);
-          routedInput = content;
+          if (this.isKeywordOnlyInvocation(content, parseResult.keywordConfig.keyword)) {
+            routedInput = parseResult.inferredInput.trim();
+            logger.log('success', 'system',
+              `TWO-STAGE: Using inline inferred input for "${parseResult.keywordConfig.keyword}" because user message was keyword-only`);
+          } else {
+            logger.log('success', 'system',
+              `TWO-STAGE: Ignoring inline inferred input for "${parseResult.keywordConfig.keyword}" and preferring context-based inference`);
+            routedInput = content;
+          }
         }
 
         // When the model matched a keyword but no inline params were provided,

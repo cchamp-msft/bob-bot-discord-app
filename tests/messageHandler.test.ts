@@ -1808,6 +1808,50 @@ describe('MessageHandler two-stage evaluation', () => {
     );
   });
 
+  it('should preserve inline inferred params for keyword-only implicit ability invocation', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+
+    const imagineKeyword = {
+      keyword: 'imagine',
+      api: 'comfyui' as const,
+      timeout: 120,
+      description: 'Generate image using alternate keyword',
+      abilityInputs: {
+        mode: 'implicit' as const,
+        inferFrom: ['current_message', 'reply_target'],
+      },
+    };
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: '!imagine alien guy saying "whoa, aliens"' },
+    });
+
+    mockParseFirstLineKeyword.mockReturnValueOnce({
+      keywordConfig: imagineKeyword,
+      parsedLine: '!imagine alien guy saying "whoa, aliens"',
+      matched: true,
+      inferredInput: 'alien guy saying "whoa, aliens"',
+    });
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { images: ['http://localhost/image.png'] } },
+      finalApi: 'comfyui',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> imagine');
+    await messageHandler.handleMessage(msg);
+
+    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ ...imagineKeyword, finalOllamaPass: false }),
+      'alien guy saying "whoa, aliens"',
+      'testuser',
+      [{ role: 'user', content: 'testuser: imagine', contextSource: 'trigger', hasNamePrefix: true }],
+      'BotUser'
+    );
+  });
+
   it('should force finalOllamaPass true for model-inferred abilities even when keyword config omits it', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
@@ -2423,6 +2467,37 @@ describe('MessageHandler — Context Evaluation integration', () => {
     await messageHandler.handleMessage(msg as any);
 
     // Channel history was collected → evaluator should be called
+    expect(mockEvaluate).toHaveBeenCalled();
+  });
+
+  it('should apply configured chat context filter for no-keyword default chat fallback', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const { classifyIntent } = require('../src/utils/keywordClassifier');
+    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+
+    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
+    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Default chat with context eval.' },
+    });
+
+    const msg = createMentionedMsg('<@bot-123> tell me more');
+
+    const channelHistory = new Map([
+      ['ch-1', {
+        id: 'ch-1',
+        content: 'Earlier context message',
+        author: { id: 'user-2', bot: false, username: 'other' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+    msg.channel.messages.fetch.mockResolvedValue(channelHistory);
+
+    await messageHandler.handleMessage(msg as any);
+
     expect(mockEvaluate).toHaveBeenCalled();
   });
 

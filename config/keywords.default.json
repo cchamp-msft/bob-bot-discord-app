@@ -50,7 +50,8 @@
       "timeout": 300,
       "description": "Ask a question using Ollama",
       "abilityText": "Ask a question using Ollama",
-      "contextFilterMaxDepth": 20
+      "contextFilterMaxDepth": 20,
+      "enabled": false
     },
     {
       "keyword": "chat",
@@ -58,6 +59,8 @@
       "timeout": 300,
       "description": "Chat with Ollama AI",
       "abilityText": "Chat with Ollama AI",
+      "contextFilterEnabled": true,
+      "contextFilterMinDepth": 1,
       "contextFilterMaxDepth": 30
     },
     {
