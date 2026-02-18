@@ -142,7 +142,7 @@ class OutputsServer {
       const count = countParam && Number.isFinite(countParam) && countParam > 0 ? Math.min(countParam, 100) : 50;
 
       const events = activityEvents.getRecent(count, since);
-      const payload: Record<string, unknown> = { events, serverTime: new Date().toISOString() };
+      const payload: Record<string, unknown> = { events, serverTime: new Date().toISOString(), defaultTheme: config.getConfiguratorTheme() };
       if (newSessionToken) {
         payload.sessionToken = newSessionToken;
       }

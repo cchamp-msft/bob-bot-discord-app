@@ -437,4 +437,6 @@ export interface PublicConfig {
   imageResponse: {
     includeEmbed: boolean;
   };
+  /** Configurator UI theme preference (persisted in .env). */
+  configuratorTheme: string;
 }

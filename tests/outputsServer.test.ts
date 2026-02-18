@@ -29,6 +29,7 @@ jest.mock('../src/utils/config', () => ({
     // Use a tight rate limit so tests can trigger 429 without hundreds of requests
     getOutputsRateLimitWindowMs: () => 60000,
     getOutputsRateLimitMax: () => 5,
+    getConfiguratorTheme: () => 'dark',
   },
 }));
 

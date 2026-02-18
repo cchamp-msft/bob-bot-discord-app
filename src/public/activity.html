@@ -10,6 +10,7 @@
     --surface: #16213e;
     --surface2: #0f3460;
     --accent: #e94560;
+    --accent2: #533483;
     --text: #eee;
     --text-dim: #999;
     --ok: #4caf50;
@@ -21,6 +22,154 @@
     --green: #66bb6a;
     --orange: #ffa726;
     --red: #ef5350;
+  }
+
+  /* Theme - Grayscale */
+  .theme-grayscale {
+    --bg: #f0f0f0;
+    --surface: #e0e0e0;
+    --surface2: #d0d0d0;
+    --accent: #666666;
+    --accent2: #555555;
+    --text: #333333;
+    --text-dim: #666666;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
+    --border: #cccccc;
+    --blue: #1976d2;
+    --purple: #7b1fa2;
+    --green: #388e3c;
+    --orange: #f57c00;
+    --red: #d32f2f;
+  }
+
+  /* Theme - Green */
+  .theme-green {
+    --bg: #0a251c;
+    --surface: #0d3b29;
+    --surface2: #11573c;
+    --accent: #4caf50;
+    --accent2: #388e3c;
+    --text: #e8f5e9;
+    --text-dim: #a5d6a7;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
+    --border: #1b5e20;
+    --blue: #42a5f5;
+    --purple: #ab47bc;
+    --green: #66bb6a;
+    --orange: #ffa726;
+    --red: #ef5350;
+  }
+
+  /* Theme - Orange */
+  .theme-orange {
+    --bg: #2e1a10;
+    --surface: #442715;
+    --surface2: #60381f;
+    --accent: #ff9800;
+    --accent2: #f57c00;
+    --text: #fff3e0;
+    --text-dim: #ffcc80;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
+    --border: #e65100;
+    --blue: #42a5f5;
+    --purple: #ab47bc;
+    --green: #66bb6a;
+    --orange: #ffa726;
+    --red: #ef5350;
+  }
+
+  /* Theme - Purple */
+  .theme-purple {
+    --bg: #1a0d3d;
+    --surface: #2d1a5c;
+    --surface2: #4a2a8c;
+    --accent: #9c27b0;
+    --accent2: #7b1fa2;
+    --text: #eee;
+    --text-dim: #999;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
+    --border: #6a3d9e;
+    --blue: #42a5f5;
+    --purple: #ab47bc;
+    --green: #66bb6a;
+    --orange: #ffa726;
+    --red: #ef5350;
+  }
+
+  /* Theme - Black with Cyan Accents */
+  .theme-black-cyan {
+    --bg: #000000;
+    --surface: #111111;
+    --surface2: #222222;
+    --accent: #00ffff;
+    --accent2: #00b3b3;
+    --text: #ffffff;
+    --text-dim: #cccccc;
+    --ok: #00ff00;
+    --warn: #ffff00;
+    --err: #ff0000;
+    --border: #333333;
+    --blue: #00e5ff;
+    --purple: #b388ff;
+    --green: #69f0ae;
+    --orange: #ffd740;
+    --red: #ff5252;
+  }
+
+  /* Dark theme (applied via JS) */
+  .theme-dark {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --accent2: #533483;
+    --text: #eee;
+    --text-dim: #999;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
+    --border: #2a2a4a;
+    --blue: #42a5f5;
+    --purple: #ab47bc;
+    --green: #66bb6a;
+    --orange: #ffa726;
+    --red: #ef5350;
+  }
+
+  /* Theme Selector UI */
+  .theme-selector {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .theme-option {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 0 1px #000000;
+    transition: transform 0.2s ease;
+    background-color: var(--surface2);
+  }
+
+  .theme-option:hover {
+    transform: scale(1.2);
+  }
+
+  .theme-option.active {
+    transform: scale(1.2);
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #000000;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -245,6 +394,14 @@
   <header>
     <h1>🤖 Activity</h1>
     <span class="spacer"></span>
+    <div class="theme-selector">
+      <div class="theme-option theme-dark" data-theme="dark" title="Dark" role="button" aria-label="Dark theme" tabindex="0"></div>
+      <div class="theme-option theme-grayscale" data-theme="grayscale" title="Grayscale" role="button" aria-label="Grayscale theme" tabindex="0"></div>
+      <div class="theme-option theme-green" data-theme="green" title="Green" role="button" aria-label="Green theme" tabindex="0"></div>
+      <div class="theme-option theme-orange" data-theme="orange" title="Orange" role="button" aria-label="Orange theme" tabindex="0"></div>
+      <div class="theme-option theme-purple" data-theme="purple" title="Purple" role="button" aria-label="Purple theme" tabindex="0"></div>
+      <div class="theme-option theme-black-cyan" data-theme="black-cyan" title="Black/Cyan" role="button" aria-label="Black/Cyan theme" tabindex="0"></div>
+    </div>
     <span class="meta" id="lastUpdated">—</span>
     <button id="refreshBtn">↻ Refresh</button>
   </header>
@@ -357,6 +514,28 @@
   let lastTimestamp = null;
   let pollTimer = null;
   const POLL_INTERVAL = 4000; // 4 seconds
+  let _defaultThemeApplied = false;
+
+  // ── Theme Switching (session-only) ───────────────────────────
+  function applyTheme(themeName) {
+    var root = document.documentElement;
+    root.className = root.className.replace(/theme-[\w-]+/g, '');
+    root.classList.add('theme-' + themeName);
+    document.querySelectorAll('.theme-option').forEach(function(option) {
+      option.classList.toggle('active', option.dataset.theme === themeName);
+    });
+    sessionStorage.setItem('activityTheme', themeName);
+  }
+
+  // Apply session theme immediately to avoid flash (falls back to dark)
+  applyTheme(sessionStorage.getItem('activityTheme') || 'dark');
+
+  // Attach theme click handlers
+  document.querySelectorAll('.theme-option').forEach(function(option) {
+    option.addEventListener('click', function() {
+      applyTheme(option.dataset.theme);
+    });
+  });
 
   // ── Minimal markdown→HTML ────────────────────────────────────
 
@@ -542,6 +721,13 @@
         // If the server issued a session token (first key-based auth), store it
         if (data.sessionToken) {
           storeSession(data.sessionToken);
+        }
+        // Apply server default theme on first successful response if no session override
+        if (!_defaultThemeApplied && data.defaultTheme) {
+          _defaultThemeApplied = true;
+          if (!sessionStorage.getItem('activityTheme')) {
+            applyTheme(data.defaultTheme);
+          }
         }
         if (data.events && data.events.length >= 0 && data.serverTime) {
           lastUpdatedEl.textContent = 'Updated ' + formatTime(data.serverTime);

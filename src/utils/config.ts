@@ -730,6 +730,17 @@ class Config {
   }
 
   /**
+   * Configurator UI theme preference.
+   * Valid values: dark, grayscale, green, orange, purple, black-cyan.
+   * Default: 'dark'.
+   */
+  private static VALID_THEMES = ['dark', 'grayscale', 'green', 'orange', 'purple', 'black-cyan'];
+  getConfiguratorTheme(): string {
+    const raw = (process.env.CONFIGURATOR_THEME || '').trim().toLowerCase();
+    return Config.VALID_THEMES.includes(raw) ? raw : 'dark';
+  }
+
+  /**
    * Maximum number of file attachments per Discord message.
    * Clamped to 1–10 (Discord's hard limit is 10).
    */
@@ -1081,6 +1092,7 @@ class Config {
       imageResponse: {
         includeEmbed: this.getImageResponseIncludeEmbed(),
       },
+      configuratorTheme: this.getConfiguratorTheme(),
     };
   }
 }

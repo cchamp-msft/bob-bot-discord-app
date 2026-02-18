@@ -18,6 +18,126 @@
     --err: #f44336;
     --border: #2a2a4a;
   }
+  
+  /* Theme - Grayscale */
+  .theme-grayscale {
+    --bg: #f0f0f0;
+    --surface: #e0e0e0;
+    --surface2: #d0d0d0;
+    --accent: #666666;
+    --accent2: #555555;
+    --text: #333333;
+    --text-dim: #666666;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
+    --border: #cccccc;
+  }
+  
+  /* Theme - Green */
+  .theme-green {
+    --bg: #0a251c;
+    --surface: #0d3b29;
+    --surface2: #11573c;
+    --accent: #4caf50;
+    --accent2: #388e3c;
+    --text: #e8f5e9;
+    --text-dim: #a5d6a7;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
+    --border: #1b5e20;
+  }
+  
+  /* Theme - Orange */
+  .theme-orange {
+    --bg: #2e1a10;
+    --surface: #442715;
+    --surface2: #60381f;
+    --accent: #ff9800;
+    --accent2: #f57c00;
+    --text: #fff3e0;
+    --text-dim: #ffcc80;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
+    --border: #e65100;
+  }
+  
+  /* Theme - Purple */
+  .theme-purple {
+    --bg: #1a0d3d;
+    --surface: #2d1a5c;
+    --surface2: #4a2a8c;
+    --accent: #9c27b0;
+    --accent2: #7b1fa2;
+    --text: #eee;
+    --text-dim: #999;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
+    --border: #6a3d9e;
+  }
+  
+  /* Theme - Black with Cyan Accents */
+  .theme-black-cyan {
+    --bg: #000000;
+    --surface: #111111;
+    --surface2: #222222;
+    --accent: #00ffff;
+    --accent2: #00b3b3;
+    --text: #ffffff;
+    --text-dim: #cccccc;
+    --ok: #00ff00;
+    --warn: #ffff00;
+    --err: #ff0000;
+    --border: #333333;
+  }
+  
+  /* Theme Selector UI */
+  .theme-selector {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-left: auto; /* Pushes to the right */
+    margin-right: 16px;
+  }
+  
+  .theme-option {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 0 1px #000000;
+    transition: transform 0.2s ease;
+    background-color: var(--surface2);
+  }
+  
+  .theme-option:hover {
+    transform: scale(1.2);
+  }
+  
+  .theme-option.active {
+    transform: scale(1.2);
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #000000;
+  }
+  
+  /* Dark theme (applied via JS) */
+  .theme-dark {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --accent2: #533483;
+    --text: #eee;
+    --text-dim: #999;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
+    --border: #2a2a4a;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: 'Segoe UI', system-ui, sans-serif;
@@ -309,6 +429,14 @@
 <header>
   <span class="dot" id="statusDot"></span>
   <h1>Bot Configurator</h1>
+  <div class="theme-selector">
+    <div class="theme-option theme-dark" data-theme="dark" title="Dark" role="button" aria-label="Dark theme" tabindex="0"></div>
+    <div class="theme-option theme-grayscale" data-theme="grayscale" title="Grayscale" role="button" aria-label="Grayscale theme" tabindex="0"></div>
+    <div class="theme-option theme-green" data-theme="green" title="Green" role="button" aria-label="Green theme" tabindex="0"></div>
+    <div class="theme-option theme-orange" data-theme="orange" title="Orange" role="button" aria-label="Orange theme" tabindex="0"></div>
+    <div class="theme-option theme-purple" data-theme="purple" title="Purple" role="button" aria-label="Purple theme" tabindex="0"></div>
+    <div class="theme-option theme-black-cyan" data-theme="black-cyan" title="Black/Cyan" role="button" aria-label="Black/Cyan theme" tabindex="0"></div>
+  </div>
 </header>
 
 <div class="main">
@@ -879,6 +1007,7 @@ flowchart LR
   // ── State ──────────────────────────────────────────
   let originalConfig = null;
   let dirty = false;
+  let _serverTheme = 'dark'; // Theme loaded from server (.env)
 
   // ── Section toggle ─────────────────────────────────
   function toggleSection(h2) {
@@ -1175,6 +1304,12 @@ flowchart LR
 
       // Check for missing default keywords and show sync button if needed
       checkMissingDefaults(cfg.keywords, cfg.defaultKeywords || []);
+
+      // Apply server-side theme preference
+      if (cfg.configuratorTheme) {
+        _serverTheme = cfg.configuratorTheme;
+        applyTheme(cfg.configuratorTheme, /* fromServer */ true);
+      }
 
       // Clear dirty state
       document.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
@@ -1563,6 +1698,9 @@ flowchart LR
         env['SERPAPI_API_KEY'] = serpKeyVal;
       }
 
+      // Include current theme preference
+      env['CONFIGURATOR_THEME'] = _getCurrentTheme();
+
       // Collect keywords
       const keywords = collectKeywords();
 
@@ -1577,6 +1715,8 @@ flowchart LR
       if (result.success) {
         document.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
         markClean();
+        // Update server theme tracker so it no longer shows as dirty
+        _serverTheme = _getCurrentTheme();
         // Clear the token input after successful save
         tokenInput.value = '';
         tokenInput.placeholder = 'Token configured ✓ — paste new value to change';
@@ -2108,6 +2248,50 @@ flowchart LR
   function esc(s) {
     return s.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
+
+  // ── Theme Switching ───────────────────────────────
+  function _getCurrentTheme() {
+    const match = document.documentElement.className.match(/theme-([\w-]+)/);
+    return match ? match[1] : 'dark';
+  }
+
+  function applyTheme(themeName, fromServer) {
+    const root = document.documentElement;
+    // Remove all theme classes (supports hyphenated names like 'theme-black-cyan')
+    root.className = root.className.replace(/theme-[\w-]+/g, '');
+    // Add the new theme class
+    root.classList.add(`theme-${themeName}`);
+    
+    // Update active state on UI
+    document.querySelectorAll('.theme-option').forEach(option => {
+      option.classList.toggle('active', option.dataset.theme === themeName);
+    });
+    
+    // Store preference in localStorage as fallback
+    localStorage.setItem('configurator-theme', themeName);
+
+    // If this was a user-initiated change (not from server load), mark dirty
+    if (!fromServer && themeName !== _serverTheme) {
+      markDirty();
+    }
+    // If user switches back to the server theme, update the server tracker
+    if (fromServer) {
+      _serverTheme = themeName;
+    }
+  }
+
+  // Load saved theme preference (localStorage fallback until server config loads)
+  document.addEventListener('DOMContentLoaded', function() {
+    const savedTheme = localStorage.getItem('configurator-theme') || 'dark';
+    applyTheme(savedTheme, /* fromServer */ true);
+    
+    // Add click handlers for theme options
+    document.querySelectorAll('.theme-option').forEach(option => {
+      option.addEventListener('click', () => {
+        applyTheme(option.dataset.theme);
+      });
+    });
+  });
 
   // ── Init ───────────────────────────────────────────
   attachDirtyListeners();
