@@ -254,7 +254,7 @@ Use `!meme_templates` (plural) for template listing; `!meme_template` (singular)
 ### Usage Examples
 
 ```
-@BobBot !meme drake | writing docs | generating memes
+@BobBot !meme success kid | finished all my tasks | on a Monday
 @BobBot !meme distracted boyfriend | old framework | developer | new framework
 @BobBot !meme one does not simply | walk into mordor
 ```

@@ -74,7 +74,7 @@ outputs/                  # Generated files and logs
 @BobBot !weather Seattle
 @BobBot !nfl scores
 @BobBot !search latest AI news
-@BobBot !meme drake | writing docs | generating memes
+@BobBot !meme success kid | finished all my tasks | on a Monday
 @BobBot !meme_templates
 ```
 

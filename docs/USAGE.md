@@ -18,7 +18,7 @@ Mention the bot with a keyword and prompt:
 @BobBot !nfl news chiefs
 @BobBot !search what is the weather like today
 @BobBot !second opinion on climate change
-@BobBot !meme drake | writing docs | generating memes
+@BobBot !meme success kid | finished all my tasks | on a Monday
 @BobBot !meme_templates
 ```
 
@@ -50,7 +50,7 @@ The bot uses keywords prefixed with `!` to route requests to different APIs:
 | `!nfl scores`, `!nfl news` | ESPN NFL | `@BobBot !nfl scores` |
 | `!search` | SerpAPI | `@BobBot !search latest AI news` |
 | `!second opinion` | SerpAPI (AI Overview only) | `@BobBot !second opinion on quantum computing` |
-| `!meme` | Memegen | `@BobBot !meme drake \| writing docs \| generating memes` |
+| `!meme` | Memegen | `@BobBot !meme success kid \| finished all my tasks \| on a Monday` |
 | `!meme_templates` | Memegen | `@BobBot !meme_templates` |
 
 Use `!meme` to generate an image.
