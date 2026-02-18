@@ -225,7 +225,7 @@ class MemeClient {
    *
    * The input `content` is expected to contain a template identifier
    * and the meme text lines, inferred by the model. Formats accepted:
-   *   - "drake | text top | text bottom"
+   *   - "success kid | text top | text bottom"
    *   - "templateId top text / bottom text"
    *
    * If no template can be matched the request fails with a helpful error.

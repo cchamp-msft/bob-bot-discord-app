@@ -190,7 +190,7 @@
         "mode": "implicit",
         "inferFrom": ["current_message", "reply_target"],
         "validation": "Output must be: templateName | top text | bottom text. Choose the most fitting meme template for the user's intent. If the user names a specific template, use it; otherwise pick the best match.",
-        "examples": ["meme drake | studying for exams | browsing memes", "meme one does not simply | walk into mordor"]
+        "examples": ["meme success kid | finished all my tasks | on a Monday", "meme one does not simply | walk into mordor"]
       },
       "contextFilterMaxDepth": 1
     },
