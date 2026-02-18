@@ -417,10 +417,18 @@ describe('MessageHandler shouldRespond — guild reply to bot', () => {
         channel: { send: jest.fn() },
       }),
       fetchReference: jest.fn().mockResolvedValue(opts.fetchReferenceResult),
+      react: jest.fn().mockResolvedValue(undefined),
+      reactions: { resolve: jest.fn(() => ({ users: { remove: jest.fn().mockResolvedValue(undefined) } })) },
     };
   }
 
   it('should process a guild reply to the bot even without @mention', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Here is a follow-up answer.' },
+    });
+
     const botReply = {
       author: { id: 'bot-123', username: 'Bot' },
       content: 'I am the bot',
@@ -1208,6 +1216,8 @@ describe('MessageHandler reply-only-keyword for comfyui', () => {
         content: referencedContent,
         author: { id: 'user-2', username: 'OtherUser' },
       }),
+      react: jest.fn().mockResolvedValue(undefined),
+      reactions: { resolve: jest.fn(() => ({ users: { remove: jest.fn().mockResolvedValue(undefined) } })) },
     };
   }
 
@@ -1215,10 +1225,14 @@ describe('MessageHandler reply-only-keyword for comfyui', () => {
     (config.getKeywords as jest.Mock).mockReturnValue([
       { keyword: '!generate', api: 'comfyui', timeout: 300, description: 'Image gen' },
     ]);
-    const { requestQueue } = require('../src/utils/requestQueue');
-    requestQueue.execute.mockResolvedValue({
-      success: true,
-      data: { images: [] },
+    const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: {
+        success: true,
+        data: { images: ['http://comfyui/img.png'] },
+      },
+      finalApi: 'comfyui',
+      stages: [],
     });
 
     const msg = createComfyUIReplyMessage(
@@ -1262,6 +1276,8 @@ describe('MessageHandler first-word keyword routing', () => {
         channel: { send: jest.fn() },
       }),
       fetchReference: jest.fn(),
+      react: jest.fn().mockResolvedValue(undefined),
+      reactions: { resolve: jest.fn(() => ({ users: { remove: jest.fn().mockResolvedValue(undefined) } })) },
     };
   }
 
@@ -1334,7 +1350,7 @@ describe('MessageHandler first-word keyword routing', () => {
     expect(requestQueue.execute).toHaveBeenCalled();
   });
 
-  it('should handle routed pipeline error gracefully', async () => {
+  it('should handle routed pipeline error with reaction only (no text reply)', async () => {
     mockExecuteRoutedRequest.mockResolvedValueOnce({
       finalResponse: { success: false, error: 'Pipeline failed' },
       finalApi: 'comfyui',
@@ -1344,7 +1360,10 @@ describe('MessageHandler first-word keyword routing', () => {
     const msg = createMentionedMessage('<@bot-123> !generate something');
     await messageHandler.handleMessage(msg);
 
-    expect(msg.reply).toHaveBeenCalledWith(
+    // Should add error reaction
+    expect(msg.react).toHaveBeenCalledWith('❌');
+    // Should NOT send a text reply with the error
+    expect(msg.reply).not.toHaveBeenCalledWith(
       expect.stringContaining('⚠️')
     );
   });
@@ -1479,6 +1498,8 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
         channel: { send: jest.fn() },
       }),
       fetchReference: jest.fn(),
+      react: jest.fn().mockResolvedValue(undefined),
+      reactions: { resolve: jest.fn(() => ({ users: { remove: jest.fn().mockResolvedValue(undefined) } })) },
     };
   }
 
@@ -1536,7 +1557,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
     );
   });
 
-  it('should show generic pipeline error when SerpAPI request itself fails', async () => {
+  it('should show generic pipeline error reaction when SerpAPI request itself fails', async () => {
     mockExecuteRoutedRequest.mockResolvedValueOnce({
       finalResponse: { success: false, error: 'SerpAPI key is not configured' },
       finalApi: 'serpapi',
@@ -1546,7 +1567,8 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
     const msg = createMentionedMessage('<@bot-123> !second opinion test');
     await messageHandler.handleMessage(msg);
 
-    expect(msg.reply).toHaveBeenCalledWith(
+    expect(msg.react).toHaveBeenCalledWith('❌');
+    expect(msg.reply).not.toHaveBeenCalledWith(
       expect.stringContaining('⚠️')
     );
   });
@@ -4204,7 +4226,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
     );
   });
 
-  it('prefers original user content over inline parsed input for implicit meme directives', async () => {
+  it('prefers original user content over inline parsed input for implicit meme directives, with inference fallback to inline', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
@@ -4219,11 +4241,15 @@ describe('MessageHandler meme two-stage routing fallback', () => {
         inferredInput: 'fwp | line 1 | line 2',
       });
 
+    // Context-based inference succeeds — should use its result
+    (inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>)
+      .mockResolvedValueOnce('bm | top inferred | bottom inferred');
+
     (executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>)
       .mockResolvedValueOnce({
         finalResponse: {
           success: true,
-          data: { imageUrl: 'https://api.memegen.link/images/fwp/parsed.png', text: '**First World Problems** meme' },
+          data: { imageUrl: 'https://api.memegen.link/images/bm/inferred.png', text: '**Bad Luck Brian** meme' },
         },
         finalApi: 'meme',
         stages: [],
@@ -4232,14 +4258,104 @@ describe('MessageHandler meme two-stage routing fallback', () => {
     const msg = createMentionedMessage('<@bot-123> make a meme about driving class');
     await messageHandler.handleMessage(msg);
 
+    // Should have attempted context-based inference
+    expect(inferAbilityParameters).toHaveBeenCalledWith(
+      memeKw,
+      'make a meme about driving class',
+      'testuser'
+    );
+
+    // Should use the inferred result, not original content
     expect(executeRoutedRequest).toHaveBeenCalledWith(
       expect.objectContaining({ keyword: '!meme', api: 'meme', finalOllamaPass: false }),
-      'make a meme about driving class',
+      'bm | top inferred | bottom inferred',
       'testuser',
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser'
     );
-    expect(inferAbilityParameters).not.toHaveBeenCalled();
+  });
+
+  it('falls back to inline inferred params when context-based inference returns null', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: '!meme fwp | line 1 | line 2' },
+    });
+
+    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+      .mockReturnValueOnce({
+        matched: true,
+        parsedLine: '!meme fwp | line 1 | line 2',
+        keywordConfig: memeKw,
+        inferredInput: 'fwp | line 1 | line 2',
+      });
+
+    // Context-based inference fails — should fall back to inline inferred input
+    (inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>)
+      .mockResolvedValueOnce(null);
+
+    (executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>)
+      .mockResolvedValueOnce({
+        finalResponse: {
+          success: true,
+          data: { imageUrl: 'https://api.memegen.link/images/fwp/fallback.png', text: '**First World Problems** meme' },
+        },
+        finalApi: 'meme',
+        stages: [],
+      });
+
+    const msg = createMentionedMessage('<@bot-123> make a meme about driving class');
+    await messageHandler.handleMessage(msg);
+
+    // Should fall back to the inline inferred input from the model directive
+    expect(executeRoutedRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ keyword: '!meme', api: 'meme', finalOllamaPass: false }),
+      'fwp | line 1 | line 2',
+      'testuser',
+      [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
+      'BotUser'
+    );
+  });
+
+  it('adds shrug reaction alongside error reaction on meme API failure', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: '!meme fwp | line 1 | line 2' },
+    });
+
+    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+      .mockReturnValueOnce({
+        matched: true,
+        parsedLine: '!meme fwp | line 1 | line 2',
+        keywordConfig: memeKw,
+        inferredInput: 'fwp | line 1 | line 2',
+      });
+
+    (inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>)
+      .mockResolvedValueOnce(null);
+
+    // Meme API request fails (template lookup failure)
+    (executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>)
+      .mockResolvedValueOnce({
+        finalResponse: {
+          success: false,
+          error: 'Could not identify a meme template from your prompt.',
+        },
+        finalApi: 'meme',
+        stages: [],
+      });
+
+    const msg = createMentionedMessage('<@bot-123> make a meme about driving class');
+    await messageHandler.handleMessage(msg);
+
+    // Should get both error and shrug reactions
+    expect(msg.react).toHaveBeenCalledWith('❌');
+    expect(msg.react).toHaveBeenCalledWith('🤷');
+    // Should NOT send a text reply
+    expect(msg.reply).not.toHaveBeenCalledWith(
+      expect.stringContaining('⚠️')
+    );
   });
 });
 

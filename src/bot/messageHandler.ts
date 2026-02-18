@@ -19,7 +19,14 @@ import { activityKeyManager } from '../utils/activityKeyManager';
 
 export type { ChatMessage };
 
-class ApiDispatchError extends Error {}
+class ApiDispatchError extends Error {
+  /** The API that produced the error, when available. */
+  readonly api?: string;
+  constructor(message: string, api?: string) {
+    super(message);
+    this.api = api;
+  }
+}
 
 class MessageHandler {
   private static readonly WORKING_EMOJI = '⏳';
@@ -34,6 +41,7 @@ class MessageHandler {
     return bare === name.toLowerCase().trim();
   }
   private static readonly ERROR_EMOJI = '❌';
+  private static readonly MEME_SHRUG_EMOJI = '🤷';
 
   /** Timestamp of the last error message sent to Discord (for rate limiting) */
   private lastErrorMessageTime: number = 0;
@@ -80,7 +88,7 @@ class MessageHandler {
     await this.removeBotReaction(message, MessageHandler.WORKING_EMOJI);
   }
 
-  private async markRequestFailed(message: Message): Promise<void> {
+  private async markRequestFailed(message: Message, api?: string): Promise<void> {
     await this.removeBotReaction(message, MessageHandler.WORKING_EMOJI);
 
     try {
@@ -89,6 +97,17 @@ class MessageHandler {
       }
     } catch (error) {
       logger.logWarn('system', `Failed to add error reaction: ${error}`);
+    }
+
+    // Add shrug reaction for meme inference/template failures
+    if (api === 'meme') {
+      try {
+        if (typeof message.react === 'function') {
+          await message.react(MessageHandler.MEME_SHRUG_EMOJI);
+        }
+      } catch (error) {
+        logger.logWarn('system', `Failed to add meme shrug reaction: ${error}`);
+      }
     }
   }
 
@@ -538,14 +557,8 @@ class MessageHandler {
         activityEvents.emitError('I couldn\'t complete that request');
       }
 
-      await this.markRequestFailed(message);
-
-      // Reply with friendly error
-      if (this.canSendErrorMessage()) {
-        await message.reply(`⚠️ ${config.getErrorMessage()}`);
-      } else {
-        await message.reply('⚠️ An error occurred processing your request.');
-      }
+      const failedApi = error instanceof ApiDispatchError ? error.api : undefined;
+      await this.markRequestFailed(message, failedApi);
     }
   }
 
@@ -1131,14 +1144,19 @@ class MessageHandler {
         // For implicit/mixed abilities, prefer deriving parameters from the
         // original user content/context rather than trusting model-authored
         // inline remainder text (which may include extra conversational chatter).
+        // However, keep the inline inferred input as a fallback for abilities
+        // without required fields (e.g. meme) so it can be used if context-based
+        // inference fails later.
+        let inlineInferredFallback: string | undefined;
         if (shouldPreferContentInference && parseResult.inferredInput) {
           if (this.isKeywordOnlyInvocation(content, parseResult.keywordConfig.keyword)) {
             routedInput = parseResult.inferredInput.trim();
             logger.log('success', 'system',
               `TWO-STAGE: Using inline inferred input for "${parseResult.keywordConfig.keyword}" because user message was keyword-only`);
           } else {
+            inlineInferredFallback = parseResult.inferredInput.trim();
             logger.log('success', 'system',
-              `TWO-STAGE: Ignoring inline inferred input for "${parseResult.keywordConfig.keyword}" and preferring context-based inference`);
+              `TWO-STAGE: Preferring context-based inference for "${parseResult.keywordConfig.keyword}" (inline fallback retained)`);
             routedInput = content;
           }
         }
@@ -1148,12 +1166,21 @@ class MessageHandler {
         // from the user's natural language message.
         const hasRequiredInputs = parseResult.keywordConfig.abilityInputs?.required &&
           parseResult.keywordConfig.abilityInputs.required.length > 0;
-        if (hasRequiredInputs && (shouldPreferContentInference || !parseResult.inferredInput || parseResult.inferredInput.trim().length === 0)) {
+        const needsInference = hasRequiredInputs
+          ? (shouldPreferContentInference || !parseResult.inferredInput || parseResult.inferredInput.trim().length === 0)
+          : (shouldPreferContentInference && routedInput === content);
+        if (needsInference) {
           const inferred = await inferAbilityParameters(parseResult.keywordConfig, content, requester);
           if (inferred) {
             routedInput = inferred;
             logger.log('success', 'system',
               `TWO-STAGE: Inferred parameter "${inferred}" for "${parseResult.keywordConfig.keyword}"`);
+          } else if (inlineInferredFallback) {
+            // Use the model's inline directive params as a fallback when
+            // context-based inference could not produce usable parameters.
+            routedInput = inlineInferredFallback;
+            logger.log('success', 'system',
+              `TWO-STAGE: Context inference failed — falling back to inline inferred input for "${parseResult.keywordConfig.keyword}"`);
           } else {
             logger.logWarn('system',
               `TWO-STAGE: Could not infer parameter for "${parseResult.keywordConfig.keyword}" — using original content`);
@@ -1294,7 +1321,7 @@ class MessageHandler {
   ): Promise<void> {
     if (!response.success) {
       const errorDetail = response.error ?? 'Unknown API error';
-      throw new ApiDispatchError(errorDetail);
+      throw new ApiDispatchError(errorDetail, api);
     }
 
     if (api === 'comfyui') {
