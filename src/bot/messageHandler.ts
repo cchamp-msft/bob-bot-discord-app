@@ -1190,10 +1190,11 @@ class MessageHandler {
           `TWO-STAGE: First-line keyword match "${parseResult.keywordConfig.keyword}" — executing ${parseResult.keywordConfig.api} API`);
         activityEvents.emitRoutingDecision(parseResult.keywordConfig.api, parseResult.keywordConfig.keyword, 'two-stage-parse');
 
-        const commentaryPrelude = this.buildDirectiveCommentary(parseResult, routedInput);
-        if (commentaryPrelude) {
-          await this.sendCommentaryPrelude(sourceMessage, requester, isDM, commentaryPrelude);
-        }
+        // DISABLED: commentary prelude causes double-reply for routed requests.
+        // const commentaryPrelude = this.buildDirectiveCommentary(parseResult, routedInput);
+        // if (commentaryPrelude) {
+        //   await this.sendCommentaryPrelude(sourceMessage, requester, isDM, commentaryPrelude);
+        // }
 
         // Force final Ollama pass only for text-centric external APIs.
         // For media APIs (e.g., meme/comfyui), keep raw API output so
