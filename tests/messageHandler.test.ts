@@ -4087,7 +4087,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
     );
   });
 
-  it('does not force final Ollama pass for parsed meme ability directives', async () => {
+  it('prefers original user content over inline parsed input for implicit meme directives', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
@@ -4117,7 +4117,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
 
     expect(executeRoutedRequest).toHaveBeenCalledWith(
       expect.objectContaining({ keyword: '!meme', api: 'meme', finalOllamaPass: false }),
-      'fwp | line 1 | line 2',
+      'make a meme about driving class',
       'testuser',
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser'

@@ -348,6 +348,7 @@ describe('PromptBuilder', () => {
         userMessage: 'test',
       });
 
+      expect(content).toContain('Does the request match one of the listed external abilities?');
       expect(content).toContain('check if the ability\'s required inputs are present or can be inferred');
       expect(content).toContain('Inputs satisfied?');
       expect(content).toContain('Inputs missing and cannot be inferred?');

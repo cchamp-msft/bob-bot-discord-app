@@ -986,12 +986,28 @@ class MessageHandler {
           ? parseResult.inferredInput
           : content;
 
+        const abilityInputs = parseResult.keywordConfig.abilityInputs;
+        const shouldPreferContentInference =
+          !!abilityInputs &&
+          (abilityInputs.mode === 'implicit' || abilityInputs.mode === 'mixed') &&
+          Array.isArray(abilityInputs.inferFrom) &&
+          abilityInputs.inferFrom.length > 0;
+
+        // For implicit/mixed abilities, prefer deriving parameters from the
+        // original user content/context rather than trusting model-authored
+        // inline remainder text (which may include extra conversational chatter).
+        if (shouldPreferContentInference && parseResult.inferredInput) {
+          logger.log('success', 'system',
+            `TWO-STAGE: Ignoring inline inferred input for "${parseResult.keywordConfig.keyword}" and preferring context-based inference`);
+          routedInput = content;
+        }
+
         // When the model matched a keyword but no inline params were provided,
         // and the keyword has required inputs, use Ollama to infer parameters
         // from the user's natural language message.
         const hasRequiredInputs = parseResult.keywordConfig.abilityInputs?.required &&
           parseResult.keywordConfig.abilityInputs.required.length > 0;
-        if (hasRequiredInputs && (!parseResult.inferredInput || parseResult.inferredInput.trim().length === 0)) {
+        if (hasRequiredInputs && (shouldPreferContentInference || !parseResult.inferredInput || parseResult.inferredInput.trim().length === 0)) {
           const inferred = await inferAbilityParameters(parseResult.keywordConfig, content, requester);
           if (inferred) {
             routedInput = inferred;

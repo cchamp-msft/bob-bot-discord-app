@@ -182,7 +182,7 @@ export function buildSystemPrompt(routableKeywords?: KeywordConfig[]): string {
     parts.push('');
     parts.push(
       'Rules – follow exactly:\n' +
-      `1. If fresh external data is required, use an ability. Output the keyword prefixed with "${COMMAND_PREFIX}" (e.g. ${COMMAND_PREFIX}weather Dallas) on its own line. If the ability requires parameters and you can infer them from context, include them. Otherwise output the keyword only. Nothing else.\n` +
+      `1. If the user request matches an available external ability, use that ability. Output the keyword prefixed with "${COMMAND_PREFIX}" (e.g. ${COMMAND_PREFIX}weather Dallas) on its own line. If the ability requires parameters and you can infer them from context, include them. Otherwise output the keyword only. Nothing else.\n` +
       '2. If an ability requires parameters and you cannot infer them from context, ask a brief clarifying question instead of outputting the keyword.\n' +
       '3. Never invent scores, stats, weather, or facts.\n' +
       '4. No data needed → answer normally in character.\n' +
@@ -459,7 +459,7 @@ export function buildUserContent(options: PromptBuildOptions): string {
       '\n<thinking_and_output_rules>\n' +
       'Step-by-step (think silently, do not output this thinking):\n' +
       '1. Read the current question carefully.\n' +
-      `2. Does it clearly need fresh external data (scores, rosters, live stats, weather)? → Yes → check if the ability's required inputs are present or can be inferred per the ability description above.\n` +
+      '2. Does the request match one of the listed external abilities? → Yes → check if the ability\'s required inputs are present or can be inferred per the ability description above.\n' +
       `3. Inputs satisfied? → output the keyword with "${COMMAND_PREFIX}" prefix (one of: ${keywordList}) and any parameters on its own line and stop.\n` +
       '4. Inputs missing and cannot be inferred? → ask a brief clarifying question instead of outputting the keyword.\n' +
       '5. No data needed? → Give a short, helpful answer in character.\n' +
