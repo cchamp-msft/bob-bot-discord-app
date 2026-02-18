@@ -4125,3 +4125,38 @@ describe('MessageHandler meme two-stage routing fallback', () => {
     expect(inferAbilityParameters).not.toHaveBeenCalled();
   });
 });
+
+describe('MessageHandler image prompt context derivation', () => {
+  it('uses direct user text when imagine includes concrete prompt', () => {
+    const result = (messageHandler as any).deriveImagePromptFromContext(
+      'can you imagine a neon city skyline at night',
+      []
+    );
+
+    expect(result).toBe('a neon city skyline at night');
+  });
+
+  it('uses prior user context when message is only imagine', () => {
+    const history = [
+      { role: 'assistant', content: 'What do you want me to imagine?', contextSource: 'dm' as const },
+      { role: 'user', content: 'oeb: then how could i wash my car?', contextSource: 'dm' as const, hasNamePrefix: true },
+      { role: 'user', content: 'oeb: imagine', contextSource: 'trigger' as const, hasNamePrefix: true },
+    ];
+
+    const result = (messageHandler as any).deriveImagePromptFromContext('imagine', history);
+
+    expect(result).toBe('then how could i wash my car?');
+  });
+
+  it('falls back to assistant context when user context is generic', () => {
+    const history = [
+      { role: 'assistant', content: 'The Eiffel Tower grows taller in summer due to thermal expansion.', contextSource: 'dm' as const },
+      { role: 'user', content: 'oeb: create a meme about this', contextSource: 'dm' as const, hasNamePrefix: true },
+      { role: 'user', content: 'oeb: imagine', contextSource: 'trigger' as const, hasNamePrefix: true },
+    ];
+
+    const result = (messageHandler as any).deriveImagePromptFromContext('can you imagine this', history);
+
+    expect(result).toBe('The Eiffel Tower grows taller in summer due to thermal expansion.');
+  });
+});

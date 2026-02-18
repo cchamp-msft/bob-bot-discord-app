@@ -96,6 +96,67 @@ class MessageHandler {
     return /\b(meme|memegen|image macro|caption this|template)\b/.test(t);
   }
 
+  private isLikelyImageRequest(content: string): boolean {
+    const t = content.toLowerCase().trim();
+    return /\b(imagine|generate|draw|render|visualize|create\s+(an\s+)?image|make\s+(a\s+)?(picture|image))\b/.test(t);
+  }
+
+  private isGenericImageReference(content: string): boolean {
+    const t = content.toLowerCase().trim();
+    return /^(this|that|it|something|anything|image|picture|photo)$/i.test(t);
+  }
+
+  private stripSpeakerPrefix(content: string): string {
+    return content.replace(/^[^:\n]{1,64}:\s+/, '').trim();
+  }
+
+  private deriveImagePromptFromContext(content: string, history: ChatMessage[]): string | null {
+    const trimmed = content.trim();
+
+    // Try using direct user text first (remove command-ish lead-ins)
+    let direct = trimmed
+      .replace(/^[@!]?imagine\b/i, '')
+      .replace(/^[@!]?generate\b/i, '')
+      .replace(/^(can|could|would)\s+you\s+/i, '')
+      .replace(/^[@!]?imagine\b/i, '')
+      .replace(/^[@!]?generate\b/i, '')
+      .replace(/^(please\s+)?(create|make|draw|render|visualize)\s+(an?\s+)?(image|picture|photo)\s+(of\s+)?/i, '')
+      .trim();
+
+    direct = direct.replace(/^[:|,\-.\s]+/, '').trim();
+
+    if (direct && !this.isGenericImageReference(direct) && !this.isLikelyImageRequest(direct)) {
+      return direct;
+    }
+
+    const cleanedHistory = history
+      .filter(m => m.role !== 'system')
+      .map(m => ({ ...m, content: this.stripSpeakerPrefix(m.content).trim() }));
+
+    // Prefer prior user messages with concrete content.
+    for (let i = cleanedHistory.length - 1; i >= 0; i--) {
+      const msg = cleanedHistory[i];
+      if (msg.role !== 'user') continue;
+      if (msg.contextSource === 'trigger') continue;
+      if (!msg.content) continue;
+      if (this.isLikelyImageRequest(msg.content)) continue;
+      if (this.isLikelyMemeRequest(msg.content)) continue;
+      if (this.isGenericImageReference(msg.content)) continue;
+      return msg.content;
+    }
+
+    // Fallback to assistant context if user context is too sparse.
+    for (let i = cleanedHistory.length - 1; i >= 0; i--) {
+      const msg = cleanedHistory[i];
+      if (msg.role !== 'assistant') continue;
+      if (!msg.content || /^https?:\/\//i.test(msg.content)) continue;
+      if (/what\s+do\s+you\s+want\s+me\s+to\s+(imagine|picture)/i.test(msg.content)) continue;
+      return msg.content;
+    }
+
+    return null;
+  }
+
   private shouldForceFinalOllamaPassForApi(api: KeywordConfig['api']): boolean {
     // Keep raw media-style API outputs (image URLs/files) intact.
     // Force conversational final-pass only for text-oriented data APIs.
@@ -1049,6 +1110,49 @@ class MessageHandler {
         return;
       }
 
+    }
+
+    // Fallback: if stage-1 didn't emit an ability directive but the message is
+    // clearly an image-generation request, route to imagine/generate using a
+    // context-derived prompt. This avoids brittle dependency on strict
+    // first-line directive formatting for natural-language image requests.
+    if (!strictNoApiRoutingFromInference && this.isLikelyImageRequest(content)) {
+      const normalized = content.toLowerCase();
+      const imagineKeywordConfig = this.findEnabledKeywordByName('imagine');
+      const generateKeywordConfig = this.findEnabledKeywordByName('generate');
+
+      const imageKeywordConfig = normalized.includes('imagine')
+        ? (imagineKeywordConfig ?? generateKeywordConfig)
+        : (generateKeywordConfig ?? imagineKeywordConfig);
+
+      if (imageKeywordConfig && imageKeywordConfig.api === 'comfyui') {
+        const inferredPrompt = this.deriveImagePromptFromContext(content, filteredHistory);
+        if (inferredPrompt) {
+          logger.log('success', 'system',
+            `TWO-STAGE: Image fallback inference succeeded for "${imageKeywordConfig.keyword}" — executing comfyui API`);
+
+          const imageConfig = { ...imageKeywordConfig, finalOllamaPass: false };
+          const imageResult = await executeRoutedRequest(
+            imageConfig,
+            inferredPrompt,
+            requester,
+            filteredHistory.length > 0 ? filteredHistory : undefined,
+            botDisplayName
+          );
+
+          await this.dispatchResponse(
+            imageResult.finalResponse,
+            imageResult.finalApi,
+            sourceMessage,
+            requester,
+            isDM
+          );
+          return;
+        }
+
+        logger.logWarn('system',
+          `TWO-STAGE: Image fallback could not infer a concrete prompt for "${imageKeywordConfig.keyword}"; returning direct chat response`);
+      }
     }
 
     // Fallback: if stage-1 didn't emit an ability directive but the message is

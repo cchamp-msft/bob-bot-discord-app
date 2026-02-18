@@ -235,7 +235,7 @@ describe('PromptBuilder', () => {
     it('should include clarification rule in rules block', () => {
       const prompt = buildSystemPrompt();
 
-      expect(prompt).toContain('If an ability requires parameters and you cannot infer them from context, ask a brief clarifying question');
+      expect(prompt).toContain('For implicit abilities (such as imagine/generate/meme), when the request is empty or underspecified, infer from conversation context before asking a question.');
     });
 
     it('should render examples when provided', () => {
@@ -351,8 +351,8 @@ describe('PromptBuilder', () => {
       expect(content).toContain('Does the request match one of the listed external abilities?');
       expect(content).toContain('check if the ability\'s required inputs are present or can be inferred');
       expect(content).toContain('Inputs satisfied?');
-      expect(content).toContain('Inputs missing and cannot be inferred?');
-      expect(content).toContain('ask a brief clarifying question instead of outputting the keyword');
+      expect(content).toContain('For implicit abilities, if the request is empty or vague, infer from conversation context first.');
+      expect(content).toContain('Ask a brief clarifying question only if no usable context exists.');
     });
 
     it('should include grouped context-source blocks when metadata is present', () => {

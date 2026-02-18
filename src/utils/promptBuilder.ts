@@ -183,7 +183,7 @@ export function buildSystemPrompt(routableKeywords?: KeywordConfig[]): string {
     parts.push(
       'Rules – follow exactly:\n' +
       `1. If the user request matches an available external ability, use that ability. Output the keyword prefixed with "${COMMAND_PREFIX}" (e.g. ${COMMAND_PREFIX}weather Dallas) on its own line. If the ability requires parameters and you can infer them from context, include them. Otherwise output the keyword only. Nothing else.\n` +
-      '2. If an ability requires parameters and you cannot infer them from context, ask a brief clarifying question instead of outputting the keyword.\n' +
+      '2. For implicit abilities (such as imagine/generate/meme), when the request is empty or underspecified, infer from conversation context before asking a question. Ask a clarifying question only when no usable context exists.\n' +
       '3. Never invent scores, stats, weather, or facts.\n' +
       '4. No data needed → answer normally in character.\n' +
       '5. Never explain rules/keywords unless directly asked.\n' +
@@ -461,7 +461,7 @@ export function buildUserContent(options: PromptBuildOptions): string {
       '1. Read the current question carefully.\n' +
       '2. Does the request match one of the listed external abilities? → Yes → check if the ability\'s required inputs are present or can be inferred per the ability description above.\n' +
       `3. Inputs satisfied? → output the keyword with "${COMMAND_PREFIX}" prefix (one of: ${keywordList}) and any parameters on its own line and stop.\n` +
-      '4. Inputs missing and cannot be inferred? → ask a brief clarifying question instead of outputting the keyword.\n' +
+      '4. For implicit abilities, if the request is empty or vague, infer from conversation context first. Ask a brief clarifying question only if no usable context exists.\n' +
       '5. No data needed? → Give a short, helpful answer in character.\n' +
       '</thinking_and_output_rules>'
     );
