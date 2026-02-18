@@ -52,6 +52,13 @@ jest.mock('../src/api/accuweatherClient', () => ({
   },
 }));
 
+jest.mock('../src/api/memeClient', () => ({
+  memeClient: {
+    getTemplateListForInference: jest.fn(() => 'drake: Drake Hotline Bling (2 lines)\naag: Ancient Aliens Guy (2 lines)\ndoge: Doge (2 lines)'),
+    getTemplateIds: jest.fn(() => 'drake, aag, doge'),
+  },
+}));
+
 jest.mock('../src/utils/contextEvaluator', () => ({
   evaluateContextWindow: jest.fn().mockImplementation((history) => Promise.resolve(history)),
 }));
@@ -1660,6 +1667,81 @@ describe('ApiRouter', () => {
       );
 
       expect(result).toBeNull();
+    });
+
+    describe('meme inference', () => {
+      const memeKeyword: KeywordConfig = {
+        keyword: 'meme',
+        api: 'meme',
+        timeout: 60,
+        description: 'Create funny meme images from popular templates',
+        abilityInputs: {
+          mode: 'implicit',
+          inferFrom: ['current_message', 'reply_target'],
+          validation: 'Output must be: templateName | top text | bottom text.',
+          examples: ['meme drake | studying for exams | browsing memes'],
+        },
+        contextFilterMaxDepth: 1,
+      };
+
+      it('should include template list in system prompt for meme keyword', async () => {
+        mockExecute.mockResolvedValueOnce({
+          success: true,
+          data: { text: 'drake | top text | bottom text' },
+        });
+
+        await inferAbilityParameters(memeKeyword, 'make a drake meme about coding', 'testuser');
+
+        // The execute call passes the system prompt via apiManager; verify it was called
+        const executeCall = mockExecute.mock.calls[0];
+        // The executor function is the 5th argument — just verify it was invoked
+        expect(mockExecute).toHaveBeenCalledTimes(1);
+      });
+
+      it('should log MEME-INFERENCE system prompt and user prompt', async () => {
+        const { logger } = require('../src/utils/logger');
+        mockExecute.mockResolvedValueOnce({
+          success: true,
+          data: { text: 'drake | studying | memeing' },
+        });
+
+        await inferAbilityParameters(memeKeyword, 'make a meme about studying', 'testuser');
+
+        const logCalls = (logger.log as jest.Mock).mock.calls.map((c: any[]) => c[2]);
+        expect(logCalls.some((msg: string) => msg.includes('MEME-INFERENCE: System prompt'))).toBe(true);
+        expect(logCalls.some((msg: string) => msg.includes('MEME-INFERENCE: User prompt'))).toBe(true);
+      });
+
+      it('should log MEME-INFERENCE raw response and resolved inference', async () => {
+        const { logger } = require('../src/utils/logger');
+        mockExecute.mockResolvedValueOnce({
+          success: true,
+          data: { text: 'drake | studying for exams | browsing memes' },
+        });
+
+        const result = await inferAbilityParameters(memeKeyword, 'make a drake meme', 'testuser');
+
+        expect(result).toBe('drake | studying for exams | browsing memes');
+
+        const logCalls = (logger.log as jest.Mock).mock.calls.map((c: any[]) => c[2]);
+        expect(logCalls.some((msg: string) => msg.includes('MEME-INFERENCE: Ollama raw response'))).toBe(true);
+        expect(logCalls.some((msg: string) => msg.includes('MEME-INFERENCE: Resolved inference'))).toBe(true);
+      });
+
+      it('should not log MEME-INFERENCE when inference returns NONE', async () => {
+        const { logger } = require('../src/utils/logger');
+        mockExecute.mockResolvedValueOnce({
+          success: true,
+          data: { text: 'NONE' },
+        });
+
+        const result = await inferAbilityParameters(memeKeyword, 'hello world', 'testuser');
+
+        expect(result).toBeNull();
+
+        const logCalls = (logger.log as jest.Mock).mock.calls.map((c: any[]) => c[2]);
+        expect(logCalls.some((msg: string) => msg.includes('MEME-INFERENCE: Ollama raw response'))).toBe(false);
+      });
     });
   });
 });

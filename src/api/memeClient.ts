@@ -166,6 +166,28 @@ class MemeClient {
     return this.templates.length;
   }
 
+  /**
+   * Return the template list formatted for LLM inference prompts.
+   * Each line: `id: Human-Readable Name (N lines)`
+   *
+   * Returns an empty string when templates have not been loaded yet.
+   */
+  getTemplateListForInference(): string {
+    if (this.templates.length === 0) return '';
+    return this.templates
+      .map(t => `${t.id}: ${t.name} (${t.lines} lines)`)
+      .join('\n');
+  }
+
+  /**
+   * Return a comma-separated string of all template ids.
+   * Intended for the /meme_templates slash command.
+   */
+  getTemplateIds(): string {
+    if (this.templates.length === 0) return '';
+    return this.templates.map(t => t.id).join(', ');
+  }
+
   // ── Meme generation ─────────────────────────────────────────────
 
   /**
@@ -206,6 +228,9 @@ class MemeClient {
     try {
       const parsed = this.parseInput(content);
       if (!parsed) {
+        logger.logWarn('meme',
+          `MEME-INFERENCE: Template lookup failed for input: "${content.substring(0, 200)}". ` +
+          `Available templates (${this.templates.length}): ${this.templates.slice(0, 10).map(t => t.id).join(', ')}…`);
         return {
           success: false,
           error: `Could not identify a meme template from your prompt. Available templates include: ${this.templates.slice(0, 10).map(t => t.name).join(', ')}… (${this.templates.length} total)`,
@@ -213,11 +238,15 @@ class MemeClient {
       }
 
       const { template, lines } = parsed;
+      logger.log('success', 'meme',
+        `MEME-INFERENCE: Matched template "${template.id}" (${template.name}) with ${lines.length} text line(s)`);
       const imageUrl = this.buildMemeUrl(template.id, lines);
 
       // Validate the URL is reachable (HEAD request) with abort support
       await this.client.head(imageUrl, { signal });
 
+      logger.log('success', 'meme',
+        `MEME-INFERENCE: Generated meme URL: ${imageUrl}`);
       return {
         success: true,
         data: {

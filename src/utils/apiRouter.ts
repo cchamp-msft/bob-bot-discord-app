@@ -4,6 +4,7 @@ import { requestQueue } from './requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { accuweatherClient } from '../api/accuweatherClient';
 import { serpApiClient } from '../api/serpApiClient';
+import { memeClient } from '../api/memeClient';
 import { ChatMessage, NFLResponse, MemeResponse } from '../types';
 import { evaluateContextWindow } from './contextEvaluator';
 import {
@@ -43,6 +44,9 @@ function shouldRetryAbility(result: { success: boolean }): boolean {
 /**
  * Build a system prompt for parameter inference.
  * Instructs Ollama to extract the required ability input from user content.
+ *
+ * For the meme ability, the prompt includes the full list of available
+ * meme templates so the model can select an appropriate template id.
  */
 function buildInferenceSystemPrompt(keywordConfig: KeywordConfig): string {
   if (keywordConfig.api === 'accuweather') {
@@ -54,6 +58,25 @@ function buildInferenceSystemPrompt(keywordConfig: KeywordConfig): string {
       '2) If the user references a place indirectly (e.g. "capital of Thailand"), resolve it to the concrete name (e.g. "Bangkok").',
       '3) Prefer: "City, Region, Country" format. A zip code is acceptable if the user provided one.',
       '4) If no location can be inferred at all, output exactly: NONE',
+    ].join('\n');
+  }
+
+  if (keywordConfig.api === 'meme') {
+    const templateList = memeClient.getTemplateListForInference();
+    const templateBlock = templateList
+      ? `\n\nAvailable meme templates (use the id before the colon):\n${templateList}`
+      : '';
+
+    return [
+      'You select a meme template and compose the meme text lines from the user\u2019s message.',
+      '',
+      'Rules \u2014 follow exactly:',
+      '1) Output ONLY in this format: templateId | top text | bottom text',
+      '2) Choose the most fitting template id from the available list below.',
+      '3) If the user names a specific template, use that template id.',
+      '4) The number of text lines must match the template\'s expected line count.',
+      '5) If no meme can be inferred at all, output exactly: NONE',
+      templateBlock,
     ].join('\n');
   }
 
@@ -107,6 +130,14 @@ export async function inferAbilityParameters(
   logger.log('success', 'system',
     `INFER-PARAMS: Inferring parameters for "${keywordConfig.keyword}" from user content`);
 
+  // Enhanced logging for meme inference
+  if (keywordConfig.api === 'meme') {
+    logger.log('success', 'system',
+      `MEME-INFERENCE: System prompt (${systemPrompt.length} chars): ${systemPrompt.substring(0, 300)}${systemPrompt.length > 300 ? '…' : ''}`);
+    logger.log('success', 'system',
+      `MEME-INFERENCE: User prompt: ${userPrompt.substring(0, 500)}${userPrompt.length > 500 ? '…' : ''}`);
+  }
+
   try {
     const result = await requestQueue.execute(
       'ollama',
@@ -149,6 +180,15 @@ export async function inferAbilityParameters(
 
     logger.log('success', 'system',
       `INFER-PARAMS: Inferred "${inferred}" for "${keywordConfig.keyword}"`);
+
+    // Enhanced logging for meme inference — log the full Ollama response
+    if (keywordConfig.api === 'meme') {
+      logger.log('success', 'system',
+        `MEME-INFERENCE: Ollama raw response: "${raw}"`);
+      logger.log('success', 'system',
+        `MEME-INFERENCE: Resolved inference: "${inferred}"`);
+    }
+
     return inferred;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

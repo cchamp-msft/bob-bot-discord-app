@@ -74,6 +74,13 @@ jest.mock('../src/utils/fileHandler', () => ({
   },
 }));
 
+jest.mock('../src/api/memeClient', () => ({
+  memeClient: {
+    getTemplateIds: jest.fn(() => 'drake, aag, doge'),
+    getTemplateListForInference: jest.fn(() => 'drake: Drake Hotline Bling (2 lines)\naag: Ancient Aliens Guy (2 lines)'),
+  },
+}));
+
 import { config } from '../src/utils/config';
 import { commands } from '../src/commands/commands';
 
@@ -208,5 +215,50 @@ describe('GenerateCommand handleResponse', () => {
         content: '',
       })
     );
+  });
+});
+
+describe('MemeTemplatesCommand', () => {
+  const memeTemplatesCommand = commands.find((c) => c.data.name === 'meme_templates')!;
+  const { memeClient } = require('../src/api/memeClient');
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  function createInteraction() {
+    return {
+      user: { username: 'testuser' },
+      options: { getString: jest.fn() },
+      deferReply: jest.fn().mockResolvedValue(undefined),
+      editReply: jest.fn().mockResolvedValue(undefined),
+      followUp: jest.fn().mockResolvedValue(undefined),
+    } as any;
+  }
+
+  it('should be registered as a command', () => {
+    expect(memeTemplatesCommand).toBeDefined();
+    expect(memeTemplatesCommand.data.name).toBe('meme_templates');
+  });
+
+  it('should return comma-separated template ids', async () => {
+    const interaction = createInteraction();
+    (memeClient.getTemplateIds as jest.Mock).mockReturnValue('drake, aag, doge');
+
+    await memeTemplatesCommand.execute(interaction);
+
+    expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+    expect(interaction.editReply).toHaveBeenCalledWith({ content: 'drake, aag, doge' });
+  });
+
+  it('should return helpful message when templates not loaded', async () => {
+    const interaction = createInteraction();
+    (memeClient.getTemplateIds as jest.Mock).mockReturnValue('');
+
+    await memeTemplatesCommand.execute(interaction);
+
+    expect(interaction.editReply).toHaveBeenCalledWith({
+      content: expect.stringContaining('not been loaded'),
+    });
   });
 });

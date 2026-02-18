@@ -7,6 +7,7 @@ import {
 import { config } from '../utils/config';
 import { requestQueue } from '../utils/requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse } from '../api';
+import { memeClient } from '../api/memeClient';
 import { logger } from '../utils/logger';
 import { chunkText } from '../utils/chunkText';
 import { fileHandler } from '../utils/fileHandler';
@@ -343,4 +344,37 @@ class WeatherCommand extends BaseCommand {
   }
 }
 
-export const commands: BaseCommand[] = [new GenerateCommand(), new AskCommand(), new WeatherCommand()];
+class MemeTemplatesCommand extends BaseCommand {
+  data = new SlashCommandBuilder()
+    .setName('meme_templates')
+    .setDescription('List available meme template ids');
+
+  async execute(interaction: ChatInputCommandInteraction): Promise<void> {
+    const requester = interaction.user.username;
+
+    await interaction.deferReply({ ephemeral: true });
+    logger.logRequest(requester, '[meme_templates]');
+
+    const ids = memeClient.getTemplateIds();
+
+    if (!ids) {
+      await interaction.editReply({
+        content: 'Meme template cache has not been loaded yet. Please try again shortly.',
+      });
+      return;
+    }
+
+    // Discord messages have a 2000-char limit; chunk if needed
+    const chunks = chunkText(ids, 1900);
+
+    await interaction.editReply({ content: chunks[0] });
+
+    for (let i = 1; i < chunks.length; i++) {
+      await interaction.followUp({ content: chunks[i], ephemeral: true });
+    }
+
+    logger.logReply(requester, `Meme templates sent: ${ids.length} characters`);
+  }
+}
+
+export const commands: BaseCommand[] = [new GenerateCommand(), new AskCommand(), new WeatherCommand(), new MemeTemplatesCommand()];
