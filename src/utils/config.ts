@@ -256,10 +256,10 @@ class Config {
       this.keywords = config.keywords;
       logger.log('success', 'config', `Loaded ${this.keywords.length} keywords from config`);
 
-      // Merge any built-in keywords from the default template that are missing
-      // from the runtime config.  This ensures newly added built-in keywords
-      // (e.g. activity_key) are available even if keywords.json predates them.
-      this.mergeDefaultBuiltins();
+      // Merge missing default keywords into runtime so newly added defaults
+      // self-heal even when keywords.json predates them.
+      // Existing keywords are intentionally NOT overwritten.
+      this.mergeDefaultKeywords();
     } catch (error) {
       logger.logError('config', `Failed to load keywords config (${keywordsPath}): ${error}`);
       this.keywords = [];
@@ -286,36 +286,20 @@ class Config {
   }
 
   /**
-   * Synchronize runtime keywords with defaults using default-preferred
-   * conflict resolution:
-   * - Overlapping keywords: default field values win (field-by-field merge)
-   * - Missing keywords from defaults: appended to runtime
-   * - Runtime-only keywords: retained
+   * Self-heal runtime keywords by adding defaults that are missing.
+   *
+   * Important: existing runtime keywords are NOT overwritten. This allows
+   * users to customize values in keywords.json without defaults replacing them
+   * on reload.
    */
-  private mergeDefaultBuiltins(): void {
+  private mergeDefaultKeywords(): void {
     const defaults = this.getDefaultKeywords();
     const existingByKey = new Map(
       this.keywords.map(k => [k.keyword.toLowerCase(), k])
     );
 
-    /** Fields where the default value takes precedence over runtime. */
-    const syncFields: (keyof KeywordConfig)[] = [
-      'api',
-      'timeout',
-      'description',
-      'abilityText',
-      'abilityWhen',
-      'abilityInputs',
-      'finalOllamaPass',
-      'allowEmptyContent',
-      'builtin',
-      'contextFilterEnabled',
-      'contextFilterMinDepth',
-      'contextFilterMaxDepth',
-    ];
-
     let added = 0;
-    let synced = 0;
+    let keptExisting = 0;
 
     for (const def of defaults) {
       const key = def.keyword.toLowerCase();
@@ -327,27 +311,18 @@ class Config {
         existingByKey.set(key, def);
         added++;
         logger.log('success', 'config',
-          `Merged missing keyword "${def.keyword}" from defaults`);
+          `KEYWORDS SELF-HEAL: Added missing keyword "${def.keyword}" from keywords.default.json`);
       } else {
-        // Existing keyword — default values win field-by-field
-        const patched: string[] = [];
-        for (const field of syncFields) {
-          if (def[field] !== undefined && JSON.stringify(existing[field]) !== JSON.stringify(def[field])) {
-            (existing as any)[field] = (def as any)[field];
-            patched.push(field);
-          }
-        }
-        if (patched.length > 0) {
-          synced++;
-          logger.log('success', 'config',
-            `Synced default values on keyword "${def.keyword}": ${patched.join(', ')}`);
-        }
+        keptExisting++;
       }
     }
 
-    if (added > 0 || synced > 0) {
+    if (added > 0) {
       logger.log('success', 'config',
-        `Default sync complete — added: ${added}, updated: ${synced}, total: ${this.keywords.length}`);
+        `KEYWORDS SELF-HEAL: keywords.json merged with defaults — added: ${added}, kept existing: ${keptExisting}, total runtime keywords: ${this.keywords.length}`);
+    } else {
+      logger.log('success', 'config',
+        `KEYWORDS SELF-HEAL: No missing defaults found — kept existing keywords unchanged (${keptExisting} matched)`);
     }
   }
 

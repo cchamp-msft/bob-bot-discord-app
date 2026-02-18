@@ -637,7 +637,7 @@ describe('Config', () => {
     });
   });
 
-  describe('mergeDefaultBuiltins', () => {
+  describe('default keyword self-heal', () => {
     const { config } = require('../src/utils/config');
     const runtimePath = path.join(__dirname, '../config/keywords.json');
     let savedRuntime: string | null = null;
@@ -676,6 +676,23 @@ describe('Config', () => {
       expect(ak!.builtin).toBe(true);
     });
 
+    it('should merge missing non-built-in keywords from defaults into runtime config', () => {
+      // Write a runtime config without meme_templates
+      const customKeywords = {
+        keywords: [
+          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+          { keyword: 'meme', api: 'meme', timeout: 60, description: 'Create meme images' },
+        ],
+      };
+      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      config.reload();
+
+      const mt = config.getKeywordConfig('meme_templates');
+      expect(mt).toBeDefined();
+      expect(mt!.api).toBe('meme');
+      expect(mt!.allowEmptyContent).toBe(true);
+    });
+
     it('should not duplicate already-present built-in keywords', () => {
       // Write a runtime config WITH activity_key already present
       const customKeywords = {
@@ -691,8 +708,9 @@ describe('Config', () => {
       expect(matches).toHaveLength(1);
     });
 
-    it('should backfill allowEmptyContent on existing built-in help keyword from defaults', () => {
-      // Write a runtime config with help that does NOT have allowEmptyContent
+    it('should not backfill optional fields on existing keywords', () => {
+      // Write a runtime config with help that does NOT have allowEmptyContent.
+      // Existing keyword entries should remain unchanged.
       const customKeywords = {
         keywords: [
           { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
@@ -703,10 +721,10 @@ describe('Config', () => {
 
       const helpKw = config.getKeywordConfig('help');
       expect(helpKw).toBeDefined();
-      expect(helpKw!.allowEmptyContent).toBe(true);
+      expect(helpKw!.allowEmptyContent).toBeUndefined();
     });
 
-    it('should overwrite existing allowEmptyContent on built-in keyword with default value', () => {
+    it('should not overwrite existing allowEmptyContent on built-in keyword', () => {
       // Write a runtime config with help that explicitly has allowEmptyContent: false
       const customKeywords = {
         keywords: [
@@ -718,30 +736,27 @@ describe('Config', () => {
 
       const helpKw = config.getKeywordConfig('help');
       expect(helpKw).toBeDefined();
-      // Default values win — default help has allowEmptyContent: true
-      expect(helpKw!.allowEmptyContent).toBe(true);
+      // Existing value is preserved
+      expect(helpKw!.allowEmptyContent).toBe(false);
     });
 
-    it('should backfill abilityWhen from defaults when missing on existing built-in', () => {
-      // help in defaults has no abilityWhen, but if it did this would backfill.
-      // Use a keyword that has abilityWhen in defaults to verify generalized backfill.
-      // We test the mechanism by writing a built-in keyword without abilityWhen.
+    it('should keep existing keyword unchanged while still adding missing defaults', () => {
       const customKeywords = {
         keywords: [
-          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Custom help', builtin: true },
         ],
       };
       fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
       config.reload();
 
       const helpKw = config.getKeywordConfig('help');
+      const activityKeyKw = config.getKeywordConfig('activity_key');
       expect(helpKw).toBeDefined();
-      // allowEmptyContent should be backfilled from defaults
-      expect(helpKw!.allowEmptyContent).toBe(true);
+      expect(helpKw!.description).toBe('Custom help');
+      expect(activityKeyKw).toBeDefined();
     });
 
-    it('should overwrite runtime values with defaults for fields defined in defaults', () => {
-      // Write a runtime config with help that has explicit values for sync fields
+    it('should preserve runtime values for fields that also exist in defaults', () => {
       const customKeywords = {
         keywords: [
           {
@@ -760,14 +775,13 @@ describe('Config', () => {
 
       const helpKw = config.getKeywordConfig('help');
       expect(helpKw).toBeDefined();
-      // Default values win for fields defined in defaults (help default has allowEmptyContent: true)
-      expect(helpKw!.allowEmptyContent).toBe(true);
-      // Fields NOT in the default are retained (help default has no abilityText)
+      // Existing values are retained even when defaults define the same field.
+      expect(helpKw!.allowEmptyContent).toBe(false);
       expect(helpKw!.abilityText).toBe('Custom help text');
     });
 
-    it('should backfill multiple missing fields in a single reload', () => {
-      // Write a runtime config with a bare built-in keyword missing all metadata
+    it('should not backfill multiple missing fields on an existing keyword', () => {
+      // Existing keywords are kept as-is; only truly missing keywords are added.
       const customKeywords = {
         keywords: [
           { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
@@ -778,10 +792,7 @@ describe('Config', () => {
 
       const helpKw = config.getKeywordConfig('help');
       expect(helpKw).toBeDefined();
-      // allowEmptyContent should be backfilled (help default has it)
-      expect(helpKw!.allowEmptyContent).toBe(true);
-      // Other fields defined in defaults should also be backfilled if present
-      // (help default currently only defines allowEmptyContent as optional metadata)
+      expect(helpKw!.allowEmptyContent).toBeUndefined();
     });
   });
 
