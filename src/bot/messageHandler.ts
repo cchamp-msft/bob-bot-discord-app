@@ -699,9 +699,6 @@ class MessageHandler {
       const candidates: ChatMessage[] = [];
 
       for (const msg of sorted) {
-        // Skip bot's system/processing messages
-        if (msg.content === '⏳ Processing your request...') continue;
-
         // Skip other bots unless ALLOW_BOT_INTERACTIONS is enabled
         const isThisBot = msg.author.id === botId;
         if (msg.author.bot && !isThisBot && !config.getAllowBotInteractions()) continue;
@@ -1351,7 +1348,7 @@ class MessageHandler {
       .filter(k => k.enabled !== false && !this.keywordIs(k.keyword, 'help'));
 
     const capabilityLines = keywords.length > 0
-      ? keywords.map(k => `• \`${k.keyword}\` — ${k.description}`).join('\n')
+      ? keywords.map(k => `• \`\!${k.keyword}\` — ${k.description}`).join('\n')
       : 'No commands are currently configured.';
 
     return [
