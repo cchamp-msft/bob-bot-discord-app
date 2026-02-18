@@ -34,6 +34,8 @@ function buildClassificationPrompt(keywords: KeywordConfig[]): string {
     '- Respond with exactly one keyword from the list above, or NONE.',
     '- Do not include quotes or formatting.',
     '- Match based on the user\'s intent, not literal word presence.',
+    '- If the message is a plain answer, clarification question, or conversational filler (not a user request), return NONE.',
+    '- Only return meme when the user is explicitly asking to create/generate a meme image.',
   ].join('\n');
 }
 

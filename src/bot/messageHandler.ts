@@ -19,7 +19,12 @@ import { activityKeyManager } from '../utils/activityKeyManager';
 
 export type { ChatMessage };
 
+class ApiDispatchError extends Error {}
+
 class MessageHandler {
+  private static readonly WORKING_EMOJI = '⏳';
+  private static readonly ERROR_EMOJI = '❌';
+
   /** Timestamp of the last error message sent to Discord (for rate limiting) */
   private lastErrorMessageTime: number = 0;
 
@@ -35,6 +40,51 @@ class MessageHandler {
       return true;
     }
     return false;
+  }
+
+  private async addWorkingReaction(message: Message): Promise<void> {
+    try {
+      if (typeof message.react === 'function') {
+        await message.react(MessageHandler.WORKING_EMOJI);
+      }
+    } catch (error) {
+      logger.logWarn('system', `Failed to add working reaction: ${error}`);
+    }
+  }
+
+  private async removeBotReaction(message: Message, emoji: string): Promise<void> {
+    try {
+      const botUserId = message.client.user?.id;
+      if (!botUserId || !message.reactions?.resolve) return;
+
+      const reaction = message.reactions.resolve(emoji);
+      if (reaction?.users?.remove) {
+        await reaction.users.remove(botUserId);
+      }
+    } catch (error) {
+      logger.logWarn('system', `Failed to remove reaction ${emoji}: ${error}`);
+    }
+  }
+
+  private async markRequestSucceeded(message: Message): Promise<void> {
+    await this.removeBotReaction(message, MessageHandler.WORKING_EMOJI);
+  }
+
+  private async markRequestFailed(message: Message): Promise<void> {
+    await this.removeBotReaction(message, MessageHandler.WORKING_EMOJI);
+
+    try {
+      if (typeof message.react === 'function') {
+        await message.react(MessageHandler.ERROR_EMOJI);
+      }
+    } catch (error) {
+      logger.logWarn('system', `Failed to add error reaction: ${error}`);
+    }
+  }
+
+  private isLikelyMemeRequest(content: string): boolean {
+    const t = content.toLowerCase();
+    return /\b(meme|memegen|image macro|caption this|template)\b/.test(t);
   }
 
   async handleMessage(message: Message): Promise<void> {
@@ -133,6 +183,7 @@ class MessageHandler {
     // Messages without the command prefix go through two-stage Ollama evaluation.
     let keywordConfig = this.findKeyword(content);
     const keywordMatched = keywordConfig !== undefined;
+    const startsWithCommandPrefix = content.trim().startsWith(COMMAND_PREFIX);
 
     // Emit activity event with cleaned message content (no usernames or IDs).
     // Suppress for standalone activity_key requests — those should not appear
@@ -275,17 +326,7 @@ class MessageHandler {
       `[${keywordConfig.keyword}] ${content}`
     );
 
-    // Send inline processing message as a reply
-    let processingMessage: Message;
-    try {
-      processingMessage = await message.reply('⏳ Processing your request...');
-    } catch (error) {
-      logger.logError(
-        requester,
-        `Failed to send processing message: ${error}`
-      );
-      return;
-    }
+    await this.addWorkingReaction(message);
 
     try {
       if (apiKeywordMatched) {
@@ -308,7 +349,7 @@ class MessageHandler {
         await this.dispatchResponse(
           routedResult.finalResponse,
           routedResult.finalApi,
-          processingMessage,
+          message,
           requester,
           isDM
         );
@@ -317,13 +358,16 @@ class MessageHandler {
         await this.executeWithTwoStageEvaluation(
           content,
           keywordConfig,
-          processingMessage,
+          message,
           requester,
           conversationHistory,
           isDM,
-          botDisplayName
+          botDisplayName,
+          startsWithCommandPrefix && !keywordMatched
         );
       }
+
+      await this.markRequestSucceeded(message);
     } catch (error) {
       const errorMsg =
         error instanceof Error ? error.message : 'Unknown error';
@@ -332,13 +376,19 @@ class MessageHandler {
       logger.logError(requester, errorMsg);
 
       // Emit sanitised error activity event
-      activityEvents.emitError('I couldn\'t complete that request');
-
-      // Edit processing message with friendly error
-      if (this.canSendErrorMessage()) {
-        await processingMessage.edit(`⚠️ ${config.getErrorMessage()}`);
+      if (error instanceof ApiDispatchError) {
+        activityEvents.emitError('I couldn\'t get a response from the API');
       } else {
-        await processingMessage.edit('⚠️ An error occurred processing your request.');
+        activityEvents.emitError('I couldn\'t complete that request');
+      }
+
+      await this.markRequestFailed(message);
+
+      // Reply with friendly error
+      if (this.canSendErrorMessage()) {
+        await message.reply(`⚠️ ${config.getErrorMessage()}`);
+      } else {
+        await message.reply('⚠️ An error occurred processing your request.');
       }
     }
   }
@@ -810,11 +860,12 @@ class MessageHandler {
   private async executeWithTwoStageEvaluation(
     content: string,
     keywordConfig: KeywordConfig,
-    processingMessage: Message,
+    sourceMessage: Message,
     requester: string,
     conversationHistory: ChatMessage[],
     isDM: boolean,
-    botDisplayName?: string
+    botDisplayName?: string,
+    strictNoApiRoutingFromInference: boolean = false
   ): Promise<void> {
     const timeout = keywordConfig.timeout || config.getDefaultTimeout();
 
@@ -887,7 +938,7 @@ class MessageHandler {
     ) as OllamaResponse;
 
     if (!ollamaResult.success) {
-      await this.dispatchResponse(ollamaResult, 'ollama', processingMessage, requester, isDM);
+      await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
       return;
     }
 
@@ -898,6 +949,13 @@ class MessageHandler {
       const parseResult = parseFirstLineKeyword(ollamaText);
 
       if (parseResult.matched && parseResult.keywordConfig) {
+        if (strictNoApiRoutingFromInference) {
+          logger.logWarn('system',
+            `TWO-STAGE: Ignoring inferred keyword "${parseResult.keywordConfig.keyword}" because input was an unknown command-style message`);
+          await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
+          return;
+        }
+
         let routedInput = (parseResult.inferredInput && parseResult.inferredInput.trim().length > 0)
           ? parseResult.inferredInput
           : content;
@@ -934,7 +992,7 @@ class MessageHandler {
         await this.dispatchResponse(
           apiResult.finalResponse,
           apiResult.finalApi,
-          processingMessage,
+          sourceMessage,
           requester,
           isDM
         );
@@ -948,6 +1006,21 @@ class MessageHandler {
 
       if (secondClassification.keywordConfig && secondClassification.keywordConfig.api !== 'ollama') {
         const matchedKw = secondClassification.keywordConfig;
+
+        if (strictNoApiRoutingFromInference) {
+          logger.logWarn('system',
+            `TWO-STAGE: Ignoring fallback keyword "${matchedKw.keyword}" because input was an unknown command-style message`);
+          await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
+          return;
+        }
+
+        if (matchedKw.api === 'meme' && !this.isLikelyMemeRequest(content)) {
+          logger.logWarn('system',
+            `TWO-STAGE: Suppressing fallback meme routing for non-meme user content: "${content.substring(0, 120)}"`);
+          await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
+          return;
+        }
+
         logger.log('success', 'system',
           `TWO-STAGE: Fallback classifier matched "${matchedKw.keyword}" — executing ${matchedKw.api} API`);
         activityEvents.emitRoutingDecision(matchedKw.api, matchedKw.keyword, 'two-stage-classify');
@@ -983,7 +1056,7 @@ class MessageHandler {
         await this.dispatchResponse(
           apiResult.finalResponse,
           apiResult.finalApi,
-          processingMessage,
+          sourceMessage,
           requester,
           isDM
         );
@@ -993,7 +1066,7 @@ class MessageHandler {
 
     // No API keyword found — use Ollama response as-is
     logger.log('success', 'system', 'TWO-STAGE: No API intent detected in Ollama response — returning as direct chat');
-    await this.dispatchResponse(ollamaResult, 'ollama', processingMessage, requester, isDM);
+    await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
   }
 
   /**
@@ -1003,35 +1076,27 @@ class MessageHandler {
   private async dispatchResponse(
     response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse,
     api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme',
-    processingMessage: Message,
+    sourceMessage: Message,
     requester: string,
     isDM: boolean
   ): Promise<void> {
     if (!response.success) {
       const errorDetail = response.error ?? 'Unknown API error';
-      logger.logError(requester, errorDetail);
-      activityEvents.emitError('I couldn\'t get a response from the API');
-
-      if (this.canSendErrorMessage()) {
-        await processingMessage.edit(`⚠️ ${config.getErrorMessage()}`);
-      } else {
-        await processingMessage.edit('⚠️ An error occurred processing your request.');
-      }
-      return;
+      throw new ApiDispatchError(errorDetail);
     }
 
     if (api === 'comfyui') {
-      await this.handleComfyUIResponse(response as ComfyUIResponse, processingMessage, requester, isDM);
+      await this.handleComfyUIResponse(response as ComfyUIResponse, sourceMessage, requester, isDM);
     } else if (api === 'accuweather') {
-      await this.handleAccuWeatherResponse(response as AccuWeatherResponse, processingMessage, requester, isDM);
+      await this.handleAccuWeatherResponse(response as AccuWeatherResponse, sourceMessage, requester, isDM);
     } else if (api === 'nfl') {
-      await this.handleNFLResponse(response as NFLResponse, processingMessage, requester, isDM);
+      await this.handleNFLResponse(response as NFLResponse, sourceMessage, requester, isDM);
     } else if (api === 'serpapi') {
-      await this.handleSerpApiResponse(response as SerpApiResponse, processingMessage, requester, isDM);
+      await this.handleSerpApiResponse(response as SerpApiResponse, sourceMessage, requester, isDM);
     } else if (api === 'meme') {
-      await this.handleMemeResponse(response as MemeResponse, processingMessage, requester, isDM);
+      await this.handleMemeResponse(response as MemeResponse, sourceMessage, requester, isDM);
     } else {
-      await this.handleOllamaResponse(response as OllamaResponse, processingMessage, requester, isDM);
+      await this.handleOllamaResponse(response as OllamaResponse, sourceMessage, requester, isDM);
     }
   }
 
@@ -1107,12 +1172,12 @@ class MessageHandler {
 
   private async handleComfyUIResponse(
     apiResult: ComfyUIResponse,
-    processingMessage: Message,
+    sourceMessage: Message,
     requester: string,
     _isDM: boolean
   ): Promise<void> {
     if (!apiResult.data?.images || apiResult.data.images.length === 0) {
-      await processingMessage.edit('No images were generated.');
+      await sourceMessage.reply('No images were generated.');
       return;
     }
 
@@ -1171,7 +1236,7 @@ class MessageHandler {
     }
 
     if (savedCount === 0) {
-      await processingMessage.edit('Images were generated but could not be saved or displayed.');
+      await sourceMessage.reply('Images were generated but could not be saved or displayed.');
       return;
     }
 
@@ -1183,8 +1248,8 @@ class MessageHandler {
     const hasVisualContent = !!embed || firstBatch.length > 0;
     const fallbackContent = hasVisualContent ? '' : `✅ ${savedCount} image(s) generated and saved.`;
 
-    // Edit the processing message with optional embed and first batch of attachments
-    await processingMessage.edit({
+    // Send first response message with optional embed and first batch of attachments
+    await sourceMessage.reply({
       content: fallbackContent,
       embeds: embed ? [embed] : [],
       ...(firstBatch.length > 0 ? { files: firstBatch } : {}),
@@ -1193,8 +1258,8 @@ class MessageHandler {
     // Send remaining attachments as follow-up messages in batches
     for (let i = maxPerMessage; i < attachments.length; i += maxPerMessage) {
       const batch = attachments.slice(i, i + maxPerMessage);
-      if ('send' in processingMessage.channel) {
-        await processingMessage.channel.send({ content: '📎 Additional images', files: batch });
+      if ('send' in sourceMessage.channel) {
+        await sourceMessage.channel.send({ content: '📎 Additional images', files: batch });
       } else {
         logger.logError(requester, `Cannot send overflow attachments: channel does not support send`);
       }
@@ -1211,7 +1276,7 @@ class MessageHandler {
 
   private async handleOllamaResponse(
     apiResult: OllamaResponse,
-    processingMessage: Message,
+    sourceMessage: Message,
     requester: string,
     isDM: boolean
   ): Promise<void> {
@@ -1220,13 +1285,13 @@ class MessageHandler {
     // Split into Discord-safe chunks (newline-aware)
     const chunks = chunkText(text);
 
-    // Edit processing message with first chunk as plain text
-    await processingMessage.edit({ content: chunks[0], embeds: [] });
+    // Send first chunk as a reply
+    await sourceMessage.reply({ content: chunks[0], embeds: [] });
 
     // Send remaining chunks as follow-up messages in the same channel
     for (let i = 1; i < chunks.length; i++) {
-      if ('send' in processingMessage.channel) {
-        await processingMessage.channel.send(chunks[i]);
+      if ('send' in sourceMessage.channel) {
+        await sourceMessage.channel.send(chunks[i]);
       }
     }
 
@@ -1241,7 +1306,7 @@ class MessageHandler {
 
   private async handleAccuWeatherResponse(
     apiResult: AccuWeatherResponse,
-    processingMessage: Message,
+    sourceMessage: Message,
     requester: string,
     isDM: boolean
   ): Promise<void> {
@@ -1250,13 +1315,13 @@ class MessageHandler {
     // Split into Discord-safe chunks (newline-aware)
     const chunks = chunkText(text);
 
-    // Edit processing message with first chunk as plain text
-    await processingMessage.edit({ content: chunks[0], embeds: [] });
+    // Send first chunk as a reply
+    await sourceMessage.reply({ content: chunks[0], embeds: [] });
 
     // Send remaining chunks as follow-up messages in the same channel
     for (let i = 1; i < chunks.length; i++) {
-      if ('send' in processingMessage.channel) {
-        await processingMessage.channel.send(chunks[i]);
+      if ('send' in sourceMessage.channel) {
+        await sourceMessage.channel.send(chunks[i]);
       }
     }
 
@@ -1271,7 +1336,7 @@ class MessageHandler {
 
   private async handleNFLResponse(
     apiResult: NFLResponse,
-    processingMessage: Message,
+    sourceMessage: Message,
     requester: string,
     isDM: boolean
   ): Promise<void> {
@@ -1280,13 +1345,13 @@ class MessageHandler {
     // Split into Discord-safe chunks (newline-aware)
     const chunks = chunkText(text);
 
-    // Edit processing message with first chunk as plain text
-    await processingMessage.edit({ content: chunks[0], embeds: [] });
+    // Send first chunk as a reply
+    await sourceMessage.reply({ content: chunks[0], embeds: [] });
 
     // Send remaining chunks as follow-up messages in the same channel
     for (let i = 1; i < chunks.length; i++) {
-      if ('send' in processingMessage.channel) {
-        await processingMessage.channel.send(chunks[i]);
+      if ('send' in sourceMessage.channel) {
+        await sourceMessage.channel.send(chunks[i]);
       }
     }
 
@@ -1304,7 +1369,7 @@ class MessageHandler {
    */
   private async handleSerpApiResponse(
     apiResult: SerpApiResponse,
-    processingMessage: Message,
+    sourceMessage: Message,
     requester: string,
     isDM: boolean
   ): Promise<void> {
@@ -1313,13 +1378,13 @@ class MessageHandler {
     // Split into Discord-safe chunks (newline-aware)
     const chunks = chunkText(text);
 
-    // Edit processing message with first chunk as plain text
-    await processingMessage.edit({ content: chunks[0], embeds: [], allowedMentions: { parse: [] } });
+    // Send first chunk as a reply
+    await sourceMessage.reply({ content: chunks[0], embeds: [], allowedMentions: { parse: [] } });
 
     // Send remaining chunks as follow-up messages in the same channel
     for (let i = 1; i < chunks.length; i++) {
-      if ('send' in processingMessage.channel) {
-        await processingMessage.channel.send({ content: chunks[i], allowedMentions: { parse: [] } });
+      if ('send' in sourceMessage.channel) {
+        await sourceMessage.channel.send({ content: chunks[i], allowedMentions: { parse: [] } });
       }
     }
 
@@ -1338,7 +1403,7 @@ class MessageHandler {
    */
   private async handleMemeResponse(
     apiResult: MemeResponse,
-    processingMessage: Message,
+    sourceMessage: Message,
     requester: string,
     isDM: boolean
   ): Promise<void> {
@@ -1347,15 +1412,15 @@ class MessageHandler {
 
     if (imageUrl) {
       // Post the image URL directly so Discord auto-embeds it
-      await processingMessage.edit({ content: imageUrl, embeds: [], allowedMentions: { parse: [] } });
+      await sourceMessage.reply({ content: imageUrl, embeds: [], allowedMentions: { parse: [] } });
       activityEvents.emitBotReply('meme', imageUrl, isDM);
       logger.logReply(requester, `Meme generated: ${imageUrl}`, imageUrl);
     } else {
       const chunks = chunkText(text);
-      await processingMessage.edit({ content: chunks[0], embeds: [], allowedMentions: { parse: [] } });
+      await sourceMessage.reply({ content: chunks[0], embeds: [], allowedMentions: { parse: [] } });
       for (let i = 1; i < chunks.length; i++) {
-        if ('send' in processingMessage.channel) {
-          await processingMessage.channel.send({ content: chunks[i], allowedMentions: { parse: [] } });
+        if ('send' in sourceMessage.channel) {
+          await sourceMessage.channel.send({ content: chunks[i], allowedMentions: { parse: [] } });
         }
       }
       activityEvents.emitBotReply('meme', text, isDM);

@@ -28,6 +28,7 @@ jest.mock('../src/utils/config', () => ({
   config: {
     getMemeEndpoint: jest.fn(() => 'https://api.memegen.link'),
     getMemeEnabled: jest.fn(() => true),
+    getMemeLoggingDebug: jest.fn(() => false),
   },
 }));
 

@@ -781,9 +781,7 @@ describe('MessageHandler help keyword handling (model path)', () => {
     const msg = createMentionedMessage('<@bot-123> !help');
     await messageHandler.handleMessage(msg);
 
-    expect(msg.reply).toHaveBeenNthCalledWith(1, '⏳ Processing your request...');
-    const processingMessage = await msg.reply.mock.results[0].value;
-    expect(processingMessage.edit).toHaveBeenCalledWith(
+    expect(msg.reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: 'Here is what I can help with.',
       })
@@ -861,7 +859,9 @@ describe('MessageHandler built-in help keyword handling', () => {
     const msg = createMentionedMessage('<@bot-123> help');
     await messageHandler.handleMessage(msg);
 
-    expect(msg.reply).toHaveBeenCalledWith('⏳ Processing your request...');
+    expect(msg.reply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: 'I can help you!' })
+    );
   });
 
   it('should not trigger help when built-in help is disabled', async () => {
@@ -883,8 +883,9 @@ describe('MessageHandler built-in help keyword handling', () => {
     await messageHandler.handleMessage(msg);
 
     // Should go through normal chat flow, not the help handler
-    // The first reply call is the processing message
-    expect(msg.reply).toHaveBeenCalledWith('⏳ Processing your request...');
+    expect(msg.reply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: 'I can help you!' })
+    );
   });
 });
 
@@ -1068,9 +1069,9 @@ describe('MessageHandler handleComfyUIResponse fallback content', () => {
     jest.clearAllMocks();
   });
 
-  function createProcessingMessage() {
+  function createSourceMessage() {
     return {
-      edit: jest.fn().mockResolvedValue(undefined),
+      reply: jest.fn().mockResolvedValue(undefined),
       channel: { send: jest.fn().mockResolvedValue(undefined) },
     };
   }
@@ -1085,15 +1086,15 @@ describe('MessageHandler handleComfyUIResponse fallback content', () => {
     });
     fileHandler.shouldAttachFile.mockReturnValue(false); // too large
 
-    const processing = createProcessingMessage();
+    const source = createSourceMessage();
     const apiResult = {
       success: true,
       data: { images: ['http://comfyui/img.png'] },
     };
 
-    await (messageHandler as any).handleComfyUIResponse(apiResult, processing, 'testuser');
+    await (messageHandler as any).handleComfyUIResponse(apiResult, source, 'testuser');
 
-    expect(processing.edit).toHaveBeenCalledWith(
+    expect(source.reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining('1 image(s) generated and saved'),
       })
@@ -1110,15 +1111,15 @@ describe('MessageHandler handleComfyUIResponse fallback content', () => {
     });
     fileHandler.shouldAttachFile.mockReturnValue(false);
 
-    const processing = createProcessingMessage();
+    const source = createSourceMessage();
     const apiResult = {
       success: true,
       data: { images: ['http://comfyui/img.png'] },
     };
 
-    await (messageHandler as any).handleComfyUIResponse(apiResult, processing, 'testuser');
+    await (messageHandler as any).handleComfyUIResponse(apiResult, source, 'testuser');
 
-    expect(processing.edit).toHaveBeenCalledWith(
+    expect(source.reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: '',
       })
@@ -1137,15 +1138,15 @@ describe('MessageHandler handleComfyUIResponse fallback content', () => {
     fileHandler.shouldAttachFile.mockReturnValue(true);
     fileHandler.readFile.mockReturnValue(Buffer.from('fake'));
 
-    const processing = createProcessingMessage();
+    const source = createSourceMessage();
     const apiResult = {
       success: true,
       data: { images: ['http://comfyui/img.png'] },
     };
 
-    await (messageHandler as any).handleComfyUIResponse(apiResult, processing, 'testuser');
+    await (messageHandler as any).handleComfyUIResponse(apiResult, source, 'testuser');
 
-    expect(processing.edit).toHaveBeenCalledWith(
+    expect(source.reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: '',
       })
@@ -1313,8 +1314,7 @@ describe('MessageHandler first-word keyword routing', () => {
     const msg = createMentionedMessage('<@bot-123> !generate something');
     await messageHandler.handleMessage(msg);
 
-    const processingMessage = await msg.reply.mock.results[0].value;
-    expect(processingMessage.edit).toHaveBeenCalledWith(
+    expect(msg.reply).toHaveBeenCalledWith(
       expect.stringContaining('⚠️')
     );
   });
@@ -1473,14 +1473,12 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
     const msg = createMentionedMessage('<@bot-123> !second opinion niche topic');
     await messageHandler.handleMessage(msg);
 
-    const processingMessage = await msg.reply.mock.results[0].value;
-    // The edit call should contain the structured fallback, not ⚠️ generic error
-    expect(processingMessage.edit).toHaveBeenCalledWith(
+    expect(msg.reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining('⚠️ Google did not return an AI Overview'),
       })
     );
-    expect(processingMessage.edit).not.toHaveBeenCalledWith(
+    expect(msg.reply).not.toHaveBeenCalledWith(
       expect.stringContaining('Pipeline failed')
     );
   });
@@ -1501,8 +1499,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
     const msg = createMentionedMessage('<@bot-123> !second opinion restricted');
     await messageHandler.handleMessage(msg);
 
-    const processingMessage = await msg.reply.mock.results[0].value;
-    expect(processingMessage.edit).toHaveBeenCalledWith(
+    expect(msg.reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining('⚠️ Google AI Overview returned an error'),
       })
@@ -1519,8 +1516,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
     const msg = createMentionedMessage('<@bot-123> !second opinion test');
     await messageHandler.handleMessage(msg);
 
-    const processingMessage = await msg.reply.mock.results[0].value;
-    expect(processingMessage.edit).toHaveBeenCalledWith(
+    expect(msg.reply).toHaveBeenCalledWith(
       expect.stringContaining('⚠️')
     );
   });
@@ -1579,9 +1575,7 @@ describe('MessageHandler SerpAPI find content keyword routing', () => {
     const msg = createMentionedMessage('<@bot-123> !find content TypeScript generics');
     await messageHandler.handleMessage(msg);
 
-    expect(msg.reply).toHaveBeenNthCalledWith(1, '⏳ Processing your request...');
-    const processingMessage = await msg.reply.mock.results[0].value;
-    expect(processingMessage.edit).toHaveBeenCalledWith(
+    expect(msg.reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining('Search results for'),
       })
@@ -1820,10 +1814,66 @@ describe('MessageHandler two-stage evaluation', () => {
     // Should NOT have called executeRoutedRequest
     expect(mockExecuteRoutedRequest).not.toHaveBeenCalled();
 
-    // Processing message should show the Ollama response
-    const processingMessage = await msg.reply.mock.results[0].value;
-    expect(processingMessage.edit).toHaveBeenCalledWith(
+    expect(msg.reply).toHaveBeenCalledWith(
       expect.objectContaining({ content: 'The meaning of life is 42.' })
+    );
+  });
+
+  it('should not route fallback API when user input is an unknown command-style message', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Which meme template (and any top/bottom text) should I use?' },
+    });
+
+    const memeKeyword = {
+      keyword: '!meme',
+      api: 'meme' as const,
+      timeout: 60,
+      description: 'Create meme images',
+    };
+
+    mockClassifyIntent.mockResolvedValueOnce({
+      keywordConfig: memeKeyword,
+      wasClassified: true,
+    });
+
+    const msg = createMentionedMessage('<@bot-123> !meme_template');
+    await messageHandler.handleMessage(msg);
+
+    expect(mockExecuteRoutedRequest).not.toHaveBeenCalled();
+    expect(msg.reply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: 'Which meme template (and any top/bottom text) should I use?' })
+    );
+  });
+
+  it('should suppress fallback meme routing when original user content is not meme intent', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'The square root is 16.' },
+    });
+
+    const memeKeyword = {
+      keyword: '!meme',
+      api: 'meme' as const,
+      timeout: 60,
+      description: 'Create meme images',
+    };
+
+    mockClassifyIntent.mockResolvedValueOnce({
+      keywordConfig: memeKeyword,
+      wasClassified: true,
+    });
+
+    const msg = createMentionedMessage('<@bot-123> what is the square root of 256');
+    await messageHandler.handleMessage(msg);
+
+    expect(mockExecuteRoutedRequest).not.toHaveBeenCalled();
+    expect(msg.reply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: 'The square root is 16.' })
     );
   });
 

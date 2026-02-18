@@ -421,6 +421,14 @@ class Config {
     return process.env.MEME_ENABLED !== 'false';
   }
 
+  /**
+   * Whether verbose meme inference logging is enabled.
+   * When true, full meme inference prompts and parsing context are logged.
+   */
+  getMemeLoggingDebug(): boolean {
+    return process.env.MEME_LOGGING_DEBUG === 'true';
+  }
+
   // ── SerpAPI configuration ────────────────────────────────
 
   getSerpApiKey(): string {
@@ -895,6 +903,7 @@ class Config {
     const prevNflEnabled = this.getNflEnabled();
     const prevMemeEndpoint = this.getMemeEndpoint();
     const prevMemeEnabled = this.getMemeEnabled();
+    const prevMemeLoggingDebug = this.getMemeLoggingDebug();
     const prevSerpApiKey = this.getSerpApiKey();
     const prevSerpApiEndpoint = this.getSerpApiEndpoint();
     const prevSerpApiHl = this.getSerpApiHl();
@@ -970,6 +979,7 @@ class Config {
     if (this.getNflEnabled() !== prevNflEnabled) reloaded.push('NFL_ENABLED');
     if (this.getMemeEndpoint() !== prevMemeEndpoint) reloaded.push('MEME_BASE_URL');
     if (this.getMemeEnabled() !== prevMemeEnabled) reloaded.push('MEME_ENABLED');
+    if (this.getMemeLoggingDebug() !== prevMemeLoggingDebug) reloaded.push('MEME_LOGGING_DEBUG');
     if (this.getSerpApiKey() !== prevSerpApiKey) reloaded.push('SERPAPI_API_KEY');
     if (this.getSerpApiEndpoint() !== prevSerpApiEndpoint) reloaded.push('SERPAPI_ENDPOINT');
     if (this.getSerpApiHl() !== prevSerpApiHl) reloaded.push('SERPAPI_HL');
@@ -1083,6 +1093,9 @@ class Config {
       },
       nflLogging: {
         level: this.getNflLoggingLevel(),
+      },
+      memeLogging: {
+        debug: this.getMemeLoggingDebug(),
       },
       abilityRetry: {
         enabled: this.getAbilityRetryEnabled(),

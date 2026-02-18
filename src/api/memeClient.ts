@@ -29,6 +29,10 @@ class MemeClient {
   private templates: MemeTemplate[] = [];
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
+  private isMemeDebugEnabled(): boolean {
+    return config.getMemeLoggingDebug();
+  }
+
   constructor() {
     this.client = this.buildClient();
   }
@@ -226,6 +230,10 @@ class MemeClient {
     }
 
     try {
+      if (this.isMemeDebugEnabled()) {
+        logger.log('success', 'meme', `MEME-INFERENCE: Raw routed content: "${content}"`);
+      }
+
       const parsed = this.parseInput(content);
       if (!parsed) {
         logger.logWarn('meme',
@@ -240,6 +248,10 @@ class MemeClient {
       const { template, lines } = parsed;
       logger.log('success', 'meme',
         `MEME-INFERENCE: Matched template "${template.id}" (${template.name}) with ${lines.length} text line(s)`);
+      if (this.isMemeDebugEnabled()) {
+        logger.log('success', 'meme',
+          `MEME-INFERENCE: Final parsed payload: template="${template.id}", lines=${JSON.stringify(lines)}`);
+      }
       const imageUrl = this.buildMemeUrl(template.id, lines);
 
       // Validate the URL is reachable (HEAD request) with abort support
@@ -286,9 +298,18 @@ class MemeClient {
 
     if (parts.length === 0) return null;
 
+    if (this.isMemeDebugEnabled()) {
+      logger.log('success', 'meme', `MEME-INFERENCE: Parsed input segments: ${JSON.stringify(parts)}`);
+    }
+
     const templateQuery = parts[0];
     const template = this.findTemplate(templateQuery);
-    if (!template) return null;
+    if (!template) {
+      if (this.isMemeDebugEnabled()) {
+        logger.log('success', 'meme', `MEME-INFERENCE: No template match for query "${templateQuery}"`);
+      }
+      return null;
+    }
 
     const lines = parts.slice(1);
 

@@ -625,6 +625,13 @@
             <option value="true">On</option>
           </select>
         </div>
+        <div class="field narrow">
+          <label title="When enabled, meme inference logs include the full template prompt and parsed payload">Debug Logging ℹ️</label>
+          <select id="meme_logging_debug" data-env="MEME_LOGGING_DEBUG" onchange="markDirty()">
+            <option value="false">Off</option>
+            <option value="true">On</option>
+          </select>
+        </div>
         <div id="memeTestResult" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
       </div>
     </section>
@@ -1102,6 +1109,7 @@ flowchart LR
       document.getElementById('nfl_enabled').value = cfg.apis.nflEnabled ? 'true' : 'false';
       document.getElementById('nfl_endpoint').value = cfg.apis.nfl || '';
       document.getElementById('meme_enabled').value = cfg.apis.memeEnabled ? 'true' : 'false';
+      document.getElementById('meme_logging_debug').value = cfg.memeLogging?.debug ? 'true' : 'false';
 
       // Populate SerpAPI fields
       document.getElementById('serpapi_endpoint').value = cfg.apis.serpapi || '';

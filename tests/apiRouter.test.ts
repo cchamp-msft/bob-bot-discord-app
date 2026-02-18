@@ -15,6 +15,7 @@ jest.mock('../src/utils/config', () => ({
     getKeywords: jest.fn(() => []),
     getSerpApiEndpoint: jest.fn(() => 'https://serpapi.com'),
     getSerpApiKey: jest.fn(() => ''),
+    getMemeLoggingDebug: jest.fn(() => false),
     getAbilityRetryEnabled: jest.fn(() => false),
     getAbilityRetryMaxRetries: jest.fn(() => 2),
     getAbilityRetryModel: jest.fn(() => 'llama2'),
@@ -1700,6 +1701,7 @@ describe('ApiRouter', () => {
 
       it('should log MEME-INFERENCE system prompt and user prompt', async () => {
         const { logger } = require('../src/utils/logger');
+        (config.getMemeLoggingDebug as jest.Mock).mockReturnValue(true);
         mockExecute.mockResolvedValueOnce({
           success: true,
           data: { text: 'drake | studying | memeing' },
@@ -1708,12 +1710,13 @@ describe('ApiRouter', () => {
         await inferAbilityParameters(memeKeyword, 'make a meme about studying', 'testuser');
 
         const logCalls = (logger.log as jest.Mock).mock.calls.map((c: any[]) => c[2]);
-        expect(logCalls.some((msg: string) => msg.includes('MEME-INFERENCE: System prompt'))).toBe(true);
-        expect(logCalls.some((msg: string) => msg.includes('MEME-INFERENCE: User prompt'))).toBe(true);
+        expect(logCalls.some((msg: string) => msg.includes('MEME-INFERENCE: Full system prompt'))).toBe(true);
+        expect(logCalls.some((msg: string) => msg.includes('MEME-INFERENCE: Full user prompt'))).toBe(true);
       });
 
       it('should log MEME-INFERENCE raw response and resolved inference', async () => {
         const { logger } = require('../src/utils/logger');
+        (config.getMemeLoggingDebug as jest.Mock).mockReturnValue(true);
         mockExecute.mockResolvedValueOnce({
           success: true,
           data: { text: 'drake | studying for exams | browsing memes' },
@@ -1730,6 +1733,7 @@ describe('ApiRouter', () => {
 
       it('should not log MEME-INFERENCE when inference returns NONE', async () => {
         const { logger } = require('../src/utils/logger');
+        (config.getMemeLoggingDebug as jest.Mock).mockReturnValue(true);
         mockExecute.mockResolvedValueOnce({
           success: true,
           data: { text: 'NONE' },

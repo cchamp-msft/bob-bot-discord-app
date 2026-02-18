@@ -479,6 +479,26 @@ describe('Config', () => {
     });
   });
 
+  describe('meme logging config', () => {
+    const { config } = require('../src/utils/config');
+
+    it('getMemeLoggingDebug should default to false when env not set', () => {
+      delete process.env.MEME_LOGGING_DEBUG;
+      expect(config.getMemeLoggingDebug()).toBe(false);
+    });
+
+    it('getMemeLoggingDebug should return true when env is "true"', () => {
+      process.env.MEME_LOGGING_DEBUG = 'true';
+      expect(config.getMemeLoggingDebug()).toBe(true);
+    });
+
+    it('getPublicConfig should include memeLogging.debug', () => {
+      process.env.MEME_LOGGING_DEBUG = 'true';
+      const pub = config.getPublicConfig();
+      expect(pub.memeLogging).toEqual({ debug: true });
+    });
+  });
+
   describe('getKeywordConfig', () => {
     const { config } = require('../src/utils/config');
 

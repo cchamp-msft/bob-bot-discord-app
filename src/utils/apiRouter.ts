@@ -76,6 +76,8 @@ function buildInferenceSystemPrompt(keywordConfig: KeywordConfig): string {
       '3) If the user names a specific template, use that template id.',
       '4) The number of text lines must match the template\'s expected line count.',
       '5) If no meme can be inferred at all, output exactly: NONE',
+      '6) Allowed output formatting: plain text only; no markdown, no code fences, no bullets, no JSON, no XML.',
+      '7) Never output explanatory text. Return exactly one line only.',
       templateBlock,
     ].join('\n');
   }
@@ -95,6 +97,10 @@ function buildInferenceSystemPrompt(keywordConfig: KeywordConfig): string {
  * Build the user prompt for parameter inference.
  */
 function buildInferenceUserPrompt(keywordConfig: KeywordConfig, content: string): string {
+  const extractionLine = keywordConfig.api === 'meme'
+    ? 'Extract meme parameters and output ONLY: templateId | top text | bottom text'
+    : 'Extract the required parameter from the user message above. Output ONLY the value.';
+
   return [
     '<ability_context>',
     renderAbilityInputsForPrompt(keywordConfig),
@@ -102,7 +108,7 @@ function buildInferenceUserPrompt(keywordConfig: KeywordConfig, content: string)
     '',
     `<user_message>${escapeXmlContent(content)}</user_message>`,
     '',
-    'Extract the required parameter from the user message above. Output ONLY the value.',
+    extractionLine,
   ].join('\n');
 }
 
@@ -131,11 +137,11 @@ export async function inferAbilityParameters(
     `INFER-PARAMS: Inferring parameters for "${keywordConfig.keyword}" from user content`);
 
   // Enhanced logging for meme inference
-  if (keywordConfig.api === 'meme') {
+  if (keywordConfig.api === 'meme' && config.getMemeLoggingDebug()) {
     logger.log('success', 'system',
-      `MEME-INFERENCE: System prompt (${systemPrompt.length} chars): ${systemPrompt.substring(0, 300)}${systemPrompt.length > 300 ? '…' : ''}`);
+      `MEME-INFERENCE: Full system prompt (${systemPrompt.length} chars):\n${systemPrompt}`);
     logger.log('success', 'system',
-      `MEME-INFERENCE: User prompt: ${userPrompt.substring(0, 500)}${userPrompt.length > 500 ? '…' : ''}`);
+      `MEME-INFERENCE: Full user prompt (${userPrompt.length} chars):\n${userPrompt}`);
   }
 
   try {
@@ -181,8 +187,8 @@ export async function inferAbilityParameters(
     logger.log('success', 'system',
       `INFER-PARAMS: Inferred "${inferred}" for "${keywordConfig.keyword}"`);
 
-    // Enhanced logging for meme inference — log the full Ollama response
-    if (keywordConfig.api === 'meme') {
+    // Enhanced logging for meme inference — full output only when enabled
+    if (keywordConfig.api === 'meme' && config.getMemeLoggingDebug()) {
       logger.log('success', 'system',
         `MEME-INFERENCE: Ollama raw response: "${raw}"`);
       logger.log('success', 'system',

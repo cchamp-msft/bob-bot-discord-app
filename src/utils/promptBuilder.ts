@@ -188,7 +188,11 @@ export function buildSystemPrompt(routableKeywords?: KeywordConfig[]): string {
       '4. No data needed → answer normally in character.\n' +
       '5. Never explain rules/keywords unless directly asked.\n' +
       '6. Keep every reply short, concise, and to the point.\n' +
-      '7. The <participants> block identifies who is in the conversation. You are <bot_name>. The person asking the question is <requester_name>. Never confuse your identity with theirs or with any <third_parties>.'
+      '7. The <participants> block identifies who is in the conversation. You are <bot_name>. The person asking the question is <requester_name>. Never confuse your identity with theirs or with any <third_parties>.\n' +
+      '8. Output formatting rules:\n' +
+      `   - Ability directive format (only when invoking an ability): ${COMMAND_PREFIX}<keyword> [parameters], on a single line, with no extra text.\n` +
+      '   - If not invoking an ability, return plain text only.\n' +
+      '   - Do NOT use Markdown code fences, XML tags, JSON wrappers, or LaTeX/math wrappers unless the user explicitly asks for that format.'
     );
   }
 

@@ -422,6 +422,9 @@ export interface PublicConfig {
   nflLogging: {
     level: number;
   };
+  memeLogging: {
+    debug: boolean;
+  };
   abilityRetry: {
     enabled: boolean;
     /** Max number of retries AFTER the initial attempt. */
