@@ -1808,6 +1808,48 @@ describe('MessageHandler two-stage evaluation', () => {
     );
   });
 
+  it('should send commentary prelude and inline-replace directive keyword before routed response', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+
+    const weatherKeyword = {
+      keyword: '!weather',
+      api: 'accuweather' as const,
+      timeout: 60,
+      description: 'Get weather',
+    };
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Commentary + directive' },
+    });
+
+    mockParseFirstLineKeyword.mockReturnValueOnce({
+      keywordConfig: weatherKeyword,
+      parsedLine: 'weather seattle wa',
+      matched: true,
+      inferredInput: 'Seattle, WA',
+      commentaryText: 'Sure — running !weather now.',
+    });
+
+    mockExecuteRoutedRequest.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'Sunny in Seattle' } },
+      finalApi: 'accuweather',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> weather seattle');
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ content: 'Sure — running Seattle, WA now.' })
+    );
+    expect(msg.reply).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ content: 'Sunny in Seattle' })
+    );
+  });
+
   it('should preserve inline inferred params for keyword-only implicit ability invocation', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 

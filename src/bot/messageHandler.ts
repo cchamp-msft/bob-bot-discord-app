@@ -13,6 +13,7 @@ import { chunkText } from '../utils/chunkText';
 import { executeRoutedRequest, inferAbilityParameters } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
 import { assemblePrompt, parseFirstLineKeyword } from '../utils/promptBuilder';
+import type { KeywordParseResult } from '../utils/promptBuilder';
 import { activityEvents } from '../utils/activityEvents';
 import { activityKeyManager } from '../utils/activityKeyManager';
 
@@ -177,6 +178,62 @@ class MessageHandler {
     // Keep raw media-style API outputs (image URLs/files) intact.
     // Force conversational final-pass only for text-oriented data APIs.
     return api === 'accuweather' || api === 'nfl' || api === 'serpapi';
+  }
+
+  private escapeRegExp(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  private buildDirectiveCommentary(
+    parseResult: KeywordParseResult,
+    routedInput: string
+  ): string | null {
+    const commentary = parseResult.commentaryText?.trim();
+    if (!commentary || !parseResult.keywordConfig) return null;
+
+    const kwLower = parseResult.keywordConfig.keyword.toLowerCase().trim();
+    const kwBare = kwLower.startsWith(COMMAND_PREFIX)
+      ? kwLower.slice(COMMAND_PREFIX.length)
+      : kwLower;
+    const kwEscaped = this.escapeRegExp(kwBare);
+
+    const lines = commentary
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .map((line) => {
+        // Replace explicit command-style invocations inline.
+        const withBangReplaced = line.replace(
+          new RegExp(`(^|\\s)!${kwEscaped}\\b(?:\\s*[:|;,=\\-–—>]+\\s*|\\s+)`, 'ig'),
+          `$1${routedInput} `
+        );
+
+        // Replace start-of-line bare directive form (e.g. "imagine: ...")
+        const bareLeadingPattern = new RegExp(`^${kwEscaped}\\b(?:\\s*[:|;,=\\-–—>]+\\s*|\\s+)`, 'i');
+        return withBangReplaced.replace(bareLeadingPattern, `${routedInput} `).trim();
+      })
+      .filter(line => line.length > 0);
+
+    if (lines.length === 0) return null;
+    return lines.join('\n').trim() || null;
+  }
+
+  private async sendCommentaryPrelude(
+    sourceMessage: Message,
+    requester: string,
+    isDM: boolean,
+    text: string
+  ): Promise<void> {
+    const chunks = chunkText(text);
+    await sourceMessage.reply({ content: chunks[0], embeds: [] });
+    for (let i = 1; i < chunks.length; i++) {
+      if ('send' in sourceMessage.channel) {
+        await sourceMessage.channel.send(chunks[i]);
+      }
+    }
+
+    activityEvents.emitBotReply('ollama', text, isDM);
+    logger.logReply(requester, `Two-stage commentary sent: ${text.length} characters`, text);
   }
 
   private findEnabledKeywordByName(name: string): KeywordConfig | undefined {
@@ -1106,6 +1163,11 @@ class MessageHandler {
         logger.log('success', 'system',
           `TWO-STAGE: First-line keyword match "${parseResult.keywordConfig.keyword}" — executing ${parseResult.keywordConfig.api} API`);
         activityEvents.emitRoutingDecision(parseResult.keywordConfig.api, parseResult.keywordConfig.keyword, 'two-stage-parse');
+
+        const commentaryPrelude = this.buildDirectiveCommentary(parseResult, routedInput);
+        if (commentaryPrelude) {
+          await this.sendCommentaryPrelude(sourceMessage, requester, isDM, commentaryPrelude);
+        }
 
         // Force final Ollama pass only for text-centric external APIs.
         // For media APIs (e.g., meme/comfyui), keep raw API output so

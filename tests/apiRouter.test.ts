@@ -1658,6 +1658,21 @@ describe('ApiRouter', () => {
       expect(result).toBe('Seattle, WA');
     });
 
+    it('should extract parameters from a later keyword directive line', async () => {
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Let me infer this.\nweather: Bangkok' },
+      });
+
+      const result = await inferAbilityParameters(
+        weatherKeyword,
+        'capital of thailand',
+        'testuser'
+      );
+
+      expect(result).toBe('Bangkok');
+    });
+
     it('should return null when executor throws', async () => {
       mockExecute.mockRejectedValueOnce(new Error('Network error'));
 
@@ -1729,6 +1744,16 @@ describe('ApiRouter', () => {
         const logCalls = (logger.log as jest.Mock).mock.calls.map((c: any[]) => c[2]);
         expect(logCalls.some((msg: string) => msg.includes('MEME-INFERENCE: Ollama raw response'))).toBe(true);
         expect(logCalls.some((msg: string) => msg.includes('MEME-INFERENCE: Resolved inference'))).toBe(true);
+      });
+
+      it('should pick structured meme output line when commentary comes first', async () => {
+        mockExecute.mockResolvedValueOnce({
+          success: true,
+          data: { text: 'Sure, here you go.\ndrake | studying for exams | scrolling memes' },
+        });
+
+        const result = await inferAbilityParameters(memeKeyword, 'make a drake meme', 'testuser');
+        expect(result).toBe('drake | studying for exams | scrolling memes');
       });
 
       it('should not log MEME-INFERENCE when inference returns NONE', async () => {

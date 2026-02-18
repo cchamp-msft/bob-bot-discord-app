@@ -67,6 +67,10 @@ export interface KeywordParseResult {
   matched: boolean;
   /** Optional inferred input payload extracted from the same first line. */
   inferredInput?: string;
+  /** Optional original line containing the matched directive. */
+  directiveLine?: string;
+  /** Optional commentary text with directive line removed. */
+  commentaryText?: string;
 }
 
 // ── Abilities / keyword list helpers ─────────────────────────────
@@ -584,76 +588,108 @@ export function parseFirstLineKeyword(
 
   if (!responseText) return nullResult;
 
-  // Find the first non-empty line
-  const lines = responseText.split('\n');
-  const firstLine = lines.find(line => line.trim().length > 0);
-  if (!firstLine) return nullResult;
-
-  // Normalize: trim, lowercase, strip punctuation and leading bullet markers
-  let cleaned = firstLine
-    .trim()
-    .toLowerCase()
-    .replace(/^[-–—*•]\s*/, '')
-    .replace(/["""''`.,!?;:()[\]{}]/g, '')
-    .trim();
-
-  if (!cleaned) return { keywordConfig: null, parsedLine: cleaned, matched: false };
+  // Keep non-empty lines only; directive may appear after commentary.
+  const nonEmptyLines = responseText
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+  if (nonEmptyLines.length === 0) return nullResult;
 
   // Get routable keywords, sorted longest-first for priority
   const routable = getRoutableKeywords(overrideKeywords)
     .sort((a, b) => b.keyword.length - a.keyword.length);
 
-  // Exact match against cleaned first line (with or without command prefix)
-  for (const kw of routable) {
-    const kwLower = kw.keyword.toLowerCase();
-    // Strip the command prefix from the keyword for matching purposes
-    const kwBare = kwLower.startsWith(COMMAND_PREFIX) ? kwLower.slice(COMMAND_PREFIX.length) : kwLower;
-    // The model may emit the keyword with or without the prefix
-    const cleanedBare = cleaned.startsWith(COMMAND_PREFIX) ? cleaned.slice(COMMAND_PREFIX.length) : cleaned;
-    if (cleanedBare === kwBare) {
-      logger.log('success', 'system',
-        `KEYWORD-PARSE: First-line exact match "${kw.keyword}" from "${firstLine.trim()}"`);
-      return { keywordConfig: kw, parsedLine: cleaned, matched: true };
+  const normalizeForKeywordParse = (line: string): string => {
+    return line
+      .trim()
+      .toLowerCase()
+      .replace(/^[-–—*•]\s*/, '')
+      .replace(/["""''`.,!?;:()[\]{}]/g, '')
+      .trim();
+  };
+
+  const parseDirectiveLine = (line: string): KeywordParseResult | null => {
+    const cleaned = normalizeForKeywordParse(line);
+    if (!cleaned) return null;
+
+    // Exact match against cleaned line (with or without command prefix)
+    for (const kw of routable) {
+      const kwLower = kw.keyword.toLowerCase();
+      const kwBare = kwLower.startsWith(COMMAND_PREFIX) ? kwLower.slice(COMMAND_PREFIX.length) : kwLower;
+      const cleanedBare = cleaned.startsWith(COMMAND_PREFIX) ? cleaned.slice(COMMAND_PREFIX.length) : cleaned;
+      if (cleanedBare === kwBare) {
+        return {
+          keywordConfig: kw,
+          parsedLine: cleaned,
+          matched: true,
+          directiveLine: line,
+        };
+      }
     }
+
+    // Prefix match with inline parameters, e.g. "weather: Seattle, WA"
+    const strippedLine = line
+      .trim()
+      .replace(/^[-–—*•]\s*/, '')
+      .trim();
+
+    for (const kw of routable) {
+      const kwLower = kw.keyword.toLowerCase();
+      const kwBare = kwLower.startsWith(COMMAND_PREFIX) ? kwLower.slice(COMMAND_PREFIX.length) : kwLower;
+
+      for (const variant of [`${COMMAND_PREFIX}${kwBare}`, kwBare]) {
+        const escapedKeyword = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const prefixPattern = new RegExp(`^${escapedKeyword}\\b(.+)$`, 'i');
+        const match = strippedLine.match(prefixPattern);
+        if (!match) continue;
+
+        const remainder = (match[1] ?? '').trim();
+        const inferredInput = remainder
+          .replace(/^[:|;,=\-–—>]+\s*/, '')
+          .trim();
+
+        if (!inferredInput) continue;
+
+        return {
+          keywordConfig: kw,
+          parsedLine: cleaned,
+          matched: true,
+          inferredInput,
+          directiveLine: line,
+        };
+      }
+    }
+
+    return null;
+  };
+
+  // Scan all non-empty lines; model may put commentary first and directive later.
+  for (let i = 0; i < nonEmptyLines.length; i++) {
+    const line = nonEmptyLines[i];
+    const parsed = parseDirectiveLine(line);
+    if (!parsed?.matched || !parsed.keywordConfig) continue;
+
+    const commentaryText = nonEmptyLines
+      .filter((_, idx) => idx !== i)
+      .join('\n')
+      .trim();
+
+    if (parsed.inferredInput) {
+      logger.log('success', 'system',
+        `KEYWORD-PARSE: Matched directive "${parsed.keywordConfig.keyword}" with inferred input "${parsed.inferredInput}"`);
+    } else {
+      logger.log('success', 'system',
+        `KEYWORD-PARSE: Matched directive "${parsed.keywordConfig.keyword}" from line "${line}"`);
+    }
+
+    return {
+      ...parsed,
+      commentaryText: commentaryText.length > 0 ? commentaryText : undefined,
+    };
   }
 
-  // Prefix match with inline parameters, e.g.:
-  // "!weather Seattle", "weather: Seattle", "!nfl scores | 2026-02-16"
-  const strippedFirstLine = firstLine
-    .trim()
-    .replace(/^[-–—*•]\s*/, '')
-    .trim();
-
-  for (const kw of routable) {
-    const kwLower = kw.keyword.toLowerCase();
-    const kwBare = kwLower.startsWith(COMMAND_PREFIX) ? kwLower.slice(COMMAND_PREFIX.length) : kwLower;
-
-    // Try matching with prefix first, then without
-    for (const variant of [`${COMMAND_PREFIX}${kwBare}`, kwBare]) {
-      const escapedKeyword = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const prefixPattern = new RegExp(`^${escapedKeyword}\\b(.+)$`, 'i');
-      const match = strippedFirstLine.match(prefixPattern);
-      if (!match) continue;
-
-      const remainder = (match[1] ?? '').trim();
-      const inferredInput = remainder
-        .replace(/^[:|;,=\-–—>]+\s*/, '')
-        .trim();
-
-      if (!inferredInput) continue;
-
-      logger.log('success', 'system',
-        `KEYWORD-PARSE: First-line keyword+params match "${kw.keyword}" with inferred input "${inferredInput}"`);
-      return {
-        keywordConfig: kw,
-        parsedLine: cleaned,
-        matched: true,
-        inferredInput,
-      };
-    }
-  }
-
-  return { keywordConfig: null, parsedLine: cleaned, matched: false };
+  const firstParsedLine = normalizeForKeywordParse(nonEmptyLines[0] ?? '');
+  return { keywordConfig: null, parsedLine: firstParsedLine, matched: false };
 }
 
 // ── Re-prompt builder (after API data fetch) ─────────────────────

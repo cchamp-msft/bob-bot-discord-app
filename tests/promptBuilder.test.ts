@@ -633,6 +633,22 @@ describe('PromptBuilder', () => {
       expect(result.keywordConfig?.keyword).toBe('nfl scores');
     });
 
+    it('should match directive on a later line when first line is commentary', () => {
+      const result = parseFirstLineKeyword('Sure, I can do that.\nweather: alien city skyline');
+      expect(result.matched).toBe(true);
+      expect(result.keywordConfig?.keyword).toBe('weather');
+      expect(result.inferredInput).toBe('alien city skyline');
+      expect(result.commentaryText).toBe('Sure, I can do that.');
+    });
+
+    it('should keep remaining lines as commentary when directive line is in the middle', () => {
+      const result = parseFirstLineKeyword('Quick thought first.\nweather: Seattle\nI can also add a forecast.');
+      expect(result.matched).toBe(true);
+      expect(result.keywordConfig?.keyword).toBe('weather');
+      expect(result.inferredInput).toBe('Seattle');
+      expect(result.commentaryText).toBe('Quick thought first.\nI can also add a forecast.');
+    });
+
     it('should prefer longest keyword match (nfl scores over nfl)', () => {
       const result = parseFirstLineKeyword('nfl scores');
       expect(result.matched).toBe(true);

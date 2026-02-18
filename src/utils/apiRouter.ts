@@ -26,6 +26,44 @@ function normalizeOneLine(text: string): string {
   return first.trim();
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractInferenceLine(raw: string, keywordConfig: KeywordConfig): string {
+  const lines = raw
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line.length > 0 && !/^```/.test(line));
+
+  if (lines.length === 0) return '';
+
+  const kwLower = keywordConfig.keyword.toLowerCase().trim();
+  const kwBare = kwLower.startsWith('!') ? kwLower.slice(1) : kwLower;
+  const kwEscaped = escapeRegExp(kwBare);
+
+  for (const line of lines) {
+    const stripped = stripWrappingQuotes(line);
+    if (/^none$/i.test(stripped)) return 'NONE';
+
+    const invocation = stripped.match(new RegExp(`^!?${kwEscaped}\\b(.+)$`, 'i'));
+    if (!invocation) continue;
+
+    const remainder = (invocation[1] ?? '')
+      .trim()
+      .replace(/^[:|;,=\-–—>]+\s*/, '')
+      .trim();
+    if (remainder.length > 0) return remainder;
+  }
+
+  if (keywordConfig.api === 'meme') {
+    const structured = lines.find(line => /\|/.test(line));
+    if (structured) return stripWrappingQuotes(structured);
+  }
+
+  return stripWrappingQuotes(normalizeOneLine(raw));
+}
+
 function stripWrappingQuotes(text: string): string {
   const t = text.trim();
   if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
@@ -176,7 +214,7 @@ export async function inferAbilityParameters(
     }
 
     const raw = result.data.text.trim();
-    const inferred = stripWrappingQuotes(normalizeOneLine(raw));
+    const inferred = extractInferenceLine(raw, keywordConfig);
 
     if (!inferred || inferred.toLowerCase() === 'none') {
       logger.log('success', 'system',
