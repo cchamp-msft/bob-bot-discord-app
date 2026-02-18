@@ -10,7 +10,6 @@ import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpA
 import { fileHandler } from '../utils/fileHandler';
 import { ChatMessage, NFLResponse, MemeResponse } from '../types';
 import { chunkText } from '../utils/chunkText';
-import { classifyIntent } from '../utils/keywordClassifier';
 import { executeRoutedRequest, inferAbilityParameters } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
 import { assemblePrompt, parseFirstLineKeyword } from '../utils/promptBuilder';
@@ -23,6 +22,16 @@ class ApiDispatchError extends Error {}
 
 class MessageHandler {
   private static readonly WORKING_EMOJI = '⏳';
+
+  /**
+   * Compare a keyword value (from config — may or may not include the
+   * command prefix) against a bare keyword name like 'activity_key'.
+   */
+  private keywordIs(keyword: string, name: string): boolean {
+    const kw = keyword.toLowerCase().trim();
+    const bare = kw.startsWith(COMMAND_PREFIX) ? kw.slice(COMMAND_PREFIX.length) : kw;
+    return bare === name.toLowerCase().trim();
+  }
   private static readonly ERROR_EMOJI = '❌';
 
   /** Timestamp of the last error message sent to Discord (for rate limiting) */
@@ -188,7 +197,7 @@ class MessageHandler {
     // Emit activity event with cleaned message content (no usernames or IDs).
     // Suppress for standalone activity_key requests — those should not appear
     // in the public activity feed.
-    const isActivityKey = keywordMatched && keywordConfig!.keyword.toLowerCase() === `${COMMAND_PREFIX}activity_key`;
+    const isActivityKey = keywordMatched && this.keywordIs(keywordConfig!.keyword, 'activity_key');
     if (!isActivityKey) {
       activityEvents.emitMessageReceived(isDM, content);
     }
@@ -244,14 +253,14 @@ class MessageHandler {
     // Route standalone "!help" through the normal model path with explicit guidance.
     // This avoids static hardcoded help output while still giving the model
     // concrete topics/usage hints to summarize for the user.
-    if (keywordMatched && keywordConfig.keyword.toLowerCase() === `${COMMAND_PREFIX}help`) {
+    if (keywordMatched && this.keywordIs(keywordConfig.keyword, 'help')) {
       content = this.buildHelpPromptForModel();
     }
 
     // Route standalone "!activity_key" — issue a new rotating key and DM it
     // back to the user. This short-circuits before Ollama/API routing since
     // no model interaction is needed.
-    if (keywordMatched && keywordConfig.keyword.toLowerCase() === `${COMMAND_PREFIX}activity_key`) {
+    if (keywordMatched && this.keywordIs(keywordConfig.keyword, 'activity_key')) {
       const key = activityKeyManager.issueKey();
       const ttl = config.getActivityKeyTtl();
       const sessionMaxTime = config.getActivitySessionMaxTime();
@@ -800,16 +809,21 @@ class MessageHandler {
         (a, b) => b.keyword.length - a.keyword.length
       );
     return sorted.find((k) => {
-      const keyword = k.keyword.toLowerCase().trim();
-      if (!keyword) return false;
+      const rawKeyword = k.keyword.toLowerCase().trim();
+      if (!rawKeyword) return false;
+
+      // Normalize: ensure keyword includes the command prefix for matching
+      const keyword = rawKeyword.startsWith(COMMAND_PREFIX)
+        ? rawKeyword
+        : `${COMMAND_PREFIX}${rawKeyword}`;
 
       // Built-in !help is intentionally standalone-only.
-      if (keyword === `${COMMAND_PREFIX}help`) {
+      if (this.keywordIs(rawKeyword, 'help')) {
         return lowerContent === `${COMMAND_PREFIX}help`;
       }
 
       // Built-in !activity_key is standalone-only, same as help.
-      if (keyword === `${COMMAND_PREFIX}activity_key`) {
+      if (this.keywordIs(rawKeyword, 'activity_key')) {
         return lowerContent === `${COMMAND_PREFIX}activity_key`;
       }
 
@@ -849,13 +863,13 @@ class MessageHandler {
   }
 
   /**
-   * Execute the two-stage evaluation flow:
+   * Execute the Ollama evaluation flow:
    * 1. Build XML-tagged prompt with abilities context and conversation history
    * 2. Call Ollama — model outputs either a keyword-only line or a normal answer
    * 3. Parse the first non-empty line for an exact keyword match
    * 4. If keyword matched → route to API via executeRoutedRequest
-   * 5. If no keyword matched → fall back to classifyIntent (legacy classifier)
-   * 6. If still no match → return Ollama's response as the final answer
+   *    (always with final Ollama pass so result is presented conversationally)
+   * 5. If no keyword matched → return Ollama's response as direct chat
    */
   private async executeWithTwoStageEvaluation(
     content: string,
@@ -981,8 +995,12 @@ class MessageHandler {
           `TWO-STAGE: First-line keyword match "${parseResult.keywordConfig.keyword}" — executing ${parseResult.keywordConfig.api} API`);
         activityEvents.emitRoutingDecision(parseResult.keywordConfig.api, parseResult.keywordConfig.keyword, 'two-stage-parse');
 
+        // Force final Ollama pass for model-inferred abilities so the raw
+        // API data is presented conversationally back to the user.
+        const inferredConfig = { ...parseResult.keywordConfig, finalOllamaPass: true };
+
         const apiResult = await executeRoutedRequest(
-          parseResult.keywordConfig,
+          inferredConfig,
           routedInput,
           requester,
           filteredHistory.length > 0 ? filteredHistory : undefined,
@@ -999,73 +1017,10 @@ class MessageHandler {
         return;
       }
 
-      // Stage 2b: Fallback — use AI classifier on the model output only if
-      // first-line parse did not match. This handles edge cases where the model
-      // embeds keywords mid-response or uses unexpected formatting.
-      const secondClassification = await classifyIntent(ollamaText, requester);
-
-      if (secondClassification.keywordConfig && secondClassification.keywordConfig.api !== 'ollama') {
-        const matchedKw = secondClassification.keywordConfig;
-
-        if (strictNoApiRoutingFromInference) {
-          logger.logWarn('system',
-            `TWO-STAGE: Ignoring fallback keyword "${matchedKw.keyword}" because input was an unknown command-style message`);
-          await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
-          return;
-        }
-
-        if (matchedKw.api === 'meme' && !this.isLikelyMemeRequest(content)) {
-          logger.logWarn('system',
-            `TWO-STAGE: Suppressing fallback meme routing for non-meme user content: "${content.substring(0, 120)}"`);
-          await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
-          return;
-        }
-
-        logger.log('success', 'system',
-          `TWO-STAGE: Fallback classifier matched "${matchedKw.keyword}" — executing ${matchedKw.api} API`);
-        activityEvents.emitRoutingDecision(matchedKw.api, matchedKw.keyword, 'two-stage-classify');
-
-        // When the ability has required inputs, the raw user content is
-        // unlikely to be a valid direct parameter (e.g. "what is the
-        // capital of Thailand?" is not a city name).  Use Ollama to
-        // infer the concrete parameter from the original message.
-        let routedInput = content;
-        const hasRequiredInputs = matchedKw.abilityInputs?.required &&
-          matchedKw.abilityInputs.required.length > 0;
-
-        if (hasRequiredInputs) {
-          const inferred = await inferAbilityParameters(matchedKw, content, requester);
-          if (inferred) {
-            routedInput = inferred;
-            logger.log('success', 'system',
-              `TWO-STAGE: Inferred parameter "${inferred}" for "${matchedKw.keyword}"`);
-          } else {
-            logger.logWarn('system',
-              `TWO-STAGE: Could not infer parameter for "${matchedKw.keyword}" — using original content`);
-          }
-        }
-
-        const apiResult = await executeRoutedRequest(
-          matchedKw,
-          routedInput,
-          requester,
-          filteredHistory.length > 0 ? filteredHistory : undefined,
-          botDisplayName
-        );
-
-        await this.dispatchResponse(
-          apiResult.finalResponse,
-          apiResult.finalApi,
-          sourceMessage,
-          requester,
-          isDM
-        );
-        return;
-      }
     }
 
-    // No API keyword found — use Ollama response as-is
-    logger.log('success', 'system', 'TWO-STAGE: No API intent detected in Ollama response — returning as direct chat');
+    // No ability keyword detected — return Ollama's response as direct chat
+    logger.log('success', 'system', 'TWO-STAGE: No ability directive in Ollama response — returning as direct chat');
     await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
   }
 
@@ -1107,7 +1062,7 @@ class MessageHandler {
   buildHelpPromptForModel(): string {
     const keywords = config
       .getKeywords()
-      .filter(k => k.enabled !== false && k.keyword.toLowerCase() !== `${COMMAND_PREFIX}help`);
+      .filter(k => k.enabled !== false && !this.keywordIs(k.keyword, 'help'));
 
     const capabilityLines = keywords.length > 0
       ? keywords.map(k => `- ${k.keyword}: ${k.description}`).join('\n')
@@ -1128,8 +1083,10 @@ class MessageHandler {
    * from the content. Preserves surrounding whitespace and trims the result.
    */
   stripKeyword(content: string, keyword: string): string {
-    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Match the keyword with or without the command prefix at the start
+    // Normalize keyword to include command prefix for stripping !-prefixed content
+    const kwLower = keyword.toLowerCase().trim();
+    const matchKeyword = kwLower.startsWith(COMMAND_PREFIX) ? keyword : `${COMMAND_PREFIX}${keyword}`;
+    const escaped = matchKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pattern = new RegExp(`^${escaped}\\b\\s*`, 'i');
     return content.replace(pattern, '').trim();
   }

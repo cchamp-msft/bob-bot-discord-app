@@ -27,7 +27,7 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 ### Request Processing & Routing
 - ✅ Serial request processing with max 1 concurrent per API
 - ✅ Configurable per-keyword timeouts (default: 300s)
-- ✅ **Two-stage evaluation** — Ollama responses are re-evaluated for API keyword triggers, enabling automatic ability routing
+- ✅ **Two-stage evaluation** — Ollama responses are checked for first-line keyword directives, enabling automatic ability routing without a fallback classifier
 - ✅ **Rate-limited error messages** — configurable user-facing error messages with minimum interval
 
 ### Context & Conversation Management
@@ -60,7 +60,7 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 
 - ✅ **Global final-pass model** — configurable Ollama model for all final-pass refinements
 - ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
-- ✅ **Ability parameter inference** — when two-stage fallback detects an API keyword with required inputs, Ollama infers concrete parameters from user context before routing (e.g., resolving "capital of Thailand" → "Bangkok" for weather)
+- ✅ **Ability parameter inference** — when two-stage evaluation detects an API keyword with required inputs, Ollama infers concrete parameters from user context before routing (e.g., resolving "capital of Thailand" → "Bangkok" for weather)
 - ✅ **NFL commands** — `!nfl scores` (current or date-specific) and `!nfl news` (with optional keyword filter)
 
 ## Monitoring & Privacy

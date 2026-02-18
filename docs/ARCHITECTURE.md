@@ -35,7 +35,7 @@ src/
     ├── outputsServer.ts  # Express HTTP server for output file serving (public)
     ├── activityEvents.ts # Sanitised in-memory event buffer for activity feed
     ├── activityKeyManager.ts # In-memory rotating key for activity monitor access
-    ├── keywordClassifier.ts  # AI-based keyword classification (Ollama fallback)
+    ├── keywordClassifier.ts  # AI-based keyword classification & abilities context builder
     ├── apiRouter.ts      # Multi-stage API routing pipeline
     └── responseTransformer.ts # Stage result extraction and context building
 
@@ -100,27 +100,28 @@ The bot uses a two-stage evaluation flow to intelligently route requests. Keywor
 ### How It Works
 
 1. **Regex matching** (fast path) — checked first for explicit keywords like `!generate` or `!weather`
-2. **AI classification** (fallback) — if no regex match, Ollama analyzes the message intent and maps it to a registered keyword
-3. **Direct API routing** — if a non-Ollama keyword is matched (regex or AI), the request is sent directly to the primary API
-4. **Two-stage evaluation** — if an Ollama keyword is matched (e.g., "chat", "ask") or no keyword is matched, the request is sent to Ollama with an abilities context describing available API capabilities. Ollama's response is then re-evaluated:
-   - *Stage 2a*: `parseFirstLineKeyword()` checks if the first line of Ollama's response matches an API keyword (with optional inline parameters)
-   - *Stage 2b*: `classifyIntent()` as fallback — if no first-line keyword match, AI classification is used. When the matched ability has `abilityInputs.required`, `inferAbilityParameters()` extracts the concrete parameter (e.g., resolving "capital of Thailand" → "Bangkok") before routing.
-5. **Final refinement** (optional) — if a keyword has `finalOllamaPass: true`, the API result is sent through Ollama for a conversational response
+2. **Direct API routing** — if a non-Ollama keyword is matched by regex, the request is sent directly to the primary API, respecting the keyword's own `finalOllamaPass` setting
+3. **Two-stage evaluation** — if an Ollama keyword is matched (e.g., "chat", "ask") or no keyword is matched, the request is sent to Ollama with an abilities context describing available API capabilities. Ollama's response is then checked:
+   - `parseFirstLineKeyword()` checks if the first line of Ollama's response matches an API keyword (with optional inline parameters). When the matched ability has `abilityInputs.required`, `inferAbilityParameters()` extracts the concrete parameter (e.g., resolving "capital of Thailand" → "Bangkok") before routing.
+   - If no keyword directive is found, Ollama's response is returned as direct chat — no fallback classification is performed.
+4. **Final refinement** — model-inferred abilities (from step 3) always pass through a final Ollama call to present API data conversationally. Direct `!keyword` routing respects the keyword's own `finalOllamaPass` setting.
+
+### Keyword Prefix Normalisation
+
+Keywords in `config/keywords.json` may be stored with or without the `!` prefix. The routing engine normalises all keywords to include the prefix before matching, ensuring `!activity_key` matches a config entry stored as `"activity_key"`.
 
 ### Example Flows
 
 - **Simple**: `!generate` → ComfyUI (direct API call)
 - **Weather direct route**: `!weather Seattle` → AccuWeather (shared routed API path)
-- **Two-stage**: User says "is it going to rain?" → no keyword match → Ollama with abilities → response mentions weather → AccuWeather triggered → Ollama formats result
-- **Two-stage with inference**: User says "what is the capital of Thailand?" → Ollama mentions weather → classifier detects `!weather` → `inferAbilityParameters()` resolves "Bangkok" → AccuWeather called with "Bangkok"
-- **AI-classified**: User says "can you draw a sunset?" → AI identifies intent as `!generate` → routes to ComfyUI
-- **No API match**: User says "tell me a joke" → Ollama with abilities → response has no API keywords → Ollama response returned directly
+- **Two-stage**: User says "is it going to rain?" → no keyword match → Ollama with abilities → response starts with `weather: Seattle` → AccuWeather triggered → Ollama formats result
+- **Two-stage with inference**: User says "what is the capital of Thailand?" → Ollama starts with `weather` → `inferAbilityParameters()` resolves "Bangkok" → AccuWeather called with "Bangkok"
+- **No API match**: User says "tell me a joke" → Ollama with abilities → response has no keyword directive → Ollama response returned directly
 
 ### Error Handling
 
 - If the final Ollama pass fails, the raw API result is returned
 - If two-stage evaluation finds an API keyword but the API call fails, an error is reported to the user
-- If AI classification fails or returns no match, the request goes through two-stage evaluation
 
 ## Reply Chain Context, Channel Context & DM History
 
@@ -210,7 +211,7 @@ These optional fields in `config/keywords.json` override the global defaults for
 ### Notes
 
 - **System messages** (abilities context, system prompts) are excluded from depth counting and always preserved at the front of the history.
-- **Persona isolation**: The context evaluator and keyword classifier use their own dedicated system prompts — the global Ollama persona/system prompt is only included in user-facing chat responses, not in internal tool calls.
+- **Persona isolation**: The context evaluator uses its own dedicated system prompt — the global Ollama persona/system prompt is only included in user-facing chat responses, not in internal tool calls.
 - **Performance**: Context evaluation adds one Ollama call per request to determine relevance. This is most beneficial for keywords with long reply chains (e.g., `!chat`, discussion-style keywords). For short, single-turn interactions the overhead is minimal.
 - **Failure behavior**: If the evaluation call fails or returns an unexpected response, the full unfiltered history is used as a graceful fallback — the bot never drops context silently.
 
@@ -262,7 +263,7 @@ System logs use consistent prefixes to identify their source:
 | `DM-HISTORY:` | messageHandler | DM history collection |
 | `CONTEXT-EVAL:` | contextEvaluator | Context relevance filtering |
 | `API-ROUTING:` | apiRouter | API routing pipeline |
-| `CLASSIFIER:` | keywordClassifier | AI-based keyword classification |
+| `CLASSIFIER:` | keywordClassifier | Abilities context builder |
 | `BOT:` | discordManager | Discord bot lifecycle |
 | `HTTP-SERVER:` | httpServer | Configurator HTTP server events |
 | `OUTPUTS-SERVER:` | outputsServer | Outputs file server events |

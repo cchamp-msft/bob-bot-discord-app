@@ -73,8 +73,10 @@ Context features are configurable. See [ADVANCED.md](ADVANCED.md) for details on
 
 Bob Bot uses a two-stage evaluation system:
 
-1. **First stage**: Your message is analyzed to identify which API to call
-2. **Second stage**: The API response is re-evaluated for additional keyword triggers
+1. **First stage**: Your message is sent to Ollama with an abilities context describing available API capabilities
+2. **Keyword check**: Ollama's response is checked for a first-line keyword directive (e.g., `weather: Seattle`). If found, the corresponding API is triggered automatically and the result is presented conversationally.
+
+If Ollama does not include a keyword directive, the response is returned as a normal chat reply — no fallback classification is performed.
 
 This enables automatic ability routing. For example:
 - You ask: `@BobBot what's the weather like in Seattle?`
