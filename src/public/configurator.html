@@ -796,11 +796,11 @@
 flowchart LR
     A["📨 Message"] --> B{"!keyword?"}
     B -->|Yes| D["⚡ Route to API"]
-    B -->|No| C["🧠 Context Eval\n(Ollama)"]
+  B -->|No| C["🧠 Ollama - Context Eval"]
     C -->|"API detected"| D
-    C -->|"No API"| F["💬 Ollama reply"]
+    C -->|"No API"| F["💬 Ollama - Reply"]
     D --> E{"🔄 Final Pass?"}
-    E -->|Yes| G["🧠 Ollama\nrefinement"]
+  E -->|Yes| G["🧠 Ollama - Refinement"]
     E -->|No| H["📤 Response"]
     G --> H
     F --> H
