@@ -75,6 +75,7 @@ outputs/                  # Generated files and logs
 @BobBot !nfl scores
 @BobBot !search latest AI news
 @BobBot !meme drake | writing docs | generating memes
+@BobBot !meme_templates
 ```
 
 **Slash commands:**

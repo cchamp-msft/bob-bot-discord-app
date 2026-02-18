@@ -931,11 +931,18 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
     finalOllamaPass: true,
     allowEmptyContent: true,
   };
+  const memeTemplatesKw = {
+    keyword: '!meme_templates',
+    api: 'meme' as const,
+    timeout: 30,
+    description: 'Return meme templates',
+    allowEmptyContent: true,
+  };
   const chatKw = { keyword: '!chat', api: 'ollama' as const, timeout: 300, description: 'Chat' };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([nflScoresKw, nflNewsKw, chatKw]);
+    (config.getKeywords as jest.Mock).mockReturnValue([nflScoresKw, nflNewsKw, memeTemplatesKw, chatKw]);
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
       .mockResolvedValue({ keywordConfig: null, wasClassified: false });
     (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
@@ -990,6 +997,29 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
 
     expect(msg.reply).toHaveBeenCalledWith(
       'Please include a prompt or question after the keyword!'
+    );
+  });
+
+  it('should route standalone "meme_templates" without prompting for content', async () => {
+    const mockRouted = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+    mockRouted.mockResolvedValueOnce({
+      finalResponse: { success: true, data: { text: 'drake, aag, doge' } },
+      finalApi: 'meme',
+      stages: [],
+    });
+
+    const msg = createMentionedMessage('<@bot-123> !meme_templates');
+    await messageHandler.handleMessage(msg);
+
+    expect(msg.reply).not.toHaveBeenCalledWith(
+      'Please include a prompt or question after the keyword!'
+    );
+    expect(mockRouted).toHaveBeenCalledWith(
+      memeTemplatesKw,
+      '!meme_templates',
+      'testuser',
+      [{ role: 'user', content: 'testuser: !meme_templates', contextSource: 'trigger', hasNamePrefix: true }],
+      'BotUser'
     );
   });
 });

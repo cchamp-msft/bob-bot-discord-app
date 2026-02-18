@@ -29,6 +29,16 @@ class MemeClient {
   private templates: MemeTemplate[] = [];
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
+  private normalizeKeyword(keyword: string): string {
+    const trimmed = keyword.trim().toLowerCase();
+    return trimmed.startsWith('!') ? trimmed.slice(1) : trimmed;
+  }
+
+  private isTemplateListKeyword(keyword: string): boolean {
+    const normalized = this.normalizeKeyword(keyword);
+    return normalized === 'meme_templates' || normalized === 'meme_template';
+  }
+
   private isMemeDebugEnabled(): boolean {
     return config.getMemeLoggingDebug();
   }
@@ -185,7 +195,7 @@ class MemeClient {
 
   /**
    * Return a comma-separated string of all template ids.
-   * Intended for the /meme_templates slash command.
+   * Intended for the /meme_templates slash command and !meme_templates keyword.
    */
   getTemplateIds(): string {
     if (this.templates.length === 0) return '';
@@ -223,6 +233,16 @@ class MemeClient {
   async handleRequest(content: string, _keyword: string, signal?: AbortSignal): Promise<MemeResponse> {
     if (!config.getMemeEnabled()) {
       return { success: false, error: 'Meme API is disabled (MEME_ENABLED=false)' };
+    }
+
+    if (this.isTemplateListKeyword(_keyword)) {
+      const ids = this.getTemplateIds();
+      return {
+        success: true,
+        data: {
+          text: ids || 'No meme templates found',
+        },
+      };
     }
 
     if (this.templates.length === 0) {

@@ -246,8 +246,10 @@ On startup (when `MEME_ENABLED` is `true`), the bot downloads the full template 
 | Keyword | Behavior |
 |---------|----------|
 | `!meme <template> \| <top text> \| <bottom text>` | Generate a meme image |
+| `!meme_templates` | List available meme template IDs (comma-separated) |
 
 Use pipe (`|`), slash (`/`), or newline to separate the template name from text lines.
+Use `!meme_templates` (plural) for template listing; `!meme_template` (singular) is not configured.
 
 ### Usage Examples
 

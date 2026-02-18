@@ -258,7 +258,7 @@ describe('MemeTemplatesCommand', () => {
     await memeTemplatesCommand.execute(interaction);
 
     expect(interaction.editReply).toHaveBeenCalledWith({
-      content: expect.stringContaining('not been loaded'),
+      content: 'No meme templates found',
     });
   });
 });

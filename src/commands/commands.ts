@@ -359,7 +359,7 @@ class MemeTemplatesCommand extends BaseCommand {
 
     if (!ids) {
       await interaction.editReply({
-        content: 'Meme template cache has not been loaded yet. Please try again shortly.',
+        content: 'No meme templates found',
       });
       return;
     }

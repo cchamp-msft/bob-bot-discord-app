@@ -19,6 +19,7 @@ Mention the bot with a keyword and prompt:
 @BobBot !search what is the weather like today
 @BobBot !second opinion on climate change
 @BobBot !meme drake | writing docs | generating memes
+@BobBot !meme_templates
 ```
 
 The bot replies inline — the initial "Processing" message is edited in-place with the final response.
@@ -50,6 +51,11 @@ The bot uses keywords prefixed with `!` to route requests to different APIs:
 | `!search` | SerpAPI | `@BobBot !search latest AI news` |
 | `!second opinion` | SerpAPI (AI Overview only) | `@BobBot !second opinion on quantum computing` |
 | `!meme` | Memegen | `@BobBot !meme drake \| writing docs \| generating memes` |
+| `!meme_templates` | Memegen | `@BobBot !meme_templates` |
+
+Use `!meme` to generate an image.
+Use `!meme_templates` (plural) to list template IDs.
+`!meme_template` (singular) is not a configured keyword.
 
 Keywords are configurable via the web configurator. See [ADVANCED.md](ADVANCED.md) for keyword configuration details.
 

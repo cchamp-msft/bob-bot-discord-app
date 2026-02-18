@@ -190,6 +190,13 @@
         "examples": ["meme drake | studying for exams | browsing memes", "meme one does not simply | walk into mordor"]
       },
       "contextFilterMaxDepth": 1
+    },
+    {
+      "keyword": "meme_templates",
+      "api": "meme",
+      "timeout": 30,
+      "description": "Return a comma separated list of meme templates",
+      "allowEmptyContent": true
     }
   ]
 }
