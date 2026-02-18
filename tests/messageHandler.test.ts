@@ -692,7 +692,7 @@ describe('MessageHandler findKeyword (start-anchored)', () => {
   });
 });
 
-describe('MessageHandler buildHelpPromptForModel', () => {
+describe('MessageHandler buildHelpResponse', () => {
   function setKeywords(keywords: any[]) {
     (config.getKeywords as jest.Mock).mockReturnValue(keywords);
   }
@@ -706,12 +706,13 @@ describe('MessageHandler buildHelpPromptForModel', () => {
       { keyword: '!weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
     ]);
 
-    const result = (messageHandler as any).buildHelpPromptForModel();
-    expect(result).toContain('The user asked for help.');
-    expect(result).toContain('Available keyword capabilities:');
-    expect(result).toContain('- !generate: Generate image using ComfyUI');
-    expect(result).toContain('- !weather: Get weather');
-    expect(result).not.toContain('- !help:');
+    const result = (messageHandler as any).buildHelpResponse();
+    expect(result).toContain('**Available Commands**');
+    expect(result).toContain('`!generate`');
+    expect(result).toContain('Generate image using ComfyUI');
+    expect(result).toContain('`!weather`');
+    expect(result).toContain('Get weather');
+    expect(result).not.toContain('!help');
   });
 
   it('should exclude disabled keywords', () => {
@@ -721,9 +722,9 @@ describe('MessageHandler buildHelpPromptForModel', () => {
       { keyword: '!weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
     ]);
 
-    const result = (messageHandler as any).buildHelpPromptForModel();
-    expect(result).not.toContain('- !generate:');
-    expect(result).toContain('- !weather:');
+    const result = (messageHandler as any).buildHelpResponse();
+    expect(result).not.toContain('!generate');
+    expect(result).toContain('`!weather`');
   });
 
   it('should include fallback line when no non-help keywords are configured', () => {
@@ -731,8 +732,8 @@ describe('MessageHandler buildHelpPromptForModel', () => {
       { keyword: '!help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
     ]);
 
-    const result = (messageHandler as any).buildHelpPromptForModel();
-    expect(result).toContain('No external keyword abilities are currently configured');
+    const result = (messageHandler as any).buildHelpResponse();
+    expect(result).toContain('No commands are currently configured');
   });
 });
 
@@ -779,26 +780,15 @@ describe('MessageHandler help keyword handling (model path)', () => {
       .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
   });
 
-  it('should route exact help through normal ollama processing path', async () => {
-    const { requestQueue } = require('../src/utils/requestQueue');
-    requestQueue.execute.mockResolvedValue({
-      success: true,
-      data: { text: 'Here is what I can help with.' },
-    });
-
+  it('should short-circuit with a direct help reply without calling Ollama', async () => {
     const msg = createMentionedMessage('<@bot-123> !help');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: 'Here is what I can help with.',
-      })
+      expect.stringContaining('**Available Commands**')
     );
-    expect(assemblePrompt as jest.MockedFunction<typeof assemblePrompt>).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userMessage: expect.stringContaining('The user asked for help.'),
-      })
-    );
+    // Should NOT call assemblePrompt / Ollama at all
+    expect(assemblePrompt as jest.MockedFunction<typeof assemblePrompt>).not.toHaveBeenCalled();
   });
 
   it('should not treat "help me" as help keyword and should keep original content', async () => {
@@ -850,13 +840,13 @@ describe('MessageHandler built-in help keyword handling', () => {
     jest.clearAllMocks();
   });
 
-  it('should not use legacy static help reply behavior', async () => {
+  it('should route bare "help" without prefix through normal chat path', async () => {
     (config.getKeywords as jest.Mock).mockReturnValue([helpKw, generateKw]);
 
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValue({
       success: true,
-      data: { text: 'I can help you!' },
+      data: { text: 'regular response' },
     });
 
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
@@ -867,8 +857,12 @@ describe('MessageHandler built-in help keyword handling', () => {
     const msg = createMentionedMessage('<@bot-123> help');
     await messageHandler.handleMessage(msg);
 
+    // Without the ! prefix, "help" goes through normal chat — not the short-circuit
     expect(msg.reply).toHaveBeenCalledWith(
-      expect.objectContaining({ content: 'I can help you!' })
+      expect.objectContaining({ content: 'regular response' })
+    );
+    expect(msg.reply).not.toHaveBeenCalledWith(
+      expect.stringContaining('**Available Commands**')
     );
   });
 
@@ -893,6 +887,10 @@ describe('MessageHandler built-in help keyword handling', () => {
     // Should go through normal chat flow, not the help handler
     expect(msg.reply).toHaveBeenCalledWith(
       expect.objectContaining({ content: 'I can help you!' })
+    );
+    // Confirm it did NOT get tagged as a help short-circuit
+    expect(msg.reply).not.toHaveBeenCalledWith(
+      expect.stringContaining('**Available Commands**')
     );
   });
 });

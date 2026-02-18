@@ -416,11 +416,13 @@ class MessageHandler {
       }
     }
 
-    // Route standalone "!help" through the normal model path with explicit guidance.
-    // This avoids static hardcoded help output while still giving the model
-    // concrete topics/usage hints to summarize for the user.
+    // Route standalone "!help" — short-circuit with a direct help response.
+    // No model call needed; the help text is deterministic.
     if (keywordMatched && this.keywordIs(keywordConfig.keyword, 'help')) {
-      content = this.buildHelpPromptForModel();
+      const reply = this.buildHelpResponse();
+      await message.reply(reply);
+      logger.log('success', 'system', `HELP: Direct help response sent to ${requester}`);
+      return;
     }
 
     // Route standalone "!activity_key" — issue a new rotating key and DM it
@@ -1340,24 +1342,23 @@ class MessageHandler {
   }
 
   /**
-   * Build a model-facing help prompt that asks Ollama to explain what the bot
-   * can do and how to invoke each capability.
+   * Build a user-facing help response listing all available commands
+   * and how to use them.
    */
-  buildHelpPromptForModel(): string {
+  buildHelpResponse(): string {
     const keywords = config
       .getKeywords()
       .filter(k => k.enabled !== false && !this.keywordIs(k.keyword, 'help'));
 
     const capabilityLines = keywords.length > 0
-      ? keywords.map(k => `- ${k.keyword}: ${k.description}`).join('\n')
-      : '- No external keyword abilities are currently configured.';
+      ? keywords.map(k => `• \`${k.keyword}\` — ${k.description}`).join('\n')
+      : 'No commands are currently configured.';
 
     return [
-      'The user asked for help.',
-      `Explain what topics/capabilities this bot supports and how to use them. All direct commands must start with the "${COMMAND_PREFIX}" prefix (e.g. ${COMMAND_PREFIX}weather Dallas). Users can also describe what they need in natural language and the bot will infer the right action.`,
-      'Keep the response concise and practical with examples where useful.',
+      `**Available Commands**`,
+      `All commands start with \`${COMMAND_PREFIX}\` (e.g. \`${COMMAND_PREFIX}weather Dallas\`).`,
+      'You can also describe what you need in natural language and the bot will infer the right action.',
       '',
-      'Available keyword capabilities:',
       capabilityLines,
     ].join('\n');
   }
