@@ -96,6 +96,18 @@ class MessageHandler {
     return /\b(meme|memegen|image macro|caption this|template)\b/.test(t);
   }
 
+  private shouldForceFinalOllamaPassForApi(api: KeywordConfig['api']): boolean {
+    // Keep raw media-style API outputs (image URLs/files) intact.
+    // Force conversational final-pass only for text-oriented data APIs.
+    return api === 'accuweather' || api === 'nfl' || api === 'serpapi';
+  }
+
+  private findEnabledKeywordByName(name: string): KeywordConfig | undefined {
+    return config
+      .getKeywords()
+      .find(k => k.enabled !== false && this.keywordIs(k.keyword, name));
+  }
+
   async handleMessage(message: Message): Promise<void> {
     // Ignore bot messages unless ALLOW_BOT_INTERACTIONS is enabled
     if (message.author.bot) {
@@ -995,9 +1007,13 @@ class MessageHandler {
           `TWO-STAGE: First-line keyword match "${parseResult.keywordConfig.keyword}" — executing ${parseResult.keywordConfig.api} API`);
         activityEvents.emitRoutingDecision(parseResult.keywordConfig.api, parseResult.keywordConfig.keyword, 'two-stage-parse');
 
-        // Force final Ollama pass for model-inferred abilities so the raw
-        // API data is presented conversationally back to the user.
-        const inferredConfig = { ...parseResult.keywordConfig, finalOllamaPass: true };
+        // Force final Ollama pass only for text-centric external APIs.
+        // For media APIs (e.g., meme/comfyui), keep raw API output so
+        // Discord receives image URLs/files directly.
+        const inferredConfig = {
+          ...parseResult.keywordConfig,
+          finalOllamaPass: this.shouldForceFinalOllamaPassForApi(parseResult.keywordConfig.api),
+        };
 
         const apiResult = await executeRoutedRequest(
           inferredConfig,
@@ -1017,6 +1033,42 @@ class MessageHandler {
         return;
       }
 
+    }
+
+    // Fallback: if stage-1 didn't emit an ability directive but the message is
+    // clearly a meme request, run meme parameter inference directly and route
+    // to the meme API. This avoids brittle dependency on strict first-line
+    // directive formatting for natural-language meme requests.
+    if (!strictNoApiRoutingFromInference && this.isLikelyMemeRequest(content)) {
+      const memeKeywordConfig = this.findEnabledKeywordByName('meme');
+      if (memeKeywordConfig && memeKeywordConfig.api === 'meme') {
+        const inferred = await inferAbilityParameters(memeKeywordConfig, content, requester);
+        if (inferred) {
+          logger.log('success', 'system',
+            'TWO-STAGE: Meme fallback inference succeeded — executing meme API');
+
+          const memeConfig = { ...memeKeywordConfig, finalOllamaPass: false };
+          const memeResult = await executeRoutedRequest(
+            memeConfig,
+            inferred,
+            requester,
+            filteredHistory.length > 0 ? filteredHistory : undefined,
+            botDisplayName
+          );
+
+          await this.dispatchResponse(
+            memeResult.finalResponse,
+            memeResult.finalApi,
+            sourceMessage,
+            requester,
+            isDM
+          );
+          return;
+        }
+
+        logger.logWarn('system',
+          'TWO-STAGE: Meme fallback inference did not return parameters; returning direct chat response');
+      }
     }
 
     // No ability keyword detected — return Ollama's response as direct chat

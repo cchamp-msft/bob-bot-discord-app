@@ -3997,3 +3997,131 @@ describe('MessageHandler activity_key keyword', () => {
     );
   });
 });
+
+describe('MessageHandler meme two-stage routing fallback', () => {
+  function createMentionedMessage(content: string): any {
+    const botUserId = 'bot-123';
+    return {
+      author: { bot: false, id: 'user-1', username: 'testuser', displayName: 'testuser' },
+      client: { user: { id: botUserId, username: 'BotUser' }, guilds: { cache: new Map() } },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: { cache: new Map(), fetch: jest.fn().mockResolvedValue(new Map()) },
+        send: jest.fn(),
+      },
+      guild: { name: 'TestGuild' },
+      member: { displayName: 'testuser' },
+      mentions: { has: jest.fn(() => true) },
+      reference: null,
+      content,
+      id: 'msg-1',
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn().mockResolvedValue(undefined),
+        channel: { send: jest.fn() },
+      }),
+      fetchReference: jest.fn(),
+      react: jest.fn().mockResolvedValue(undefined),
+      reactions: { resolve: jest.fn(() => ({ users: { remove: jest.fn().mockResolvedValue(undefined) } })) },
+    };
+  }
+
+  const memeKw = {
+    keyword: '!meme',
+    api: 'meme' as const,
+    timeout: 60,
+    description: 'Create funny meme images',
+    abilityInputs: { mode: 'implicit' as const, inferFrom: ['current_message' as const] },
+  };
+  const chatKw = { keyword: '!chat', api: 'ollama' as const, timeout: 60, description: 'Chat' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getKeywords as jest.Mock).mockReturnValue([memeKw, chatKw]);
+    (config.getReplyChainEnabled as jest.Mock).mockReturnValue(false);
+    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+  });
+
+  it('routes likely meme requests through meme API when first-line directive is missing', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Here is a meme idea with template and captions.' },
+    });
+
+    (inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>)
+      .mockResolvedValueOnce('fwp | Just got my license | Now every road is a final boss');
+
+    (executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>)
+      .mockResolvedValueOnce({
+        finalResponse: {
+          success: true,
+          data: { imageUrl: 'https://api.memegen.link/images/fwp/test.png', text: '**First World Problems** meme' },
+        },
+        finalApi: 'meme',
+        stages: [],
+      });
+
+    const msg = createMentionedMessage('<@bot-123> can you make a meme about a kid learning to drive');
+    await messageHandler.handleMessage(msg);
+
+    expect(inferAbilityParameters).toHaveBeenCalledWith(
+      memeKw,
+      'can you make a meme about a kid learning to drive',
+      'testuser'
+    );
+
+    expect(executeRoutedRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ keyword: '!meme', api: 'meme', finalOllamaPass: false }),
+      'fwp | Just got my license | Now every road is a final boss',
+      'testuser',
+      [{ role: 'user', content: 'testuser: can you make a meme about a kid learning to drive', contextSource: 'trigger', hasNamePrefix: true }],
+      'BotUser'
+    );
+
+    expect(msg.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'https://api.memegen.link/images/fwp/test.png',
+      })
+    );
+  });
+
+  it('does not force final Ollama pass for parsed meme ability directives', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: '!meme fwp | line 1 | line 2' },
+    });
+
+    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+      .mockReturnValueOnce({
+        matched: true,
+        parsedLine: '!meme fwp | line 1 | line 2',
+        keywordConfig: memeKw,
+        inferredInput: 'fwp | line 1 | line 2',
+      });
+
+    (executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>)
+      .mockResolvedValueOnce({
+        finalResponse: {
+          success: true,
+          data: { imageUrl: 'https://api.memegen.link/images/fwp/parsed.png', text: '**First World Problems** meme' },
+        },
+        finalApi: 'meme',
+        stages: [],
+      });
+
+    const msg = createMentionedMessage('<@bot-123> make a meme about driving class');
+    await messageHandler.handleMessage(msg);
+
+    expect(executeRoutedRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ keyword: '!meme', api: 'meme', finalOllamaPass: false }),
+      'fwp | line 1 | line 2',
+      'testuser',
+      [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
+      'BotUser'
+    );
+    expect(inferAbilityParameters).not.toHaveBeenCalled();
+  });
+});
