@@ -277,9 +277,9 @@ export interface RoutedResult {
  *    conversational refinement (abilities context is NOT included to
  *    prevent endless API call loops)
  *
- * The two-stage keyword evaluation (Ollama → classifyIntent → API) is
+ * The two-stage keyword evaluation (Ollama → parseFirstLineKeyword → API) is
  * handled by the message handler, not this function. This function only
- * handles the API execution + optional final formatting pass.
+ * handles the API execution + optional retry loop + optional final formatting pass.
  *
  * @param keywordConfig - The keyword configuration with routing fields.
  * @param content - The user's prompt text.

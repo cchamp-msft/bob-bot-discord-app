@@ -24,7 +24,8 @@ File: `apiRouter.ts`
 
 -   `requestQueue.execute('accuweather', ...)` → `apiManager.executeRequest('accuweather', ...)`
 -   AccuWeather returns raw weather data for Seattle
--   `extractStageResult()` normalizes the response and pushes it to the `stages` array
+-   `extractStageResult()` normalizes the response and pushes it to the `stages` array
+-   If the primary request fails and retry is enabled, Ollama refines the parameters and the API is re-attempted (up to `maxRetries` times)
 
 ### 4\. API Router --- Final Ollama Pass
 
@@ -67,7 +68,7 @@ Key Functions by File
 | `promptBuilder.ts` | `assemblePrompt()` | Builds XML prompt WITH abilities context |
 | `promptBuilder.ts` | `assembleReprompt()` | Builds XML prompt WITHOUT abilities (final pass) |
 | `promptBuilder.ts` | `parseFirstLineKeyword()` | Parses Ollama output for keyword trigger |
-| `keywordClassifier.ts` | `classifyIntent()` | AI fallback classifier (two-stage path) |
+| `apiRouter.ts` | `inferAbilityParameters()` | Extracts API params from natural language (two-stage path) |
 | `keywordClassifier.ts` | `buildAbilitiesContext()` | Generates abilities context for Ollama |
 | `contextEvaluator.ts` | `evaluateContextWindow()` | Filters conversation history for relevance (per-keyword opt-in via `contextFilterEnabled`) |
 | `responseTransformer.ts` | `extractStageResult()` | Normalizes API responses for stage tracking |
@@ -85,3 +86,5 @@ Example Flows (Summary)
 | `is it going to rain?` | No regex match → Two-stage: Ollama w/ abilities → keyword detected → AccuWeather → Final pass → Discord reply |
 | `tell me a joke` | No regex match → Two-stage: Ollama w/ abilities → no keyword → Ollama response returned directly |
 | `!nfl scores` | Regex match → NFL API → Final Ollama pass → Discord reply |
+| `!search latest news` | Regex match → SerpAPI → Final Ollama pass → Discord reply |
+| `!meme surprised pikachu` | Regex match → Meme API → Discord reply (image) |

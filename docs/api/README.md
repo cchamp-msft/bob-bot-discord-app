@@ -44,7 +44,9 @@ flowchart TD
         end
 
         Q{"Primary API success?"}
-        Q1["❌ Return error RoutedResult"]
+        Q1a{"Retry enabled?"}
+        Q1b["🔄 Ollama refines params<br/><code>buildRetryUserPrompt()</code>"]
+        Q1c["❌ Return error RoutedResult"]
         Q2["✅ Success — check finalOllamaPass"]
 
         R{"<code>needsFinalPass && api !== 'ollama'?</code>"}
@@ -67,6 +69,8 @@ flowchart TD
         Y2["<code>handleOllamaResponse()</code> ✅ <i>(our path)</i>"]
         Y3["<code>handleAccuWeatherResponse()</code>"]
         Y4["<code>handleNFLResponse()</code>"]
+        Y5["<code>handleSerpApiResponse()</code>"]
+        Y6["<code>handleMemeResponse()</code>"]
     end
 
     subgraph Response["messageHandler.ts — handleOllamaResponse()"]
@@ -77,15 +81,15 @@ flowchart TD
     end
 
     subgraph TwoStage["messageHandler.ts — executeWithTwoStageEvaluation()<br/><i>(alternate path — shown for completeness)</i>"]
-        TS1["<code>evaluateContextWindow()</code> — filter history"]
+        TS1["<code>evaluateContextWindow()</code> — filter history<br/><i>(only when contextFilterEnabled)</i>"]
         TS2["<code>assemblePrompt()</code><br/>System: persona + abilities + keyword rules<br/>User: XML-tagged prompt with <code>&lt;thinking_and_output_rules&gt;</code>"]
         TS3["<code>requestQueue.execute('ollama', ...)</code><br/>Ollama responds with abilities awareness"]
         TS4{"<code>parseFirstLineKeyword()</code><br/>First line = exact keyword?"}
-        TS5["✅ Keyword found → <code>executeRoutedRequest()</code>"]
-        TS6["❌ No first-line match"]
-        TS7{"<code>classifyIntent()</code><br/>AI fallback classifier"}
-        TS8["✅ API keyword matched → <code>executeRoutedRequest()</code>"]
-        TS9["❌ No API intent → return Ollama response as-is"]
+        TS5["✅ Keyword found"]
+        TS5a{"Required params<br/>missing?"}
+        TS5b["<code>inferAbilityParameters()</code><br/>Ollama extracts params from natural language"]
+        TS5c["<code>executeRoutedRequest()</code><br/><i>(forced finalOllamaPass = true)</i>"]
+        TS9["❌ No keyword → return Ollama response as direct chat"]
     end
 
     A --> B --> C --> D --> E
@@ -96,7 +100,9 @@ flowchart TD
     F -->|"api = ollama or no match"| H
     G --> I --> J --> K
     K --> L --> M --> N --> O --> P --> Q
-    Q -->|"fail"| Q1
+    Q -->|"fail"| Q1a
+    Q1a -->|"yes"| Q1b --> M
+    Q1a -->|"no"| Q1c
     Q -->|"success"| Q2 --> R
     R -->|"true ✅"| S --> T --> U --> V --> W --> X
     R -->|"primary was ollama"| R1
@@ -105,13 +111,15 @@ flowchart TD
     Y -->|"ollama"| Y2
     Y -->|"accuweather"| Y3
     Y -->|"nfl"| Y4
+    Y -->|"serpapi"| Y5
+    Y -->|"meme"| Y6
     Y2 --> Z --> Z1 --> Z2 --> Z3
 
     H --> TS1 --> TS2 --> TS3 --> TS4
-    TS4 -->|"yes"| TS5
-    TS4 -->|"no"| TS6 --> TS7
-    TS7 -->|"API keyword"| TS8
-    TS7 -->|"no match"| TS9
+    TS4 -->|"yes"| TS5 --> TS5a
+    TS5a -->|"yes"| TS5b --> TS5c
+    TS5a -->|"no"| TS5c
+    TS4 -->|"no"| TS9
 
     E2 --> H
 
@@ -121,13 +129,14 @@ flowchart TD
     style Q fill:#f9a825,color:#000
     style R fill:#f9a825,color:#000
     style TS4 fill:#f9a825,color:#000
-    style TS7 fill:#f9a825,color:#000
+    style TS5a fill:#f9a825,color:#000
+    style Q1a fill:#f9a825,color:#000
     style E1 fill:#4caf50,color:#fff
     style G fill:#4caf50,color:#fff
     style W fill:#4caf50,color:#fff
     style X fill:#4caf50,color:#fff
     style Z3 fill:#4caf50,color:#fff
-    style Q1 fill:#f44336,color:#fff
+    style Q1c fill:#f44336,color:#fff
     style Discord fill:#5865F222
     style DiscordManager fill:#7289DA22
     style MessageHandler fill:#43b58122
@@ -163,6 +172,7 @@ The Discord.js `messageCreate` event fires and calls `messageHandler.handleMessa
 - `requestQueue.execute('accuweather', ...)` → `apiManager.executeRequest('accuweather', ...)`
 - AccuWeather returns raw weather data for Seattle
 - `extractStageResult()` normalizes the response and pushes it to the `stages` array
+- If the primary request fails and retry is enabled, Ollama refines the parameters and the API is re-attempted (up to `maxRetries` times)
 
 ### 4. API Router — Final Ollama Pass
 **Files:** `apiRouter.ts` + `promptBuilder.ts`
@@ -201,7 +211,7 @@ The `⏳ Processing...` message is edited in-place with the final weather respon
 | `promptBuilder.ts` | `assemblePrompt()` | Builds XML prompt WITH abilities context |
 | `promptBuilder.ts` | `assembleReprompt()` | Builds XML prompt WITHOUT abilities (final pass) |
 | `promptBuilder.ts` | `parseFirstLineKeyword()` | Parses Ollama output for keyword trigger |
-| `keywordClassifier.ts` | `classifyIntent()` | AI fallback classifier (two-stage path) |
+| `apiRouter.ts` | `inferAbilityParameters()` | Extracts API params from natural language (two-stage path) |
 | `keywordClassifier.ts` | `buildAbilitiesContext()` | Generates abilities context for Ollama |
 | `contextEvaluator.ts` | `evaluateContextWindow()` | Filters conversation history for relevance (per-keyword opt-in via `contextFilterEnabled`) |
 | `responseTransformer.ts` | `extractStageResult()` | Normalizes API responses for stage tracking |
@@ -218,3 +228,5 @@ The `⏳ Processing...` message is edited in-place with the final weather respon
 | **`is it going to rain?`** | No regex match → Two-stage: Ollama w/ abilities → keyword detected → AccuWeather → Final pass → Discord reply |
 | **`tell me a joke`** | No regex match → Two-stage: Ollama w/ abilities → no keyword → Ollama response returned directly |
 | **`!nfl scores`** | Regex match → NFL API → Final Ollama pass → Discord reply |
+| **`!search latest news`** | Regex match → SerpAPI → Final Ollama pass → Discord reply |
+| **`!meme surprised pikachu`** | Regex match → Meme API → Discord reply (image) |

@@ -801,13 +801,18 @@
         </p>
         <pre class="mermaid" style="background:transparent;text-align:center">
 flowchart LR
-    A["📨 Message"] --> B{"!keyword?"}
+    A["📨 Message"] --> B{"!api\nkeyword?"}
     B -->|Yes| D["⚡ Route to API"]
-  B -->|No| C["🧠 Ollama - Context Eval"]
-    C -->|"API detected"| D
-    C -->|"No API"| F["💬 Ollama - Reply"]
-    D --> E{"🔄 Final Pass?"}
-  E -->|Yes| G["🧠 Ollama - Refinement"]
+    B -->|No| CF["🔍 Context Filter\n(if enabled)"]
+    CF --> C["🧠 Ollama Chat\n(with abilities)"]
+    C -->|"Ability detected"| IP["🧠 Infer Params\n(if needed)"]
+    IP --> D
+    C -->|"No ability"| F["💬 Direct Reply"]
+    D --> R{"❌ Failed?"}
+    R -->|"Yes &\nretry on"| RT["🔄 Retry\n(refine params)"]
+    RT --> D
+    R -->|No| E{"🔄 Final\nPass?"}
+    E -->|Yes| G["🧠 Ollama\nRefinement"]
     E -->|No| H["📤 Response"]
     G --> H
     F --> H
