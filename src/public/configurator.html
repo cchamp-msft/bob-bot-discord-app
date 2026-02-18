@@ -845,6 +845,8 @@ flowchart LR
         <div style="margin-top:10px">
           <button class="btn-secondary btn-sm" onclick="addKeywordRow()">+ Add Keyword</button>
           <button class="btn-secondary btn-sm" id="syncDefaultsBtn" style="margin-left:8px;display:none" onclick="syncMissingDefaults()">+ Add Missing Defaults</button>
+          <button class="btn-secondary btn-sm" style="margin-left:8px" onclick="downloadKeywordsJson()">Download JSON</button>
+          <button class="btn-secondary btn-sm" style="margin-left:8px" onclick="restoreDefaultKeywords()">Restore Defaults</button>
           <span id="syncDefaultsInfo" style="font-size:0.75em;color:var(--text-dim);margin-left:8px"></span>
         </div>
       </div>
@@ -1379,6 +1381,44 @@ flowchart LR
     info.textContent = `Added ${missing.length} keyword(s) — save to persist`;
     info.style.color = 'var(--ok)';
     conLog(`[${new Date().toISOString()}] Synced ${missing.length} missing default keyword(s): ${missing.map(m => m.keyword).join(', ')}`, 'ok');
+  }
+
+  function downloadKeywordsJson() {
+    const payload = {
+      keywords: collectKeywords(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2) + '\n'], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'keywords.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    conLog(`[${new Date().toISOString()}] Downloaded keywords.json from configurator table`, 'ok');
+  }
+
+  function restoreDefaultKeywords() {
+    if (!_cachedDefaultKeywords || _cachedDefaultKeywords.length === 0) {
+      conLog(`[${new Date().toISOString()}] Restore defaults failed: no defaults available`, 'warn');
+      return;
+    }
+
+    if (!confirm('Replace current keyword rows with defaults? This updates the table now; click Save Changes to persist.')) {
+      return;
+    }
+
+    // Deep clone defaults to avoid mutating cached source objects.
+    const restored = JSON.parse(JSON.stringify(_cachedDefaultKeywords));
+    renderKeywords(restored);
+    checkMissingDefaults(restored, _cachedDefaultKeywords);
+    markDirty();
+
+    const info = document.getElementById('syncDefaultsInfo');
+    info.textContent = `Restored ${restored.length} default keyword(s) — save to persist`;
+    info.style.color = 'var(--ok)';
+    conLog(`[${new Date().toISOString()}] Restored keyword table from defaults (${restored.length} entries)`, 'ok');
   }
 
   function collectKeywords() {

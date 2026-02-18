@@ -103,3 +103,24 @@ describe('Keywords — Ctx Depth two-row layout', () => {
     expect(css).toMatch(/\.kw-ctx-row\s*\{[^}]*display:\s*flex/);
   });
 });
+
+// ── Keywords toolbar actions ─────────────────────────────────
+
+describe('Keywords — toolbar actions', () => {
+  const script = extractScript();
+
+  it('renders Download JSON and Restore Defaults buttons in keywords section', () => {
+    expect(html).toContain('Download JSON');
+    expect(html).toContain('Restore Defaults');
+  });
+
+  it('defines downloadKeywordsJson handler', () => {
+    expect(script).toContain('function downloadKeywordsJson()');
+    expect(script).toContain("a.download = 'keywords.json'");
+  });
+
+  it('defines restoreDefaultKeywords handler', () => {
+    expect(script).toContain('function restoreDefaultKeywords()');
+    expect(script).toContain('renderKeywords(restored)');
+  });
+});
