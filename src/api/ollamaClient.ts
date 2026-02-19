@@ -155,9 +155,15 @@ class OllamaClient {
     }
 
     try {
+      // Detect whether any images exist — either on the trigger message or
+      // carried on conversation history entries (reply-chain image collection).
+      const hasDirectImages = images && images.length > 0;
+      const hasHistoryImages = conversationHistory?.some(m => m.images && m.images.length > 0) ?? false;
+      const hasAnyImages = hasDirectImages || hasHistoryImages;
+
       // When images are present, verify the selected model supports vision.
       // If not, auto-switch to the configured vision model.
-      if (images && images.length > 0) {
+      if (hasAnyImages) {
         const isVision = await this.isVisionCapable(selectedModel);
         if (!isVision) {
           const visionModel = config.getOllamaVisionModel();

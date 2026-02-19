@@ -195,6 +195,7 @@ Fine-tune conversation context collection:
 | `REPLY_CHAIN_ENABLED` | `true` | Enable/disable all context features |
 | `REPLY_CHAIN_MAX_DEPTH` | `30` | Maximum messages to collect (1–50) |
 | `REPLY_CHAIN_MAX_TOKENS` | `16000` | Character budget for context (1,000–128,000) |
+| `REPLY_CHAIN_IMAGE_MAX_DEPTH` | `5` | Max reply-chain messages to scan for image attachments (0–50, 0 disables) |
 | `ALLOW_BOT_INTERACTIONS` | `false` | Include other bots in context and respond to them |
 
 ### Context Collection Behavior
@@ -202,6 +203,7 @@ Fine-tune conversation context collection:
 - **Primary context** (reply chain): Traverses Discord reply threads
 - **Secondary context** (channel): Recent messages from the channel/thread
 - **DM context**: Recent messages from DM channel
+- **Reply-chain images**: Within the `REPLY_CHAIN_IMAGE_MAX_DEPTH` window, image attachments on reply-chain messages (both user and bot) are downloaded, base64-encoded, and attached to each history message. Ollama vision models receive these images per-message so they retain their original context.
 - Priority: Primary fills first, secondary fills remaining slots up to depth limit
 - When limits exceeded: Oldest messages are dropped first (newest kept)
 

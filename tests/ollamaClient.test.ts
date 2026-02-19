@@ -682,5 +682,120 @@ describe('OllamaClient', () => {
       const userMsg = messages.find((m: any) => m.role === 'user');
       expect(userMsg.images).toBeUndefined();
     });
+
+    it('should forward images from conversation history messages to /api/chat', async () => {
+      setupModelExists();
+
+      // Vision-capable model
+      mockInstance.post.mockImplementation((url: string) => {
+        if (url === '/api/show') {
+          return Promise.resolve({
+            status: 200,
+            data: { model_info: {}, details: { families: ['llama', 'clip'] } },
+          });
+        }
+        return Promise.resolve({
+          status: 200,
+          data: { message: { content: 'I see an image in your earlier message.' } },
+        });
+      });
+
+      const history = [
+        { role: 'user' as const, content: 'Check this out', images: ['historyBase64Image'] },
+        { role: 'assistant' as const, content: 'Nice image!' },
+      ];
+
+      const result = await ollamaClient.generate(
+        'What was in that earlier image?', 'user1', 'llava:7b',
+        history
+      );
+
+      expect(result.success).toBe(true);
+
+      const chatCall = mockInstance.post.mock.calls.find(
+        (c: unknown[]) => c[0] === '/api/chat'
+      );
+      expect(chatCall).toBeDefined();
+      const messages = (chatCall![1] as any).messages;
+
+      // History message with images should retain them
+      const historyUserMsg = messages.find((m: any) => m.role === 'user' && m.content === 'Check this out');
+      expect(historyUserMsg).toBeDefined();
+      expect(historyUserMsg.images).toEqual(['historyBase64Image']);
+
+      // Assistant message should not have images
+      const assistantMsg = messages.find((m: any) => m.role === 'assistant');
+      expect(assistantMsg.images).toBeUndefined();
+    });
+
+    it('should auto-switch to vision model when only history messages have images', async () => {
+      setupModelExists();
+      (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
+      (config.getOllamaVisionModel as jest.Mock).mockReturnValue('llava:7b');
+
+      mockInstance.post.mockImplementation((url: string, data: unknown) => {
+        if (url === '/api/show') {
+          const body = data as { name: string };
+          if (body.name === 'llama2') {
+            return Promise.resolve({
+              status: 200,
+              data: { model_info: {}, details: { families: ['llama'] } },
+            });
+          }
+          return Promise.resolve({
+            status: 200,
+            data: { model_info: {}, details: { families: ['llama', 'clip'] } },
+          });
+        }
+        return Promise.resolve({
+          status: 200,
+          data: { message: { content: 'Switched to vision for history images.' } },
+        });
+      });
+
+      const history = [
+        { role: 'user' as const, content: 'Here is a photo', images: ['base64data'] },
+      ];
+
+      // No direct images param — only history carries images
+      const result = await ollamaClient.generate(
+        'What was in that photo?', 'user1', 'llama2',
+        history
+      );
+
+      expect(result.success).toBe(true);
+      const chatCall = mockInstance.post.mock.calls.find(
+        (c: unknown[]) => c[0] === '/api/chat'
+      );
+      expect((chatCall![1] as any).model).toBe('llava:7b');
+    });
+
+    it('should return error when history has images but no vision model configured', async () => {
+      setupModelExists();
+      (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
+      (config.getOllamaVisionModel as jest.Mock).mockReturnValue('llama2');
+
+      mockInstance.post.mockImplementation((url: string) => {
+        if (url === '/api/show') {
+          return Promise.resolve({
+            status: 200,
+            data: { model_info: {}, details: { families: ['llama'] } },
+          });
+        }
+        return Promise.resolve({ status: 200, data: { message: { content: '' } } });
+      });
+
+      const history = [
+        { role: 'user' as const, content: 'Photo', images: ['imgdata'] },
+      ];
+
+      const result = await ollamaClient.generate(
+        'Describe it', 'user1', 'llama2',
+        history
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('does not support images');
+    });
   });
 });

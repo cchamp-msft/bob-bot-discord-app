@@ -314,12 +314,13 @@ describe('Config', () => {
       expect(pub.apis.serpapiLocation).toBe('United States');
     });
 
-    it('should include replyChain enabled, maxDepth, and maxTokens', () => {
+    it('should include replyChain enabled, maxDepth, maxTokens, and imageMaxDepth', () => {
       delete process.env.REPLY_CHAIN_ENABLED;
       delete process.env.REPLY_CHAIN_MAX_DEPTH;
       delete process.env.REPLY_CHAIN_MAX_TOKENS;
+      delete process.env.REPLY_CHAIN_IMAGE_MAX_DEPTH;
       const pub = config.getPublicConfig();
-      expect(pub.replyChain).toEqual({ enabled: true, maxDepth: 30, maxTokens: 16000 });
+      expect(pub.replyChain).toEqual({ enabled: true, maxDepth: 30, maxTokens: 16000, imageMaxDepth: 5 });
     });
 
     it('should include httpHost and outputsHost in http section', () => {
@@ -440,6 +441,31 @@ describe('Config', () => {
       expect(config.getReplyChainMaxTokens()).toBe(16000);
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('not a valid number'));
       warnSpy.mockRestore();
+    });
+
+    it('getReplyChainImageMaxDepth should default to 5 when env not set', () => {
+      delete process.env.REPLY_CHAIN_IMAGE_MAX_DEPTH;
+      expect(config.getReplyChainImageMaxDepth()).toBe(5);
+    });
+
+    it('getReplyChainImageMaxDepth should parse valid int', () => {
+      process.env.REPLY_CHAIN_IMAGE_MAX_DEPTH = '10';
+      expect(config.getReplyChainImageMaxDepth()).toBe(10);
+    });
+
+    it('getReplyChainImageMaxDepth should clamp to 0 minimum', () => {
+      process.env.REPLY_CHAIN_IMAGE_MAX_DEPTH = '-1';
+      expect(config.getReplyChainImageMaxDepth()).toBe(0);
+    });
+
+    it('getReplyChainImageMaxDepth should clamp to 50 maximum', () => {
+      process.env.REPLY_CHAIN_IMAGE_MAX_DEPTH = '100';
+      expect(config.getReplyChainImageMaxDepth()).toBe(50);
+    });
+
+    it('getReplyChainImageMaxDepth should allow 0 to disable image collection', () => {
+      process.env.REPLY_CHAIN_IMAGE_MAX_DEPTH = '0';
+      expect(config.getReplyChainImageMaxDepth()).toBe(0);
     });
   });
 

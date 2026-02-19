@@ -589,7 +589,8 @@ class MessageHandler {
   async collectReplyChain(message: Message): Promise<ChatMessage[]> {
     const maxDepth = config.getReplyChainMaxDepth();
     const maxTotalChars = config.getReplyChainMaxTokens();
-    const chain: { role: 'user' | 'assistant'; content: string; authorName?: string; id: string; createdAt: number }[] = [];
+    const imageMaxDepth = config.getReplyChainImageMaxDepth();
+    const chain: { role: 'user' | 'assistant'; content: string; authorName?: string; id: string; createdAt: number; images?: string[] }[] = [];
     const visited = new Set<string>();
     const botId = message.client.user?.id;
     const userAuthors = new Set<string>();
@@ -619,13 +620,31 @@ class MessageHandler {
           refContent = refContent.replace(mentionRegex, '').trim();
         }
 
-        if (refContent) {
+        // Extract images from referenced messages within image depth window.
+        // depth is 0-indexed from the trigger message, so depth < imageMaxDepth
+        // covers the N nearest ancestors.
+        let refImages: string[] | undefined;
+        if (imageMaxDepth > 0 && depth < imageMaxDepth) {
+          try {
+            const imgs = await this.extractImageAttachments(referenced);
+            if (imgs.length > 0) {
+              refImages = imgs;
+              logger.log('success', 'system',
+                `REPLY-CHAIN: Extracted ${imgs.length} image(s) from message ${refId} at depth ${depth}`);
+            }
+          } catch (imgError) {
+            const errMsg = imgError instanceof Error ? imgError.message : String(imgError);
+            logger.logWarn('system', `REPLY-CHAIN: Failed to extract images from message ${refId}: ${errMsg}`);
+          }
+        }
+
+        if (refContent || refImages) {
           const isBot = referenced.author.id === botId;
 
           // Check total character budget before adding (include potential authorName prefix)
           const prefixLen = isBot ? 0 : ((referenced.member?.displayName ?? referenced.author.username).length + 2);
-          const entryLen = refContent.length + prefixLen;
-          if (totalChars + entryLen > maxTotalChars) {
+          const entryLen = (refContent?.length ?? 0) + prefixLen;
+          if (refContent && totalChars + entryLen > maxTotalChars) {
             logger.log('success', 'system', `REPLY-CHAIN: Character limit reached (${totalChars}/${maxTotalChars}), stopping at depth ${depth}`);
             break;
           }
@@ -644,6 +663,7 @@ class MessageHandler {
             authorName,
             id: referenced.id,
             createdAt: referenced.createdTimestamp,
+            ...(refImages && { images: refImages }),
           });
         }
 
@@ -677,6 +697,7 @@ class MessageHandler {
         discordMessageId: entry.id,
         createdAtMs: entry.createdAt,
         ...(hasPfx && { hasNamePrefix: true }),
+        ...(entry.images && { images: entry.images }),
       };
     });
   }

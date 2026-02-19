@@ -423,6 +423,7 @@ export interface PublicConfig {
     enabled: boolean;
     maxDepth: number;
     maxTokens: number;
+    imageMaxDepth: number;
   };
   debugLogging: boolean;
   abilityLogging: {

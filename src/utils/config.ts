@@ -753,6 +753,18 @@ class Config {
   }
 
   /**
+   * Maximum number of reply-chain messages (counting back from newest) to
+   * scan for image attachments. Messages beyond this depth are collected
+   * for text context only — their attachments are ignored.
+   * Independent of REPLY_CHAIN_MAX_DEPTH. Default: 5, range [0, 50].
+   * Set to 0 to disable image collection from the reply chain entirely.
+   */
+  getReplyChainImageMaxDepth(): number {
+    const raw = this.parseIntEnv('REPLY_CHAIN_IMAGE_MAX_DEPTH', 5);
+    return Math.max(0, Math.min(raw, 50));
+  }
+
+  /**
    * Whether to include the embed block (with internal View link) in image
    * generation responses.  Default: false — only the image attachment is sent.
    */
@@ -915,6 +927,7 @@ class Config {
     const prevReplyChainEnabled = this.getReplyChainEnabled();
     const prevReplyChainMaxDepth = this.getReplyChainMaxDepth();
     const prevReplyChainMaxTokens = this.getReplyChainMaxTokens();
+    const prevReplyChainImageMaxDepth = this.getReplyChainImageMaxDepth();
     const prevImageResponseIncludeEmbed = this.getImageResponseIncludeEmbed();
     const prevOllamaFinalPassModel = this.getOllamaFinalPassModel();
     const prevDebugLogging = this.getDebugLogging();
@@ -995,6 +1008,7 @@ class Config {
     if (this.getReplyChainEnabled() !== prevReplyChainEnabled) reloaded.push('REPLY_CHAIN_ENABLED');
     if (this.getReplyChainMaxDepth() !== prevReplyChainMaxDepth) reloaded.push('REPLY_CHAIN_MAX_DEPTH');
     if (this.getReplyChainMaxTokens() !== prevReplyChainMaxTokens) reloaded.push('REPLY_CHAIN_MAX_TOKENS');
+    if (this.getReplyChainImageMaxDepth() !== prevReplyChainImageMaxDepth) reloaded.push('REPLY_CHAIN_IMAGE_MAX_DEPTH');
     if (this.getImageResponseIncludeEmbed() !== prevImageResponseIncludeEmbed) reloaded.push('IMAGE_RESPONSE_INCLUDE_EMBED');
     if (this.getOllamaFinalPassModel() !== prevOllamaFinalPassModel) reloaded.push('OLLAMA_FINAL_PASS_MODEL');
     if (this.getDebugLogging() !== prevDebugLogging) reloaded.push('DEBUG_LOGGING');
@@ -1115,6 +1129,7 @@ class Config {
         enabled: this.getReplyChainEnabled(),
         maxDepth: this.getReplyChainMaxDepth(),
         maxTokens: this.getReplyChainMaxTokens(),
+        imageMaxDepth: this.getReplyChainImageMaxDepth(),
       },
       debugLogging: this.getDebugLogging(),
       abilityLogging: {
