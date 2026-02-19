@@ -1,5 +1,4 @@
 import { Client, GatewayIntentBits, Events, Partials } from 'discord.js';
-import { config } from '../utils/config';
 import { logger } from '../utils/logger';
 import { messageHandler } from './messageHandler';
 import { commandHandler } from '../commands';

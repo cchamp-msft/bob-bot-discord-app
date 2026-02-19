@@ -28,6 +28,15 @@ interface SerpApiKnowledgeGraph {
   source?: { name?: string; link?: string };
 }
 
+interface SerpApiAIOverviewTableCell {
+  snippet?: string;
+}
+
+interface SerpApiAIOverviewComparison {
+  feature?: string;
+  values?: string[];
+}
+
 interface SerpApiAIOverviewTextBlock {
   type?: string;
   snippet?: string;
@@ -35,6 +44,12 @@ interface SerpApiAIOverviewTextBlock {
   list?: SerpApiAIOverviewListItem[];
   text_blocks?: SerpApiAIOverviewTextBlock[];
   reference_indexes?: number[];
+  /** Table flag — indicates the block contains tabular data (undocumented SerpAPI shape). */
+  table?: unknown[][] | boolean;
+  /** Detailed table rows, first row is the header (undocumented SerpAPI shape). */
+  detailed?: SerpApiAIOverviewTableCell[][];
+  /** Comparison items within expandable sections (undocumented SerpAPI shape). */
+  comparison?: SerpApiAIOverviewComparison[];
 }
 
 interface SerpApiAIOverviewListItem {
@@ -42,6 +57,8 @@ interface SerpApiAIOverviewListItem {
   title?: string;
   text_blocks?: SerpApiAIOverviewTextBlock[];
   reference_indexes?: number[];
+  /** Nested lists within list items (undocumented SerpAPI shape). */
+  list?: SerpApiAIOverviewListItem[];
 }
 
 interface SerpApiAIOverviewReference {
@@ -550,8 +567,8 @@ class SerpApiClient {
             if (snippets.length >= maxSnippets) return;
             if (item.snippet) push(item.snippet);
             // Nested lists within list items
-            if ((item as any).list) {
-              for (const nested of (item as any).list) {
+            if (item.list) {
+              for (const nested of item.list) {
                 if (snippets.length >= maxSnippets) return;
                 if (nested.snippet) push(nested.snippet);
               }
@@ -561,23 +578,23 @@ class SerpApiClient {
         }
 
         // Table blocks — extract from the 'detailed' array or 'formatted'
-        if ((block as any).table && (block as any).detailed) {
-          for (const row of (block as any).detailed.slice(1)) { // skip header row
+        if (block.table && block.detailed) {
+          for (const row of block.detailed.slice(1)) { // skip header row
             if (snippets.length >= maxSnippets) return;
-            const cells = row.map((c: any) => c.snippet || '').filter(Boolean);
+            const cells = row.map((c: SerpApiAIOverviewTableCell) => c.snippet || '').filter(Boolean);
             if (cells.length) push(cells.join(' — '));
           }
-        } else if ((block as any).table && Array.isArray((block as any).table)) {
+        } else if (block.table && Array.isArray(block.table)) {
           // Fallback: raw table rows
-          for (const row of (block as any).table.slice(1)) {
+          for (const row of (block.table as unknown[][]).slice(1)) {
             if (snippets.length >= maxSnippets) return;
             if (Array.isArray(row)) push(row.join(' — '));
           }
         }
 
         // Comparison blocks within expandable sections
-        if ((block as any).comparison) {
-          for (const comp of (block as any).comparison) {
+        if (block.comparison) {
+          for (const comp of block.comparison) {
             if (snippets.length >= maxSnippets) return;
             const vals = comp.values?.join(' vs ') || '';
             if (comp.feature && vals) push(`${comp.feature}: ${vals}`);

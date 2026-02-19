@@ -160,7 +160,6 @@ class OutputsServer {
     // Global error handler — ensures every request gets a JSON response even
     // when an unexpected error occurs.  Without this, Express may drop the
     // connection, causing a reverse proxy (e.g. Nginx) to return 502.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     this.app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
       logger.logError('outputs-server', `Unhandled error on ${req.method} ${req.path}: ${err.message}`);
       if (!res.headersSent) {

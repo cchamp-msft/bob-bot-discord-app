@@ -157,7 +157,7 @@ export function buildAbilitiesContext(): string {
     'You have access to the following abilities through external APIs:',
     ...abilities,
     '',
-    `If the user\'s request requires one of these abilities, include ONLY the keyword on its own line prefixed with "${COMMAND_PREFIX}" (e.g. "${COMMAND_PREFIX}weather") so the request can be routed to the correct API.`,
+    `If the user's request requires one of these abilities, include ONLY the keyword on its own line prefixed with "${COMMAND_PREFIX}" (e.g. "${COMMAND_PREFIX}weather") so the request can be routed to the correct API.`,
     'Do not fabricate data for these abilities — if an ability is needed, state the keyword and let the API handle it.',
   ].join('\n');
 }

@@ -78,7 +78,7 @@ export function parseSeasonWeek(content: string): ParsedWeekQuery {
   }
 
   // Pattern 3: "2025/4" or "2025-4" (season/week shorthand)
-  const slashPattern = text.match(/\b(20[12]\d)[/\-](\d{1,2})\b/);
+  const slashPattern = text.match(/\b(20[12]\d)[/-](\d{1,2})\b/);
   if (slashPattern) {
     result.season = parseInt(slashPattern[1], 10);
     result.week = parseInt(slashPattern[2], 10);

@@ -93,7 +93,7 @@ export function redactSensitive(text: string): string {
   // Remove Discord-style snowflake IDs (17-20 digit numbers)
   result = result.replace(/\b\d{17,20}\b/g, '[redacted-id]');
   // Remove API-key-like tokens (long hex/base64 strings)
-  result = result.replace(/\b[A-Za-z0-9_\-]{32,}\b/g, '[redacted-token]');
+  result = result.replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[redacted-token]');
   return result;
 }
 

@@ -35,7 +35,7 @@ class ConfigWriter {
    * If the workflow is in UI format, it is auto-converted to API format before saving.
    * Returns the result of validation and save, including whether conversion occurred.
    */
-  async saveWorkflow(workflowJson: string, filename: string): Promise<{ success: boolean; error?: string; converted?: boolean }> {
+  async saveWorkflow(workflowJson: string, _filename: string): Promise<{ success: boolean; error?: string; converted?: boolean }> {
     // Validate JSON structure
     let parsed: Record<string, unknown>;
     try {
@@ -133,7 +133,7 @@ class ConfigWriter {
       // Write back
       fs.writeFileSync(this.envPath, lines.join('\n'), 'utf-8');
     } catch (error) {
-      throw new Error(`Failed to update .env: ${error}`);
+      throw new Error(`Failed to update .env: ${error}`, { cause: error });
     }
   }
 
@@ -217,29 +217,29 @@ class ConfigWriter {
           throw new Error(`Keyword "${entry.keyword}" has invalid abilityWhen — must be a string`);
         }
         if (entry.abilityInputs !== undefined) {
-          const ai = entry.abilityInputs as unknown;
+          const ai: Record<string, unknown> = entry.abilityInputs as unknown as Record<string, unknown>;
           if (typeof ai !== 'object' || ai === null || Array.isArray(ai)) {
             throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs — must be an object`);
           }
-          const mode = (ai as any).mode;
+          const mode = ai.mode;
           const validModes = ['implicit', 'explicit', 'mixed'];
-          if (!validModes.includes(mode)) {
+          if (!validModes.includes(mode as string)) {
             throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.mode "${mode}" — must be "implicit", "explicit", or "mixed"`);
           }
           const validateStringArray = (val: unknown) => Array.isArray(val) && val.every(s => typeof s === 'string');
-          if ((ai as any).required !== undefined && !validateStringArray((ai as any).required)) {
+          if (ai.required !== undefined && !validateStringArray(ai.required)) {
             throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.required — must be an array of strings`);
           }
-          if ((ai as any).optional !== undefined && !validateStringArray((ai as any).optional)) {
+          if (ai.optional !== undefined && !validateStringArray(ai.optional)) {
             throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.optional — must be an array of strings`);
           }
-          if ((ai as any).inferFrom !== undefined && !validateStringArray((ai as any).inferFrom)) {
+          if (ai.inferFrom !== undefined && !validateStringArray(ai.inferFrom)) {
             throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.inferFrom — must be an array of strings`);
           }
-          if ((ai as any).validation !== undefined && typeof (ai as any).validation !== 'string') {
+          if (ai.validation !== undefined && typeof ai.validation !== 'string') {
             throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.validation — must be a string`);
           }
-          if ((ai as any).examples !== undefined && !validateStringArray((ai as any).examples)) {
+          if (ai.examples !== undefined && !validateStringArray(ai.examples)) {
             throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.examples — must be an array of strings`);
           }
         }
@@ -345,7 +345,7 @@ class ConfigWriter {
         'utf-8'
       );
     } catch (error) {
-      throw new Error(`Failed to update keywords config: ${error}`);
+      throw new Error(`Failed to update keywords config: ${error}`, { cause: error });
     }
   }
 }

@@ -248,7 +248,7 @@ class Config {
       if (builtinHelpEnabled) {
         const customHelp = config.keywords.find(k => !k.builtin && k.keyword.toLowerCase() === helpKeyword);
         if (customHelp) {
-          logger.logWarn('config', 'Ignoring custom \"help\" keyword because the built-in help keyword is enabled');
+          logger.logWarn('config', 'Ignoring custom "help" keyword because the built-in help keyword is enabled');
           config.keywords = config.keywords.filter(k => k !== customHelp);
         }
       }

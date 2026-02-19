@@ -636,7 +636,7 @@ class MessageHandler {
         }
 
         current = referenced;
-      } catch (error) {
+      } catch {
         // Message deleted or inaccessible — stop traversal gracefully
         logger.log('success', 'system', `REPLY-CHAIN: Could not fetch message ${refId} (deleted or inaccessible), stopping at depth ${depth}`);
         break;
@@ -919,9 +919,8 @@ class MessageHandler {
     // Trim channel to remaining budgets, keeping newest
     while (chCandidates.length > remainingDepth) chCandidates.pop();
 
-    let chChars = 0;
     while (chCandidates.length > 0) {
-      chChars = chCandidates.reduce((sum, m) => sum + m.content.length, 0);
+      const chChars = chCandidates.reduce((sum, m) => sum + m.content.length, 0);
       if (chChars <= remainingChars) break;
       chCandidates.pop(); // drop oldest
     }

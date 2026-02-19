@@ -240,7 +240,7 @@ export class ComfyUIWebSocketManager {
 
     return new Promise<ExecutionResult>((resolve) => {
       let resolved = false;
-      let timeoutId: NodeJS.Timeout | undefined;
+      let timeoutId: NodeJS.Timeout | undefined = undefined;
       let removeMessageListener: (() => void) | null = null;
       const startTime = Date.now();
       // Capture active ws instance so cleanup always targets the correct socket
