@@ -1456,7 +1456,7 @@ describe('SerpApiClient', () => {
       expect(output).toContain('inline(');
     });
 
-    it('should log full raw response body via logDebugLazy', async () => {
+    it('should log full raw response body via logDebugLazy (search_parameters stripped)', async () => {
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
       const { logger: mockLogger } = require('../src/utils/logger');
 
@@ -1472,9 +1472,10 @@ describe('SerpApiClient', () => {
       });
       expect(rawCall).toBeDefined();
       const output = rawCall![1]();
-      // Should contain the full JSON-serialized response
+      // Should contain the response data but NOT search_parameters (stripped to avoid leaking api_key)
       expect(output).toContain('organic_results');
       expect(output).toContain('search_metadata');
+      expect(output).not.toContain('search_parameters');
     });
 
     it('should log page_token follow-up request', async () => {

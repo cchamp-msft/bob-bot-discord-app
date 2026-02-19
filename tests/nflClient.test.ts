@@ -42,6 +42,7 @@ jest.mock('../src/utils/logger', () => ({
 import {
   nflClient, NFLClient, parseSeasonWeek,
   mapESPNEventToGame, mapESPNScoreboard,
+  isEspnHost,
 } from '../src/api/nflClient';
 import { config } from '../src/utils/config';
 import {
@@ -1069,6 +1070,36 @@ describe('NFLClient', () => {
   });
 
   // ── parseSeasonWeek ────────────────────────────────────────
+
+  describe('isEspnHost (URL validation)', () => {
+    it('should accept exact espn.com host', () => {
+      expect(isEspnHost('https://espn.com/nfl')).toBe(true);
+    });
+
+    it('should accept subdomain of espn.com', () => {
+      expect(isEspnHost('https://site.api.espn.com/apis/site/v2/sports/football/nfl')).toBe(true);
+    });
+
+    it('should reject espn.com in path (not host)', () => {
+      expect(isEspnHost('https://evil.com/espn.com')).toBe(false);
+    });
+
+    it('should reject espn.com as subdomain of another domain', () => {
+      expect(isEspnHost('https://espn.com.evil.net/api')).toBe(false);
+    });
+
+    it('should reject non-ESPN domain', () => {
+      expect(isEspnHost('https://api.sportsdata.io/v3/nfl/scores')).toBe(false);
+    });
+
+    it('should reject malformed URL', () => {
+      expect(isEspnHost('not-a-url')).toBe(false);
+    });
+
+    it('should reject empty string', () => {
+      expect(isEspnHost('')).toBe(false);
+    });
+  });
 
   describe('parseSeasonWeek', () => {
     it('should parse "week 4 2025"', () => {

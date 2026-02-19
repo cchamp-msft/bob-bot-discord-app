@@ -524,4 +524,77 @@ describe('Logger', () => {
       expect(lines.some(l => l.includes('before'))).toBe(false);
     });
   });
+
+  // ── Secret redaction (CodeQL js/clear-text-logging) ──────
+
+  describe('redactSecrets', () => {
+    it('should redact JSON-style api_key values', () => {
+      const input = '{"api_key":"sk-secret-123","query":"hello"}';
+      const result = (logger.constructor as any).redactSecrets(input);
+      expect(result).not.toContain('sk-secret-123');
+      expect(result).toContain('"api_key":"***"');
+    });
+
+    it('should redact query-string style api_key=VALUE', () => {
+      const input = 'REQUEST: api_key=mySecretKey123&q=test';
+      const result = (logger.constructor as any).redactSecrets(input);
+      expect(result).not.toContain('mySecretKey123');
+      expect(result).toContain('api_key=***');
+    });
+
+    it('should redact token values in JSON format', () => {
+      const input = '{"token":"abc123","data":"safe"}';
+      const result = (logger.constructor as any).redactSecrets(input);
+      expect(result).not.toContain('abc123');
+      expect(result).toContain('"token":"***"');
+    });
+
+    it('should redact password values', () => {
+      const input = '{"password":"hunter2"}';
+      const result = (logger.constructor as any).redactSecrets(input);
+      expect(result).not.toContain('hunter2');
+      expect(result).toContain('"password":"***"');
+    });
+
+    it('should leave non-sensitive data unchanged', () => {
+      const input = 'Normal log message with no secrets';
+      const result = (logger.constructor as any).redactSecrets(input);
+      expect(result).toBe(input);
+    });
+
+    it('should redact multiple occurrences in one line', () => {
+      const input = 'api_key=secret1&token=secret2';
+      const result = (logger.constructor as any).redactSecrets(input);
+      expect(result).not.toContain('secret1');
+      expect(result).not.toContain('secret2');
+    });
+  });
+
+  describe('log method applies redaction to sinks', () => {
+    it('should redact api_key in console output', () => {
+      logger.log('success', 'test', 'Params: api_key=realSecret123&q=hello');
+      const loggedLine = consoleSpy.mock.calls[0][0];
+      expect(loggedLine).not.toContain('realSecret123');
+      expect(loggedLine).toContain('api_key=***');
+    });
+
+    it('should redact api_key in file output', () => {
+      logger.log('success', 'test', 'Params: api_key=realSecret123&q=hello');
+      const content = readLatestLog();
+      expect(content).not.toContain('realSecret123');
+      expect(content).toContain('api_key=***');
+    });
+
+    it('should redact in error-level output', () => {
+      logger.log('error', 'test', '{"api_key":"thekey","msg":"fail"}');
+      const loggedLine = consoleErrorSpy.mock.calls[0][0];
+      expect(loggedLine).not.toContain('thekey');
+    });
+
+    it('should redact in warn-level output', () => {
+      logger.log('warn', 'test', '{"token":"tok123"}');
+      const loggedLine = consoleWarnSpy.mock.calls[0][0];
+      expect(loggedLine).not.toContain('tok123');
+    });
+  });
 });
