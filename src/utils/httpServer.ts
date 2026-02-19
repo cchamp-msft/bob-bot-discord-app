@@ -9,6 +9,7 @@ import { fileHandler } from './fileHandler';
 import { apiManager } from '../api';
 import { comfyuiClient } from '../api/comfyuiClient';
 import { discordManager } from '../bot/discordManager';
+import { activityKeyManager } from './activityKeyManager';
 
 // ── Security middleware ──────────────────────────────────────────
 
@@ -336,6 +337,49 @@ class HttpServer {
 
         logger.log('success', 'configurator', `Default workflow params saved: model=${model}, ${width}x${height}, steps=${steps}, cfg=${cfg}, sampler=${sampler}, scheduler=${scheduler}, denoise=${denoise}`);
         res.json({ success: true });
+    }));
+
+    // ── Log management routes (admin-guarded) ─────────────────────
+
+    // GET full log content for expanded viewer (active log only)
+    this.app.get('/api/config/log/full', ...adminGuard, (_req, res) => {
+      res.json({ lines: logger.getAllLines() });
+    });
+
+    // POST rotate the current log file
+    this.app.post('/api/config/log/rotate', ...adminGuard, safeHandler(async (_req, res) => {
+      const result = logger.rotateLog();
+      if (!result) {
+        res.json({ success: true, message: 'Nothing to rotate — log is empty or does not exist yet.' });
+        return;
+      }
+      logger.log('success', 'configurator', `Log rotated: archived as ${result.archivedName}`);
+      res.json({
+        success: true,
+        archivedName: result.archivedName,
+        activeFile: result.activeFile,
+        message: `Log archived as ${result.archivedName}`,
+      });
+    }));
+
+    // ── Activity key route (admin-guarded) ───────────────────────
+
+    // POST generate an activity key from the configurator (no Discord needed)
+    this.app.post('/api/config/activity-key', ...adminGuard, safeHandler(async (_req, res) => {
+      const key = activityKeyManager.issueKey();
+      const ttl = config.getActivityKeyTtl();
+      const remaining = activityKeyManager.remainingSeconds();
+      const outputBaseUrl = config.getOutputBaseUrl();
+      const activityUrl = `${outputBaseUrl}/activity`;
+
+      logger.log('success', 'configurator', `Activity key issued via configurator (TTL: ${ttl}s)`);
+      res.json({
+        success: true,
+        key,
+        ttl,
+        remaining,
+        activityUrl,
+      });
     }));
 
     // ── Discord control routes (admin-guarded) ──────────────────

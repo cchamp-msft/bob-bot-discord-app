@@ -448,4 +448,80 @@ describe('Logger', () => {
       }
     });
   });
+
+  describe('getAllLines', () => {
+    it('should return empty array when no log file exists', () => {
+      const lines = logger.getAllLines();
+      expect(lines).toEqual([]);
+    });
+
+    it('should return all lines from the log file', () => {
+      for (let i = 0; i < 5; i++) {
+        logger.log('success', 'user', `line ${i}`);
+      }
+      const lines = logger.getAllLines();
+      expect(lines).toHaveLength(5);
+      expect(lines[0]).toContain('line 0');
+      expect(lines[4]).toContain('line 4');
+    });
+  });
+
+  describe('rotateLog', () => {
+    it('should return null when no log file exists', () => {
+      const result = logger.rotateLog();
+      expect(result).toBeNull();
+    });
+
+    it('should return null when log file is empty', () => {
+      // Create an empty log file
+      const logFile = (logger as any).getLogFilePath();
+      fs.writeFileSync(logFile, '', 'utf-8');
+
+      const result = logger.rotateLog();
+      expect(result).toBeNull();
+    });
+
+    it('should archive current log and clear active file', () => {
+      logger.log('success', 'user', 'before rotate');
+
+      const result = logger.rotateLog();
+      expect(result).not.toBeNull();
+      expect(result!.archivedName).toMatch(/^\d{4}-\d{2}-\d{2}_0\.log$/);
+      expect(result!.activeFile).toMatch(/^\d{4}-\d{2}-\d{2}\.log$/);
+
+      // Archive should contain the original content
+      const archivedContent = fs.readFileSync(result!.archivedPath, 'utf-8');
+      expect(archivedContent).toContain('before rotate');
+
+      // Active log should only contain the rotation log entry
+      const activeFile = (logger as any).getLogFilePath();
+      const activeContent = fs.readFileSync(activeFile, 'utf-8');
+      expect(activeContent).toContain('LOG-ROTATE');
+      expect(activeContent).not.toContain('before rotate');
+    });
+
+    it('should increment index for multiple rotations', () => {
+      logger.log('success', 'user', 'first content');
+      const result1 = logger.rotateLog();
+      expect(result1!.archivedName).toMatch(/_0\.log$/);
+
+      logger.log('success', 'user', 'second content');
+      const result2 = logger.rotateLog();
+      expect(result2!.archivedName).toMatch(/_1\.log$/);
+
+      logger.log('success', 'user', 'third content');
+      const result3 = logger.rotateLog();
+      expect(result3!.archivedName).toMatch(/_2\.log$/);
+    });
+
+    it('should allow new writes after rotation', () => {
+      logger.log('success', 'user', 'before');
+      logger.rotateLog();
+      logger.log('success', 'user', 'after rotate');
+
+      const lines = logger.getRecentLines();
+      expect(lines.some(l => l.includes('after rotate'))).toBe(true);
+      expect(lines.some(l => l.includes('before'))).toBe(false);
+    });
+  });
 });

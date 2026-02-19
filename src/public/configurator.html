@@ -165,6 +165,7 @@
   header .dot.warn { background: var(--warn); }
   .main {
     display: flex;
+    flex-direction: column;
     flex: 1;
     overflow: hidden;
   }
@@ -174,18 +175,32 @@
     padding: 20px;
   }
   .console-panel {
-    width: 360px;
+    height: 150px;
+    min-height: 80px;
     background: #0d0d1a;
-    border-left: 1px solid var(--border);
+    border-top: 1px solid var(--border);
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
   }
-  .console-panel h3 {
-    padding: 10px 14px;
+  .console-panel-header {
+    padding: 6px 14px;
     background: var(--surface);
     font-size: 0.85em;
     color: var(--text-dim);
     border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .console-panel-header:hover { background: var(--surface2); }
+  .console-panel-header .hint {
+    font-size: 0.8em;
+    color: var(--text-dim);
+    opacity: 0.6;
+    margin-left: auto;
   }
   #console {
     flex: 1;
@@ -202,6 +217,81 @@
   #console .line.err { color: var(--err); }
   #console .line.ok { color: var(--ok); }
   #console .line.warn { color: var(--warn); }
+
+  /* ── Log Modal (expanded viewer) ───────────────── */
+  .log-modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 900;
+  }
+  .log-modal-backdrop.open { display: block; }
+  .log-modal {
+    display: none;
+    position: fixed;
+    top: 5vh; left: 5vw; right: 5vw; bottom: 5vh;
+    background: #0d0d1a;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    z-index: 1000;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .log-modal.open { display: flex; }
+  .log-modal-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .log-modal-header h3 { font-size: 0.95em; flex: 1; }
+  .log-modal-close {
+    background: none; border: none;
+    color: var(--text-dim);
+    font-size: 1.3em;
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .log-modal-close:hover { background: var(--surface2); color: var(--text); }
+  .log-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 18px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.8em;
+    line-height: 1.6;
+    color: var(--text-dim);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .log-modal-body .line { margin-bottom: 2px; }
+  .log-modal-body .line.err { color: var(--err); }
+  .log-modal-body .line.ok { color: var(--ok); }
+  .log-modal-body .line.warn { color: var(--warn); }
+
+  /* ── Activity key result display ───────────────── */
+  .activity-key-result {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82em;
+    padding: 4px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-left: 8px;
+  }
+  .activity-key-result code {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.95em;
+    color: var(--ok);
+    letter-spacing: 0.3px;
+  }
+  .activity-key-result .ttl { color: var(--text-dim); font-size: 0.9em; }
 
   section {
     background: var(--surface);
@@ -987,16 +1077,32 @@ flowchart LR
 
   </div>
 
-  <!-- Console Panel -->
+  <!-- Console Panel (bottom strip) -->
   <div class="console-panel">
-    <h3>Status Console</h3>
+    <div class="console-panel-header" onclick="openLogModal()">
+      <span>Status Console</span>
+      <span class="hint">click to expand</span>
+    </div>
     <div id="console"></div>
   </div>
+</div>
+
+<!-- Log Modal (expanded viewer) -->
+<div class="log-modal-backdrop" id="logModalBackdrop" onclick="closeLogModal()"></div>
+<div class="log-modal" id="logModal">
+  <div class="log-modal-header">
+    <h3>Status Console — Full Log</h3>
+    <button class="log-modal-close" onclick="closeLogModal()" title="Close (Esc)">✕</button>
+  </div>
+  <div class="log-modal-body" id="logModalBody"></div>
 </div>
 
 <!-- Bottom action bar -->
 <div class="actions-bar">
   <button class="btn-secondary btn-sm" onclick="loadConfig()">↻ Reload</button>
+  <button class="btn-secondary btn-sm" onclick="rotateLog()" title="Archive current log and start fresh">🔄 Rotate Log</button>
+  <button class="btn-secondary btn-sm" id="btnGenKey" onclick="generateActivityKey()">🔑 Activity Key</button>
+  <span id="activityKeyResult"></span>
   <span class="spacer"></span>
   <span class="msg" id="saveMsg"></span>
   <button class="btn-primary" id="saveBtn" disabled onclick="saveConfig()">Save Changes</button>
@@ -1037,11 +1143,7 @@ flowchart LR
       const data = await res.json();
       consoleEl.innerHTML = '';
       for (const line of data.lines) {
-        // Classify by structured log level tags, with keyword highlights for info
-        const cls = line.includes('[error]') ? 'err'
-          : line.includes('[warn]') ? 'warn'
-          : (line.includes(' OK') || line.includes('started') || line.includes('logged in') || line.includes('saved') || line.includes('Authenticated') || line.includes('Loaded ')) ? 'ok'
-          : '';
+        const cls = classifyLine(line);
         conLog(line, cls);
       }
     } catch (e) {
@@ -2247,6 +2349,120 @@ flowchart LR
   // ── Helpers ────────────────────────────────────────
   function esc(s) {
     return s.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  /**
+   * Classify a log line for color coding.
+   * Shared between compact console and expanded modal.
+   */
+  function classifyLine(line) {
+    if (line.includes('[error]')) return 'err';
+    if (line.includes('[warn]')) return 'warn';
+    if (line.includes(' OK') || line.includes('started') || line.includes('logged in') || line.includes('saved') || line.includes('Authenticated') || line.includes('Loaded ')) return 'ok';
+    return '';
+  }
+
+  // ── Log Modal (expanded viewer) ────────────────────
+  let _logModalOpen = false;
+
+  function openLogModal() {
+    _logModalOpen = true;
+    document.getElementById('logModalBackdrop').classList.add('open');
+    document.getElementById('logModal').classList.add('open');
+    fetchFullLog();
+  }
+
+  function closeLogModal() {
+    _logModalOpen = false;
+    document.getElementById('logModalBackdrop').classList.remove('open');
+    document.getElementById('logModal').classList.remove('open');
+  }
+
+  async function fetchFullLog() {
+    const body = document.getElementById('logModalBody');
+    body.innerHTML = '<div class="line" style="color:var(--text-dim)">Loading…</div>';
+    try {
+      const res = await fetch('/api/config/log/full');
+      const data = await res.json();
+      body.innerHTML = '';
+      for (const line of data.lines) {
+        const d = document.createElement('div');
+        d.className = 'line';
+        const cls = classifyLine(line);
+        if (cls) d.classList.add(cls);
+        d.textContent = line;
+        body.appendChild(d);
+      }
+      // Scroll to bottom
+      body.scrollTop = body.scrollHeight;
+    } catch (e) {
+      body.innerHTML = `<div class="line err">Failed to load log: ${esc(e.message)}</div>`;
+    }
+  }
+
+  // Close modal on ESC key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && _logModalOpen) {
+      closeLogModal();
+    }
+  });
+
+  // ── Rotate Log ─────────────────────────────────────
+  async function rotateLog() {
+    conLog(`[${new Date().toISOString()}] Rotating log…`);
+    try {
+      const res = await fetch('/api/config/log/rotate', { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.archivedName) {
+        conLog(`  ✓ Log archived as ${data.archivedName}`, 'ok');
+      } else {
+        conLog(`  ℹ ${data.message || 'Nothing to rotate'}`, 'warn');
+      }
+      await pollStatus();
+    } catch (e) {
+      conLog(`  ✗ Rotate failed: ${e.message}`, 'err');
+    }
+  }
+
+  // ── Generate Activity Key ──────────────────────────
+  async function generateActivityKey() {
+    const btn = document.getElementById('btnGenKey');
+    const resultEl = document.getElementById('activityKeyResult');
+    btn.disabled = true;
+    resultEl.innerHTML = '';
+    conLog(`[${new Date().toISOString()}] Generating activity key…`);
+    try {
+      const res = await fetch('/api/config/activity-key', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        resultEl.innerHTML = `<span class="activity-key-result">` +
+          `<code id="actKeyValue">${esc(data.key)}</code>` +
+          `<span class="ttl">TTL: ${data.ttl}s</span>` +
+          `<button class="btn-sm btn-secondary" onclick="copyActivityKey()" title="Copy key to clipboard">📋 Copy</button>` +
+          `<a href="${esc(data.activityUrl)}" target="_blank" style="font-size:0.85em;color:var(--accent)">Open</a>` +
+          `</span>`;
+        conLog(`  ✓ Activity key issued (TTL: ${data.ttl}s)`, 'ok');
+      } else {
+        resultEl.innerHTML = `<span style="color:var(--err);font-size:0.82em">${esc(data.error || 'Failed')}</span>`;
+        conLog(`  ✗ Activity key failed: ${data.error || 'unknown'}`, 'err');
+      }
+    } catch (e) {
+      resultEl.innerHTML = `<span style="color:var(--err);font-size:0.82em">${esc(e.message)}</span>`;
+      conLog(`  ✗ Activity key error: ${e.message}`, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function copyActivityKey() {
+    const keyEl = document.getElementById('actKeyValue');
+    if (!keyEl) return;
+    try {
+      await navigator.clipboard.writeText(keyEl.textContent);
+      conLog('  ✓ Activity key copied to clipboard', 'ok');
+    } catch {
+      conLog('  ✗ Clipboard copy failed', 'err');
+    }
   }
 
   // ── Theme Switching ───────────────────────────────

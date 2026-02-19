@@ -20,6 +20,8 @@ jest.mock('../src/utils/logger', () => ({
     logDebugLazy: jest.fn(),
     logWarn: jest.fn(),
     getRecentLines: jest.fn(() => []),
+    getAllLines: jest.fn(() => []),
+    rotateLog: jest.fn(() => null),
   },
 }));
 
@@ -45,6 +47,13 @@ jest.mock('../src/api', () => ({
     testSerpApiConnection: jest.fn(),
     checkApiHealth: jest.fn(),
     refreshClients: jest.fn(),
+  },
+}));
+
+jest.mock('../src/utils/activityKeyManager', () => ({
+  activityKeyManager: {
+    issueKey: jest.fn(() => 'test-key-abc123'),
+    remainingSeconds: jest.fn(() => 300),
   },
 }));
 
@@ -79,6 +88,7 @@ const mockConfig = {
   getPublicConfig: jest.fn(() => ({ http: { port: 3000, httpHost: '127.0.0.1', outputsPort: 3003, outputsHost: '0.0.0.0' } })),
   getApiEndpoint: jest.fn(() => 'http://localhost'),
   reload: jest.fn(() => ({ reloaded: [], requiresRestart: [] })),
+  getActivityKeyTtl: jest.fn(() => 300),
 };
 jest.mock('../src/utils/config', () => ({ config: mockConfig }));
 
@@ -245,5 +255,62 @@ describe('httpServer', () => {
   it('returns 404 for unknown routes', async () => {
     const res = await fetch(`${baseUrl}/nonexistent`);
     expect(res.status).toBe(404);
+  });
+
+  // ── Log management routes ────────────────────────────────────
+
+  it('GET /api/config/log/full returns all log lines', async () => {
+    const { logger } = require('../src/utils/logger');
+    (logger.getAllLines as jest.Mock).mockReturnValue(['line1', 'line2', 'line3']);
+
+    const res = await fetch(`${baseUrl}/api/config/log/full`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { lines: string[] };
+    expect(body.lines).toEqual(['line1', 'line2', 'line3']);
+  });
+
+  it('POST /api/config/log/rotate returns archived name on success', async () => {
+    const { logger } = require('../src/utils/logger');
+    (logger.rotateLog as jest.Mock).mockReturnValue({
+      archivedPath: '/outputs/logs/2026-02-18_0.log',
+      archivedName: '2026-02-18_0.log',
+      activeFile: '2026-02-18.log',
+    });
+
+    const res = await fetch(`${baseUrl}/api/config/log/rotate`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.success).toBe(true);
+    expect(body.archivedName).toBe('2026-02-18_0.log');
+    expect(body.activeFile).toBe('2026-02-18.log');
+  });
+
+  it('POST /api/config/log/rotate handles empty log gracefully', async () => {
+    const { logger } = require('../src/utils/logger');
+    (logger.rotateLog as jest.Mock).mockReturnValue(null);
+
+    const res = await fetch(`${baseUrl}/api/config/log/rotate`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.success).toBe(true);
+    expect(body.archivedName).toBeUndefined();
+  });
+
+  // ── Activity key route ───────────────────────────────────────
+
+  it('POST /api/config/activity-key issues a key with TTL', async () => {
+    const res = await fetch(`${baseUrl}/api/config/activity-key`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.success).toBe(true);
+    expect(body.key).toBe('test-key-abc123');
+    expect(body.ttl).toBe(300);
+    expect(body.activityUrl).toBe('http://localhost:3003/activity');
+  });
+
+  it('POST /api/config/activity-key requires auth when ADMIN_TOKEN set', async () => {
+    mockConfig.getAdminToken.mockReturnValue('s3cret-tok3n');
+    const res = await fetch(`${baseUrl}/api/config/activity-key`, { method: 'POST' });
+    expect(res.status).toBe(401);
   });
 });

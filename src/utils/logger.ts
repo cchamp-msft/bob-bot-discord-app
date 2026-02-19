@@ -219,6 +219,65 @@ class Logger {
       return [];
     }
   }
+
+  /**
+   * Read ALL lines from today's log file.
+   * Used by the configurator expanded log viewer.
+   */
+  getAllLines(): string[] {
+    const logFile = this.getLogFilePath();
+    try {
+      if (!fs.existsSync(logFile)) return [];
+      const content = fs.readFileSync(logFile, 'utf-8');
+      return content.split('\n').filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Rotate the current active log file.
+   *
+   * Copies the current log content into an archive file named
+   * `YYYY-MM-DD_N.log` (next available index) in the same directory,
+   * then truncates the active log file so new writes start fresh.
+   *
+   * The active log filename remains stable (`YYYY-MM-DD.log`).
+   *
+   * Returns metadata about the rotation, or null if there is nothing
+   * to rotate (e.g. no log file exists yet).
+   */
+  rotateLog(): { archivedPath: string; archivedName: string; activeFile: string } | null {
+    const logFile = this.getLogFilePath();
+
+    if (!fs.existsSync(logFile)) return null;
+    const stat = fs.statSync(logFile);
+    if (stat.size === 0) return null;
+
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    // Find next available index for the archive
+    let index = 0;
+    let archivedPath: string;
+    do {
+      archivedPath = path.join(this.logsDir, `${dateStr}_${index}.log`);
+      index++;
+    } while (fs.existsSync(archivedPath));
+
+    // Copy current log to archive, then truncate active file
+    fs.copyFileSync(logFile, archivedPath);
+    fs.writeFileSync(logFile, '', 'utf-8');
+
+    const archivedName = path.basename(archivedPath);
+    this.log('success', 'system', `LOG-ROTATE: Archived to ${archivedName} and cleared active log`);
+
+    return {
+      archivedPath,
+      archivedName,
+      activeFile: path.basename(logFile),
+    };
+  }
 }
 
 export const logger = new Logger();

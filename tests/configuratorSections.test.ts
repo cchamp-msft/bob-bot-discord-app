@@ -92,3 +92,88 @@ describe('Configurator — Mermaid render on expand', () => {
     expect(script).toMatch(/pre\.mermaid:not\(\[data-processed\]\)/);
   });
 });
+
+// ── Bottom log pane layout ───────────────────────────────────
+
+describe('Configurator — bottom log pane', () => {
+  const style = extractStyle();
+
+  it('console panel uses border-top (bottom strip) not border-left (right column)', () => {
+    expect(style).toContain('border-top: 1px solid var(--border)');
+    // Should no longer use the old right-column layout
+    expect(style).not.toMatch(/\.console-panel\s*\{[^}]*border-left/);
+  });
+
+  it('main layout is flex-direction column', () => {
+    expect(style).toMatch(/\.main\s*\{[^}]*flex-direction:\s*column/);
+  });
+
+  it('has a clickable header with expand hint', () => {
+    expect(html).toContain('console-panel-header');
+    expect(html).toContain('click to expand');
+  });
+});
+
+// ── Log modal (expanded viewer) ──────────────────────────────
+
+describe('Configurator — log modal', () => {
+  const script = extractScript();
+
+  it('has modal backdrop and modal elements', () => {
+    expect(html).toContain('id="logModalBackdrop"');
+    expect(html).toContain('id="logModal"');
+    expect(html).toContain('id="logModalBody"');
+  });
+
+  it('has openLogModal and closeLogModal functions', () => {
+    expect(script).toContain('function openLogModal()');
+    expect(script).toContain('function closeLogModal()');
+  });
+
+  it('closes modal on Escape key', () => {
+    expect(script).toMatch(/Escape.*closeLogModal|closeLogModal.*Escape/s);
+  });
+
+  it('fetches full log from backend', () => {
+    expect(script).toContain('/api/config/log/full');
+  });
+});
+
+// ── Rotate log button ────────────────────────────────────────
+
+describe('Configurator — rotate log button', () => {
+  const script = extractScript();
+
+  it('has a Rotate Log button in the actions bar', () => {
+    expect(html).toContain('Rotate Log');
+    expect(html).toContain('rotateLog()');
+  });
+
+  it('rotateLog function calls POST /api/config/log/rotate', () => {
+    expect(script).toContain('/api/config/log/rotate');
+  });
+});
+
+// ── Activity key button ──────────────────────────────────────
+
+describe('Configurator — activity key button', () => {
+  const script = extractScript();
+
+  it('has an Activity Key button in the actions bar', () => {
+    expect(html).toContain('Activity Key');
+    expect(html).toContain('generateActivityKey()');
+  });
+
+  it('has a result display area', () => {
+    expect(html).toContain('id="activityKeyResult"');
+  });
+
+  it('generateActivityKey calls POST /api/config/activity-key', () => {
+    expect(script).toContain('/api/config/activity-key');
+  });
+
+  it('has a copy-to-clipboard function', () => {
+    expect(script).toContain('function copyActivityKey()');
+    expect(script).toContain('navigator.clipboard.writeText');
+  });
+});
