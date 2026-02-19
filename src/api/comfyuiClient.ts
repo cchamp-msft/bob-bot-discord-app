@@ -717,7 +717,7 @@ class ComfyUIClient {
       logger.log('success', requester, `ComfyUI workflow nodes: [${nodeSummary}]`);
 
       // DEBUG: log full ComfyUI workflow submission
-      logger.logDebugLazy(requester, () => `COMFYUI-REQUEST: prompt="${prompt}", workflow=${JSON.stringify(workflowData, null, 2)}`);
+      logger.logDebugLazy(requester, () => `COMFYUI-REQUEST: prompt=[${prompt}], workflow=${JSON.stringify(workflowData, null, 2)}`);
 
       // Ensure WebSocket is connected before submitting prompt
       // This provides a proper client context to prevent tqdm stderr issues

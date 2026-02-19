@@ -32,6 +32,22 @@ function isAbortError(error: unknown): boolean {
 const ESPN_BASE_URL = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 
 /**
+ * Validate whether the given URL is an ESPN host.
+ *
+ * Uses URL parsing + exact hostname suffix matching instead of substring
+ * search to prevent bypass via URLs like "evil.com/espn.com" (CodeQL
+ * js/incomplete-url-substring-sanitization, alerts #1/#2).
+ */
+export function isEspnHost(urlString: string): boolean {
+  try {
+    const { hostname } = new URL(urlString);
+    return hostname === 'espn.com' || hostname.endsWith('.espn.com');
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Parse an explicit season and/or week from user input.
  *
  * Supported patterns:
@@ -305,7 +321,7 @@ export class NFLClient {
   constructor() {
     const baseURL = config.getNflEndpoint() || ESPN_BASE_URL;
     this.client = axios.create({ baseURL });
-    if (!baseURL.includes('espn.com')) {
+    if (!isEspnHost(baseURL)) {
       logger.log('warn', 'nfl', `NFL: Endpoint "${baseURL}" is not an ESPN URL — requests may fail`);
     }
   }
@@ -317,7 +333,7 @@ export class NFLClient {
     const baseURL = config.getNflEndpoint() || ESPN_BASE_URL;
     this.client = axios.create({ baseURL });
     this.cache.clear();
-    if (!baseURL.includes('espn.com')) {
+    if (!isEspnHost(baseURL)) {
       logger.log('warn', 'nfl', `NFL: Endpoint "${baseURL}" is not an ESPN URL — requests may fail`);
     }
     if (config.getNflLoggingLevel() >= 0) {
@@ -872,12 +888,12 @@ export class NFLClient {
     const logLevel = config.getNflLoggingLevel();
 
     if (logLevel >= 0) {
-      logger.log('success', 'nfl', `NFL: handleRequest keyword="${keyword}" content="${content.length > 80 ? content.substring(0, 80) + '...' : content}"`);
+      logger.log('success', 'nfl', `NFL: handleRequest keyword=[${keyword}] content=[${content.length > 80 ? content.substring(0, 80) + '...' : content}]`);
     }
 
     // DEBUG: log full request content
     if (content.length > 80) {
-      logger.logDebug('nfl', `NFL-REQUEST [full]: keyword="${keyword}" content="${content}"`);
+      logger.logDebug('nfl', `NFL-REQUEST [full]: keyword=[${keyword}] content=[${content}]`);
     }
 
     try {

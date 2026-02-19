@@ -354,7 +354,7 @@ class AccuWeatherClient {
     const text = this.formatWeatherText(locationName, current, forecast, mode);
 
     // DEBUG: log full AccuWeather API response data
-    logger.logDebug(requester, `ACCUWEATHER-REQUEST: mode=${mode}, location="${locationInput}", resolved="${locationName}"`);
+    logger.logDebug(requester, `ACCUWEATHER-REQUEST: mode=${mode}, location=[${locationInput}], resolved=[${locationName}]`);
     logger.logDebug(requester, `ACCUWEATHER-RESPONSE: ${text}`);
 
     logger.logReply(requester, `AccuWeather response: ${text.length} characters for ${locationName}`);
