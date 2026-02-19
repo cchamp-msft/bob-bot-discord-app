@@ -180,7 +180,7 @@ describe('ActivityKeyManager', () => {
     });
 
     it('sessionRemainingSeconds returns positive value within max time', () => {
-      const token = activityKeyManager.createSession();
+      const _token = activityKeyManager.createSession();
       const remaining = activityKeyManager.sessionRemainingSeconds();
       expect(remaining).toBeGreaterThan(86390);
       expect(remaining).toBeLessThanOrEqual(86400);

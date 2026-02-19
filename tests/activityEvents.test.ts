@@ -9,8 +9,6 @@ import {
   normalizeNarrative,
   redactSensitive,
   sanitizeLocation,
-  type ActivityEvent,
-  type ActivityEventType,
 } from '../src/utils/activityEvents';
 
 // ── Helpers ──────────────────────────────────────────────────────

@@ -5,9 +5,9 @@ import { readEnvVar } from '../src/utils/dotenvCodec';
 // The configWriter module imports from './config' which triggers dotenv + keywords loading.
 // We need .env and keywords.json to exist before importing.
 const testDir = path.join(__dirname, '../test-fixtures');
-const testEnvPath = path.join(testDir, '.env');
+const _testEnvPath = path.join(testDir, '.env');
 const testKeywordsDir = path.join(testDir, 'config');
-const testKeywordsPath = path.join(testKeywordsDir, 'keywords.json');
+const _testKeywordsPath = path.join(testKeywordsDir, 'keywords.json');
 
 // We'll test configWriter in isolation by manipulating its private paths via temp files.
 // Since configWriter uses hardcoded paths relative to __dirname, we mock fs instead.

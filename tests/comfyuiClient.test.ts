@@ -1344,7 +1344,7 @@ describe('ComfyUIClient', () => {
 
   describe('generateImage with default workflow', () => {
     /** Mock /object_info/KSampler to return supported samplers & schedulers. */
-    function mockObjectInfo(
+    function _mockObjectInfo(
       samplers = ['euler', 'euler_ancestral', 'heun', 'dpmpp_2m'],
       schedulers = ['normal', 'karras', 'exponential', 'simple', 'beta']
     ): void {

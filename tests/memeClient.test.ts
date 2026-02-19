@@ -5,9 +5,9 @@
  * Uses axios mocking; no real memegen.link instance required.
  */
 
-import axios from 'axios';
+import _axios from 'axios';
 import * as fs from 'fs';
-import * as path from 'path';
+import * as _path from 'path';
 
 // Stable mock instance — defined at module level so the singleton
 // captures this same object when it calls axios.create() at import time.
@@ -102,7 +102,7 @@ const sampleTemplates = [
 
 // --- Helpers ---
 
-function setTemplates(templates: typeof sampleTemplates) {
+function _setTemplates(templates: typeof sampleTemplates) {
   // Force templates into the client via initialise flow
   mockInstance.get.mockResolvedValueOnce({ data: templates });
   (fs.existsSync as jest.Mock).mockReturnValue(false);

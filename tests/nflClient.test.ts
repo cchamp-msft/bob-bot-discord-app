@@ -5,7 +5,7 @@
  * Uses axios mocking; no real ESPN instance required.
  */
 
-import axios from 'axios';
+import _axios from 'axios';
 
 const mockInstance = {
   get: jest.fn(),
@@ -40,13 +40,13 @@ jest.mock('../src/utils/logger', () => ({
 }));
 
 import {
-  nflClient, NFLClient, parseSeasonWeek,
+  nflClient, parseSeasonWeek,
   mapESPNEventToGame, mapESPNScoreboard,
   isEspnHost,
 } from '../src/api/nflClient';
 import { config } from '../src/utils/config';
 import {
-  NFLGameScore, ESPNEvent, ESPNScoreboardResponse,
+  ESPNEvent, ESPNScoreboardResponse,
   ESPNCompetitor, ESPNNewsArticle,
 } from '../src/types';
 

@@ -44,7 +44,6 @@ jest.mock('../src/utils/activityEvents', () => ({
 
 import { evaluateContextWindow, buildContextEvalPrompt, parseEvalResponse, formatHistoryForEval, extractJsonArray } from '../src/utils/contextEvaluator';
 import { ollamaClient } from '../src/api/ollamaClient';
-import { config } from '../src/utils/config';
 import { requestQueue } from '../src/utils/requestQueue';
 import { ChatMessage } from '../src/types';
 import { KeywordConfig } from '../src/utils/config';

@@ -1420,7 +1420,7 @@ describe('ApiRouter', () => {
 
       // Inspect the conversation history passed to the final Ollama call
       const callArgs = mockApiExecute.mock.calls[0];
-      const systemMessages = callArgs[5] as Array<{ role: string; content: string }>;
+      const _systemMessages = callArgs[5] as Array<{ role: string; content: string }>;
       // The system prompt contains conversation context via assembleReprompt — check it does NOT
       // contain the trigger message twice. We verify the trigger message count in the history.
 
@@ -1710,7 +1710,7 @@ describe('ApiRouter', () => {
         await inferAbilityParameters(memeKeyword, 'make a drake meme about coding', 'testuser');
 
         // The execute call passes the system prompt via apiManager; verify it was called
-        const executeCall = mockExecute.mock.calls[0];
+        const _executeCall = mockExecute.mock.calls[0];
         // The executor function is the 5th argument — just verify it was invoked
         expect(mockExecute).toHaveBeenCalledTimes(1);
       });

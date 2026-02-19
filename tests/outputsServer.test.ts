@@ -454,7 +454,6 @@ describe('OutputsServer', () => {
       // Re-require to get a fresh OutputsServer with a clean rate limiter.
       // Because jest.mock is hoisted, the mocks are still active.
       jest.isolateModules(() => {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { outputsServer: freshServer } = require('../src/utils/outputsServer');
         rlBaseUrl = '';
         rlServer = freshServer.getApp().listen(0, '127.0.0.1', () => {

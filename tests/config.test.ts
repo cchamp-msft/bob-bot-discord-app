@@ -45,7 +45,7 @@ describe('Config', () => {
     fs.writeFileSync(keywordsPath, JSON.stringify({ keywords }, null, 2));
   }
 
-  function writeEnv(entries: Record<string, string>) {
+  function _writeEnv(entries: Record<string, string>) {
     const content = Object.entries(entries)
       .map(([k, v]) => `${k}=${v}`)
       .join('\n');

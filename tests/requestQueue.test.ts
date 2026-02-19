@@ -168,14 +168,14 @@ describe('RequestQueue', () => {
     });
 
     it('should abort the signal on timeout', async () => {
-      let signalAborted = false;
+      let _signalAborted = false;
 
       await expect(
         requestQueue.execute(
           'ollama', 'testuser', 'ask', 0.05, // 50ms timeout
           async (signal: AbortSignal) => {
             await new Promise((resolve) => setTimeout(resolve, 500));
-            signalAborted = signal.aborted;
+            _signalAborted = signal.aborted;
             return 'done';
           }
         )
@@ -299,7 +299,7 @@ describe('RequestQueue', () => {
 
       const promise = requestQueue.execute(
         'ollama', 'user1', 'ask', 60,
-        async (sig) => {
+        async (_sig) => {
           // Should never reach here — entry is skipped before execution
           return 'done';
         },

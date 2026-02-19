@@ -8,7 +8,7 @@ jest.mock('discord.js', () => ({
     const builder: any = {
       setName: jest.fn().mockImplementation(function (this: any, n: string) { this.name = n; return this; }),
       setDescription: jest.fn().mockReturnThis(),
-      addStringOption: jest.fn().mockImplementation(function (this: any, fn: Function) {
+      addStringOption: jest.fn().mockImplementation(function (this: any, fn: (...args: any[]) => any) {
         const option: any = {
           setName: jest.fn().mockReturnValue(null),
           setDescription: jest.fn().mockReturnValue(null),

@@ -122,7 +122,7 @@ jest.mock('../src/utils/activityKeyManager', () => ({
 }));
 
 import { config } from '../src/utils/config';
-import { classifyIntent, buildAbilitiesContext } from '../src/utils/keywordClassifier';
+import { classifyIntent } from '../src/utils/keywordClassifier';
 import { executeRoutedRequest, inferAbilityParameters } from '../src/utils/apiRouter';
 import { assemblePrompt, parseFirstLineKeyword } from '../src/utils/promptBuilder';
 import { activityEvents } from '../src/utils/activityEvents';
@@ -1652,7 +1652,7 @@ describe('MessageHandler SerpAPI find content keyword routing', () => {
 });
 
 describe('MessageHandler standalone help keyword uses actual config flag', () => {
-  const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
+  const _mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
 
   const helpKw = { keyword: '!help', api: 'ollama' as const, timeout: 120, description: 'Show help', builtin: true, allowEmptyContent: true };
 
