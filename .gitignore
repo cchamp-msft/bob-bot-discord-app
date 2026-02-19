@@ -12,3 +12,4 @@ outputs/
 *.swp
 *.swo
 config/keywords.json
+eslint-results.sarif
