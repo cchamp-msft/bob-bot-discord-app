@@ -1349,7 +1349,12 @@ class MessageHandler {
       .filter(k => k.enabled !== false && !this.keywordIs(k.keyword, 'help'));
 
     const capabilityLines = keywords.length > 0
-      ? keywords.map(k => `• \`\!${k.keyword}\` — ${k.description}`).join('\n')
+      ? keywords.map(k => {
+          const bare = k.keyword.startsWith(COMMAND_PREFIX)
+            ? k.keyword.slice(COMMAND_PREFIX.length)
+            : k.keyword;
+          return `• \`${COMMAND_PREFIX}${bare}\` — ${k.description}`;
+        }).join('\n')
       : 'No commands are currently configured.';
 
     return [

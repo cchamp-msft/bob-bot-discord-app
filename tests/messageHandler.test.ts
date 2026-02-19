@@ -1860,12 +1860,10 @@ describe('MessageHandler two-stage evaluation', () => {
     const msg = createMentionedMessage('<@bot-123> weather seattle');
     await messageHandler.handleMessage(msg);
 
-    expect(msg.reply).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ content: 'Sure — running Seattle, WA now.' })
-    );
-    expect(msg.reply).toHaveBeenNthCalledWith(
-      2,
+    // Commentary prelude is disabled (causes double-reply), so only the
+    // routed API response is sent as a single reply.
+    expect(msg.reply).toHaveBeenCalledTimes(1);
+    expect(msg.reply).toHaveBeenCalledWith(
       expect.objectContaining({ content: 'Sunny in Seattle' })
     );
   });
