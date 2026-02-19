@@ -148,9 +148,11 @@ class SerpApiClient {
         return `RESPONSE: status=${data.search_metadata?.status}, ai_overview=${aioStatus}, organics=${data.organic_results?.length ?? 0}`;
       });
 
-      // Log full raw response body for deep diagnostics
+      // Log full raw response body for deep diagnostics (secrets redacted at logger sink)
       logger.logDebugLazy('serpapi', () => {
-        return `RAW RESPONSE BODY:\n${JSON.stringify(data, null, 2)}`;
+        // Deep-clone and strip known secret-bearing fields before serialization
+        const safe = { ...data, search_parameters: undefined };
+        return `RAW RESPONSE BODY:\n${JSON.stringify(safe, null, 2)}`;
       });
 
       // If the initial search includes a page_token for AI Overview,

@@ -16,6 +16,32 @@ interface LogEntry {
 class Logger {
   private logsDir = path.join(__dirname, '../../outputs/logs');
 
+  /**
+   * Patterns that match sensitive values in log output.
+   * Each regex targets a key=value or key:"value" style, replacing the value
+   * portion with '***' while keeping the key visible for diagnostics.
+   *
+   * Addresses CodeQL js/clear-text-logging by ensuring API keys and tokens
+   * are never emitted to console or file sinks.
+   */
+  private static readonly REDACT_PATTERNS: { pattern: RegExp; replacement: string }[] = [
+    // JSON-style: "api_key":"VALUE" or "apiKey":"VALUE"
+    { pattern: /("(?:api_key|apiKey|api[-_]?secret|token|secret|password|authorization|bearer)":\s*")([^"]+)(")/gi, replacement: '$1***$3' },
+    // Query-string / param style: api_key=VALUE (up to & or whitespace)
+    { pattern: /((?:api_key|apiKey|api[-_]?secret|token|secret|password|authorization)=)([^\s&"]+)/gi, replacement: '$1***' },
+  ];
+
+  /**
+   * Redact sensitive values from a log line before it reaches any sink.
+   */
+  static redactSecrets(line: string): string {
+    let result = line;
+    for (const { pattern, replacement } of Logger.REDACT_PATTERNS) {
+      result = result.replace(pattern, replacement);
+    }
+    return result;
+  }
+
   constructor() {
     if (!fs.existsSync(this.logsDir)) {
       fs.mkdirSync(this.logsDir, { recursive: true });
@@ -60,7 +86,11 @@ class Logger {
 
     const threadId = getThreadId();
     const threadTag = threadId ? ` [${threadId}]` : '';
-    const logLine = `[${entry.timestamp}] [${entry.level}] [${entry.status}] [${entry.requester}]${threadTag} ${entry.data}`;
+    const rawLine = `[${entry.timestamp}] [${entry.level}] [${entry.status}] [${entry.requester}]${threadTag} ${entry.data}`;
+
+    // Redact secrets before any sink (console or file). Addresses CodeQL
+    // js/clear-text-logging alerts #8/#9/#10.
+    const logLine = Logger.redactSecrets(rawLine);
 
     // Write to console (same line as file)
     switch (level) {
