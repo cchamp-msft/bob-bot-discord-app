@@ -32,6 +32,10 @@ class OllamaClient {
   private modelCache: { names: Set<string>; expiry: number } = { names: new Set(), expiry: 0 };
   private static MODEL_CACHE_TTL_MS = 60_000; // 1 minute
 
+  /** Cached vision capability per model name */
+  private visionCache: Map<string, { capable: boolean; expiry: number }> = new Map();
+  private static VISION_CACHE_TTL_MS = 60_000; // 1 minute
+
   constructor() {
     this.client = axios.create({
       baseURL: config.getOllamaEndpoint(),
@@ -48,6 +52,7 @@ class OllamaClient {
     });
     // Invalidate model cache when endpoint changes
     this.modelCache = { names: new Set(), expiry: 0 };
+    this.visionCache.clear();
   }
 
   /**
@@ -89,15 +94,59 @@ class OllamaClient {
     return this.modelCache.names.has(model);
   }
 
+  /**
+   * Check if a model supports vision (image) inputs.
+   * Calls POST /api/show and inspects model metadata for vision/clip indicators.
+   * Results are cached with the same TTL as the model list cache.
+   */
+  async isVisionCapable(model: string): Promise<boolean> {
+    const now = Date.now();
+    const cached = this.visionCache.get(model);
+    if (cached && now < cached.expiry) {
+      return cached.capable;
+    }
+
+    try {
+      const response = await this.client.post('/api/show', { name: model });
+      if (response.status === 200 && response.data) {
+        const data = response.data;
+        // Check model_info keys for vision/projector indicators
+        const modelInfo = data.model_info;
+        if (modelInfo && typeof modelInfo === 'object') {
+          const keys = Object.keys(modelInfo);
+          const hasVisionKey = keys.some(k =>
+            k.includes('vision') || k.includes('projector') || k.includes('mmproj')
+          );
+          if (hasVisionKey) {
+            this.visionCache.set(model, { capable: true, expiry: now + OllamaClient.VISION_CACHE_TTL_MS });
+            return true;
+          }
+        }
+        // Check details.families for 'clip' (used by llava and similar models)
+        const families = data.details?.families;
+        if (Array.isArray(families) && families.some((f: string) => f === 'clip')) {
+          this.visionCache.set(model, { capable: true, expiry: now + OllamaClient.VISION_CACHE_TTL_MS });
+          return true;
+        }
+      }
+    } catch {
+      // If we can't determine capability, assume not vision-capable
+    }
+
+    this.visionCache.set(model, { capable: false, expiry: now + OllamaClient.VISION_CACHE_TTL_MS });
+    return false;
+  }
+
   async generate(
     prompt: string,
     requester: string,
     model?: string,
     conversationHistory?: ChatMessage[],
     signal?: AbortSignal,
-    options?: { includeSystemPrompt?: boolean }
+    options?: { includeSystemPrompt?: boolean },
+    images?: string[]
   ): Promise<OllamaResponse> {
-    const selectedModel = model || config.getOllamaModel();
+    let selectedModel = model || config.getOllamaModel();
 
     if (!selectedModel) {
       const errorMsg = 'No Ollama model configured. Please select a model in the configurator.';
@@ -106,6 +155,23 @@ class OllamaClient {
     }
 
     try {
+      // When images are present, verify the selected model supports vision.
+      // If not, auto-switch to the configured vision model.
+      if (images && images.length > 0) {
+        const isVision = await this.isVisionCapable(selectedModel);
+        if (!isVision) {
+          const visionModel = config.getOllamaVisionModel();
+          if (!visionModel || visionModel === selectedModel) {
+            const errorMsg = `Model "${selectedModel}" does not support images and no vision model is configured (OLLAMA_VISION_MODEL).`;
+            logger.logError(requester, errorMsg);
+            return { success: false, error: errorMsg };
+          }
+          logger.log('success', requester,
+            `VISION: Model "${selectedModel}" lacks vision capability — switching to "${visionModel}"`);
+          selectedModel = visionModel;
+        }
+      }
+
       // Validate that the model exists before sending
       const modelExists = await this.validateModel(selectedModel);
       if (!modelExists) {
@@ -137,8 +203,12 @@ class OllamaClient {
         messages.push(...conversationHistory);
       }
 
-      // Add current user message
-      messages.push({ role: 'user', content: prompt });
+      // Add current user message (with optional images for vision models)
+      const userMessage: ChatMessage = { role: 'user', content: prompt };
+      if (images && images.length > 0) {
+        userMessage.images = images;
+      }
+      messages.push(userMessage);
 
       const requestBody: Record<string, unknown> = {
         model: selectedModel,

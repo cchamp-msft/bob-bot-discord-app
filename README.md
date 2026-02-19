@@ -10,6 +10,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 - ✅ Slash commands with ephemeral responses
 - ✅ ComfyUI integration for AI image generation
 - ✅ Ollama integration for AI text generation and conversation
+- ✅ **Image-to-text (vision)** — attach images to any @mention or DM and Ollama describes them automatically
 - ✅ AccuWeather integration for real-time weather data
 - ✅ **NFL game data** — live scores and news via ESPN
 - ✅ **Web search** — Google Search via SerpAPI with AI Overview support

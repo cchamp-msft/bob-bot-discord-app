@@ -2,6 +2,11 @@
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  /**
+   * Base64-encoded images attached to this message.
+   * Used by vision-capable Ollama models via the `/api/chat` `images` field.
+   */
+  images?: string[];
   /** How this message was sourced. */
   contextSource?: 'reply' | 'channel' | 'thread' | 'dm' | 'trigger';
   /** Discord message snowflake — used for deduplication when merging contexts. */
@@ -361,6 +366,7 @@ export interface PublicConfig {
     comfyui: string;
     ollama: string;
     ollamaModel: string;
+    ollamaVisionModel: string;
     ollamaFinalPassModel: string;
     ollamaSystemPrompt: string;
     ollamaFinalPassPrompt: string;
@@ -407,6 +413,8 @@ export interface PublicConfig {
     fileSizeThreshold: number;
     defaultTimeout: number;
     maxAttachments: number;
+    imageAttachmentMaxSize: number;
+    imageAttachmentMaxCount: number;
   };
   keywords: import('./utils/config').KeywordConfig[];
   defaultKeywords: import('./utils/config').KeywordConfig[];

@@ -573,6 +573,30 @@ class Config {
   }
 
   /**
+   * Ollama model used for vision/multimodal requests (image analysis).
+   * Falls back to the default OLLAMA_MODEL if not set.
+   */
+  getOllamaVisionModel(): string {
+    return process.env.OLLAMA_VISION_MODEL || this.getOllamaModel();
+  }
+
+  /**
+   * Maximum size in bytes for a single image attachment.
+   * Discord attachments exceeding this are skipped. Default: 5 MB.
+   */
+  getImageAttachmentMaxSize(): number {
+    return this.parseIntEnv('IMAGE_ATTACHMENT_MAX_SIZE', 5 * 1024 * 1024);
+  }
+
+  /**
+   * Maximum number of image attachments processed per message.
+   * Additional images beyond this cap are silently ignored. Default: 4.
+   */
+  getImageAttachmentMaxCount(): number {
+    return this.parseIntEnv('IMAGE_ATTACHMENT_MAX_COUNT', 4);
+  }
+
+  /**
    * System prompt sent with every Ollama request to set the bot's personality.
    * Defaults to a friendly, tone-matching Discord bot persona.
    */
@@ -880,6 +904,9 @@ class Config {
     const prevThreshold = this.getFileSizeThreshold();
     const prevTimeout = this.getDefaultTimeout();
     const prevOllamaModel = this.getOllamaModel();
+    const prevOllamaVisionModel = this.getOllamaVisionModel();
+    const prevImageAttachMaxSize = this.getImageAttachmentMaxSize();
+    const prevImageAttachMaxCount = this.getImageAttachmentMaxCount();
     const prevSystemPrompt = this.getOllamaSystemPrompt();
     const prevErrorMsg = this.getErrorMessage();
     const prevErrorRate = this.getErrorRateLimitMinutes();
@@ -957,6 +984,9 @@ class Config {
     if (this.getFileSizeThreshold() !== prevThreshold) reloaded.push('FILE_SIZE_THRESHOLD');
     if (this.getDefaultTimeout() !== prevTimeout) reloaded.push('DEFAULT_TIMEOUT');
     if (this.getOllamaModel() !== prevOllamaModel) reloaded.push('OLLAMA_MODEL');
+    if (this.getOllamaVisionModel() !== prevOllamaVisionModel) reloaded.push('OLLAMA_VISION_MODEL');
+    if (this.getImageAttachmentMaxSize() !== prevImageAttachMaxSize) reloaded.push('IMAGE_ATTACHMENT_MAX_SIZE');
+    if (this.getImageAttachmentMaxCount() !== prevImageAttachMaxCount) reloaded.push('IMAGE_ATTACHMENT_MAX_COUNT');
     if (this.getOllamaSystemPrompt() !== prevSystemPrompt) reloaded.push('OLLAMA_SYSTEM_PROMPT');
     if (this.getErrorMessage() !== prevErrorMsg) reloaded.push('ERROR_MESSAGE');
     if (this.getErrorRateLimitMinutes() !== prevErrorRate) reloaded.push('ERROR_RATE_LIMIT_MINUTES');
@@ -1028,6 +1058,7 @@ class Config {
         comfyui: this.getComfyUIEndpoint(),
         ollama: this.getOllamaEndpoint(),
         ollamaModel: this.getOllamaModel(),
+        ollamaVisionModel: this.getOllamaVisionModel(),
         ollamaFinalPassModel: this.getOllamaFinalPassModel(),
         ollamaSystemPrompt: this.getOllamaSystemPrompt(),
         ollamaFinalPassPrompt: this.getOllamaFinalPassPrompt(),
@@ -1074,6 +1105,8 @@ class Config {
         fileSizeThreshold: this.getFileSizeThreshold(),
         defaultTimeout: this.getDefaultTimeout(),
         maxAttachments: this.getMaxAttachments(),
+        imageAttachmentMaxSize: this.getImageAttachmentMaxSize(),
+        imageAttachmentMaxCount: this.getImageAttachmentMaxCount(),
       },
       keywords: this.getKeywords(),
       defaultKeywords: this.getDefaultKeywords(),

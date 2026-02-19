@@ -13,6 +13,8 @@ export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, AccuWeatherRe
 export interface OllamaRequestOptions {
   /** When false, skip the global persona system prompt (caller supplies its own). */
   includeSystemPrompt?: boolean;
+  /** Base64-encoded images for vision-capable models. */
+  images?: string[];
 }
 
 class ApiManager {
@@ -44,7 +46,7 @@ class ApiManager {
       // Stub for future external API integrations
       throw new Error('External API routing is not yet implemented');
     } else {
-      return await ollamaClient.generate(data, requester, model || config.getOllamaModel(), conversationHistory, signal, ollamaOptions);
+      return await ollamaClient.generate(data, requester, model || config.getOllamaModel(), conversationHistory, signal, ollamaOptions, ollamaOptions?.images);
     }
   }
 

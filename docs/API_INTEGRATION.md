@@ -26,6 +26,37 @@ The `/ask` slash command accepts an optional `model` parameter to override the d
 /ask question: explain quantum physics model: llama2
 ```
 
+### Vision (Image-to-Text)
+
+When a user attaches images to a message that triggers the bot, the images are automatically downloaded, base64-encoded, and forwarded to Ollama using the per-message `images` field in the `/api/chat` endpoint.
+
+The bot detects vision capability by calling `/api/show` and checking model metadata for vision-related keys (`vision`, `projector`, `mmproj` in `model_info`, or `clip` in `details.families`). Results are cached for 5 minutes.
+
+**Auto-switch behavior:** If the default `OLLAMA_MODEL` is not vision-capable and images are attached, the bot automatically switches to `OLLAMA_VISION_MODEL`. If no vision model is configured, a descriptive error is returned.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OLLAMA_VISION_MODEL` | No | Falls back to `OLLAMA_MODEL` | Vision-capable model for image analysis (e.g., `llava`, `llava-llama3`) |
+| `IMAGE_ATTACHMENT_MAX_SIZE` | No | `5242880` (5 MB) | Maximum file size per image attachment in bytes |
+| `IMAGE_ATTACHMENT_MAX_COUNT` | No | `4` | Maximum number of images processed per message |
+
+#### Supported Image Formats
+
+- `image/png`
+- `image/jpeg`
+- `image/gif`
+- `image/webp`
+
+#### Usage Examples
+
+Attach an image to any @mention or DM:
+```
+@BobBot what's in this picture?
+@BobBot describe the architecture in this diagram
+```
+
+If no text is provided with the image, the bot auto-generates a default prompt: "What do you see in this image?" (or "...these images?" for multiple).
+
 ## ComfyUI Configuration
 
 ComfyUI uses workflow JSON files to define generation pipelines. There are two ways to configure a workflow:

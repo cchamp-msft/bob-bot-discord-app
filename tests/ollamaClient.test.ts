@@ -25,6 +25,7 @@ jest.mock('../src/utils/config', () => ({
   config: {
     getOllamaEndpoint: jest.fn(() => 'http://localhost:11434'),
     getOllamaModel: jest.fn(() => 'llama2'),
+    getOllamaVisionModel: jest.fn(() => 'llava:7b'),
     getOllamaSystemPrompt: jest.fn(() => ''),
   },
 }));
@@ -36,6 +37,7 @@ jest.mock('../src/utils/logger', () => ({
     logError: jest.fn(),
     logDebug: jest.fn(),
     logDebugLazy: jest.fn(),
+    log: jest.fn(),
   },
 }));
 
@@ -52,8 +54,10 @@ describe('OllamaClient', () => {
     (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
     (config.getOllamaEndpoint as jest.Mock).mockReturnValue('http://localhost:11434');
     (config.getOllamaSystemPrompt as jest.Mock).mockReturnValue('');
+    (config.getOllamaVisionModel as jest.Mock).mockReturnValue('llava:7b');
     // Clear the model cache between tests
     (ollamaClient as any).modelCache = { names: new Set(), expiry: 0 };
+    (ollamaClient as any).visionCache = new Map();
   });
 
   describe('listModels', () => {
@@ -457,6 +461,226 @@ describe('OllamaClient', () => {
       expect(mockedAxios.create).toHaveBeenLastCalledWith({
         baseURL: 'http://new-host:9999',
       });
+    });
+
+    it('should clear vision cache on refresh', async () => {
+      // Populate vision cache
+      (ollamaClient as any).visionCache.set('llama2', { capable: false, expiry: Date.now() + 60000 });
+
+      ollamaClient.refresh();
+
+      expect((ollamaClient as any).visionCache.size).toBe(0);
+    });
+  });
+
+  describe('isVisionCapable', () => {
+    it('should return true when model_info contains vision key', async () => {
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: {
+          model_info: {
+            'general.architecture': 'llama',
+            'llama.vision.image_size': 560,
+            'llama.attention.head_count': 32,
+          },
+          details: { families: ['llama'] },
+        },
+      });
+
+      expect(await ollamaClient.isVisionCapable('llava:7b')).toBe(true);
+    });
+
+    it('should return true when model_info contains projector key', async () => {
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: {
+          model_info: {
+            'general.architecture': 'llama',
+            'projector.type': 'mlp',
+          },
+          details: { families: ['llama'] },
+        },
+      });
+
+      expect(await ollamaClient.isVisionCapable('llava:7b')).toBe(true);
+    });
+
+    it('should return true when details.families contains clip', async () => {
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: {
+          model_info: { 'general.architecture': 'llama' },
+          details: { families: ['llama', 'clip'] },
+        },
+      });
+
+      expect(await ollamaClient.isVisionCapable('llava:7b')).toBe(true);
+    });
+
+    it('should return false for a text-only model', async () => {
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: {
+          model_info: { 'general.architecture': 'llama' },
+          details: { families: ['llama'] },
+        },
+      });
+
+      expect(await ollamaClient.isVisionCapable('llama2')).toBe(false);
+    });
+
+    it('should return false on network error', async () => {
+      mockInstance.post.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      expect(await ollamaClient.isVisionCapable('llava:7b')).toBe(false);
+    });
+
+    it('should cache vision capability result', async () => {
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: {
+          model_info: { 'general.architecture': 'llama' },
+          details: { families: ['llama', 'clip'] },
+        },
+      });
+
+      await ollamaClient.isVisionCapable('llava:7b');
+      await ollamaClient.isVisionCapable('llava:7b');
+
+      // Should have only called /api/show once
+      expect(mockInstance.post).toHaveBeenCalledTimes(1);
+      expect(mockInstance.post).toHaveBeenCalledWith('/api/show', { name: 'llava:7b' });
+    });
+  });
+
+  describe('generate with images', () => {
+    const setupModelExists = () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: { models: [{ name: 'llava:7b', size: 0, details: {} }, { name: 'llama2', size: 0, details: {} }] },
+      });
+    };
+
+    it('should include images in user message when provided', async () => {
+      setupModelExists();
+
+      // isVisionCapable → true (has clip family)
+      mockInstance.post.mockImplementation((url: string, data: unknown) => {
+        if (url === '/api/show') {
+          return Promise.resolve({
+            status: 200,
+            data: {
+              model_info: {},
+              details: { families: ['llama', 'clip'] },
+            },
+          });
+        }
+        return Promise.resolve({
+          status: 200,
+          data: { message: { content: 'I see a cat in the image.' } },
+        });
+      });
+
+      const result = await ollamaClient.generate(
+        'What is in this image?', 'user1', 'llava:7b',
+        undefined, undefined, undefined,
+        ['base64imagedata']
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toBe('I see a cat in the image.');
+
+      // Verify the /api/chat call includes images on the user message
+      const chatCall = mockInstance.post.mock.calls.find(
+        (c: unknown[]) => c[0] === '/api/chat'
+      );
+      expect(chatCall).toBeDefined();
+      const messages = (chatCall![1] as any).messages;
+      const userMsg = messages.find((m: any) => m.role === 'user');
+      expect(userMsg.images).toEqual(['base64imagedata']);
+    });
+
+    it('should auto-switch to vision model when active model lacks capability', async () => {
+      setupModelExists();
+      (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
+      (config.getOllamaVisionModel as jest.Mock).mockReturnValue('llava:7b');
+
+      mockInstance.post.mockImplementation((url: string, data: unknown) => {
+        if (url === '/api/show') {
+          const body = data as { name: string };
+          if (body.name === 'llama2') {
+            return Promise.resolve({
+              status: 200,
+              data: { model_info: {}, details: { families: ['llama'] } },
+            });
+          }
+          // llava:7b — vision capable
+          return Promise.resolve({
+            status: 200,
+            data: { model_info: {}, details: { families: ['llama', 'clip'] } },
+          });
+        }
+        return Promise.resolve({
+          status: 200,
+          data: { message: { content: 'Switched to vision model response.' } },
+        });
+      });
+
+      const result = await ollamaClient.generate(
+        'Describe this', 'user1', 'llama2',
+        undefined, undefined, undefined,
+        ['imgdata']
+      );
+
+      expect(result.success).toBe(true);
+      // Should have called /api/chat with the vision model
+      const chatCall = mockInstance.post.mock.calls.find(
+        (c: unknown[]) => c[0] === '/api/chat'
+      );
+      expect((chatCall![1] as any).model).toBe('llava:7b');
+    });
+
+    it('should return error when model lacks vision and no vision model configured', async () => {
+      setupModelExists();
+      (config.getOllamaModel as jest.Mock).mockReturnValue('llama2');
+      (config.getOllamaVisionModel as jest.Mock).mockReturnValue('llama2'); // same as default — no dedicated vision model
+
+      mockInstance.post.mockImplementation((url: string) => {
+        if (url === '/api/show') {
+          return Promise.resolve({
+            status: 200,
+            data: { model_info: {}, details: { families: ['llama'] } },
+          });
+        }
+        return Promise.resolve({ status: 200, data: { message: { content: '' } } });
+      });
+
+      const result = await ollamaClient.generate(
+        'Describe this', 'user1', 'llama2',
+        undefined, undefined, undefined,
+        ['imgdata']
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('does not support images');
+      expect(result.error).toContain('OLLAMA_VISION_MODEL');
+    });
+
+    it('should not include images field when no images provided', async () => {
+      setupModelExists();
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { message: { content: 'Text only response' } },
+      });
+
+      await ollamaClient.generate('hello', 'user1', 'llama2');
+
+      const chatCall = mockInstance.post.mock.calls.find(
+        (c: unknown[]) => c[0] === '/api/chat'
+      );
+      const messages = (chatCall![1] as any).messages;
+      const userMsg = messages.find((m: any) => m.role === 'user');
+      expect(userMsg.images).toBeUndefined();
     });
   });
 });

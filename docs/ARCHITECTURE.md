@@ -9,7 +9,7 @@ src/
 ├── index.ts              # Main bot entry point
 ├── bot/
 │   ├── discordManager.ts # Discord client lifecycle (start/stop/test)
-│   └── messageHandler.ts # @mention / DM detection and inline replies
+│   └── messageHandler.ts # @mention / DM detection, image extraction, and inline replies
 ├── commands/
 │   ├── index.ts          # Command handler
 │   └── commands.ts       # Slash command definitions

@@ -112,7 +112,7 @@ describe('ApiManager', () => {
 
       const result = await apiManager.executeRequest('ollama', 'user1', 'hello', 300);
 
-      expect(ollamaClient.generate).toHaveBeenCalledWith('hello', 'user1', 'llama2', undefined, undefined, undefined);
+      expect(ollamaClient.generate).toHaveBeenCalledWith('hello', 'user1', 'llama2', undefined, undefined, undefined, undefined);
       expect(result.success).toBe(true);
     });
 
@@ -124,7 +124,7 @@ describe('ApiManager', () => {
 
       await apiManager.executeRequest('ollama', 'user1', 'write code', 300, 'codellama');
 
-      expect(ollamaClient.generate).toHaveBeenCalledWith('write code', 'user1', 'codellama', undefined, undefined, undefined);
+      expect(ollamaClient.generate).toHaveBeenCalledWith('write code', 'user1', 'codellama', undefined, undefined, undefined, undefined);
     });
 
     it('should pass conversation history to ollamaClient', async () => {
@@ -140,7 +140,7 @@ describe('ApiManager', () => {
 
       await apiManager.executeRequest('ollama', 'user1', 'follow up', 300, undefined, history);
 
-      expect(ollamaClient.generate).toHaveBeenCalledWith('follow up', 'user1', 'llama2', history, undefined, undefined);
+      expect(ollamaClient.generate).toHaveBeenCalledWith('follow up', 'user1', 'llama2', history, undefined, undefined, undefined);
     });
 
     it('should forward ollamaOptions to ollamaClient.generate', async () => {
@@ -155,8 +155,58 @@ describe('ApiManager', () => {
       );
 
       expect(ollamaClient.generate).toHaveBeenCalledWith(
-        'hello', 'user1', 'llama2', undefined, undefined, { includeSystemPrompt: false }
+        'hello', 'user1', 'llama2', undefined, undefined, { includeSystemPrompt: false }, undefined
       );
+    });
+
+    it('should forward images through ollamaOptions to ollamaClient.generate', async () => {
+      (ollamaClient.generate as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { text: 'I see a cat in the image' },
+      });
+
+      const images = ['base64img1', 'base64img2'];
+
+      const result = await apiManager.executeRequest(
+        'ollama', 'user1', 'describe this image', 300, undefined, undefined, undefined, undefined,
+        { images }
+      );
+
+      expect(ollamaClient.generate).toHaveBeenCalledWith(
+        'describe this image', 'user1', 'llama2', undefined, undefined, { images }, images
+      );
+      expect(result.success).toBe(true);
+    });
+
+    it('should forward both includeSystemPrompt and images in ollamaOptions', async () => {
+      (ollamaClient.generate as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { text: 'vision response' },
+      });
+
+      const images = ['base64data'];
+
+      await apiManager.executeRequest(
+        'ollama', 'user1', 'what is this?', 300, undefined, undefined, undefined, undefined,
+        { includeSystemPrompt: false, images }
+      );
+
+      expect(ollamaClient.generate).toHaveBeenCalledWith(
+        'what is this?', 'user1', 'llama2', undefined, undefined,
+        { includeSystemPrompt: false, images }, images
+      );
+    });
+
+    it('should not pass images for non-ollama API requests', async () => {
+      (comfyuiClient.generateImage as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { images: [] },
+      });
+
+      await apiManager.executeRequest('comfyui', 'user1', 'test prompt', 300);
+
+      expect(ollamaClient.generate).not.toHaveBeenCalled();
+      expect(comfyuiClient.generateImage).toHaveBeenCalledWith('test prompt', 'user1', undefined, 300);
     });
     it('should route meme requests to memeClient', async () => {
       (memeClient.handleRequest as jest.Mock).mockResolvedValue({

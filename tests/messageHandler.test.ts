@@ -18,6 +18,14 @@ jest.mock('discord.js', () => ({
   ChannelType: { DM: 1, GuildText: 0, GuildAnnouncement: 1 },
 }));
 
+jest.mock('axios', () => ({
+  __esModule: true,
+  default: {
+    get: jest.fn(),
+    create: jest.fn(() => ({ get: jest.fn(), post: jest.fn() })),
+  },
+}));
+
 jest.mock('../src/utils/config', () => ({
   COMMAND_PREFIX: '!',
   config: {
@@ -39,6 +47,8 @@ jest.mock('../src/utils/config', () => ({
     getActivityKeyTtl: jest.fn(() => 300),
     getActivitySessionMaxTime: jest.fn(() => 86400),
     getOutputBaseUrl: jest.fn(() => 'http://localhost:3003'),
+    getImageAttachmentMaxSize: jest.fn(() => 5 * 1024 * 1024),
+    getImageAttachmentMaxCount: jest.fn(() => 4),
   },
 }));
 
@@ -126,6 +136,8 @@ import { classifyIntent } from '../src/utils/keywordClassifier';
 import { executeRoutedRequest, inferAbilityParameters } from '../src/utils/apiRouter';
 import { assemblePrompt, parseFirstLineKeyword } from '../src/utils/promptBuilder';
 import { activityEvents } from '../src/utils/activityEvents';
+import axios from 'axios';
+import type { Message } from 'discord.js';
 
 // We need to test the rate-limit behavior. The MessageHandler class is not
 // exported directly, but the singleton is. We can access its private method.
@@ -4387,5 +4399,147 @@ describe('MessageHandler image prompt context derivation', () => {
     const result = (messageHandler as any).deriveImagePromptFromContext('can you imagine this', history);
 
     expect(result).toBe('The Eiffel Tower grows taller in summer due to thermal expansion.');
+  });
+});
+
+// ── Image attachment extraction tests ────────────────────────────────────
+
+describe('extractImageAttachments', () => {
+  const mockedAxiosGet = axios.get as jest.MockedFunction<typeof axios.get>;
+
+  beforeEach(() => {
+    mockedAxiosGet.mockReset();
+    (config.getImageAttachmentMaxSize as jest.Mock).mockReturnValue(5 * 1024 * 1024);
+    (config.getImageAttachmentMaxCount as jest.Mock).mockReturnValue(4);
+  });
+
+  function makeAttachment(overrides: Partial<{
+    url: string;
+    contentType: string | null;
+    size: number;
+    name: string;
+  }> = {}) {
+    return {
+      url: overrides.url ?? 'https://cdn.discordapp.com/attachments/123/456/image.png',
+      contentType: overrides.contentType ?? 'image/png',
+      size: overrides.size ?? 1024,
+      name: overrides.name ?? 'image.png',
+    };
+  }
+
+  function makeMessage(attachments: ReturnType<typeof makeAttachment>[]) {
+    const map = new Map<string, ReturnType<typeof makeAttachment>>();
+    attachments.forEach((a, i) => map.set(String(i), a));
+    return { attachments: map } as unknown as Message;
+  }
+
+  it('should return empty array when message has no attachments', async () => {
+    const msg = makeMessage([]);
+    const result = await (messageHandler as any).extractImageAttachments(msg);
+    expect(result).toEqual([]);
+  });
+
+  it('should download and base64-encode valid image attachments', async () => {
+    const imageBuffer = Buffer.from('fake-png-data');
+    mockedAxiosGet.mockResolvedValue({ data: imageBuffer });
+
+    const msg = makeMessage([makeAttachment()]);
+    const result = await (messageHandler as any).extractImageAttachments(msg);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(imageBuffer.toString('base64'));
+    expect(mockedAxiosGet).toHaveBeenCalledWith(
+      'https://cdn.discordapp.com/attachments/123/456/image.png',
+      { responseType: 'arraybuffer', timeout: 30000 }
+    );
+  });
+
+  it('should skip non-image content types', async () => {
+    const msg = makeMessage([
+      makeAttachment({ contentType: 'application/pdf', name: 'doc.pdf' }),
+      makeAttachment({ contentType: 'text/plain', name: 'readme.txt' }),
+    ]);
+
+    const result = await (messageHandler as any).extractImageAttachments(msg);
+    expect(result).toEqual([]);
+    expect(mockedAxiosGet).not.toHaveBeenCalled();
+  });
+
+  it('should skip attachments with null content type', async () => {
+    const msg = makeMessage([makeAttachment({ contentType: null })]);
+
+    const result = await (messageHandler as any).extractImageAttachments(msg);
+    expect(result).toEqual([]);
+  });
+
+  it('should skip oversized images', async () => {
+    (config.getImageAttachmentMaxSize as jest.Mock).mockReturnValue(1000);
+
+    const msg = makeMessage([makeAttachment({ size: 2000 })]);
+    const result = await (messageHandler as any).extractImageAttachments(msg);
+
+    expect(result).toEqual([]);
+    expect(mockedAxiosGet).not.toHaveBeenCalled();
+  });
+
+  it('should cap at configured max count', async () => {
+    (config.getImageAttachmentMaxCount as jest.Mock).mockReturnValue(2);
+    const imageBuffer = Buffer.from('img');
+    mockedAxiosGet.mockResolvedValue({ data: imageBuffer });
+
+    const msg = makeMessage([
+      makeAttachment({ name: 'a.png' }),
+      makeAttachment({ name: 'b.png' }),
+      makeAttachment({ name: 'c.png' }),
+    ]);
+
+    const result = await (messageHandler as any).extractImageAttachments(msg);
+
+    expect(result).toHaveLength(2);
+    expect(mockedAxiosGet).toHaveBeenCalledTimes(2);
+  });
+
+  it('should handle download errors gracefully', async () => {
+    mockedAxiosGet.mockRejectedValue(new Error('Network error'));
+
+    const msg = makeMessage([makeAttachment()]);
+    const result = await (messageHandler as any).extractImageAttachments(msg);
+
+    expect(result).toEqual([]);
+  });
+
+  it('should accept all supported image MIME types', async () => {
+    const imageBuffer = Buffer.from('img');
+    mockedAxiosGet.mockResolvedValue({ data: imageBuffer });
+
+    const msg = makeMessage([
+      makeAttachment({ contentType: 'image/png' }),
+      makeAttachment({ contentType: 'image/jpeg' }),
+      makeAttachment({ contentType: 'image/gif' }),
+      makeAttachment({ contentType: 'image/webp' }),
+    ]);
+
+    const result = await (messageHandler as any).extractImageAttachments(msg);
+    expect(result).toHaveLength(4);
+  });
+
+  it('should process mixed valid and invalid attachments', async () => {
+    const imageBuffer = Buffer.from('good');
+    mockedAxiosGet.mockResolvedValue({ data: imageBuffer });
+
+    (config.getImageAttachmentMaxSize as jest.Mock).mockReturnValue(500);
+
+    const msg = makeMessage([
+      makeAttachment({ contentType: 'image/png', size: 100, name: 'ok.png' }),
+      makeAttachment({ contentType: 'application/pdf', size: 100, name: 'doc.pdf' }),
+      makeAttachment({ contentType: 'image/jpeg', size: 1000, name: 'too-big.jpg' }),
+      makeAttachment({ contentType: 'image/gif', size: 50, name: 'small.gif' }),
+    ]);
+
+    const result = await (messageHandler as any).extractImageAttachments(msg);
+
+    // Only ok.png and small.gif should be processed
+    expect(result).toHaveLength(2);
+    expect(mockedAxiosGet).toHaveBeenCalledTimes(2);
   });
 });

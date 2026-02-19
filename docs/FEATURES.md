@@ -14,6 +14,7 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 - ✅ Ollama integration for AI text generation
 - ✅ **Ollama model discovery** — test connection loads available models for selection
 - ✅ **Ollama system prompt** — configurable personality/context sent with every request
+- ✅ **Image-to-text (vision)** — attach images to any @mention or DM; the bot downloads them, base64-encodes, and sends to a vision-capable Ollama model. Auto-switches to `OLLAMA_VISION_MODEL` when the default model lacks vision capability. Supports PNG, JPEG, GIF, and WebP up to configurable size and count limits.
 - ✅ **ComfyUI workflow upload** — upload JSON workflow with `%prompt%` placeholder substitution
 
 ### External APIs

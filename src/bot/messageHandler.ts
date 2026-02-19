@@ -3,6 +3,7 @@ import {
   EmbedBuilder,
   ChannelType,
 } from 'discord.js';
+import axios from 'axios';
 import { config, KeywordConfig, COMMAND_PREFIX } from '../utils/config';
 import { logger } from '../utils/logger';
 import { requestQueue } from '../utils/requestQueue';
@@ -345,12 +346,22 @@ class MessageHandler {
     //   <a:name:123> — animated emoji
     content = content.replace(/<@[!&]?\d+>|<#\d+>|<a?:\w+:\d+>/g, '').trim();
 
-    if (!content) {
+    // Extract image attachments (base64-encoded) for vision model processing
+    const imagePayloads = await this.extractImageAttachments(message);
+
+    if (!content && imagePayloads.length === 0) {
       logger.logIgnored(requester, 'Empty message after mention removal');
       await message.reply(
         'Please include a prompt or question in your message!'
       );
       return;
+    }
+
+    // When the user sends images but no text, use a sensible default prompt
+    if (!content && imagePayloads.length > 0) {
+      content = imagePayloads.length === 1
+        ? 'What do you see in this image?'
+        : `What do you see in these ${imagePayloads.length} images?`;
     }
 
     // Find matching keyword at message start — only matches !prefixed commands.
@@ -540,7 +551,8 @@ class MessageHandler {
           conversationHistory,
           isDM,
           botDisplayName,
-          startsWithCommandPrefix && !keywordMatched
+          startsWithCommandPrefix && !keywordMatched,
+          imagePayloads
         );
       }
 
@@ -1020,6 +1032,66 @@ class MessageHandler {
     return false;
   }
 
+  /** Allowed MIME types for image attachments. */
+  private static readonly IMAGE_MIME_TYPES = new Set([
+    'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+  ]);
+
+  /**
+   * Extract image attachments from a Discord message, downloading each
+   * and encoding as base64. Respects configured size and count limits.
+   * Returns an array of base64-encoded image strings (may be empty).
+   */
+  async extractImageAttachments(message: Message): Promise<string[]> {
+    if (!message.attachments || typeof message.attachments.values !== 'function') return [];
+    const attachments = [...message.attachments.values()];
+    if (attachments.length === 0) return [];
+
+    const maxSize = config.getImageAttachmentMaxSize();
+    const maxCount = config.getImageAttachmentMaxCount();
+    const results: string[] = [];
+
+    for (const attachment of attachments) {
+      if (results.length >= maxCount) {
+        logger.log('success', 'system',
+          `VISION: Reached image cap (${maxCount}) — skipping remaining attachments`);
+        break;
+      }
+
+      // Validate content type
+      const contentType = attachment.contentType ?? '';
+      if (!MessageHandler.IMAGE_MIME_TYPES.has(contentType)) {
+        // Not an image — skip silently
+        continue;
+      }
+
+      // Validate size
+      if (attachment.size > maxSize) {
+        logger.logWarn('system',
+          `VISION: Skipping oversized image "${attachment.name}" (${attachment.size} bytes > ${maxSize} limit)`);
+        continue;
+      }
+
+      try {
+        const response = await axios.get(attachment.url, {
+          responseType: 'arraybuffer',
+          timeout: 30000,
+        });
+        const base64 = Buffer.from(response.data).toString('base64');
+        results.push(base64);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.logWarn('system', `VISION: Failed to download image "${attachment.name}": ${errorMsg}`);
+      }
+    }
+
+    if (results.length > 0) {
+      logger.log('success', 'system', `VISION: Extracted ${results.length} image(s) for processing`);
+    }
+
+    return results;
+  }
+
   /**
    * Execute the Ollama evaluation flow:
    * 1. Build XML-tagged prompt with abilities context and conversation history
@@ -1037,7 +1109,8 @@ class MessageHandler {
     conversationHistory: ChatMessage[],
     isDM: boolean,
     botDisplayName?: string,
-    strictNoApiRoutingFromInference: boolean = false
+    strictNoApiRoutingFromInference: boolean = false,
+    imagePayloads: string[] = []
   ): Promise<void> {
     const timeout = keywordConfig.timeout || config.getDefaultTimeout();
 
@@ -1090,6 +1163,7 @@ class MessageHandler {
     // Stage 1: Call Ollama with the XML-tagged prompt.
     // System content from assemblePrompt replaces the global persona;
     // includeSystemPrompt: false prevents OllamaClient from duplicating it.
+    // When image payloads are present, they are forwarded to the vision model.
     const ollamaResult = await requestQueue.execute(
       'ollama',
       requester,
@@ -1105,7 +1179,10 @@ class MessageHandler {
           [{ role: 'system', content: assembled.systemContent }],
           signal,
           undefined,
-          { includeSystemPrompt: false }
+          {
+            includeSystemPrompt: false,
+            ...(imagePayloads.length > 0 ? { images: imagePayloads } : {}),
+          }
         )
     ) as OllamaResponse;
 
