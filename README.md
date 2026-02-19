@@ -23,7 +23,7 @@ A Discord bot that monitors @mentions and DMs, routes keyword-matched requests t
 
 ### Prerequisites
 
-- Node.js 16+
+- Node.js 20+
 - A Discord Bot Token (configurable via web UI)
 - Optional: ComfyUI, Ollama, AccuWeather API key, SerpAPI key
 

@@ -4,7 +4,7 @@ This guide will get you up and running with Bob Bot in just a few minutes.
 
 ## Prerequisites
 
-- Node.js 16+
+- Node.js 20+
 - npm or yarn
 - A Discord Bot Token (can be configured after install via the web configurator)
 - ComfyUI instance (optional, for image generation)
