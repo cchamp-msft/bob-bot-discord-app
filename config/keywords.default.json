@@ -78,36 +78,7 @@
       },
       "contextFilterMaxDepth": 1
     },
-    {
-      "keyword": "forecast",
-      "api": "accuweather",
-      "timeout": 60,
-      "description": "Get 5-day weather forecast",
-      "abilityText": "Get the multi-day weather outlook for a location",
-      "abilityWhen": "User asks for forecast details, upcoming weather, or day-by-day outlook.",
-      "abilityInputs": {
-        "mode": "explicit",
-        "required": ["location"],
-        "validation": "Location must be a valid worldwide city name, region, or United States postal code.",
-        "examples": ["forecast Seattle"]
-      },
-      "contextFilterMaxDepth": 1
-    },
-    {
-      "keyword": "conditions",
-      "api": "accuweather",
-      "timeout": 60,
-      "description": "Get current weather conditions",
-      "abilityText": "Get current weather conditions for a location",
-      "abilityWhen": "User asks for current weather, temperature, humidity, wind, or right-now conditions.",
-      "abilityInputs": {
-        "mode": "explicit",
-        "required": ["location"],
-        "validation": "Location must be a valid worldwide city name, region, or United States postal code.",
-        "examples": ["conditions Chicago"]
-      },
-      "contextFilterMaxDepth": 1
-    },
+
     {
       "keyword": "nfl scores",
       "api": "nfl",

@@ -376,6 +376,13 @@ class Config {
     return process.env.ACCUWEATHER_DEFAULT_LOCATION || '';
   }
 
+  /** Default weather output type: 'current', 'forecast', or 'full'. */
+  getAccuWeatherDefaultWeatherType(): 'current' | 'forecast' | 'full' {
+    const raw = (process.env.ACCUWEATHER_DEFAULT_WEATHER_TYPE || '').trim().toLowerCase();
+    if (raw === 'current' || raw === 'forecast') return raw;
+    return 'full';
+  }
+
   // ── NFL / ESPN configuration ─────────────────────────────
 
   getNflEndpoint(): string {
@@ -868,6 +875,7 @@ class Config {
     const prevAccuWeather = this.getAccuWeatherEndpoint();
     const prevAccuWeatherKey = this.getAccuWeatherApiKey();
     const prevAccuWeatherLocation = this.getAccuWeatherDefaultLocation();
+    const prevAccuWeatherWeatherType = this.getAccuWeatherDefaultWeatherType();
     const prevBaseUrl = this.getOutputBaseUrl();
     const prevThreshold = this.getFileSizeThreshold();
     const prevTimeout = this.getDefaultTimeout();
@@ -944,6 +952,7 @@ class Config {
     if (this.getAccuWeatherEndpoint() !== prevAccuWeather) reloaded.push('ACCUWEATHER_ENDPOINT');
     if (this.getAccuWeatherApiKey() !== prevAccuWeatherKey) reloaded.push('ACCUWEATHER_API_KEY');
     if (this.getAccuWeatherDefaultLocation() !== prevAccuWeatherLocation) reloaded.push('ACCUWEATHER_DEFAULT_LOCATION');
+    if (this.getAccuWeatherDefaultWeatherType() !== prevAccuWeatherWeatherType) reloaded.push('ACCUWEATHER_DEFAULT_WEATHER_TYPE');
     if (this.getOutputBaseUrl() !== prevBaseUrl) reloaded.push('OUTPUT_BASE_URL');
     if (this.getFileSizeThreshold() !== prevThreshold) reloaded.push('FILE_SIZE_THRESHOLD');
     if (this.getDefaultTimeout() !== prevTimeout) reloaded.push('DEFAULT_TIMEOUT');
@@ -1026,6 +1035,7 @@ class Config {
         accuweather: this.getAccuWeatherEndpoint(),
         accuweatherDefaultLocation: this.getAccuWeatherDefaultLocation(),
         accuweatherApiKeyConfigured: !!this.getAccuWeatherApiKey(),
+        accuweatherDefaultWeatherType: this.getAccuWeatherDefaultWeatherType(),
         nfl: this.getNflEndpoint(),
         nflEnabled: this.getNflEnabled(),
         memeEnabled: this.getMemeEnabled(),

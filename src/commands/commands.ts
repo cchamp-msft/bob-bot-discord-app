@@ -287,7 +287,7 @@ class WeatherCommand extends BaseCommand {
     const prompt = location ? `weather in ${location}` : 'weather';
 
     // Log the request
-    logger.logRequest(requester, `[weather] full — ${location || '(default location)'}`);
+    logger.logRequest(requester, `[weather] ${config.getAccuWeatherDefaultWeatherType()} — ${location || '(default location)'}`);
 
     await interaction.editReply({
       content: '⏳ Fetching weather data…',

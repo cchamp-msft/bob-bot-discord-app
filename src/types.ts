@@ -368,6 +368,7 @@ export interface PublicConfig {
     accuweather: string;
     accuweatherDefaultLocation: string;
     accuweatherApiKeyConfigured: boolean;
+    accuweatherDefaultWeatherType: 'current' | 'forecast' | 'full';
     nfl: string;
     nflEnabled: boolean;
     memeEnabled: boolean;

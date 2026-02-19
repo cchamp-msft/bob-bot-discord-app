@@ -11,7 +11,6 @@ Mention the bot with a keyword and prompt:
 @BobBot !generate a beautiful sunset landscape
 @BobBot !ask what is the meaning of life?
 @BobBot !weather in Seattle
-@BobBot !forecast for 90210
 @BobBot !nfl scores
 @BobBot !nfl scores 20260208
 @BobBot !nfl news
@@ -34,8 +33,8 @@ Use slash commands for ephemeral responses (visible only to you):
 ```
 /generate prompt: a beautiful sunset landscape
 /ask question: what is the meaning of life? model: llama2
-/weather location: Seattle type: full
-/weather location: 90210 type: forecast
+/weather location: Seattle
+/weather location: 90210
 ```
 
 ## Keywords and Routing
@@ -46,7 +45,7 @@ The bot uses keywords prefixed with `!` to route requests to different APIs:
 |---------|-----|---------|
 | `!generate`, `!draw`, `!image` | ComfyUI | `@BobBot !generate a sunset` |
 | `!ask`, `!tell me`, `!what` | Ollama | `@BobBot !ask what is recursion?` |
-| `!weather`, `!forecast`, `!conditions` | AccuWeather | `@BobBot !weather Seattle` |
+| `!weather` | AccuWeather | `@BobBot !weather Seattle` |
 | `!nfl scores`, `!nfl news` | ESPN NFL | `@BobBot !nfl scores` |
 | `!search` | SerpAPI | `@BobBot !search latest AI news` |
 | `!second opinion` | SerpAPI (AI Overview only) | `@BobBot !second opinion on quantum computing` |
@@ -134,8 +133,7 @@ The bot provides real-time weather data via AccuWeather.
 **Keyword-based queries** (require location):
 ```
 @BobBot !weather Seattle
-@BobBot !forecast for 90210
-@BobBot !conditions in London
+@BobBot !weather 90210
 ```
 
 **Slash command** (supports default location):

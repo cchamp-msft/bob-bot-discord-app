@@ -789,6 +789,14 @@
           <input type="text" id="accuweather_default_location" data-env="ACCUWEATHER_DEFAULT_LOCATION" placeholder="e.g. New York, 90210, or 349727">
         </div>
         <div class="field">
+          <label>Default Weather Type <span class="note">what data to fetch when the weather keyword is used</span></label>
+          <select id="accuweather_default_weather_type" data-env="ACCUWEATHER_DEFAULT_WEATHER_TYPE">
+            <option value="full">Full (conditions + forecast)</option>
+            <option value="current">Current conditions only</option>
+            <option value="forecast">5-day forecast only</option>
+          </select>
+        </div>
+        <div class="field">
           <label>Endpoint <span class="note">override only if using a proxy</span></label>
           <input type="text" id="accuweather_endpoint" data-env="ACCUWEATHER_ENDPOINT" placeholder="https://dataservice.accuweather.com">
         </div>
@@ -1339,6 +1347,7 @@ flowchart LR
       // Populate AccuWeather fields
       document.getElementById('accuweather_default_location').value = cfg.apis.accuweatherDefaultLocation || '';
       document.getElementById('accuweather_endpoint').value = cfg.apis.accuweather || '';
+      document.getElementById('accuweather_default_weather_type').value = cfg.apis.accuweatherDefaultWeatherType || 'full';
       document.getElementById('accuweather_api_key').value = '';
       document.getElementById('accuweather_api_key').placeholder =
         cfg.apis.accuweatherApiKeyConfigured ? 'API key configured ✓ — paste new value to change' : 'Paste AccuWeather API key';

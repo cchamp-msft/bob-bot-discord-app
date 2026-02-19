@@ -26,6 +26,7 @@ jest.mock('../src/utils/config', () => ({
     getAccuWeatherEndpoint: jest.fn(() => 'https://dataservice.accuweather.com'),
     getAccuWeatherApiKey: jest.fn(() => 'test-api-key'),
     getAccuWeatherDefaultLocation: jest.fn(() => 'Seattle'),
+    getAccuWeatherDefaultWeatherType: jest.fn(() => 'full'),
   },
 }));
 

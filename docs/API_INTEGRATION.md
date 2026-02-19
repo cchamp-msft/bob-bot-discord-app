@@ -103,13 +103,13 @@ When a user says "weather in Seattle", the bot extracts "Seattle", resolves it v
 
 ### Weather Keywords
 
-Three default weather keywords are configured in `config/keywords.default.json`. All route through the same AccuWeather path and are advertised to Ollama as specialized weather abilities:
+A single weather keyword is configured in `config/keywords.default.json`, routing through the AccuWeather path:
 
 | Keyword | Behavior |
 |---------|----------|
-| `!weather <location>` | General weather details (current conditions + forecast data) |
-| `!forecast <location>` | Forecast-focused weather query |
-| `!conditions <location>` | Current-conditions-focused weather query |
+| `!weather <location>` | Weather details — output type controlled by `ACCUWEATHER_DEFAULT_WEATHER_TYPE` (full, current, or forecast) |
+
+The default weather output type can be changed in the configurator dropdown or via the `ACCUWEATHER_DEFAULT_WEATHER_TYPE` environment variable. It defaults to `full` (current conditions + 5-day forecast).
 
 > **Note:** Unlike the `/weather` slash command which falls back to `ACCUWEATHER_DEFAULT_LOCATION`, keyword-based weather commands require a location. Sending just `!weather` with no location will prompt the user to include a query.
 
