@@ -60,16 +60,40 @@ function apiNarrative(api: string): string {
 // ── Narrative normalisation ───────────────────────────────────────
 
 /**
+ * Sanitise URL content in narrative text for public display:
+ *  - Convert markdown links [text](url) → just the display text.
+ *  - Strip http[s]:// protocol from remaining raw URLs so they are
+ *    not functional hyperlinks and don't expose endpoint details.
+ */
+export function cleanNarrativeUrls(text: string): string {
+  // [text](url) → text  (discard the URL entirely)
+  let result = text.replace(/\[([^\]]+)\]\(https?:\/\/[^)]*\)/g, '$1');
+  // Strip protocol from remaining bare URLs
+  result = result.replace(/https?:\/\//g, '');
+  return result;
+}
+
+/**
  * Rewrite second-person audience language to first→third-person style.
  * The bot speaks about the people it is talking to as "them / their",
  * never addressing the reader as "you / your".
+ * URL-like tokens (domain/path) are protected from word replacements.
  */
 export function normalizeNarrative(text: string): string {
-  let result = text;
+  // Protect bare URL-like strings (domain/path) from word replacements.
+  const saved: string[] = [];
+  let result = text.replace(/\b\w[\w.-]*\.[a-z]{2,}\/\S*/gi, (m) => {
+    saved.push(m);
+    return `\uFFFDU${saved.length - 1}\uFFFD`;
+  });
+
   // Whole-word replacements, case-insensitive — order matters
   result = result.replace(/\bfor you\b/gi, 'for them');
   result = result.replace(/\byour\b/gi, 'their');
   result = result.replace(/\byou\b/gi, 'them');
+
+  // Restore protected URL segments
+  result = result.replace(/\uFFFDU(\d+)\uFFFD/g, (_, i) => saved[parseInt(i, 10)]);
   return result;
 }
 
@@ -157,7 +181,7 @@ class ActivityEventStore {
       id: this.nextId++,
       timestamp: new Date().toISOString(),
       type,
-      narrative: normalizeNarrative(redactSensitive(narrative)),
+      narrative: normalizeNarrative(redactSensitive(cleanNarrativeUrls(narrative))),
       metadata,
       imageUrls,
     };

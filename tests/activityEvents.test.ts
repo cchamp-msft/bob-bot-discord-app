@@ -6,6 +6,7 @@
 
 import {
   activityEvents,
+  cleanNarrativeUrls,
   normalizeNarrative,
   redactSensitive,
   sanitizeLocation,
@@ -173,9 +174,10 @@ describe('ActivityEventStore', () => {
       expect(ev.narrative).not.toContain('user');
     });
 
-    it('preserves URLs in message content', () => {
+    it('strips URL protocol from message content', () => {
       const ev = activityEvents.emitMessageReceived(true, 'check https://secret.api/v1 please');
-      expect(ev.narrative).toContain('https://secret.api/v1');
+      expect(ev.narrative).toContain('secret.api/v1');
+      expect(ev.narrative).not.toContain('https://');
       expect(ev.narrative).toContain('check');
     });
   });
@@ -237,9 +239,10 @@ describe('ActivityEventStore', () => {
       expect(ev.metadata).toEqual({ api: 'ollama', location: 'server', characterCount: 12 });
     });
 
-    it('preserves URLs in response text', () => {
+    it('strips URL protocol from response text', () => {
       const ev = activityEvents.emitBotReply('serpapi', 'Visit https://example.com for details', false);
-      expect(ev.narrative).toContain('https://example.com');
+      expect(ev.narrative).toContain('example.com');
+      expect(ev.narrative).not.toContain('https://');
     });
   });
 
@@ -271,10 +274,11 @@ describe('ActivityEventStore', () => {
       expect(ev.narrative).toContain('something went wrong');
     });
 
-    it('custom context is included with URLs preserved', () => {
+    it('custom context is included with URL protocol stripped', () => {
       const ev = activityEvents.emitError('API timeout at https://secret.api/v1');
       expect(ev.narrative).toContain('API timeout');
-      expect(ev.narrative).toContain('https://secret.api/v1');
+      expect(ev.narrative).toContain('secret.api/v1');
+      expect(ev.narrative).not.toContain('https://');
     });
   });
 
@@ -295,9 +299,9 @@ describe('ActivityEventStore', () => {
 // ── Sanitisation unit tests ──────────────────────────────────────
 
 describe('redactSensitive', () => {
-  it('preserves URLs', () => {
-    expect(redactSensitive('see https://api.example.com/v1/key?x=1 for details'))
-      .toBe('see https://api.example.com/v1/key?x=1 for details');
+  it('preserves URL paths (protocol already stripped by cleanNarrativeUrls)', () => {
+    expect(redactSensitive('see api.example.com/v1/key?x=1 for details'))
+      .toBe('see api.example.com/v1/key?x=1 for details');
   });
 
   it('removes Discord snowflake IDs', () => {
@@ -316,11 +320,11 @@ describe('redactSensitive', () => {
     expect(redactSensitive(text)).toBe(text);
   });
 
-  it('handles multiple sensitive items but preserves URLs', () => {
-    const input = 'user 12345678901234567890 at https://evil.com with token ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12';
+  it('handles multiple sensitive items but preserves bare domain URLs', () => {
+    const input = 'user 12345678901234567890 at evil.com with token ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12';
     const result = redactSensitive(input);
     expect(result).not.toContain('12345678901234567890');
-    expect(result).toContain('https://evil.com');
+    expect(result).toContain('evil.com');
     expect(result).not.toContain('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12');
   });
 });
@@ -357,6 +361,37 @@ describe('normalizeNarrative', () => {
   it('leaves first-person text unchanged', () => {
     const text = 'I need to check the weather';
     expect(normalizeNarrative(text)).toBe(text);
+  });
+
+  it('does not transform "you" inside URL paths', () => {
+    expect(normalizeNarrative('see example.com/you/path for details'))
+      .toBe('see example.com/you/path for details');
+  });
+});
+
+// ── cleanNarrativeUrls unit tests ────────────────────────────────
+
+describe('cleanNarrativeUrls', () => {
+  it('converts markdown links to display text only', () => {
+    expect(cleanNarrativeUrls('[Google](https://google.com)')).toBe('Google');
+  });
+
+  it('strips https:// protocol from bare URLs', () => {
+    expect(cleanNarrativeUrls('visit https://example.com/path')).toBe('visit example.com/path');
+  });
+
+  it('strips http:// protocol from bare URLs', () => {
+    expect(cleanNarrativeUrls('see http://example.com')).toBe('see example.com');
+  });
+
+  it('handles mixed markdown and bare URLs', () => {
+    const input = '[Result](https://search.com/q?x=1) or https://other.com';
+    expect(cleanNarrativeUrls(input)).toBe('Result or other.com');
+  });
+
+  it('leaves text without URLs unchanged', () => {
+    const text = 'just some plain text here';
+    expect(cleanNarrativeUrls(text)).toBe(text);
   });
 });
 
