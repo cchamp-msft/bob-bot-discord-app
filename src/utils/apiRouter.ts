@@ -133,21 +133,32 @@ function buildInferenceSystemPrompt(keywordConfig: KeywordConfig): string {
 
 /**
  * Build the user prompt for parameter inference.
+ * When replyContext is provided it is included so the model can resolve
+ * references to earlier conversation (e.g. "imagine that" in a reply chain).
  */
-function buildInferenceUserPrompt(keywordConfig: KeywordConfig, content: string): string {
+function buildInferenceUserPrompt(keywordConfig: KeywordConfig, content: string, replyContext?: string): string {
   const extractionLine = keywordConfig.api === 'meme'
     ? 'Extract meme parameters and output ONLY: templateId | top text | bottom text'
     : 'Extract the required parameter from the user message above. Output ONLY the value.';
 
-  return [
+  const parts: string[] = [
     '<ability_context>',
     renderAbilityInputsForPrompt(keywordConfig),
     '</ability_context>',
     '',
+  ];
+
+  if (replyContext) {
+    parts.push(`<reply_context>${escapeXmlContent(replyContext)}</reply_context>`, '');
+  }
+
+  parts.push(
     `<user_message>${escapeXmlContent(content)}</user_message>`,
     '',
     extractionLine,
-  ].join('\n');
+  );
+
+  return parts.join('\n');
 }
 
 /**
@@ -165,10 +176,11 @@ export async function inferAbilityParameters(
   keywordConfig: KeywordConfig,
   content: string,
   requester: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  replyContext?: string
 ): Promise<string | null> {
   const systemPrompt = buildInferenceSystemPrompt(keywordConfig);
-  const userPrompt = buildInferenceUserPrompt(keywordConfig, content);
+  const userPrompt = buildInferenceUserPrompt(keywordConfig, content, replyContext);
   const retryModel = keywordConfig.retry?.model || config.getAbilityRetryModel();
 
   logger.log('success', 'system',

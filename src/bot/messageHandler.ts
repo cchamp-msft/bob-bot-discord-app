@@ -1231,52 +1231,48 @@ class MessageHandler {
           : content;
 
         const abilityInputs = parseResult.keywordConfig.abilityInputs;
-        const shouldPreferContentInference =
+        const isImplicitOrMixed =
           !!abilityInputs &&
           (abilityInputs.mode === 'implicit' || abilityInputs.mode === 'mixed') &&
           Array.isArray(abilityInputs.inferFrom) &&
           abilityInputs.inferFrom.length > 0;
 
-        // For implicit/mixed abilities, prefer deriving parameters from the
-        // original user content/context rather than trusting model-authored
-        // inline remainder text (which may include extra conversational chatter).
-        // However, keep the inline inferred input as a fallback for abilities
-        // without required fields (e.g. meme) so it can be used if context-based
-        // inference fails later.
-        let inlineInferredFallback: string | undefined;
-        if (shouldPreferContentInference && parseResult.inferredInput) {
-          if (this.isKeywordOnlyInvocation(content, parseResult.keywordConfig.keyword)) {
-            routedInput = parseResult.inferredInput.trim();
-            logger.log('success', 'system',
-              `TWO-STAGE: Using inline inferred input for "${parseResult.keywordConfig.keyword}" because user message was keyword-only`);
-          } else {
-            inlineInferredFallback = parseResult.inferredInput.trim();
-            logger.log('success', 'system',
-              `TWO-STAGE: Preferring context-based inference for "${parseResult.keywordConfig.keyword}" (inline fallback retained)`);
-            routedInput = content;
-          }
+        // For implicit/mixed abilities the first-stage model often returns a
+        // rich, context-aware prompt inline (parseResult.inferredInput).
+        // In reply-chain scenarios this inline input already incorporates
+        // conversation context, so we now treat it as the *primary* source.
+        // Second-pass content inference is used only as a fallback when
+        // no inline input was provided.
+        const hasInlineInput = !!parseResult.inferredInput && parseResult.inferredInput.trim().length > 0;
+
+        if (isImplicitOrMixed && hasInlineInput) {
+          // Prefer the first-stage inline input — it benefits from full
+          // conversation context the model already saw.
+          routedInput = parseResult.inferredInput!.trim();
+          logger.log('success', 'system',
+            `TWO-STAGE: Using first-stage inline input for "${parseResult.keywordConfig.keyword}"`);
         }
 
         // When the model matched a keyword but no inline params were provided,
         // and the keyword has required inputs, use Ollama to infer parameters
-        // from the user's natural language message.
+        // from the user's natural language message (enriched with reply context).
         const hasRequiredInputs = parseResult.keywordConfig.abilityInputs?.required &&
           parseResult.keywordConfig.abilityInputs.required.length > 0;
         const needsInference = hasRequiredInputs
-          ? (shouldPreferContentInference || !parseResult.inferredInput || parseResult.inferredInput.trim().length === 0)
-          : (shouldPreferContentInference && routedInput === content);
+          ? (!hasInlineInput)
+          : (isImplicitOrMixed && !hasInlineInput);
         if (needsInference) {
-          const inferred = await inferAbilityParameters(parseResult.keywordConfig, content, requester);
+          // Build reply-context string from conversation history for inference
+          const replyContext = filteredHistory
+            .filter(m => m.role !== 'system' && m.contextSource !== 'trigger')
+            .map(m => m.content)
+            .join('\n')
+            .trim() || undefined;
+          const inferred = await inferAbilityParameters(parseResult.keywordConfig, content, requester, undefined, replyContext);
           if (inferred) {
             routedInput = inferred;
             logger.log('success', 'system',
               `TWO-STAGE: Inferred parameter "${inferred}" for "${parseResult.keywordConfig.keyword}"`);
-          } else if (inlineInferredFallback) {
-            // Use the model's inline directive params as a fallback when
-            // context-based inference could not produce usable parameters.
-            routedInput = inlineInferredFallback;
-            logger.log('success', 'system',
-              `TWO-STAGE: Context inference failed — falling back to inline inferred input for "${parseResult.keywordConfig.keyword}"`);
           } else {
             logger.logWarn('system',
               `TWO-STAGE: Could not infer parameter for "${parseResult.keywordConfig.keyword}" — using original content`);

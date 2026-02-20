@@ -4422,7 +4422,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
     );
   });
 
-  it('prefers original user content over inline parsed input for implicit meme directives, with inference fallback to inline', async () => {
+  it('uses first-stage inline input directly for implicit meme directives when inline input is present', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
@@ -4437,15 +4437,11 @@ describe('MessageHandler meme two-stage routing fallback', () => {
         inferredInput: 'fwp | line 1 | line 2',
       });
 
-    // Context-based inference succeeds — should use its result
-    (inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>)
-      .mockResolvedValueOnce('bm | top inferred | bottom inferred');
-
     (executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>)
       .mockResolvedValueOnce({
         finalResponse: {
           success: true,
-          data: { imageUrl: 'https://api.memegen.link/images/bm/inferred.png', text: '**Bad Luck Brian** meme' },
+          data: { imageUrl: 'https://api.memegen.link/images/fwp/test.png', text: '**First World Problems** meme' },
         },
         finalApi: 'meme',
         stages: [],
@@ -4454,47 +4450,43 @@ describe('MessageHandler meme two-stage routing fallback', () => {
     const msg = createMentionedMessage('<@bot-123> make a meme about driving class');
     await messageHandler.handleMessage(msg);
 
-    // Should have attempted context-based inference
-    expect(inferAbilityParameters).toHaveBeenCalledWith(
-      memeKw,
-      'make a meme about driving class',
-      'testuser'
-    );
+    // Inline input is present — inference should NOT be called
+    expect(inferAbilityParameters).not.toHaveBeenCalled();
 
-    // Should use the inferred result, not original content
+    // Should use the first-stage inline input directly
     expect(executeRoutedRequest).toHaveBeenCalledWith(
       expect.objectContaining({ keyword: '!meme', api: 'meme', finalOllamaPass: false }),
-      'bm | top inferred | bottom inferred',
+      'fwp | line 1 | line 2',
       'testuser',
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser'
     );
   });
 
-  it('falls back to inline inferred params when context-based inference returns null', async () => {
+  it('triggers inference when no inline input is provided for implicit meme directive', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
-      data: { text: '!meme fwp | line 1 | line 2' },
+      data: { text: '!meme' },
     });
 
     (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
       .mockReturnValueOnce({
         matched: true,
-        parsedLine: '!meme fwp | line 1 | line 2',
+        parsedLine: '!meme',
         keywordConfig: memeKw,
-        inferredInput: 'fwp | line 1 | line 2',
+        // No inferredInput — second-pass inference should kick in
       });
 
-    // Context-based inference fails — should fall back to inline inferred input
+    // No inline input — inference is triggered as fallback
     (inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>)
-      .mockResolvedValueOnce(null);
+      .mockResolvedValueOnce('fwp | inferred top | inferred bottom');
 
     (executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>)
       .mockResolvedValueOnce({
         finalResponse: {
           success: true,
-          data: { imageUrl: 'https://api.memegen.link/images/fwp/fallback.png', text: '**First World Problems** meme' },
+          data: { imageUrl: 'https://api.memegen.link/images/fwp/inferred.png', text: '**First World Problems** meme' },
         },
         finalApi: 'meme',
         stages: [],
@@ -4503,10 +4495,19 @@ describe('MessageHandler meme two-stage routing fallback', () => {
     const msg = createMentionedMessage('<@bot-123> make a meme about driving class');
     await messageHandler.handleMessage(msg);
 
-    // Should fall back to the inline inferred input from the model directive
+    // No inline input — inference should be called with reply context
+    expect(inferAbilityParameters).toHaveBeenCalledWith(
+      memeKw,
+      'make a meme about driving class',
+      'testuser',
+      undefined,
+      undefined
+    );
+
+    // Should use the inferred result
     expect(executeRoutedRequest).toHaveBeenCalledWith(
       expect.objectContaining({ keyword: '!meme', api: 'meme', finalOllamaPass: false }),
-      'fwp | line 1 | line 2',
+      'fwp | inferred top | inferred bottom',
       'testuser',
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser'
@@ -4528,9 +4529,6 @@ describe('MessageHandler meme two-stage routing fallback', () => {
         inferredInput: 'fwp | line 1 | line 2',
       });
 
-    (inferAbilityParameters as jest.MockedFunction<typeof inferAbilityParameters>)
-      .mockResolvedValueOnce(null);
-
     // Meme API request fails (template lookup failure)
     (executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>)
       .mockResolvedValueOnce({
@@ -4544,6 +4542,9 @@ describe('MessageHandler meme two-stage routing fallback', () => {
 
     const msg = createMentionedMessage('<@bot-123> make a meme about driving class');
     await messageHandler.handleMessage(msg);
+
+    // Inline input present — no inference call needed
+    expect(inferAbilityParameters).not.toHaveBeenCalled();
 
     // Should get both error and shrug reactions
     expect(msg.react).toHaveBeenCalledWith('❌');

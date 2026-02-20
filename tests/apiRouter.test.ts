@@ -1774,4 +1774,69 @@ describe('ApiRouter', () => {
       });
     });
   });
+
+  describe('inferAbilityParameters with replyContext', () => {
+    const imagineKeyword: KeywordConfig = {
+      keyword: 'imagine',
+      api: 'comfyui',
+      timeout: 120,
+      description: 'Generate image using ComfyUI',
+      abilityInputs: {
+        mode: 'implicit',
+        inferFrom: ['reply_target', 'current_message'],
+        validation: 'Use the reply target text if present; otherwise summarize the context.',
+      },
+    };
+
+    it('should include reply context in inference prompt when provided', async () => {
+      const { apiManager } = require('../src/api');
+      mockExecute.mockImplementation(
+        (_api: any, _req: any, _kw: any, _to: any, executor: any) =>
+          executor(new AbortController().signal)
+      );
+      apiManager.executeRequest.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'a monkey wizard battling a 1970s robot' },
+      });
+
+      const replyContext = 'unseenaudio: What is the craziest thing you can imagine?\nbob: How about a self-aware nebula?';
+      const result = await inferAbilityParameters(
+        imagineKeyword,
+        'Let\'s imagine our last 3 images together',
+        'testuser',
+        undefined,
+        replyContext
+      );
+
+      expect(result).toBe('a monkey wizard battling a 1970s robot');
+      // Verify the user prompt sent to Ollama includes reply_context XML tag
+      const executeCall = apiManager.executeRequest.mock.calls[0];
+      const userPrompt = executeCall[2] as string; // index 2 = data param
+      expect(userPrompt).toContain('<reply_context>');
+      expect(userPrompt).toContain('unseenaudio');
+    });
+
+    it('should not include reply_context tag when replyContext is undefined', async () => {
+      const { apiManager } = require('../src/api');
+      mockExecute.mockImplementation(
+        (_api: any, _req: any, _kw: any, _to: any, executor: any) =>
+          executor(new AbortController().signal)
+      );
+      apiManager.executeRequest.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'a futuristic cityscape' },
+      });
+
+      const result = await inferAbilityParameters(
+        imagineKeyword,
+        'imagine a futuristic cityscape',
+        'testuser'
+      );
+
+      expect(result).toBe('a futuristic cityscape');
+      const executeCall = apiManager.executeRequest.mock.calls[0];
+      const userPrompt = executeCall[2] as string; // index 2 = data param
+      expect(userPrompt).not.toContain('<reply_context>');
+    });
+  });
 });

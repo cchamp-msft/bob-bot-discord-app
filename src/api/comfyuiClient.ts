@@ -251,7 +251,7 @@ export function buildDefaultWorkflow(params: DefaultWorkflowParams): Record<stri
     '5': {
       class_type: 'KSampler',
       inputs: {
-        seed: Math.floor(Math.random() * 0xFFFFFFFF),
+        seed: -1,
         steps: params.steps,
         cfg: params.cfg,
         sampler_name: params.sampler_name,

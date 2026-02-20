@@ -1325,20 +1325,14 @@ describe('ComfyUIClient', () => {
       expect(save.inputs.images).toEqual(['6', 0]);
     });
 
-    it('should generate a random seed', () => {
+    it('should set seed to -1 for per-request randomization', () => {
       const w1 = buildDefaultWorkflow(defaultParams);
       const w2 = buildDefaultWorkflow(defaultParams);
       const seed1 = (w1['5'] as any).inputs.seed;
       const seed2 = (w2['5'] as any).inputs.seed;
-      expect(typeof seed1).toBe('number');
-      expect(typeof seed2).toBe('number');
-      // Seeds must be within 32-bit unsigned range (0 to 0xFFFFFFFF)
-      expect(seed1).toBeGreaterThanOrEqual(0);
-      expect(seed1).toBeLessThan(0xFFFFFFFF);
-      expect(seed2).toBeGreaterThanOrEqual(0);
-      expect(seed2).toBeLessThan(0xFFFFFFFF);
-      // Seeds should be different (extremely unlikely to collide)
-      expect(seed1).not.toBe(seed2);
+      // Seed must always be -1 so ComfyUI randomizes per generation
+      expect(seed1).toBe(-1);
+      expect(seed2).toBe(-1);
     });
   });
 
