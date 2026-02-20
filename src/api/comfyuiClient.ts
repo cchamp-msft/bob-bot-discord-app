@@ -202,10 +202,22 @@ export interface DefaultWorkflowParams {
   denoise: number;
   /**
    * Seed for the KSampler node.
-   * -1 means random (ComfyUI generates a new seed each run).
-   * Valid range: -1 or 0–2147483647.
+   * -1 means random: resolved to a random integer in [0, 2147483647]
+   * before sending to ComfyUI. Any other value is used as-is.
    */
   seed: number;
+}
+
+/**
+ * Resolve a seed value for ComfyUI.
+ * -1 means random: generate a random integer in [0, 2147483647].
+ * Any other value is passed through unchanged.
+ */
+export function resolveSeed(seed: number): number {
+  if (seed === -1) {
+    return Math.floor(Math.random() * 2147483648); // 0–2147483647
+  }
+  return seed;
 }
 
 /**
@@ -257,7 +269,7 @@ export function buildDefaultWorkflow(params: DefaultWorkflowParams): Record<stri
     '5': {
       class_type: 'KSampler',
       inputs: {
-        seed: params.seed,
+        seed: resolveSeed(params.seed),
         steps: params.steps,
         cfg: params.cfg,
         sampler_name: params.sampler_name,
@@ -315,7 +327,7 @@ function applySamplerOverrides(
       inputs.sampler_name = overrides.sampler_name;
       inputs.scheduler = overrides.scheduler;
       inputs.denoise = overrides.denoise;
-      inputs.seed = overrides.seed;
+      inputs.seed = resolveSeed(overrides.seed);
       count++;
     }
   }

@@ -69,7 +69,7 @@ jest.mock('../src/utils/logger', () => ({
 
 // Import after mocks — singleton captures mockInstance
 import { comfyuiClient } from '../src/api/comfyuiClient';
-import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode } from '../src/api/comfyuiClient';
+import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode, resolveSeed } from '../src/api/comfyuiClient';
 import { config } from '../src/utils/config';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -1228,6 +1228,23 @@ describe('ComfyUIClient', () => {
     });
   });
 
+  describe('resolveSeed', () => {
+    it('should return a random integer in [0, 2147483647] when seed is -1', () => {
+      for (let i = 0; i < 20; i++) {
+        const val = resolveSeed(-1);
+        expect(Number.isInteger(val)).toBe(true);
+        expect(val).toBeGreaterThanOrEqual(0);
+        expect(val).toBeLessThanOrEqual(2147483647);
+      }
+    });
+
+    it('should pass through a specific seed unchanged', () => {
+      expect(resolveSeed(0)).toBe(0);
+      expect(resolveSeed(42)).toBe(42);
+      expect(resolveSeed(2147483647)).toBe(2147483647);
+    });
+  });
+
   describe('buildDefaultWorkflow', () => {
     const defaultParams = {
       ckpt_name: 'model.safetensors',
@@ -1328,14 +1345,16 @@ describe('ComfyUIClient', () => {
       expect(save.inputs.images).toEqual(['6', 0]);
     });
 
-    it('should set seed to -1 for per-request randomization', () => {
+    it('should resolve seed -1 to a random value (not -1)', () => {
       const w1 = buildDefaultWorkflow(defaultParams);
       const w2 = buildDefaultWorkflow(defaultParams);
       const seed1 = (w1['5'] as any).inputs.seed;
       const seed2 = (w2['5'] as any).inputs.seed;
-      // Seed must always be -1 so ComfyUI randomizes per generation
-      expect(seed1).toBe(-1);
-      expect(seed2).toBe(-1);
+      // Seed must be resolved to a real value, not -1
+      expect(seed1).toBeGreaterThanOrEqual(0);
+      expect(seed1).toBeLessThanOrEqual(2147483647);
+      expect(seed2).toBeGreaterThanOrEqual(0);
+      expect(seed2).toBeLessThanOrEqual(2147483647);
     });
 
     it('should honour a specific seed value from params', () => {
@@ -1505,7 +1524,8 @@ describe('ComfyUIClient', () => {
       expect(sentBody.prompt['5'].inputs.sampler_name).toBe('dpmpp_2m');
       expect(sentBody.prompt['5'].inputs.scheduler).toBe('karras');
       expect(sentBody.prompt['5'].inputs.denoise).toBe(0.88);
-      expect(sentBody.prompt['5'].inputs.seed).toBe(-1);
+      expect(sentBody.prompt['5'].inputs.seed).toBeGreaterThanOrEqual(0);
+      expect(sentBody.prompt['5'].inputs.seed).toBeLessThanOrEqual(2147483647);
     });
   });
 
