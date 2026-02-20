@@ -69,7 +69,7 @@ jest.mock('../src/utils/logger', () => ({
 
 // Import after mocks — singleton captures mockInstance
 import { comfyuiClient } from '../src/api/comfyuiClient';
-import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode, resolveSeed } from '../src/api/comfyuiClient';
+import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode, resolveSeed, resolveWorkflowSeeds } from '../src/api/comfyuiClient';
 import { config } from '../src/utils/config';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -1245,6 +1245,39 @@ describe('ComfyUIClient', () => {
     });
   });
 
+  describe('resolveWorkflowSeeds', () => {
+    it('should resolve -1 seeds to random values on all KSampler nodes', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'model.safetensors' } },
+        '2': { class_type: 'KSampler', inputs: { seed: -1, steps: 20 } },
+        '3': { class_type: 'KSampler', inputs: { seed: -1, steps: 30 } },
+      };
+      resolveWorkflowSeeds(workflow);
+      const seed2 = ((workflow['2'] as any).inputs as any).seed;
+      const seed3 = ((workflow['3'] as any).inputs as any).seed;
+      expect(seed2).toBeGreaterThanOrEqual(0);
+      expect(seed2).toBeLessThanOrEqual(2147483647);
+      expect(seed3).toBeGreaterThanOrEqual(0);
+      expect(seed3).toBeLessThanOrEqual(2147483647);
+    });
+
+    it('should leave specific seed values unchanged', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'KSampler', inputs: { seed: 42, steps: 20 } },
+      };
+      resolveWorkflowSeeds(workflow);
+      expect(((workflow['1'] as any).inputs as any).seed).toBe(42);
+    });
+
+    it('should not touch non-KSampler nodes', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'KSamplerAdvanced', inputs: { noise_seed: -1 } },
+      };
+      resolveWorkflowSeeds(workflow);
+      expect(((workflow['1'] as any).inputs as any).noise_seed).toBe(-1);
+    });
+  });
+
   describe('buildDefaultWorkflow', () => {
     const defaultParams = {
       ckpt_name: 'model.safetensors',
@@ -1345,16 +1378,10 @@ describe('ComfyUIClient', () => {
       expect(save.inputs.images).toEqual(['6', 0]);
     });
 
-    it('should resolve seed -1 to a random value (not -1)', () => {
-      const w1 = buildDefaultWorkflow(defaultParams);
-      const w2 = buildDefaultWorkflow(defaultParams);
-      const seed1 = (w1['5'] as any).inputs.seed;
-      const seed2 = (w2['5'] as any).inputs.seed;
-      // Seed must be resolved to a real value, not -1
-      expect(seed1).toBeGreaterThanOrEqual(0);
-      expect(seed1).toBeLessThanOrEqual(2147483647);
-      expect(seed2).toBeGreaterThanOrEqual(0);
-      expect(seed2).toBeLessThanOrEqual(2147483647);
+    it('should store seed value from params (not resolved)', () => {
+      const workflow = buildDefaultWorkflow(defaultParams);
+      // buildDefaultWorkflow stores the raw config value; resolution happens per-request
+      expect((workflow['5'] as any).inputs.seed).toBe(-1);
     });
 
     it('should honour a specific seed value from params', () => {

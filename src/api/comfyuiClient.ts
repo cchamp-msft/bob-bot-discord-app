@@ -221,6 +221,23 @@ export function resolveSeed(seed: number): number {
 }
 
 /**
+ * Walk all KSampler nodes in a parsed workflow and resolve their seed values.
+ * Seeds of -1 are replaced with a fresh random integer; other values are kept.
+ * This must run per-request so that random seeds differ between generations.
+ */
+export function resolveWorkflowSeeds(workflow: Record<string, unknown>): void {
+  for (const nodeId of Object.keys(workflow)) {
+    const node = workflow[nodeId] as Record<string, unknown>;
+    if (node.class_type === 'KSampler') {
+      const inputs = node.inputs as Record<string, unknown>;
+      if (typeof inputs.seed === 'number') {
+        inputs.seed = resolveSeed(inputs.seed);
+      }
+    }
+  }
+}
+
+/**
  * Build a default text-to-image workflow in ComfyUI API format.
  *
  * Node layout:
@@ -269,7 +286,7 @@ export function buildDefaultWorkflow(params: DefaultWorkflowParams): Record<stri
     '5': {
       class_type: 'KSampler',
       inputs: {
-        seed: resolveSeed(params.seed),
+        seed: params.seed,
         steps: params.steps,
         cfg: params.cfg,
         sampler_name: params.sampler_name,
@@ -327,7 +344,7 @@ function applySamplerOverrides(
       inputs.sampler_name = overrides.sampler_name;
       inputs.scheduler = overrides.scheduler;
       inputs.denoise = overrides.denoise;
-      inputs.seed = resolveSeed(overrides.seed);
+      inputs.seed = overrides.seed;
       count++;
     }
   }
@@ -702,6 +719,9 @@ class ComfyUIClient {
 
       // Parse the substituted workflow to send as the prompt object
       const workflowData = JSON.parse(substitutedWorkflow);
+
+      // Resolve seed per-request: replace -1 with a fresh random value on every KSampler node
+      resolveWorkflowSeeds(workflowData as Record<string, unknown>);
 
       // Apply sampler overrides to custom workflow KSampler nodes
       if (!usingDefault) {
