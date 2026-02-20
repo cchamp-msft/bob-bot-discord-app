@@ -1015,6 +1015,10 @@
             <label>Max Tokens <span class="note">1,000–128,000 chars</span></label>
             <input type="number" id="reply_chain_max_tokens" data-env="REPLY_CHAIN_MAX_TOKENS" placeholder="16000" min="1000" max="128000">
           </div>
+          <div class="field narrow">
+            <label>Image Max Depth <span class="note">0–50 messages</span></label>
+            <input type="number" id="reply_chain_image_max_depth" data-env="REPLY_CHAIN_IMAGE_MAX_DEPTH" placeholder="5" min="0" max="50">
+          </div>
         </div>
       </div>
     </section>
@@ -1380,6 +1384,7 @@ flowchart LR
       rcEnabled.value = cfg.replyChain?.enabled === false ? 'false' : 'true';
       document.getElementById('reply_chain_max_depth').value = cfg.replyChain?.maxDepth || 10;
       document.getElementById('reply_chain_max_tokens').value = cfg.replyChain?.maxTokens || 16000;
+      document.getElementById('reply_chain_image_max_depth').value = cfg.replyChain?.imageMaxDepth ?? 5;
 
       // Populate ability logging
       const alDetailed = document.getElementById('ability_logging_detailed');

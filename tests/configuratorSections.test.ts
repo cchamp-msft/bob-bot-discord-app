@@ -77,6 +77,19 @@ describe('Configurator — embed toggle placement', () => {
   });
 });
 
+// ── Reply Chain Context section ───────────────────────────────
+
+describe('Configurator — Reply Chain Context section', () => {
+  const sections = extractSections();
+
+  it('the Reply Chain Context section contains the image max depth field', () => {
+    const rc = sections.find(s => s.heading === 'Reply Chain Context');
+    expect(rc).toBeDefined();
+    expect(rc!.body).toContain('reply_chain_image_max_depth');
+    expect(rc!.body).toContain('REPLY_CHAIN_IMAGE_MAX_DEPTH');
+  });
+});
+
 // ── Mermaid render-on-expand ──────────────────────────────────
 
 describe('Configurator — Mermaid render on expand', () => {
