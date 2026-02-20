@@ -1514,8 +1514,12 @@ class MessageHandler {
     requester: string,
     _isDM: boolean
   ): Promise<void> {
-    if (!apiResult.data?.images || apiResult.data.images.length === 0) {
-      await sourceMessage.reply('No images were generated.');
+    const images = apiResult.data?.images || [];
+    const videos = apiResult.data?.videos || [];
+    const totalOutputs = images.length + videos.length;
+
+    if (totalOutputs === 0) {
+      await sourceMessage.reply('No images or videos were generated.');
       return;
     }
 
@@ -1529,52 +1533,55 @@ class MessageHandler {
         .setTimestamp();
     }
 
-    // Process each image — collect attachable files
+    // Process each output — collect attachable files
     let savedCount = 0;
     const attachments: { attachment: Buffer; name: string }[] = [];
-    const savedImagePaths: string[] = [];
+    const savedFilePaths: string[] = [];
 
-    for (let i = 0; i < apiResult.data.images.length; i++) {
-      const imageUrl = apiResult.data.images[i];
+    // Derive file extension from a ComfyUI /view URL's filename query param, with a fallback.
+    const extensionFromUrl = (url: string, fallback: string): string => {
+      try {
+        const filename = new URL(url).searchParams.get('filename') || '';
+        const dotIdx = filename.lastIndexOf('.');
+        if (dotIdx >= 0) return filename.slice(dotIdx + 1).toLowerCase();
+      } catch { /* malformed URL — use fallback */ }
+      return fallback;
+    };
 
-      // Try to download and save the image
-      const fileOutput = await fileHandler.saveFromUrl(
-        requester,
-        'generated_image',
-        imageUrl,
-        'png'
-      );
-
-      if (fileOutput) {
-        if (embed) {
-          embed.addFields({
-            name: `Image ${i + 1}`,
-            value: `[View](${fileOutput.url})`,
-            inline: false,
-          });
-        }
-
-        // Collect file for attachment if small enough
-        if (fileHandler.shouldAttachFile(fileOutput.size)) {
-          const fileBuffer = fileHandler.readFile(fileOutput.filePath);
-          if (fileBuffer) {
-            attachments.push({ attachment: fileBuffer, name: fileOutput.fileName });
+    // Helper to process a batch of output URLs with matching description/extension
+    const processOutputs = async (urls: string[], description: string, defaultExtension: string, label: string) => {
+      for (let i = 0; i < urls.length; i++) {
+        const extension = extensionFromUrl(urls[i], defaultExtension);
+        const fileOutput = await fileHandler.saveFromUrl(requester, description, urls[i], extension);
+        if (fileOutput) {
+          if (embed) {
+            embed.addFields({
+              name: `${label} ${i + 1}`,
+              value: `[View](${fileOutput.url})`,
+              inline: false,
+            });
           }
+          if (fileHandler.shouldAttachFile(fileOutput.size)) {
+            const fileBuffer = fileHandler.readFile(fileOutput.filePath);
+            if (fileBuffer) {
+              attachments.push({ attachment: fileBuffer, name: fileOutput.fileName });
+            }
+          }
+          const baseUrl = config.getOutputBaseUrl();
+          const relativePath = fileOutput.url.startsWith(baseUrl)
+            ? fileOutput.url.slice(baseUrl.length)
+            : fileOutput.url;
+          savedFilePaths.push(relativePath);
+          savedCount++;
         }
-
-        // Collect relative path for the activity feed (same origin)
-        const baseUrl = config.getOutputBaseUrl();
-        const relativePath = fileOutput.url.startsWith(baseUrl)
-          ? fileOutput.url.slice(baseUrl.length)
-          : fileOutput.url;
-        savedImagePaths.push(relativePath);
-
-        savedCount++;
       }
-    }
+    };
+
+    await processOutputs(images, 'generated_image', 'png', 'Image');
+    await processOutputs(videos, 'generated_video', 'mp4', 'Video');
 
     if (savedCount === 0) {
-      await sourceMessage.reply('Images were generated but could not be saved or displayed.');
+      await sourceMessage.reply('Files were generated but could not be saved or displayed.');
       return;
     }
 
@@ -1584,7 +1591,7 @@ class MessageHandler {
 
     // Provide fallback text when embed is off and no files could be attached
     const hasVisualContent = !!embed || firstBatch.length > 0;
-    const fallbackContent = hasVisualContent ? '' : `✅ ${savedCount} image(s) generated and saved.`;
+    const fallbackContent = hasVisualContent ? '' : `✅ ${savedCount} file(s) generated and saved.`;
 
     // Send first response message with optional embed and first batch of attachments
     await sourceMessage.reply({
@@ -1597,19 +1604,19 @@ class MessageHandler {
     for (let i = maxPerMessage; i < attachments.length; i += maxPerMessage) {
       const batch = attachments.slice(i, i + maxPerMessage);
       if ('send' in sourceMessage.channel) {
-        await sourceMessage.channel.send({ content: '📎 Additional images', files: batch });
+        await sourceMessage.channel.send({ content: '📎 Additional files', files: batch });
       } else {
         logger.logError(requester, `Cannot send overflow attachments: channel does not support send`);
       }
     }
 
     // Pass saved-file relative paths to the activity feed (same origin as the activity page)
-    activityEvents.emitBotImageReply(apiResult.data.images.length, savedImagePaths);
+    activityEvents.emitBotImageReply(totalOutputs, savedFilePaths);
 
-    logger.logReply(
-      requester,
-      `ComfyUI response sent: ${apiResult.data.images.length} images`
-    );
+    const parts: string[] = [];
+    if (images.length > 0) parts.push(`${images.length} image(s)`);
+    if (videos.length > 0) parts.push(`${videos.length} video(s)`);
+    logger.logReply(requester, `ComfyUI response sent: ${parts.join(', ')}`);
   }
 
   private async handleOllamaResponse(

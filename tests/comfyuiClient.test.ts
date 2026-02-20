@@ -630,7 +630,7 @@ describe('ComfyUIClient', () => {
       const result = await comfyuiClient.generateImage('test', 'user1');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('no images');
+      expect(result.error).toContain('no outputs');
     });
 
     it('should return error when ComfyUI execution status is error', async () => {
@@ -1135,7 +1135,7 @@ describe('ComfyUIClient', () => {
     });
   });
 
-  describe('extractImageUrls', () => {
+  describe('extractOutputUrls', () => {
     it('should build /view URLs from output images', () => {
       const historyData = {
         outputs: {
@@ -1147,10 +1147,11 @@ describe('ComfyUIClient', () => {
         },
       };
 
-      const urls = comfyuiClient.extractImageUrls(historyData);
+      const result = comfyuiClient.extractOutputUrls(historyData);
 
-      expect(urls).toHaveLength(1);
-      expect(urls[0]).toBe('http://localhost:8190/view?filename=img_001.png&type=output');
+      expect(result.images).toHaveLength(1);
+      expect(result.images[0]).toBe('http://localhost:8190/view?filename=img_001.png&type=output');
+      expect(result.videos).toHaveLength(0);
     });
 
     it('should include subfolder when present', () => {
@@ -1164,16 +1165,17 @@ describe('ComfyUIClient', () => {
         },
       };
 
-      const urls = comfyuiClient.extractImageUrls(historyData);
+      const result = comfyuiClient.extractOutputUrls(historyData);
 
-      expect(urls).toHaveLength(1);
-      expect(urls[0]).toContain('subfolder=2026-02-07');
-      expect(urls[0]).toContain('type=temp');
+      expect(result.images).toHaveLength(1);
+      expect(result.images[0]).toContain('subfolder=2026-02-07');
+      expect(result.images[0]).toContain('type=temp');
     });
 
-    it('should return empty array when no outputs exist', () => {
-      const urls = comfyuiClient.extractImageUrls({});
-      expect(urls).toEqual([]);
+    it('should return empty arrays when no outputs exist', () => {
+      const result = comfyuiClient.extractOutputUrls({});
+      expect(result.images).toEqual([]);
+      expect(result.videos).toEqual([]);
     });
 
     it('should skip nodes without images array', () => {
@@ -1184,10 +1186,138 @@ describe('ComfyUIClient', () => {
         },
       };
 
-      const urls = comfyuiClient.extractImageUrls(historyData);
+      const result = comfyuiClient.extractOutputUrls(historyData);
 
-      expect(urls).toHaveLength(1);
-      expect(urls[0]).toContain('filename=real.png');
+      expect(result.images).toHaveLength(1);
+      expect(result.images[0]).toContain('filename=real.png');
+    });
+
+    it('should extract video URLs from gifs key', () => {
+      const historyData = {
+        outputs: {
+          '10': {
+            gifs: [
+              { filename: 'video_001.mp4', subfolder: '', type: 'output' },
+            ],
+          },
+        },
+      };
+
+      const result = comfyuiClient.extractOutputUrls(historyData);
+
+      expect(result.images).toHaveLength(0);
+      expect(result.videos).toHaveLength(1);
+      expect(result.videos[0]).toBe('http://localhost:8190/view?filename=video_001.mp4&type=output');
+    });
+
+    it('should extract video URLs from videos key', () => {
+      const historyData = {
+        outputs: {
+          '10': {
+            videos: [
+              { filename: 'clip.mp4', subfolder: 'renders', type: 'output' },
+            ],
+          },
+        },
+      };
+
+      const result = comfyuiClient.extractOutputUrls(historyData);
+
+      expect(result.videos).toHaveLength(1);
+      expect(result.videos[0]).toContain('filename=clip.mp4');
+      expect(result.videos[0]).toContain('subfolder=renders');
+    });
+
+    it('should extract both images and videos from mixed outputs', () => {
+      const historyData = {
+        outputs: {
+          '7': {
+            images: [{ filename: 'img.png', subfolder: '', type: 'output' }],
+          },
+          '10': {
+            gifs: [{ filename: 'vid.mp4', subfolder: '', type: 'output' }],
+          },
+        },
+      };
+
+      const result = comfyuiClient.extractOutputUrls(historyData);
+
+      expect(result.images).toHaveLength(1);
+      expect(result.videos).toHaveLength(1);
+    });
+
+    it('should classify mp4 files under images key as videos (VHS_VideoCombine)', () => {
+      const historyData = {
+        outputs: {
+          '10': {
+            images: [
+              { filename: 'ComfyUI_00002_.mp4', subfolder: 'video', type: 'output' },
+            ],
+          },
+        },
+      };
+
+      const result = comfyuiClient.extractOutputUrls(historyData);
+
+      expect(result.images).toHaveLength(0);
+      expect(result.videos).toHaveLength(1);
+      expect(result.videos[0]).toContain('filename=ComfyUI_00002_.mp4');
+      expect(result.videos[0]).toContain('subfolder=video');
+    });
+
+    it('should classify webm and gif files under images key as videos', () => {
+      const historyData = {
+        outputs: {
+          '10': {
+            images: [
+              { filename: 'anim.webm', subfolder: '', type: 'output' },
+              { filename: 'loop.gif', subfolder: '', type: 'output' },
+              { filename: 'still.png', subfolder: '', type: 'output' },
+            ],
+          },
+        },
+      };
+
+      const result = comfyuiClient.extractOutputUrls(historyData);
+
+      expect(result.images).toHaveLength(1);
+      expect(result.images[0]).toContain('filename=still.png');
+      expect(result.videos).toHaveLength(2);
+    });
+
+    it('should pick up files from arbitrary output keys', () => {
+      const historyData = {
+        outputs: {
+          '5': {
+            custom_output: [
+              { filename: 'render.mp4', subfolder: '', type: 'output' },
+            ],
+          },
+        },
+      };
+
+      const result = comfyuiClient.extractOutputUrls(historyData);
+
+      expect(result.videos).toHaveLength(1);
+      expect(result.videos[0]).toContain('filename=render.mp4');
+    });
+
+    it('should skip non-array and non-file-object entries in node outputs', () => {
+      const historyData = {
+        outputs: {
+          '5': {
+            text: 'not an array',
+            numbers: [1, 2, 3],
+            nullish: [null, undefined],
+            images: [{ filename: 'ok.png', subfolder: '', type: 'output' }],
+          },
+        },
+      };
+
+      const result = comfyuiClient.extractOutputUrls(historyData);
+
+      expect(result.images).toHaveLength(1);
+      expect(result.videos).toHaveLength(0);
     });
   });
 

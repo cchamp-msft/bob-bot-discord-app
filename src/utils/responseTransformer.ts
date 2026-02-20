@@ -22,12 +22,19 @@ export interface StageResult {
  */
 export function extractFromComfyUI(response: ComfyUIResponse): StageResult {
   const images = response.data?.images ?? [];
+  const videos = response.data?.videos ?? [];
   const text = response.data?.text;
+  const allOutputs = [...images, ...videos];
+
+  const parts: string[] = [];
+  if (images.length > 0) parts.push(`${images.length} image(s)`);
+  if (videos.length > 0) parts.push(`${videos.length} video(s)`);
+  const summary = parts.length > 0 ? `[Generated ${parts.join(' and ')}: ${allOutputs.join(', ')}]` : undefined;
 
   return {
     sourceApi: 'comfyui',
-    text: text ?? (images.length > 0 ? `[Generated ${images.length} image(s): ${images.join(', ')}]` : undefined),
-    images: images.length > 0 ? images : undefined,
+    text: text ?? summary,
+    images: allOutputs.length > 0 ? allOutputs : undefined,
     rawResponse: response,
   };
 }

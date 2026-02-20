@@ -169,7 +169,7 @@ describe('GenerateCommand handleResponse', () => {
 
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining('1 image(s) generated and saved'),
+        content: expect.stringContaining('1 file(s) generated and saved'),
       })
     );
   });

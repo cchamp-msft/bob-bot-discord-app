@@ -85,9 +85,13 @@ class GenerateCommand extends BaseCommand {
     apiResult: ComfyUIResponse,
     requester: string
   ): Promise<void> {
-    if (!apiResult.data?.images || apiResult.data.images.length === 0) {
+    const images = apiResult.data?.images || [];
+    const videos = apiResult.data?.videos || [];
+    const totalOutputs = images.length + videos.length;
+
+    if (totalOutputs === 0) {
       await interaction.editReply({
-        content: 'No images were generated.',
+        content: 'No images or videos were generated.',
       });
       return;
     }
@@ -102,43 +106,38 @@ class GenerateCommand extends BaseCommand {
         .setTimestamp();
     }
 
-    // Process each image
+    // Process each output
     let savedCount = 0;
     const attachments: { attachment: Buffer; name: string }[] = [];
 
-    for (let i = 0; i < apiResult.data.images.length; i++) {
-      const imageUrl = apiResult.data.images[i];
-
-      const fileOutput = await fileHandler.saveFromUrl(
-        requester,
-        'generated_image',
-        imageUrl,
-        'png'
-      );
-
-      if (fileOutput) {
-        savedCount++;
-        if (embed) {
-          embed.addFields({
-            name: `Image ${i + 1}`,
-            value: `[View](${fileOutput.url})`,
-            inline: false,
-          });
-        }
-
-        // Collect file for attachment if small enough
-        if (fileHandler.shouldAttachFile(fileOutput.size)) {
-          const fileBuffer = fileHandler.readFile(fileOutput.filePath);
-          if (fileBuffer) {
-            attachments.push({ attachment: fileBuffer, name: fileOutput.fileName });
+    const processOutputs = async (urls: string[], description: string, extension: string, label: string) => {
+      for (let i = 0; i < urls.length; i++) {
+        const fileOutput = await fileHandler.saveFromUrl(requester, description, urls[i], extension);
+        if (fileOutput) {
+          savedCount++;
+          if (embed) {
+            embed.addFields({
+              name: `${label} ${i + 1}`,
+              value: `[View](${fileOutput.url})`,
+              inline: false,
+            });
+          }
+          if (fileHandler.shouldAttachFile(fileOutput.size)) {
+            const fileBuffer = fileHandler.readFile(fileOutput.filePath);
+            if (fileBuffer) {
+              attachments.push({ attachment: fileBuffer, name: fileOutput.fileName });
+            }
           }
         }
       }
-    }
+    };
+
+    await processOutputs(images, 'generated_image', 'png', 'Image');
+    await processOutputs(videos, 'generated_video', 'mp4', 'Video');
 
     if (savedCount === 0) {
       await interaction.editReply({
-        content: 'Images were generated but could not be saved or displayed.',
+        content: 'Files were generated but could not be saved or displayed.',
       });
       return;
     }
@@ -149,7 +148,7 @@ class GenerateCommand extends BaseCommand {
 
     // Provide fallback text when embed is off and no files could be attached
     const hasVisualContent = !!embed || firstBatch.length > 0;
-    const content = hasVisualContent ? '' : `✅ ${savedCount} image(s) generated and saved.`;
+    const content = hasVisualContent ? '' : `✅ ${savedCount} file(s) generated and saved.`;
 
     await interaction.editReply({
       content,
@@ -160,13 +159,13 @@ class GenerateCommand extends BaseCommand {
     // Send remaining attachments as follow-up messages in batches
     for (let i = maxPerMessage; i < attachments.length; i += maxPerMessage) {
       const batch = attachments.slice(i, i + maxPerMessage);
-      await interaction.followUp({ content: '📎 Additional images', files: batch, ephemeral: true });
+      await interaction.followUp({ content: '📎 Additional files', files: batch, ephemeral: true });
     }
 
-    logger.logReply(
-      requester,
-      `ComfyUI response sent: ${apiResult.data.images.length} images`
-    );
+    const parts: string[] = [];
+    if (images.length > 0) parts.push(`${images.length} image(s)`);
+    if (videos.length > 0) parts.push(`${videos.length} video(s)`);
+    logger.logReply(requester, `ComfyUI response sent: ${parts.join(', ')}`);
   }
 }
 

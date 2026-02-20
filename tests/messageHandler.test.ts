@@ -1332,7 +1332,7 @@ describe('MessageHandler handleComfyUIResponse fallback content', () => {
 
     expect(source.reply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining('1 image(s) generated and saved'),
+        content: expect.stringContaining('1 file(s) generated and saved'),
       })
     );
   });
@@ -1386,6 +1386,35 @@ describe('MessageHandler handleComfyUIResponse fallback content', () => {
       expect.objectContaining({
         content: '',
       })
+    );
+  });
+
+  it('should derive file extension from URL filename for video files', async () => {
+    (config.getImageResponseIncludeEmbed as jest.Mock).mockReturnValue(false);
+    (config.getMaxAttachments as jest.Mock).mockReturnValue(10);
+    fileHandler.saveFromUrl.mockResolvedValue({
+      url: 'http://localhost/video.mp4',
+      filePath: '/tmp/video.mp4',
+      fileName: 'video.mp4',
+      size: 1000,
+    });
+    fileHandler.shouldAttachFile.mockReturnValue(true);
+    fileHandler.readFile.mockReturnValue(Buffer.from('fakemp4'));
+
+    const source = createSourceMessage();
+    const apiResult = {
+      success: true,
+      data: { videos: ['http://comfyui:8190/view?filename=ComfyUI_00002_.mp4&subfolder=video&type=output'] },
+    };
+
+    await (messageHandler as any).handleComfyUIResponse(apiResult, source, 'testuser');
+
+    // Verify saveFromUrl was called with the actual file extension (mp4), not a hardcoded one
+    expect(fileHandler.saveFromUrl).toHaveBeenCalledWith(
+      'testuser',
+      'generated_video',
+      expect.stringContaining('ComfyUI_00002_.mp4'),
+      'mp4'
     );
   });
 });

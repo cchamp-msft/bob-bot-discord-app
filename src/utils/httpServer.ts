@@ -486,22 +486,30 @@ class HttpServer {
         return;
       }
 
-      // Download and save images to outputs/ with 'test' as requester
-      const savedImages: Array<{ url: string; localUrl: string }> = [];
+      // Download and save outputs to outputs/ with 'test' as requester
+      const savedFiles: Array<{ url: string; localUrl: string }> = [];
       const images = result.data?.images || [];
+      const videos = result.data?.videos || [];
 
       for (const imageUrl of images) {
         const saved = await fileHandler.saveFromUrl('test', prompt, imageUrl, 'png');
         if (saved) {
-          savedImages.push({ url: imageUrl, localUrl: saved.url });
+          savedFiles.push({ url: imageUrl, localUrl: saved.url });
         }
       }
 
-      logger.log('success', 'configurator', `Test image generation completed — ${savedImages.length} image(s) saved`);
+      for (const videoUrl of videos) {
+        const saved = await fileHandler.saveFromUrl('test', prompt, videoUrl, 'mp4');
+        if (saved) {
+          savedFiles.push({ url: videoUrl, localUrl: saved.url });
+        }
+      }
+
+      logger.log('success', 'configurator', `Test generation completed — ${savedFiles.length} file(s) saved`);
       res.json({
         success: true,
-        images: savedImages.map(img => img.localUrl),
-        comfyuiImages: images,
+        images: savedFiles.map(f => f.localUrl),
+        comfyuiImages: [...images, ...videos],
       });
     }));
 

@@ -143,9 +143,13 @@ const WIDGET_NAME_MAP: Record<string, string[]> = {
   // Latent
   EmptyLatentImage: ['width', 'height', 'batch_size'],
 
-  // Output
+  // Output — images
   SaveImage: ['filename_prefix'],
   PreviewImage: [],
+
+  // Output — video
+  SaveVideo: ['filename_prefix'],
+  PreviewVideo: ['filename_prefix'],
 
   // CLIP
   CLIPSetLastLayer: ['stop_at_clip_layer'],
@@ -164,6 +168,8 @@ const OUTPUT_NODE_TYPES = new Set([
   'PreviewImage',
   'SaveAnimatedWEBP',
   'SaveAnimatedPNG',
+  'SaveVideo',
+  'PreviewVideo',
 ]);
 
 /**
@@ -367,6 +373,9 @@ class ComfyUIClient {
 
   /** Interval (ms) between history polls (for fallback polling). */
   private static POLL_INTERVAL_MS = 3_000; // 3 seconds
+
+  /** Max consecutive HTTP failures before assuming ComfyUI is down during polling. */
+  private static MAX_CONSECUTIVE_POLL_FAILURES = 5;
 
   /** Cached object_info response with TTL */
   private objectInfoCache: { data: Record<string, unknown>; expiry: number } | null = null;
@@ -746,7 +755,7 @@ class ComfyUIClient {
 
       // Pre-flight: reject workflows with no output nodes before submitting
       if (!hasOutputNode(workflowData)) {
-        const errorMsg = 'Workflow has no output node (e.g. SaveImage, PreviewImage). ComfyUI requires at least one output node to produce results.';
+        const errorMsg = 'Workflow has no output node (e.g. SaveImage, PreviewImage, SaveVideo, PreviewVideo). ComfyUI requires at least one output node to produce results.';
         logger.logError(requester, errorMsg);
         return { success: false, error: errorMsg };
       }
@@ -887,6 +896,16 @@ class ComfyUIClient {
             logger.logError(requester, errorMsg);
             return { success: false, error: errorMsg };
           }
+
+          // Before polling, check if ComfyUI is still alive — if the server crashed
+          // (e.g. WS close code 1006), polling will never succeed.
+          const healthy = await this.isHealthy();
+          if (!healthy) {
+            const errorMsg = 'ComfyUI server is unreachable after WebSocket disconnection — the server likely crashed during execution';
+            logger.logError(requester, errorMsg);
+            return { success: false, error: errorMsg };
+          }
+
           logger.logError(requester, `WebSocket wait failed (${executionResult.error}), falling back to polling (${Math.round(remainingMs / 1000)}s remaining)`);
           historyData = await this.pollForCompletion(promptId, signal, remainingMs);
         }
@@ -922,34 +941,42 @@ class ComfyUIClient {
         return { success: false, error: executionError };
       }
 
-      // Step 4: Extract image URLs from output nodes
-      const images = this.extractImageUrls(historyData);
+      // Step 4: Extract output URLs from image/video output nodes
+      const { images, videos } = this.extractOutputUrls(historyData);
+      const totalOutputs = images.length + videos.length;
 
-      if (images.length === 0) {
+      if (totalOutputs === 0) {
         const outputs = historyData.outputs as Record<string, unknown> | undefined;
         const outputKeys = outputs ? Object.keys(outputs) : [];
         logger.logError(
           requester,
-          `ComfyUI workflow produced no images. Output nodes: [${outputKeys.join(', ')}]. ` +
+          `ComfyUI workflow produced no outputs. Output nodes: [${outputKeys.join(', ')}]. ` +
           'Check ComfyUI server logs for execution errors — the workflow may reference missing models or custom nodes.'
         );
         return {
           success: false,
-          error: 'ComfyUI workflow produced no images. Check ComfyUI server logs for execution errors.',
+          error: 'ComfyUI workflow produced no outputs. Check ComfyUI server logs for execution errors.',
         };
       }
 
+      const parts: string[] = [];
+      if (images.length > 0) parts.push(`${images.length} image(s)`);
+      if (videos.length > 0) parts.push(`${videos.length} video(s)`);
+
       logger.logReply(
         requester,
-        `ComfyUI generation completed for prompt: ${prompt.substring(0, 50)}... (${images.length} image(s))`
+        `ComfyUI generation completed for prompt: ${prompt.substring(0, 50)}... (${parts.join(', ')})`
       );
 
-      // DEBUG: log full image URLs
-      logger.logDebugLazy(requester, () => `COMFYUI-RESPONSE: ${images.length} image(s): ${JSON.stringify(images)}`);
+      // DEBUG: log full output URLs
+      logger.logDebugLazy(requester, () => `COMFYUI-RESPONSE: ${parts.join(', ')}: ${JSON.stringify({ images, videos })}`);
 
       return {
         success: true,
-        data: { images },
+        data: {
+          images,
+          ...(videos.length > 0 ? { videos } : {}),
+        },
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -995,6 +1022,7 @@ class ComfyUIClient {
     timeoutMs?: number
   ): Promise<Record<string, unknown> | null> {
     const deadline = Date.now() + (timeoutMs ?? ComfyUIClient.EXECUTION_TIMEOUT_MS);
+    let consecutiveFailures = 0;
 
     while (Date.now() < deadline) {
       if (signal?.aborted) return null;
@@ -1004,6 +1032,10 @@ class ComfyUIClient {
           `/history/${promptId}`,
           signal ? { signal } : undefined
         );
+
+        // Successful HTTP response — reset failure counter
+        consecutiveFailures = 0;
+
         if (response.status === 200 && response.data?.[promptId]) {
           const entry = response.data[promptId] as Record<string, unknown>;
 
@@ -1018,7 +1050,14 @@ class ComfyUIClient {
           return entry;
         }
       } catch {
-        // History not ready yet — continue polling
+        consecutiveFailures++;
+        if (consecutiveFailures >= ComfyUIClient.MAX_CONSECUTIVE_POLL_FAILURES) {
+          logger.logError(
+            'comfyui',
+            `ComfyUI unreachable after ${consecutiveFailures} consecutive poll failures — aborting`
+          );
+          return null;
+        }
       }
 
       await delay(ComfyUIClient.POLL_INTERVAL_MS);
@@ -1060,34 +1099,65 @@ class ComfyUIClient {
     return null;
   }
 
+  /** File extensions treated as video regardless of which output key they appear under. */
+  private static VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.avi', '.mov', '.mkv', '.gif', '.webp']);
+
+  /**
+   * Determine whether a filename should be classified as video based on its extension.
+   */
+  private static isVideoFilename(filename: string): boolean {
+    const ext = filename.lastIndexOf('.') >= 0
+      ? filename.slice(filename.lastIndexOf('.')).toLowerCase()
+      : '';
+    return ComfyUIClient.VIDEO_EXTENSIONS.has(ext);
+  }
+
   /**
    * Walk the outputs object from a ComfyUI history entry and collect
-   * downloadable image URLs via the /view endpoint.
-   * Handles all output node types (SaveImage, PreviewImage, etc.).
+   * downloadable file URLs via the /view endpoint.
+   *
+   * Rather than relying on which output key (`images`, `gifs`, `videos`) a
+   * file appears under, classification is based on the actual file extension.
+   * This handles custom nodes (e.g. VHS_VideoCombine) that place video files
+   * under the `images` key.
+   *
+   * Every array-of-objects property on each output node is scanned, so new or
+   * custom output keys are picked up automatically.
    */
-  extractImageUrls(historyData: Record<string, unknown>): string[] {
+  extractOutputUrls(historyData: Record<string, unknown>): { images: string[]; videos: string[] } {
     const images: string[] = [];
+    const videos: string[] = [];
     const outputs = historyData.outputs as Record<string, Record<string, unknown>> | undefined;
-    if (!outputs) return images;
+    if (!outputs) return { images, videos };
 
     const baseURL = this.client.defaults.baseURL || '';
 
     for (const nodeOutput of Object.values(outputs)) {
-      const nodeImages = nodeOutput.images as Array<Record<string, string>> | undefined;
-      if (!Array.isArray(nodeImages)) continue;
+      // Scan every key on this node's output for arrays of file-like objects
+      for (const value of Object.values(nodeOutput)) {
+        if (!Array.isArray(value)) continue;
+        for (const item of value) {
+          if (typeof item !== 'object' || item === null) continue;
+          const file = item as Record<string, string>;
+          if (!file.filename) continue;
 
-      for (const img of nodeImages) {
-        if (!img.filename) continue;
-        const params = new URLSearchParams({
-          filename: img.filename,
-          ...(img.subfolder ? { subfolder: img.subfolder } : {}),
-          type: img.type || 'output',
-        });
-        images.push(`${baseURL}/view?${params.toString()}`);
+          const params = new URLSearchParams({
+            filename: file.filename,
+            ...(file.subfolder ? { subfolder: file.subfolder } : {}),
+            type: file.type || 'output',
+          });
+          const url = `${baseURL}/view?${params.toString()}`;
+
+          if (ComfyUIClient.isVideoFilename(file.filename)) {
+            videos.push(url);
+          } else {
+            images.push(url);
+          }
+        }
       }
     }
 
-    return images;
+    return { images, videos };
   }
 
   async isHealthy(): Promise<boolean> {
