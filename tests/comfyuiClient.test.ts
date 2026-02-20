@@ -51,6 +51,7 @@ jest.mock('../src/utils/config', () => ({
     getComfyUIDefaultSampler: jest.fn(() => 'euler'),
     getComfyUIDefaultScheduler: jest.fn(() => 'normal'),
     getComfyUIDefaultDenoise: jest.fn(() => 1.0),
+    getComfyUIDefaultSeed: jest.fn(() => -1),
   },
 }));
 
@@ -102,6 +103,7 @@ describe('ComfyUIClient', () => {
     (config.getComfyUIDefaultSampler as jest.Mock).mockReturnValue('euler_ancestral');
     (config.getComfyUIDefaultScheduler as jest.Mock).mockReturnValue('beta');
     (config.getComfyUIDefaultDenoise as jest.Mock).mockReturnValue(0.88);
+    (config.getComfyUIDefaultSeed as jest.Mock).mockReturnValue(-1);
     comfyuiClient.refresh();
   });
 
@@ -1236,6 +1238,7 @@ describe('ComfyUIClient', () => {
       sampler_name: 'euler_ancestral',
       scheduler: 'beta',
       denoise: 0.88,
+      seed: -1,
     };
 
     it('should create a workflow with all required node types', () => {
@@ -1333,6 +1336,12 @@ describe('ComfyUIClient', () => {
       // Seed must always be -1 so ComfyUI randomizes per generation
       expect(seed1).toBe(-1);
       expect(seed2).toBe(-1);
+    });
+
+    it('should honour a specific seed value from params', () => {
+      const paramsWithSeed = { ...defaultParams, seed: 42 };
+      const workflow = buildDefaultWorkflow(paramsWithSeed);
+      expect((workflow['5'] as any).inputs.seed).toBe(42);
     });
   });
 
@@ -1480,6 +1489,7 @@ describe('ComfyUIClient', () => {
       (config.getComfyUIDefaultSampler as jest.Mock).mockReturnValue('dpmpp_2m');
       (config.getComfyUIDefaultScheduler as jest.Mock).mockReturnValue('karras');
       (config.getComfyUIDefaultDenoise as jest.Mock).mockReturnValue(0.88);
+      (config.getComfyUIDefaultSeed as jest.Mock).mockReturnValue(-1);
       comfyuiClient.refresh(); // Clear cached default workflow
 
       mockSuccessfulDefaultGeneration();
@@ -1495,6 +1505,7 @@ describe('ComfyUIClient', () => {
       expect(sentBody.prompt['5'].inputs.sampler_name).toBe('dpmpp_2m');
       expect(sentBody.prompt['5'].inputs.scheduler).toBe('karras');
       expect(sentBody.prompt['5'].inputs.denoise).toBe(0.88);
+      expect(sentBody.prompt['5'].inputs.seed).toBe(-1);
     });
   });
 
@@ -1630,6 +1641,7 @@ describe('ComfyUIClient', () => {
       sampler_name: 'euler_ancestral',
       scheduler: 'beta',
       denoise: 0.88,
+      seed: -1,
     };
 
     function mockObjectInfoForValidation(

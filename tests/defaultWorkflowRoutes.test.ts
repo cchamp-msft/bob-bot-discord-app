@@ -236,6 +236,7 @@ describe('Default Workflow Routes', () => {
       sampler: 'euler',
       scheduler: 'normal',
       denoise: 0.88,
+      seed: -1,
     };
 
     it('should save valid default workflow params', async () => {
@@ -257,6 +258,7 @@ describe('Default Workflow Routes', () => {
       expect(envUpdates.COMFYUI_DEFAULT_SAMPLER).toBe('euler');
       expect(envUpdates.COMFYUI_DEFAULT_SCHEDULER).toBe('normal');
       expect(envUpdates.COMFYUI_DEFAULT_DENOISE).toBe(0.88);
+      expect(envUpdates.COMFYUI_DEFAULT_SEED).toBe(-1);
     });
 
     it('should reject missing model', async () => {
@@ -330,6 +332,50 @@ describe('Default Workflow Routes', () => {
       expect(res.body.errors).toContain('denoise must be between 0 and 1');
     });
 
+    it('should reject non-integer seed', async () => {
+      const res = await postJson(server, '/api/config/default-workflow', {
+        ...validPayload,
+        seed: 1.5,
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors).toContain('seed must be -1 (random) or an integer 0\u20132147483647');
+    });
+
+    it('should reject seed below -1', async () => {
+      const res = await postJson(server, '/api/config/default-workflow', {
+        ...validPayload,
+        seed: -2,
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors).toContain('seed must be -1 (random) or an integer 0\u20132147483647');
+    });
+
+    it('should reject seed above 2147483647', async () => {
+      const res = await postJson(server, '/api/config/default-workflow', {
+        ...validPayload,
+        seed: 2147483648,
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors).toContain('seed must be -1 (random) or an integer 0\u20132147483647');
+    });
+
+    it('should accept seed of 0', async () => {
+      mockUpdateEnv.mockResolvedValue(undefined);
+
+      const res = await postJson(server, '/api/config/default-workflow', {
+        ...validPayload,
+        seed: 0,
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const envUpdates = mockUpdateEnv.mock.calls[0][0];
+      expect(envUpdates.COMFYUI_DEFAULT_SEED).toBe(0);
+    });
+
     it('should coerce string-typed numbers and accept valid payload', async () => {
       mockUpdateEnv.mockResolvedValue(undefined);
 
@@ -342,6 +388,7 @@ describe('Default Workflow Routes', () => {
         sampler: 'dpmpp_2m',
         scheduler: 'karras',
         denoise: '0.88',
+        seed: '-1',
       });
 
       expect(res.status).toBe(200);
@@ -353,6 +400,7 @@ describe('Default Workflow Routes', () => {
       expect(envUpdates.COMFYUI_DEFAULT_STEPS).toBe(30);
       expect(envUpdates.COMFYUI_DEFAULT_CFG).toBe(5.5);
       expect(envUpdates.COMFYUI_DEFAULT_DENOISE).toBe(0.88);
+      expect(envUpdates.COMFYUI_DEFAULT_SEED).toBe(-1);
     });
 
     it('should reject non-numeric string for width', async () => {
@@ -373,11 +421,12 @@ describe('Default Workflow Routes', () => {
         steps: 0,
         cfg: -1,
         denoise: 99,
+        seed: 1.5,
       });
 
       expect(res.status).toBe(400);
       const errors = res.body.errors as string[];
-      expect(errors.length).toBeGreaterThanOrEqual(5);
+      expect(errors.length).toBeGreaterThanOrEqual(6);
     });
   });
 
@@ -433,6 +482,7 @@ describe('Default Workflow Routes', () => {
         sampler_name: 'euler',
         scheduler: 'normal',
         denoise: 0.88,
+        seed: -1,
       };
       mockGetExportWorkflow.mockResolvedValue({ workflow: defaultWorkflow, source: 'default', params });
 

@@ -393,6 +393,7 @@ export interface PublicConfig {
     sampler: string;
     scheduler: string;
     denoise: number;
+    seed: number;
   };
   errorHandling: {
     errorMessage: string;

@@ -835,6 +835,18 @@ class Config {
   }
 
   /**
+   * Seed for the default workflow KSampler.
+   * -1 means random (ComfyUI generates a new seed each run).
+   * Valid range: -1 or 0–2147483647.
+   * Default: -1 (random).
+   */
+  getComfyUIDefaultSeed(): number {
+    const raw = this.parseIntEnv('COMFYUI_DEFAULT_SEED', -1);
+    if (raw === -1) return -1;
+    return Math.max(0, Math.min(raw, 2147483647));
+  }
+
+  /**
    * Load the ComfyUI workflow JSON from .config/comfyui-workflow.json.
    * Returns the raw JSON string, or empty string if not found.
    */
@@ -957,6 +969,7 @@ class Config {
     const prevDefaultSampler = this.getComfyUIDefaultSampler();
     const prevDefaultScheduler = this.getComfyUIDefaultScheduler();
     const prevDefaultDenoise = this.getComfyUIDefaultDenoise();
+    const prevDefaultSeed = this.getComfyUIDefaultSeed();
 
     // Re-parse .env into process.env
     const envPath = path.join(__dirname, '../../.env');
@@ -1038,6 +1051,7 @@ class Config {
     if (this.getComfyUIDefaultSampler() !== prevDefaultSampler) reloaded.push('COMFYUI_DEFAULT_SAMPLER');
     if (this.getComfyUIDefaultScheduler() !== prevDefaultScheduler) reloaded.push('COMFYUI_DEFAULT_SCHEDULER');
     if (this.getComfyUIDefaultDenoise() !== prevDefaultDenoise) reloaded.push('COMFYUI_DEFAULT_DENOISE');
+    if (this.getComfyUIDefaultSeed() !== prevDefaultSeed) reloaded.push('COMFYUI_DEFAULT_SEED');
 
     // Reload keywords
     this.loadKeywords();
@@ -1099,6 +1113,7 @@ class Config {
         sampler: this.getComfyUIDefaultSampler(),
         scheduler: this.getComfyUIDefaultScheduler(),
         denoise: this.getComfyUIDefaultDenoise(),
+        seed: this.getComfyUIDefaultSeed(),
       },
       errorHandling: {
         errorMessage: this.getErrorMessage(),

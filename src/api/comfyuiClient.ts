@@ -200,6 +200,12 @@ export interface DefaultWorkflowParams {
   scheduler: string;
   /** Denoise strength (0–1) */
   denoise: number;
+  /**
+   * Seed for the KSampler node.
+   * -1 means random (ComfyUI generates a new seed each run).
+   * Valid range: -1 or 0–2147483647.
+   */
+  seed: number;
 }
 
 /**
@@ -251,7 +257,7 @@ export function buildDefaultWorkflow(params: DefaultWorkflowParams): Record<stri
     '5': {
       class_type: 'KSampler',
       inputs: {
-        seed: -1,
+        seed: params.seed,
         steps: params.steps,
         cfg: params.cfg,
         sampler_name: params.sampler_name,
@@ -296,6 +302,7 @@ function applySamplerOverrides(
     sampler_name: string;
     scheduler: string;
     denoise: number;
+    seed: number;
   }
 ): number {
   let count = 0;
@@ -308,6 +315,7 @@ function applySamplerOverrides(
       inputs.sampler_name = overrides.sampler_name;
       inputs.scheduler = overrides.scheduler;
       inputs.denoise = overrides.denoise;
+      inputs.seed = overrides.seed;
       count++;
     }
   }
@@ -574,6 +582,7 @@ class ComfyUIClient {
       sampler_name: config.getComfyUIDefaultSampler(),
       scheduler: config.getComfyUIDefaultScheduler(),
       denoise: config.getComfyUIDefaultDenoise(),
+      seed: config.getComfyUIDefaultSeed(),
     };
 
     const validatedParams = await this.validateDefaultWorkflowParams(rawParams);
@@ -620,6 +629,7 @@ class ComfyUIClient {
       sampler_name: config.getComfyUIDefaultSampler(),
       scheduler: config.getComfyUIDefaultScheduler(),
       denoise: config.getComfyUIDefaultDenoise(),
+      seed: config.getComfyUIDefaultSeed(),
     };
 
     const workflow = buildDefaultWorkflow(params);
@@ -689,6 +699,7 @@ class ComfyUIClient {
           sampler_name: config.getComfyUIDefaultSampler(),
           scheduler:    config.getComfyUIDefaultScheduler(),
           denoise:      config.getComfyUIDefaultDenoise(),
+          seed:         config.getComfyUIDefaultSeed(),
         });
         if (patchedCount > 0) {
           logger.log(
@@ -696,7 +707,7 @@ class ComfyUIClient {
             requester,
             `Applied sampler overrides to ${patchedCount} KSampler node(s): ` +
             `sampler=${config.getComfyUIDefaultSampler()}, scheduler=${config.getComfyUIDefaultScheduler()}, ` +
-            `steps=${config.getComfyUIDefaultSteps()}, cfg=${config.getComfyUIDefaultCfg()}, denoise=${config.getComfyUIDefaultDenoise()}`
+            `steps=${config.getComfyUIDefaultSteps()}, cfg=${config.getComfyUIDefaultCfg()}, denoise=${config.getComfyUIDefaultDenoise()}, seed=${config.getComfyUIDefaultSeed()}`
           );
         }
       }

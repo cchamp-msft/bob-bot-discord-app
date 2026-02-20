@@ -1147,6 +1147,21 @@ describe('Config', () => {
       expect(config.getComfyUIDefaultDenoise()).toBe(0.88);
     });
 
+    it('getComfyUIDefaultSeed should return -1 by default', () => {
+      delete process.env.COMFYUI_DEFAULT_SEED;
+      expect(config.getComfyUIDefaultSeed()).toBe(-1);
+    });
+
+    it('getComfyUIDefaultSeed should parse int env value', () => {
+      process.env.COMFYUI_DEFAULT_SEED = '42';
+      expect(config.getComfyUIDefaultSeed()).toBe(42);
+    });
+
+    it('getComfyUIDefaultSeed should clamp to valid range', () => {
+      process.env.COMFYUI_DEFAULT_SEED = '9999999999';
+      expect(config.getComfyUIDefaultSeed()).toBe(2147483647);
+    });
+
     it('should include default workflow in getPublicConfig', () => {
       process.env.COMFYUI_DEFAULT_MODEL = 'test.safetensors';
       process.env.COMFYUI_DEFAULT_STEPS = '30';
@@ -1154,6 +1169,7 @@ describe('Config', () => {
       expect(pub.defaultWorkflow).toBeDefined();
       expect(pub.defaultWorkflow.model).toBe('test.safetensors');
       expect(pub.defaultWorkflow.steps).toBe(30);
+      expect(pub.defaultWorkflow.seed).toBe(-1);
     });
 
     // ── Admin token getter ───────────────────────────────────────

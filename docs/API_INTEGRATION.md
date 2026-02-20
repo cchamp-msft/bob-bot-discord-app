@@ -75,8 +75,9 @@ The configurator includes a **Workflow Settings** section that generates a basic
 | `COMFYUI_DEFAULT_SAMPLER` | `euler_ancestral` | Sampler algorithm |
 | `COMFYUI_DEFAULT_SCHEDULER` | `beta` | Noise scheduler |
 | `COMFYUI_DEFAULT_DENOISE` | `0.88` | Denoise strength (0–1.0) |
+| `COMFYUI_DEFAULT_SEED` | `-1` | KSampler seed (`-1` = random, or `0`–`2147483647` for a fixed seed) |
 
-> **Scope:** `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, and `COMFYUI_DEFAULT_HEIGHT` apply only to the default workflow (they configure `CheckpointLoaderSimple` and `EmptyLatentImage` nodes). The remaining five parameters are also applied as sampler overrides to custom uploaded workflows (see below).
+> **Scope:** `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, and `COMFYUI_DEFAULT_HEIGHT` apply only to the default workflow (they configure `CheckpointLoaderSimple` and `EmptyLatentImage` nodes). The remaining six parameters are also applied as sampler overrides to custom uploaded workflows (see below).
 
 Click **Discover Options** in the configurator to populate dropdowns with available checkpoints, samplers, and schedulers from your connected ComfyUI instance.
 
@@ -99,7 +100,7 @@ The workflow is stored in `.config/comfyui-workflow.json`.
 
 ### KSampler Override
 
-When a custom workflow contains one or more `KSampler` nodes (node `class_type` must be exactly `KSampler`), the bot automatically overrides their `steps`, `cfg`, `sampler_name`, `scheduler`, and `denoise` inputs using the values from the Workflow Settings section. The existing `seed` in the uploaded workflow is preserved. Nodes with other class types (e.g. `KSamplerAdvanced`) are not affected.
+When a custom workflow contains one or more `KSampler` nodes (node `class_type` must be exactly `KSampler`), the bot automatically overrides their `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, and `seed` inputs using the values from the Workflow Settings section. When `seed` is set to `-1` (the default), ComfyUI randomizes the seed on each generation. A specific integer value produces reproducible results. Nodes with other class types (e.g. `KSamplerAdvanced`) are not affected.
 
 ### Workflow Precedence
 

@@ -613,7 +613,7 @@
           <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
             Configure a basic text-to-image workflow that will be used when no custom workflow is uploaded.
             Click <strong>Discover Options</strong> after testing the ComfyUI connection to populate dropdowns with available models, samplers, and schedulers.
-            <br><em>Sampler Override:</em> Steps, CFG, Sampler, Scheduler, and Denoise are also applied as overrides to any uploaded workflow that contains <code>KSampler</code> nodes. Checkpoint Model, Width, and Height only apply to the default workflow. Other sampler node types (e.g. <code>KSamplerAdvanced</code>) are not affected.
+            <br><em>Sampler Override:</em> Steps, CFG, Sampler, Scheduler, Denoise, and Seed are also applied as overrides to any uploaded workflow that contains <code>KSampler</code> nodes. Checkpoint Model, Width, and Height only apply to the default workflow. Other sampler node types (e.g. <code>KSamplerAdvanced</code>) are not affected.
           </p>
           <div id="defaultWorkflowInfo" style="font-size:0.78em;padding:6px 10px;border-radius:4px;margin-bottom:10px;display:none"></div>
 
@@ -668,6 +668,11 @@
             <div class="field narrow">
               <label>Denoise</label>
               <input type="number" id="dw_denoise" value="0.88" min="0" max="1" step="0.01">
+            </div>
+            <div class="field narrow">
+              <label>Seed</label>
+              <input type="number" id="dw_seed" value="-1" min="-1" max="2147483647" step="1">
+              <span style="font-size:0.7em;color:var(--text-dim)">-1 = random</span>
             </div>
           </div>
 
@@ -1336,6 +1341,7 @@ flowchart LR
           schedulerSelect.value = dw.scheduler;
         }
         document.getElementById('dw_denoise').value = typeof dw.denoise === 'number' ? dw.denoise : 1.0;
+        document.getElementById('dw_seed').value = typeof dw.seed === 'number' ? dw.seed : -1;
       }
       updateDefaultWorkflowInfo();
 
@@ -2173,9 +2179,11 @@ flowchart LR
       sampler: document.getElementById('dw_sampler').value || 'euler_ancestral',
       scheduler: document.getElementById('dw_scheduler').value || 'beta',
       denoise: parseFloat(document.getElementById('dw_denoise').value),
+      seed: parseInt(document.getElementById('dw_seed').value),
     };
 
     if (isNaN(params.denoise)) params.denoise = 0.88;
+    if (isNaN(params.seed)) params.seed = -1;
 
     statusEl.textContent = 'Saving…';
     statusEl.style.color = 'var(--text-dim)';

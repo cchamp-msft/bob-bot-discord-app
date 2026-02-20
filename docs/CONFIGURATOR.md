@@ -68,7 +68,7 @@ Events are written as sanitized first-person narratives (e.g. *"Someone wants my
 - Ollama system prompt
 - AccuWeather API key and default location
 - NFL enabled state
-- Default workflow parameters (model, size, steps, sampler, scheduler, denoise)
+- Default workflow parameters (model, size, steps, sampler, scheduler, denoise, seed)
 - Error message and rate limit
 - Reply chain settings (enabled, max depth, max tokens)
 - Image response embed toggle

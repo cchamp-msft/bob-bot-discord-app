@@ -308,6 +308,7 @@ class HttpServer {
         const sampler = typeof body.sampler === 'string' ? body.sampler.trim() : '';
         const scheduler = typeof body.scheduler === 'string' ? body.scheduler.trim() : '';
         const denoise = Number(body.denoise);
+        const seed = Number(body.seed);
 
         if (!model) errors.push('model is required');
         if (isNaN(width) || width <= 0 || width % 8 !== 0) errors.push('width must be a positive multiple of 8');
@@ -315,6 +316,7 @@ class HttpServer {
         if (isNaN(steps) || steps <= 0) errors.push('steps must be positive');
         if (isNaN(cfg) || cfg <= 0) errors.push('cfg must be positive');
         if (isNaN(denoise) || denoise < 0 || denoise > 1) errors.push('denoise must be between 0 and 1');
+        if (isNaN(seed) || !Number.isInteger(seed) || (seed !== -1 && (seed < 0 || seed > 2147483647))) errors.push('seed must be -1 (random) or an integer 0–2147483647');
 
         if (errors.length > 0) {
           res.status(400).json({ success: false, errors });
@@ -330,12 +332,13 @@ class HttpServer {
         if (sampler) envUpdates.COMFYUI_DEFAULT_SAMPLER = sampler;
         if (scheduler) envUpdates.COMFYUI_DEFAULT_SCHEDULER = scheduler;
         envUpdates.COMFYUI_DEFAULT_DENOISE = denoise;
+        envUpdates.COMFYUI_DEFAULT_SEED = seed;
 
         await configWriter.updateEnv(envUpdates);
         config.reload();
         apiManager.refreshClients();
 
-        logger.log('success', 'configurator', `Default workflow params saved: model=${model}, ${width}x${height}, steps=${steps}, cfg=${cfg}, sampler=${sampler}, scheduler=${scheduler}, denoise=${denoise}`);
+        logger.log('success', 'configurator', `Default workflow params saved: model=${model}, ${width}x${height}, steps=${steps}, cfg=${cfg}, sampler=${sampler}, scheduler=${scheduler}, denoise=${denoise}, seed=${seed}`);
         res.json({ success: true });
     }));
 
