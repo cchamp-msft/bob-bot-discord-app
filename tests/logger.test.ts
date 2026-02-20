@@ -272,6 +272,26 @@ describe('Logger', () => {
       const lines = logger.getRecentLines();
       expect(lines).toHaveLength(5);
     });
+
+    it('should not infinite-loop when file exceeds MAX_BYTES with few long lines', () => {
+      // Write a log file with very few, extremely long lines so that the
+      // last 512 KB chunk contains fewer than `count` lines and chunkSize
+      // caps at MAX_BYTES. Before the fix this caused an infinite loop.
+      const logFile = (logger as unknown as { getLogFilePath: () => string }).getLogFilePath();
+      const longLine = 'X'.repeat(600_000); // 600 KB — single line > MAX_BYTES
+      const fs = require('fs');
+      fs.mkdirSync(require('path').dirname(logFile), { recursive: true });
+      fs.writeFileSync(logFile, longLine + '\nshort\n', 'utf-8');
+
+      // This call must terminate quickly. If the bug is present it would loop forever.
+      const start = Date.now();
+      const lines = logger.getRecentLines(200);
+      const elapsed = Date.now() - start;
+
+      expect(elapsed).toBeLessThan(5000); // should finish in well under 5s
+      expect(lines.length).toBeGreaterThan(0);
+      expect(lines[lines.length - 1]).toBe('short');
+    });
   });
 
   describe('logReply with content', () => {

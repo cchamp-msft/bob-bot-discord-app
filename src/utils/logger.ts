@@ -231,6 +231,7 @@ class Logger {
           if (lines.length >= count || start === 0) break;
 
           // Double the chunk and retry
+          const prevChunkSize = chunkSize;
           chunkSize = Math.min(chunkSize * 2, MAX_BYTES, stat.size);
           if (chunkSize >= stat.size) {
             // Read the whole file — final attempt
@@ -239,6 +240,10 @@ class Logger {
             lines = fullBuf.toString('utf-8').split('\n').filter(Boolean);
             break;
           }
+
+          // Guard: if chunkSize cannot grow (capped at MAX_BYTES while
+          // file is larger), stop to avoid an infinite loop.
+          if (chunkSize <= prevChunkSize) break;
         }
 
         return lines.slice(-count);

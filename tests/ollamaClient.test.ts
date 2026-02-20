@@ -460,6 +460,7 @@ describe('OllamaClient', () => {
       expect(createCallsAfter).toBe(createCallsBefore + 1);
       expect(mockedAxios.create).toHaveBeenLastCalledWith({
         baseURL: 'http://new-host:9999',
+        timeout: 60000,
       });
     });
 
@@ -549,7 +550,7 @@ describe('OllamaClient', () => {
 
       // Should have only called /api/show once
       expect(mockInstance.post).toHaveBeenCalledTimes(1);
-      expect(mockInstance.post).toHaveBeenCalledWith('/api/show', { name: 'llava:7b' });
+      expect(mockInstance.post).toHaveBeenCalledWith('/api/show', { name: 'llava:7b' }, undefined);
     });
   });
 

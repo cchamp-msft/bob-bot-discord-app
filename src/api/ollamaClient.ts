@@ -36,9 +36,14 @@ class OllamaClient {
   private visionCache: Map<string, { capable: boolean; expiry: number }> = new Map();
   private static VISION_CACHE_TTL_MS = 60_000; // 1 minute
 
+  /** Default HTTP timeout (ms) for all Ollama requests, including
+   *  pre-flight checks that lack a per-request AbortSignal. */
+  private static HTTP_TIMEOUT_MS = 60_000;
+
   constructor() {
     this.client = axios.create({
       baseURL: config.getOllamaEndpoint(),
+      timeout: OllamaClient.HTTP_TIMEOUT_MS,
     });
   }
 
@@ -49,6 +54,7 @@ class OllamaClient {
   refresh(): void {
     this.client = axios.create({
       baseURL: config.getOllamaEndpoint(),
+      timeout: OllamaClient.HTTP_TIMEOUT_MS,
     });
     // Invalidate model cache when endpoint changes
     this.modelCache = { names: new Set(), expiry: 0 };
@@ -59,9 +65,9 @@ class OllamaClient {
    * List all models available on the Ollama instance.
    * Calls GET /api/tags and parses the response.
    */
-  async listModels(): Promise<OllamaModelInfo[]> {
+  async listModels(signal?: AbortSignal): Promise<OllamaModelInfo[]> {
     try {
-      const response = await this.client.get('/api/tags');
+      const response = await this.client.get('/api/tags', signal ? { signal } : undefined);
       if (response.status === 200 && Array.isArray(response.data?.models)) {
         return response.data.models.map((m: Record<string, unknown>) => ({
           name: String(m.name ?? ''),
@@ -81,12 +87,12 @@ class OllamaClient {
    * Check whether a specific model name exists on the Ollama instance.
    * Uses a short-lived cache to avoid hitting /api/tags on every request.
    */
-  async validateModel(model: string): Promise<boolean> {
+  async validateModel(model: string, signal?: AbortSignal): Promise<boolean> {
     const now = Date.now();
     if (now < this.modelCache.expiry && this.modelCache.names.size > 0) {
       return this.modelCache.names.has(model);
     }
-    const models = await this.listModels();
+    const models = await this.listModels(signal);
     this.modelCache = {
       names: new Set(models.map(m => m.name)),
       expiry: now + OllamaClient.MODEL_CACHE_TTL_MS,
@@ -99,7 +105,7 @@ class OllamaClient {
    * Calls POST /api/show and inspects model metadata for vision/clip indicators.
    * Results are cached with the same TTL as the model list cache.
    */
-  async isVisionCapable(model: string): Promise<boolean> {
+  async isVisionCapable(model: string, signal?: AbortSignal): Promise<boolean> {
     const now = Date.now();
     const cached = this.visionCache.get(model);
     if (cached && now < cached.expiry) {
@@ -107,7 +113,7 @@ class OllamaClient {
     }
 
     try {
-      const response = await this.client.post('/api/show', { name: model });
+      const response = await this.client.post('/api/show', { name: model }, signal ? { signal } : undefined);
       if (response.status === 200 && response.data) {
         const data = response.data;
         // Check model_info keys for vision/projector indicators
@@ -144,7 +150,7 @@ class OllamaClient {
     conversationHistory?: ChatMessage[],
     signal?: AbortSignal,
     options?: { includeSystemPrompt?: boolean },
-    images?: string[]
+    images?: string[],
   ): Promise<OllamaResponse> {
     let selectedModel = model || config.getOllamaModel();
 
@@ -164,7 +170,7 @@ class OllamaClient {
       // When images are present, verify the selected model supports vision.
       // If not, auto-switch to the configured vision model.
       if (hasAnyImages) {
-        const isVision = await this.isVisionCapable(selectedModel);
+        const isVision = await this.isVisionCapable(selectedModel, signal);
         if (!isVision) {
           const visionModel = config.getOllamaVisionModel();
           if (!visionModel || visionModel === selectedModel) {
@@ -179,7 +185,7 @@ class OllamaClient {
       }
 
       // Validate that the model exists before sending
-      const modelExists = await this.validateModel(selectedModel);
+      const modelExists = await this.validateModel(selectedModel, signal);
       if (!modelExists) {
         const errorMsg = `Ollama model "${selectedModel}" is not available. Please check the configurator.`;
         logger.logError(requester, errorMsg);
