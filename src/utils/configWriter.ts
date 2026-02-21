@@ -234,9 +234,6 @@ class ConfigWriter {
           if (ai.optional !== undefined && !validateStringArray(ai.optional)) {
             throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.optional — must be an array of strings`);
           }
-          if (ai.inferFrom !== undefined && !validateStringArray(ai.inferFrom)) {
-            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.inferFrom — must be an array of strings`);
-          }
           if (ai.validation !== undefined && typeof ai.validation !== 'string') {
             throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.validation — must be a string`);
           }

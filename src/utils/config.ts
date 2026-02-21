@@ -36,7 +36,7 @@ normalizeEscapedEnvVars();
  */
 export const COMMAND_PREFIX = '!';
 
-/** Structured guidance for how a keyword's inputs are inferred and validated. */
+/** Structured guidance for how a keyword's inputs are inferred and validated. All context is available by default. */
 export interface AbilityInputs {
   /** How inputs are provided: 'implicit' (inferred from context), 'explicit' (user must provide), 'mixed' (some inferred, some required). */
   mode: 'implicit' | 'explicit' | 'mixed';
@@ -44,7 +44,7 @@ export interface AbilityInputs {
   required?: string[];
   /** Optional input descriptions. */
   optional?: string[];
-  /** Allowed inference sources (e.g., "reply_target", "current_message", "recent_user_message"). */
+  /** Comma-separated source names to infer inputs from (e.g. "user_message, conversation_history"). */
   inferFrom?: string[];
   /** Plain-language validation constraints (e.g., "date must be YYYY-MM-DD or YYYYMMDD"). */
   validation?: string;
@@ -604,24 +604,6 @@ class Config {
   }
 
   /**
-   * Whether detailed ability logging is explicitly configured via env.
-   * Does NOT account for DEBUG_LOGGING override.
-   * Used by PublicConfig/configurator so the UI reflects the raw env value.
-   */
-  getAbilityLoggingConfigured(): boolean {
-    return process.env.ABILITY_LOGGING_DETAILED === 'true';
-  }
-
-  /**
-   * Whether detailed ability logging is effectively enabled.
-   * True when either ABILITY_LOGGING_DETAILED or DEBUG_LOGGING is on.
-   * Use this when deciding whether to log abilities content at runtime.
-   */
-  getAbilityLoggingDetailed(): boolean {
-    return this.getAbilityLoggingConfigured() || this.getDebugLogging();
-  }
-
-  /**
    * NFL logging verbosity level.
    *   0 = summary only (endpoint, season/week, cache hit/miss, game count)
    *   1 = summary + trimmed payload preview (default)
@@ -859,7 +841,6 @@ class Config {
     const prevImageResponseIncludeEmbed = this.getImageResponseIncludeEmbed();
     const prevOllamaFinalPassModel = this.getOllamaFinalPassModel();
     const prevDebugLogging = this.getDebugLogging();
-    const prevAbilityLogging = this.getAbilityLoggingConfigured();
     const prevNflLoggingLevel = this.getNflLoggingLevel();
     const prevNflEndpoint = this.getNflEndpoint();
     const prevNflEnabled = this.getNflEnabled();
@@ -941,7 +922,6 @@ class Config {
     if (this.getImageResponseIncludeEmbed() !== prevImageResponseIncludeEmbed) reloaded.push('IMAGE_RESPONSE_INCLUDE_EMBED');
     if (this.getOllamaFinalPassModel() !== prevOllamaFinalPassModel) reloaded.push('OLLAMA_FINAL_PASS_MODEL');
     if (this.getDebugLogging() !== prevDebugLogging) reloaded.push('DEBUG_LOGGING');
-    if (this.getAbilityLoggingConfigured() !== prevAbilityLogging) reloaded.push('ABILITY_LOGGING_DETAILED');
     if (this.getNflLoggingLevel() !== prevNflLoggingLevel) reloaded.push('NFL_LOGGING_LEVEL');
     if (this.getNflEndpoint() !== prevNflEndpoint) reloaded.push('NFL_BASE_URL');
     if (this.getNflEnabled() !== prevNflEnabled) reloaded.push('NFL_ENABLED');
@@ -1063,9 +1043,6 @@ class Config {
         imageMaxDepth: this.getReplyChainImageMaxDepth(),
       },
       debugLogging: this.getDebugLogging(),
-      abilityLogging: {
-        detailed: this.getAbilityLoggingConfigured(),
-      },
       nflLogging: {
         level: this.getNflLoggingLevel(),
       },

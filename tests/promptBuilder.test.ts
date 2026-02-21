@@ -37,7 +37,6 @@ jest.mock('../src/utils/config', () => ({
         abilityInputs: {
           mode: 'mixed',
           optional: ['date'],
-          inferFrom: ['current_message'],
           validation: 'Date must be YYYYMMDD or YYYY-MM-DD. If omitted, returns the most recent scoreboard.',
         },
         finalOllamaPass: true,
@@ -58,7 +57,6 @@ jest.mock('../src/utils/config', () => ({
         abilityWhen: 'User wants an image generated.',
         abilityInputs: {
           mode: 'implicit',
-          inferFrom: ['reply_target', 'current_message'],
           validation: 'Use the reply target text if present; otherwise use descriptive text from the current message. If no usable image prompt text can be inferred, ask the user what they want generated.',
           examples: ['generate a sunset over mountains'],
         },
@@ -210,7 +208,6 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('  What: Generate an image via ComfyUI.');
       expect(prompt).toContain('  When: User wants an image generated.');
       expect(prompt).toContain('  Inputs: Implicit.');
-      expect(prompt).toContain('    Infer from: reply target, current message.');
       expect(prompt).toContain('    Validation: Use the reply target text if present;');
     });
 
@@ -220,7 +217,6 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('- nfl scores');
       expect(prompt).toContain('  Inputs: Mixed.');
       expect(prompt).toContain('    Optional: date.');
-      expect(prompt).toContain('    Infer from: current message.');
       expect(prompt).toContain('    Validation:');
     });
 

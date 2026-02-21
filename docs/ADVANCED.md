@@ -132,21 +132,9 @@ If not set, the default `OLLAMA_MODEL` is used for final-pass refinements.
 
 **Use case**: You might use a lightweight, fast model for primary routing and a more sophisticated model for final-pass conversational responses.
 
-## Ability Logging
+## Native tools (Ollama tool_calls)
 
-The `ABILITY_LOGGING_DETAILED` environment variable enables verbose logging of the abilities context sent to Ollama during two-stage evaluation.
-
-**Configuration**:
-```env
-ABILITY_LOGGING_DETAILED=true
-```
-
-**Behavior**:
-- **Disabled (default)**: Only a summary count is logged (e.g., "Sent 5 abilities to Ollama")
-- **Enabled**: The full abilities text is logged for debugging routing behavior
-- **Automatically enabled** when `DEBUG_LOGGING=true`
-
-**Use case**: Helpful for understanding why the bot chose a particular API or for debugging ability routing issues.
+When the keyword config defines at least one routable tool (enabled, not builtin, api ≠ ollama), the bot uses **Ollama native tools**: the `tools` parameter is sent to `/api/chat`, and the model may return structured `tool_calls`. Up to **3** tool calls per turn are executed; then a **single** final Ollama pass combines all results for the reply. Internal-only keywords (`help`, `activity_key`) are never sent to Ollama as tools; they are handled by direct bypass (e.g. `!help`).
 
 ## Context Evaluation
 

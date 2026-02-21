@@ -2,11 +2,49 @@ import axios, { AxiosInstance } from 'axios';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
 import { ChatMessage } from '../types';
+import type { OllamaTool } from '../utils/toolsSchema';
+
+/** Maximum tool calls to process per turn (enforced when returning from /api/chat). */
+export const MAX_TOOL_CALLS = 3;
+
+/** One tool call from Ollama message.tool_calls. */
+export interface OllamaToolCall {
+  type: 'function';
+  function: {
+    name: string;
+    arguments: Record<string, unknown> | string;
+  };
+}
+
+function normalizeToolCall(tc: unknown): OllamaToolCall | null {
+  if (!tc || typeof tc !== 'object') return null;
+  const t = tc as Record<string, unknown>;
+  const fn = t.function;
+  if (!fn || typeof fn !== 'object') return null;
+  const f = fn as Record<string, unknown>;
+  const name = f.name;
+  if (typeof name !== 'string' || !name.trim()) return null;
+  let args: Record<string, unknown> | string = f.arguments as Record<string, unknown> | string;
+  if (typeof args === 'string') {
+    try {
+      args = JSON.parse(args) as Record<string, unknown>;
+    } catch {
+      args = {};
+    }
+  }
+  if (typeof args !== 'object' || args === null) args = {};
+  return {
+    type: 'function',
+    function: { name: name.trim(), arguments: args },
+  };
+}
 
 export interface OllamaResponse {
   success: boolean;
   data?: {
     text: string;
+    /** Present when the model returned tool_calls (trimmed to MAX_TOOL_CALLS). */
+    tool_calls?: OllamaToolCall[];
   };
   error?: string;
 }
@@ -149,7 +187,7 @@ class OllamaClient {
     model?: string,
     conversationHistory?: ChatMessage[],
     signal?: AbortSignal,
-    options?: { includeSystemPrompt?: boolean },
+    options?: { includeSystemPrompt?: boolean; tools?: OllamaTool[] },
     images?: string[],
   ): Promise<OllamaResponse> {
     let selectedModel = model || config.getOllamaModel();
@@ -227,14 +265,19 @@ class OllamaClient {
         messages,
         stream: false,
       };
+      if (options?.tools && options.tools.length > 0) {
+        requestBody.tools = options.tools;
+      }
 
       // DEBUG: log full Ollama request messages
       logger.logDebugLazy(requester, () => `OLLAMA-REQUEST: model=${selectedModel}, messages=${JSON.stringify(messages, null, 2)}`);
 
       const response = await this.client.post('/api/chat', requestBody, signal ? { signal } : undefined);
 
-      if (response.status === 200 && response.data.message?.content) {
-        const responseText = response.data.message.content;
+      if (response.status === 200 && response.data?.message) {
+        const msg = response.data.message as { content?: string; tool_calls?: unknown[] };
+        const responseText = msg.content ?? '';
+        const rawToolCalls = msg.tool_calls;
 
         logger.logReply(
           requester,
@@ -244,10 +287,19 @@ class OllamaClient {
         // DEBUG: log full Ollama response text
         logger.logDebug(requester, `OLLAMA-RESPONSE: ${responseText}`);
 
+        let tool_calls: OllamaToolCall[] | undefined;
+        if (Array.isArray(rawToolCalls) && rawToolCalls.length > 0) {
+          tool_calls = rawToolCalls
+            .slice(0, MAX_TOOL_CALLS)
+            .map((tc: unknown) => normalizeToolCall(tc))
+            .filter((tc): tc is OllamaToolCall => tc !== null);
+        }
+
         return {
           success: true,
           data: {
             text: responseText,
+            ...(tool_calls && tool_calls.length > 0 ? { tool_calls } : {}),
           },
         };
       }

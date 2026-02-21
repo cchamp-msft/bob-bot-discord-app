@@ -11,10 +11,11 @@ import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpA
 import { fileHandler } from '../utils/fileHandler';
 import { ChatMessage, NFLResponse, MemeResponse } from '../types';
 import { chunkText } from '../utils/chunkText';
-import { executeRoutedRequest, inferAbilityParameters } from '../utils/apiRouter';
+import { executeRoutedRequest, inferAbilityParameters, formatApiResultAsExternalData } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
-import { assemblePrompt, parseFirstLineKeyword } from '../utils/promptBuilder';
+import { assemblePrompt, assembleReprompt, parseFirstLineKeyword } from '../utils/promptBuilder';
 import type { KeywordParseResult } from '../utils/promptBuilder';
+import { buildOllamaToolsSchema, resolveToolNameToKeyword, toolArgumentsToContent } from '../utils/toolsSchema';
 import { activityEvents } from '../utils/activityEvents';
 import { activityKeyManager } from '../utils/activityKeyManager';
 
@@ -1162,29 +1163,28 @@ class MessageHandler {
       { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true },
     ];
 
-    // Build the XML-tagged prompt with abilities context
+    // Native tools path: when tools are available, use Ollama tool_calls (max 3) and one final pass.
+    const tools = buildOllamaToolsSchema(config.getKeywords());
+    const useToolsPath = tools.length > 0;
+
     const assembled = assemblePrompt({
       userMessage: content,
       conversationHistory: filteredHistory,
       botDisplayName,
+      ...(useToolsPath ? { enabledKeywords: [] } : {}),
     });
 
-    // Log abilities summary
-    const abilityCount = (assembled.systemContent.match(/^- /gm) || []).length;
-    if (abilityCount > 0) {
-      if (config.getAbilityLoggingDetailed()) {
-        logger.log('success', 'system', `TWO-STAGE: Abilities context passed to model:\n${assembled.systemContent}`);
+    if (!useToolsPath) {
+      const abilityCount = (assembled.systemContent.match(/^- /gm) || []).length;
+      if (abilityCount > 0) {
+        logger.log('success', 'system', `TWO-STAGE: Legacy path — ${abilityCount} ability/abilities in prompt`);
       } else {
-        logger.log('success', 'system', `TWO-STAGE: ${abilityCount} ability/abilities passed to model`);
+        logger.log('success', 'system', 'TWO-STAGE: No abilities configured — standard Ollama chat');
       }
     } else {
-      logger.log('success', 'system', 'TWO-STAGE: No abilities configured — standard Ollama chat');
+      logger.log('success', 'system', `TWO-STAGE: Native tools mode — ${tools.length} tool(s), max 3 calls per turn`);
     }
 
-    // Stage 1: Call Ollama with the XML-tagged prompt.
-    // System content from assemblePrompt replaces the global persona;
-    // includeSystemPrompt: false prevents OllamaClient from duplicating it.
-    // When image payloads are present, they are forwarded to the vision model.
     const ollamaResult = await requestQueue.execute(
       'ollama',
       requester,
@@ -1202,6 +1202,7 @@ class MessageHandler {
           undefined,
           {
             includeSystemPrompt: false,
+            ...(useToolsPath ? { tools } : {}),
             ...(imagePayloads.length > 0 ? { images: imagePayloads } : {}),
           }
         )
@@ -1212,9 +1213,85 @@ class MessageHandler {
       return;
     }
 
+    // Tools path: handle structured tool_calls (already trimmed to MAX_TOOL_CALLS by client).
+    if (useToolsPath && ollamaResult.data?.tool_calls && ollamaResult.data.tool_calls.length > 0) {
+      const toolCalls = ollamaResult.data.tool_calls;
+      const externalDataParts: string[] = [];
+      const keywords = config.getKeywords();
+
+      for (const tc of toolCalls) {
+        const kwConfig = resolveToolNameToKeyword(tc.function.name, keywords);
+        if (!kwConfig) {
+          logger.logWarn('system', `TWO-STAGE: Unknown tool name "${tc.function.name}" — skipping`);
+          continue;
+        }
+        const args = typeof tc.function.arguments === 'object' && tc.function.arguments !== null
+          ? (tc.function.arguments as Record<string, unknown>)
+          : {};
+        const contentStr = toolArgumentsToContent(kwConfig, args);
+        activityEvents.emitRoutingDecision(kwConfig.api, kwConfig.keyword, 'tool-call');
+
+        const apiResult = await executeRoutedRequest(
+          { ...kwConfig, finalOllamaPass: false },
+          contentStr,
+          requester,
+          filteredHistory.length > 0 ? filteredHistory : undefined,
+          botDisplayName,
+          undefined
+        );
+        const part = formatApiResultAsExternalData(kwConfig, apiResult.finalResponse, contentStr);
+        externalDataParts.push(part);
+      }
+
+      if (externalDataParts.length === 0) {
+        await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
+        return;
+      }
+
+      const combinedExternalData = externalDataParts.join('\n\n');
+      const reprompt = assembleReprompt({
+        userMessage: content,
+        conversationHistory: filteredHistory,
+        externalData: combinedExternalData,
+        botDisplayName,
+      });
+      const finalPassPrompt = config.getOllamaFinalPassPrompt();
+      const finalSystemContent = finalPassPrompt
+        ? `${reprompt.systemContent}\n\n${finalPassPrompt}`
+        : reprompt.systemContent;
+
+      const finalResult = await requestQueue.execute(
+        'ollama',
+        requester,
+        'tools:final',
+        timeout,
+        (sig) =>
+          apiManager.executeRequest(
+            'ollama',
+            requester,
+            reprompt.userContent,
+            timeout,
+            config.getOllamaFinalPassModel() ?? undefined,
+            [{ role: 'system', content: finalSystemContent }],
+            sig,
+            undefined,
+            { includeSystemPrompt: false }
+          )
+      ) as OllamaResponse;
+
+      await this.dispatchResponse(finalResult, 'ollama', sourceMessage, requester, isDM);
+      return;
+    }
+
+    // Tools path with no tool_calls: direct chat reply.
+    if (useToolsPath) {
+      await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
+      return;
+    }
+
     const ollamaText = ollamaResult.data?.text;
 
-    // Stage 2a: Parse first line for an exact keyword match (primary routing signal)
+    // Legacy: parse first line for keyword match (when not using native tools).
     if (ollamaText) {
       const parseResult = parseFirstLineKeyword(ollamaText);
 
@@ -1233,9 +1310,7 @@ class MessageHandler {
         const abilityInputs = parseResult.keywordConfig.abilityInputs;
         const isImplicitOrMixed =
           !!abilityInputs &&
-          (abilityInputs.mode === 'implicit' || abilityInputs.mode === 'mixed') &&
-          Array.isArray(abilityInputs.inferFrom) &&
-          abilityInputs.inferFrom.length > 0;
+          (abilityInputs.mode === 'implicit' || abilityInputs.mode === 'mixed');
 
         // For implicit/mixed abilities the first-stage model often returns a
         // rich, context-aware prompt inline (parseResult.inferredInput).

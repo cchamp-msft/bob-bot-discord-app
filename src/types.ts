@@ -427,9 +427,6 @@ export interface PublicConfig {
     imageMaxDepth: number;
   };
   debugLogging: boolean;
-  abilityLogging: {
-    detailed: boolean;
-  };
   nflLogging: {
     level: number;
   };

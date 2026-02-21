@@ -927,7 +927,6 @@ describe('Config', () => {
       expect(kw!.abilityInputs!.mode).toBe('explicit');
       expect(kw!.abilityInputs!.required).toEqual(['location']);
       expect(kw!.abilityInputs!.optional).toEqual(['date']);
-      expect(kw!.abilityInputs!.inferFrom).toEqual(['current_message']);
       expect(kw!.abilityInputs!.validation).toBe('location must be a city');
       expect(kw!.abilityInputs!.examples).toEqual(['testkw Dallas']);
     });

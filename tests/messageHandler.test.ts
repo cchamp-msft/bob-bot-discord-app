@@ -39,7 +39,6 @@ jest.mock('../src/utils/config', () => ({
     getReplyChainMaxTokens: jest.fn(() => 16000),
     getMaxAttachments: jest.fn(() => 10),
     getImageResponseIncludeEmbed: jest.fn(() => false),
-    getAbilityLoggingDetailed: jest.fn(() => false),
     getNflEndpoint: jest.fn(() => 'https://site.api.espn.com/apis/site/v2/sports/football/nfl'),
     getNflEnabled: jest.fn(() => true),
     getNflLoggingLevel: jest.fn(() => 0),
@@ -94,12 +93,24 @@ jest.mock('../src/utils/promptBuilder', () => ({
       { role: 'user', content: `<conversation_history>\n</conversation_history>\n\n<current_question>\n${userMessage}\n</current_question>` },
     ],
   })),
+  assembleReprompt: jest.fn((opts: any) => ({
+    systemContent: 'You are Bob.',
+    userContent: (opts.externalData ? `<external_data>\n${opts.externalData}\n</external_data>\n\n` : '') + `<current_question>\n${opts.userMessage}\n</current_question>`,
+    messages: [],
+  })),
   parseFirstLineKeyword: jest.fn(() => ({ keywordConfig: null, parsedLine: '', matched: false })),
 }));
 
 jest.mock('../src/utils/apiRouter', () => ({
   executeRoutedRequest: jest.fn(),
   inferAbilityParameters: jest.fn(),
+  formatApiResultAsExternalData: jest.fn((_kw: unknown, res: { data?: { text?: string } }) => res.data?.text ?? ''),
+}));
+
+jest.mock('../src/utils/toolsSchema', () => ({
+  buildOllamaToolsSchema: jest.fn().mockReturnValue([]),
+  resolveToolNameToKeyword: jest.fn(),
+  toolArgumentsToContent: jest.fn(),
 }));
 
 jest.mock('../src/utils/contextEvaluator', () => ({
@@ -2107,7 +2118,6 @@ describe('MessageHandler two-stage evaluation', () => {
       description: 'Generate image using alternate keyword',
       abilityInputs: {
         mode: 'implicit' as const,
-        inferFrom: ['current_message', 'reply_target'],
       },
     };
 
@@ -4395,7 +4405,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
     api: 'meme' as const,
     timeout: 60,
     description: 'Create funny meme images',
-    abilityInputs: { mode: 'implicit' as const, inferFrom: ['current_message' as const] },
+    abilityInputs: { mode: 'implicit' as const },
   };
   const chatKw = { keyword: '!chat', api: 'ollama' as const, timeout: 60, description: 'Chat' };
 

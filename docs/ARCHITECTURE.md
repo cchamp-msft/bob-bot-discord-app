@@ -36,6 +36,7 @@ src/
     ├── activityEvents.ts # Sanitised in-memory event buffer for activity feed
     ├── activityKeyManager.ts # In-memory rotating key for activity monitor access
     ├── keywordClassifier.ts  # AI-based keyword classification & abilities context builder
+    ├── toolsSchema.ts    # OpenAI-style tool definitions from keyword config (Ollama native tools)
     ├── apiRouter.ts      # Multi-stage API routing pipeline
     └── responseTransformer.ts # Stage result extraction and context building
 
@@ -95,33 +96,43 @@ When generating an OAuth2 invite link, include these **Bot Permissions**:
 
 ## Two-Stage Evaluation & API Routing
 
-The bot uses a two-stage evaluation flow to intelligently route requests. Keywords define available abilities that Ollama can discover and trigger during conversation.
+The bot uses a two-stage evaluation flow to intelligently route requests. Keyword/tool definitions live in the runtime config (e.g. `config/keywords.json` or `config/tools.xml`). **Internal-only** entries (e.g. `help`, `activity_key`) have a tag so they are **not** sent to Ollama as tools; they are used only for direct bypass (e.g. `!help`).
 
-### How It Works
+### Native tools path (when tools are available)
 
-1. **Regex matching** (fast path) — checked first for explicit keywords like `!generate` or `!weather`
-2. **Direct API routing** — if a non-Ollama keyword is matched by regex, the request is sent directly to the primary API, respecting the keyword's own `finalOllamaPass` setting
-3. **Two-stage evaluation** — if an Ollama keyword is matched (e.g., "chat", "ask") or no keyword is matched, the request is sent to Ollama with an abilities context describing available API capabilities. Ollama's response is then checked:
-   - `parseFirstLineKeyword()` checks if the first line of Ollama's response matches an API keyword (with optional inline parameters). When the matched ability has `abilityInputs.required`, `inferAbilityParameters()` extracts the concrete parameter (e.g., resolving "capital of Thailand" → "Bangkok") before routing.
-   - If no keyword directive is found, Ollama's response is returned as direct chat — no fallback classification is performed.
-4. **Final refinement** — model-inferred abilities (from step 3) always pass through a final Ollama call to present API data conversationally. Direct `!keyword` routing respects the keyword's own `finalOllamaPass` setting.
+When the config yields at least one routable tool (enabled, not builtin, api ≠ ollama, not internal-only):
 
-### Keyword Prefix Normalisation
+1. **Tools schema** — `buildOllamaToolsSchema()` converts keyword config into OpenAI-style tool definitions and passes them to Ollama as the `tools` parameter on `/api/chat`.
+2. **Ollama response** — The model may return structured `tool_calls` (max **3** per turn, enforced in code). If it returns only text, that is sent as the chat reply.
+3. **Tool execution** — Each tool call is resolved to a keyword config; arguments are converted to the single content string each API expects. `executeRoutedRequest()` runs without a per-call final pass.
+4. **Single final pass** — All tool results are combined and sent to **one** final Ollama call for conversational refinement, then the reply is sent to the user.
 
 Keywords in `config/tools.xml` may be stored with or without the `!` prefix. The routing engine normalises all keywords to include the prefix before matching, ensuring `!activity_key` matches a config entry stored as `"activity_key"`.
 
-### Example Flows
+### Legacy path (no tools or tools disabled)
 
-- **Simple**: `!generate` → ComfyUI (direct API call)
-- **Weather direct route**: `!weather Seattle` → AccuWeather (shared routed API path)
-- **Two-stage**: User says "is it going to rain?" → no keyword match → Ollama with abilities → response starts with `weather: Seattle` → AccuWeather triggered → Ollama formats result
-- **Two-stage with inference**: User says "what is the capital of Thailand?" → Ollama starts with `weather` → `inferAbilityParameters()` resolves "Bangkok" → AccuWeather called with "Bangkok"
-- **No API match**: User says "tell me a joke" → Ollama with abilities → response has no keyword directive → Ollama response returned directly
+When there are no routable tools:
 
-### Error Handling
+1. **Regex matching** (fast path) — explicit keywords like `!generate` or `!weather` are matched first.
+2. **Direct API routing** — if a non-Ollama keyword is matched by regex, the request goes to the primary API (per-keyword `finalOllamaPass` still applies).
+3. **Two-stage with abilities block** — if an Ollama keyword is matched (e.g. "chat") or no keyword matches, the request is sent to Ollama with a text abilities block. `parseFirstLineKeyword()` checks the first line for an API keyword (with optional inline parameters). If matched, `inferAbilityParameters()` may extract parameters before routing.
+4. **Final refinement** — model-inferred abilities from step 3 go through a final Ollama call. Direct `!keyword` routing respects the keyword's `finalOllamaPass` setting.
 
-- If the final Ollama pass fails, the raw API result is returned
-- If two-stage evaluation finds an API keyword but the API call fails, an error is reported to the user
+### Keyword prefix normalisation
+
+Keywords in config may be stored with or without the `!` prefix. The routing engine normalises before matching, so `!activity_key` matches a config entry stored as `"activity_key"`.
+
+### Example flows
+
+- **Direct**: `!weather Seattle` → AccuWeather
+- **Native tools**: User says "what's the weather in Dallas and generate a sunset image" → Ollama returns two tool_calls → both run → one final pass with combined results
+- **Legacy two-stage**: No tools configured → user says "is it going to rain?" → Ollama with abilities block → first line matches `weather` → AccuWeather → final Ollama pass
+- **Internal-only**: `!help` → handled directly, never sent to Ollama as a tool
+
+### Error handling
+
+- If the final Ollama pass fails, the raw API result is returned.
+- If a tool call or legacy-routed API call fails, an error is reported to the user.
 
 ## Reply Chain Context, Channel Context & DM History
 

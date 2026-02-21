@@ -1694,7 +1694,6 @@ describe('ApiRouter', () => {
         description: 'Create funny meme images from popular templates',
         abilityInputs: {
           mode: 'implicit',
-          inferFrom: ['current_message', 'reply_target'],
           validation: 'Output must be: templateName | top text | bottom text.',
           examples: ['meme drake | studying for exams | browsing memes'],
         },
@@ -1783,7 +1782,6 @@ describe('ApiRouter', () => {
       description: 'Generate image using ComfyUI',
       abilityInputs: {
         mode: 'implicit',
-        inferFrom: ['reply_target', 'current_message'],
         validation: 'Use the reply target text if present; otherwise summarize the context.',
       },
     };

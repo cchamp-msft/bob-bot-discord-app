@@ -6,6 +6,7 @@ import { serpApiClient } from './serpApiClient';
 import { memeClient } from './memeClient';
 import { config } from '../utils/config';
 import { ChatMessage, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult } from '../types';
+import type { OllamaTool } from '../utils/toolsSchema';
 
 export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult };
 
@@ -15,6 +16,8 @@ export interface OllamaRequestOptions {
   includeSystemPrompt?: boolean;
   /** Base64-encoded images for vision-capable models. */
   images?: string[];
+  /** Tools (OpenAI schema) for native tool calling. */
+  tools?: OllamaTool[];
 }
 
 class ApiManager {

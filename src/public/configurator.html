@@ -760,13 +760,6 @@
           <textarea id="ollama_final_pass_prompt" data-env="OLLAMA_FINAL_PASS_PROMPT" rows="3" placeholder="Keeping in character, review the incoming data and provide an opinionated response."></textarea>
           <button type="button" class="btn small" onclick="document.getElementById('ollama_final_pass_prompt').value='';markDirty();" title="Clear to use default prompt">Reset to Default</button>
         </div>
-        <div class="field narrow">
-          <label title="When enabled, the full abilities context sent to Ollama is logged in the status console">Detailed Ability Logging ℹ️</label>
-          <select id="ability_logging_detailed" data-env="ABILITY_LOGGING_DETAILED" onchange="markDirty()">
-            <option value="false">Off</option>
-            <option value="true">On</option>
-          </select>
-        </div>
       </div>
     </section>
 
@@ -1062,7 +1055,7 @@ flowchart LR
           Map @mention keywords to APIs. Keywords must start with <code>!</code> (e.g. <code>!weather</code>).
           When <strong>Ability</strong> is checked, the keyword's description is included
           as context so Ollama can suggest using that API even when the keyword isn't typed explicitly.
-          <strong>Final Pass</strong> sends the API result back through Ollama for conversational refinement.
+          Tool results are sent through Ollama for one final conversational pass when using native tools.
         </p>
         <table class="kw-table">
           <thead>
@@ -1073,7 +1066,6 @@ flowchart LR
               <th title="Request timeout in seconds">Timeout (s)</th>
               <th title="Human-readable description; used as ability context when Ability is checked">Description</th>
               <th title="When checked, this keyword's description is included in Ollama's abilities context so it can suggest using this API without the keyword being typed" style="text-align:center">Ability ℹ️</th>
-              <th title="When checked, the API result is passed through Ollama for conversational refinement using the global Final Pass Model" style="text-align:center">Final Pass ℹ️</th>
               <th title="When checked, Ollama context evaluation is applied before building the two-stage prompt" style="text-align:center">Ctx Eval ℹ️</th>
               <th title="Per-keyword min/max depth overrides for Ollama context evaluation" style="text-align:center">Ctx Depth ℹ️</th>
               <th></th>
@@ -1392,10 +1384,6 @@ flowchart LR
       document.getElementById('reply_chain_max_tokens').value = cfg.replyChain?.maxTokens || 16000;
       document.getElementById('reply_chain_image_max_depth').value = cfg.replyChain?.imageMaxDepth ?? 5;
 
-      // Populate ability logging
-      const alDetailed = document.getElementById('ability_logging_detailed');
-      alDetailed.value = cfg.abilityLogging?.detailed ? 'true' : 'false';
-
       // Populate Final Pass Model (saved selection)
       const fpModelSelect = document.getElementById('ollama_final_pass_model');
       if (cfg.apis.ollamaFinalPassModel && cfg.apis.ollamaFinalPassModel !== cfg.apis.ollamaModel) {
@@ -1481,7 +1469,6 @@ flowchart LR
       <td><input type="number" class="kw-timeout" value="${kw?.timeout || 300}" style="width:70px"></td>
       <td><input type="text" class="kw-desc" value="${esc(kw?.description || '')}" placeholder="description"></td>
       <td style="text-align:center"><input type="checkbox" class="kw-ability" ${kw?.abilityText ? 'checked' : ''} title="Include this keyword as an ability in Ollama context"></td>
-      <td style="text-align:center"><input type="checkbox" class="kw-finalPass" ${kw?.finalOllamaPass ? 'checked' : ''} title="Pass API result through Ollama for conversational refinement"></td>
       <td style="text-align:center"><input type="checkbox" class="kw-ctxEval" ${kw?.contextFilterEnabled ? 'checked' : ''} title="Enable Ollama context evaluation for this keyword"></td>
       <td style="text-align:center">
         <span class="kw-ctx-depth kw-ctx-depth-stacked">
@@ -1535,10 +1522,6 @@ flowchart LR
           <div class="field-half">
             <label>Optional Inputs <span style="color:var(--text-dim);font-weight:normal">(comma-separated)</span></label>
             <input type="text" class="kw-aiOptional" value="${esc((ai.optional || []).join(', '))}" placeholder="e.g. date">
-          </div>
-          <div class="field-half">
-            <label>Infer From <span style="color:var(--text-dim);font-weight:normal">(comma-separated)</span></label>
-            <input type="text" class="kw-aiInferFrom" value="${esc((ai.inferFrom || []).join(', '))}" placeholder="e.g. current_message, reply_target">
           </div>
           <div class="field-full">
             <label>Validation <span style="color:var(--text-dim);font-weight:normal">(constraint description for the model)</span></label>
@@ -1748,8 +1731,6 @@ flowchart LR
 
       // Main row fields
       const isAbility = row.querySelector('.kw-ability').checked;
-      const finalPass = row.querySelector('.kw-finalPass').checked;
-      if (finalPass) entry.finalOllamaPass = true;
       const ctxEval = row.querySelector('.kw-ctxEval').checked;
       if (ctxEval) entry.contextFilterEnabled = true;
       const minD = parseInt(row.querySelector('.kw-ctxMin').value, 10);
@@ -1788,12 +1769,10 @@ flowchart LR
           };
           const req = parseCSV('.kw-aiRequired');
           const opt = parseCSV('.kw-aiOptional');
-          const inf = parseCSV('.kw-aiInferFrom');
           const val = detail.querySelector('.kw-aiValidation')?.value?.trim();
           const ex = parseCSV('.kw-aiExamples');
           if (req.length) abilityInputs.required = req;
           if (opt.length) abilityInputs.optional = opt;
-          if (inf.length) abilityInputs.inferFrom = inf;
           if (val) abilityInputs.validation = val;
           if (ex.length) abilityInputs.examples = ex;
           entry.abilityInputs = abilityInputs;
