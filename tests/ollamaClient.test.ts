@@ -566,7 +566,7 @@ describe('OllamaClient', () => {
       setupModelExists();
 
       // isVisionCapable → true (has clip family)
-      mockInstance.post.mockImplementation((url: string, data: unknown) => {
+      mockInstance.post.mockImplementation((url: string, _data: unknown) => {
         if (url === '/api/show') {
           return Promise.resolve({
             status: 200,

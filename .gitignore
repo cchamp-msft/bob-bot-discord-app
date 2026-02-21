@@ -11,5 +11,5 @@ outputs/
 .work/
 *.swp
 *.swo
-config/keywords.json
+config/tools.xml
 eslint-results.sarif

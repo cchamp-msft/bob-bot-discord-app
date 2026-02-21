@@ -40,8 +40,8 @@ src/
     └── responseTransformer.ts # Stage result extraction and context building
 
 config/
-├── keywords.default.json  # Default keyword definitions (tracked template)
-└── keywords.json          # Runtime keyword config (auto-created from default, gitignored)
+├── tools.default.xml      # Default tool definitions (tracked XML template)
+└── tools.xml              # Runtime tools config (auto-created from default, gitignored)
 
 .config/
 └── comfyui-workflow.json  # ComfyUI workflow template (uploaded via configurator)
@@ -108,7 +108,7 @@ The bot uses a two-stage evaluation flow to intelligently route requests. Keywor
 
 ### Keyword Prefix Normalisation
 
-Keywords in `config/keywords.json` may be stored with or without the `!` prefix. The routing engine normalises all keywords to include the prefix before matching, ensuring `!activity_key` matches a config entry stored as `"activity_key"`.
+Keywords in `config/tools.xml` may be stored with or without the `!` prefix. The routing engine normalises all keywords to include the prefix before matching, ensuring `!activity_key` matches a config entry stored as `"activity_key"`.
 
 ### Example Flows
 
@@ -195,7 +195,7 @@ Depth is counted from the **newest** message (newest = depth 1), matching the "p
 
 ### Per-Keyword Depth Overrides
 
-These optional fields in `config/keywords.json` override the global defaults for a specific keyword:
+These optional fields in `config/tools.xml` override the global defaults for a specific tool:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

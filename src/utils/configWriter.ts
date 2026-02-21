@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { KeywordConfig, ConfigData, COMMAND_PREFIX } from './config';
+import { KeywordConfig, COMMAND_PREFIX } from './config';
 import { isUIFormat, convertUIToAPIFormat } from '../api/comfyuiClient';
+import { buildToolsXml } from './toolsXmlWriter';
 
 interface EnvUpdate {
   [key: string]: string | number;
@@ -10,13 +11,13 @@ interface EnvUpdate {
 class ConfigWriter {
   private envPath = path.join(__dirname, '../../.env');
   private get keywordsPath(): string {
-    const envPath = process.env.KEYWORDS_CONFIG_PATH;
+    const envPath = process.env.TOOLS_CONFIG_PATH;
     if (envPath) {
       return path.resolve(path.join(__dirname, '../..'), envPath);
     }
-    return path.join(__dirname, '../../config/keywords.json');
+    return path.join(__dirname, '../../config/tools.xml');
   }
-  private defaultKeywordsPath = path.join(__dirname, '../../config/keywords.default.json');
+  private defaultKeywordsPath = path.join(__dirname, '../../config/tools.default.xml');
   private configDir = path.join(__dirname, '../../.config');
   private workflowPath = path.join(__dirname, '../../.config/comfyui-workflow.json');
 
@@ -169,7 +170,7 @@ class ConfigWriter {
   }
 
   /**
-   * Validate and update keywords.json
+   * Validate and update tools.xml
    */
   async updateKeywords(keywords: KeywordConfig[]): Promise<void> {
     try {
@@ -317,6 +318,7 @@ class ConfigWriter {
         if (entry.abilityText) clean.abilityText = entry.abilityText;
         if (entry.abilityWhen) clean.abilityWhen = entry.abilityWhen;
         if (entry.abilityInputs) clean.abilityInputs = entry.abilityInputs;
+        if (entry.parameters) clean.parameters = entry.parameters;
         if (entry.finalOllamaPass !== undefined) clean.finalOllamaPass = entry.finalOllamaPass;
         if (entry.allowEmptyContent !== undefined) clean.allowEmptyContent = entry.allowEmptyContent;
         if (entry.enabled === false) clean.enabled = false;
@@ -337,15 +339,15 @@ class ConfigWriter {
         return clean;
       });
 
-      // Write to file
-      const configData: ConfigData = { keywords: cleanKeywords };
+      // Write to file as XML
+      const xmlContent = buildToolsXml(cleanKeywords);
       fs.writeFileSync(
         this.keywordsPath,
-        `${JSON.stringify(configData, null, 2)}\n`,
+        xmlContent,
         'utf-8'
       );
     } catch (error) {
-      throw new Error(`Failed to update keywords config: ${error}`, { cause: error });
+      throw new Error(`Failed to update tools config: ${error}`, { cause: error });
     }
   }
 }

@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tools>
+  <!-- Built-in tools (cannot be edited or deleted — only toggled on/off) -->
+  <tool>
+    <name>help</name>
+    <api>ollama</api>
+    <timeout>120</timeout>
+    <description>Explain what the bot can help with and how to use each capability</description>
+    <builtin>true</builtin>
+    <allowEmptyContent>true</allowEmptyContent>
+  </tool>
+
+  <tool>
+    <name>activity_key</name>
+    <api>ollama</api>
+    <timeout>10</timeout>
+    <description>Request a temporary access key for the activity monitor</description>
+    <builtin>true</builtin>
+    <allowEmptyContent>true</allowEmptyContent>
+  </tool>
+
+  <!-- Image generation tools -->
+  <tool>
+    <name>generate</name>
+    <api>comfyui</api>
+    <timeout>600</timeout>
+    <description>Generate image using ComfyUI</description>
+    <abilityWhen>User wants an image generated.</abilityWhen>
+    <parameters>
+      <mode>implicit</mode>
+      <prompt>
+        <type>string</type>
+        <description>Detailed text description of the desired image. Infer from reply target or current message if possible.</description>
+        <required>true</required>
+      </prompt>
+      <inferFrom>reply_target, current_message</inferFrom>
+      <validation>Use the reply target text if present; otherwise use descriptive text from the current message. If no usable image prompt text can be inferred, ask the user what they want generated.</validation>
+      <examples>
+        <example>generate a sunset over mountains</example>
+      </examples>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>imagine</name>
+    <api>comfyui</api>
+    <timeout>600</timeout>
+    <description>Generate image using ComfyUI</description>
+    <abilityWhen>User wants an image generated using an alternate keyword.</abilityWhen>
+    <parameters>
+      <mode>implicit</mode>
+      <prompt>
+        <type>string</type>
+        <description>Detailed text description of the desired image. Infer from reply target or current message context.</description>
+        <required>true</required>
+      </prompt>
+      <inferFrom>reply_target, current_message</inferFrom>
+      <validation>Use the reply target text if present; otherwise summarize the context into a relevant description for text to image.</validation>
+      <examples>
+        <example>imagine a futuristic cityscape</example>
+      </examples>
+    </parameters>
+  </tool>
+
+  <!-- Conversation tools -->
+  <tool>
+    <name>ask</name>
+    <api>ollama</api>
+    <timeout>300</timeout>
+    <description>Ask a question using Ollama</description>
+    <enabled>false</enabled>
+    <contextFilterMaxDepth>20</contextFilterMaxDepth>
+  </tool>
+
+  <tool>
+    <name>chat</name>
+    <api>ollama</api>
+    <timeout>300</timeout>
+    <description>Chat with Ollama AI</description>
+    <contextFilterEnabled>true</contextFilterEnabled>
+    <contextFilterMinDepth>1</contextFilterMinDepth>
+    <contextFilterMaxDepth>30</contextFilterMaxDepth>
+  </tool>
+
+  <!-- Weather tool -->
+  <tool>
+    <name>weather</name>
+    <api>accuweather</api>
+    <timeout>60</timeout>
+    <description>Get weather details including current conditions and forecast</description>
+    <abilityWhen>User asks about weather details for a location, including temperature, precipitation, wind, and multi-day outlook.</abilityWhen>
+    <parameters>
+      <mode>explicit</mode>
+      <location>
+        <type>string</type>
+        <description>City name, region, or US postal code to look up weather for</description>
+        <required>true</required>
+      </location>
+      <validation>Location must be a valid worldwide city name, region, or United States postal code.</validation>
+      <examples>
+        <example>weather Dallas</example>
+        <example>weather 90210</example>
+        <example>weather London, UK</example>
+      </examples>
+    </parameters>
+    <contextFilterMaxDepth>1</contextFilterMaxDepth>
+  </tool>
+
+  <!-- NFL tools -->
+  <tool>
+    <name>nfl scores</name>
+    <api>nfl</api>
+    <timeout>30</timeout>
+    <description>Get current NFL game scores. Optionally provide a date (YYYYMMDD or YYYY-MM-DD) to look up scores for a specific date; otherwise returns the most recent scoreboard.</description>
+    <abilityWhen>User asks about NFL scores or game results.</abilityWhen>
+    <parameters>
+      <mode>mixed</mode>
+      <date>
+        <type>string</type>
+        <description>Date in YYYYMMDD or YYYY-MM-DD format. If omitted, returns the most recent scoreboard.</description>
+        <required>false</required>
+      </date>
+      <inferFrom>current_message</inferFrom>
+      <validation>Date must be YYYYMMDD or YYYY-MM-DD. If omitted, returns the most recent scoreboard.</validation>
+    </parameters>
+    <finalOllamaPass>true</finalOllamaPass>
+    <allowEmptyContent>true</allowEmptyContent>
+  </tool>
+
+  <tool>
+    <name>nfl news</name>
+    <api>nfl</api>
+    <timeout>30</timeout>
+    <description>Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl news chiefs').</description>
+    <abilityWhen>User asks about NFL news or headlines.</abilityWhen>
+    <parameters>
+      <mode>mixed</mode>
+      <filter>
+        <type>string</type>
+        <description>Optional NFL-related term to narrow results (e.g. team name). If omitted, returns all headlines.</description>
+        <required>false</required>
+      </filter>
+      <inferFrom>current_message</inferFrom>
+      <validation>Filter is an optional NFL-related term to narrow results (e.g. team name). If omitted, returns all headlines.</validation>
+    </parameters>
+    <finalOllamaPass>true</finalOllamaPass>
+    <allowEmptyContent>true</allowEmptyContent>
+  </tool>
+
+  <!-- Analysis tool -->
+  <tool>
+    <name>analyze</name>
+    <api>ollama</api>
+    <timeout>60</timeout>
+    <description>Analyze the context and generate the most relevant assessment based on the context</description>
+    <contextFilterMinDepth>20</contextFilterMinDepth>
+    <contextFilterMaxDepth>20</contextFilterMaxDepth>
+  </tool>
+
+  <!-- Search tools -->
+  <tool>
+    <name>search</name>
+    <api>serpapi</api>
+    <timeout>60</timeout>
+    <description>Search the web for current information using Google</description>
+    <abilityWhen>User needs current or real-time information from the web.</abilityWhen>
+    <parameters>
+      <mode>explicit</mode>
+      <query>
+        <type>string</type>
+        <description>Concise search term or question suitable for a web search engine</description>
+        <required>true</required>
+      </query>
+      <inferFrom>current_message</inferFrom>
+      <validation>Query should be a concise search term or question suitable for a web search engine.</validation>
+      <examples>
+        <example>search latest TypeScript release</example>
+        <example>search Super Bowl winner 2026</example>
+      </examples>
+    </parameters>
+    <finalOllamaPass>true</finalOllamaPass>
+    <contextFilterMaxDepth>1</contextFilterMaxDepth>
+  </tool>
+
+  <tool>
+    <name>second opinion</name>
+    <api>serpapi</api>
+    <timeout>60</timeout>
+    <description>Get a second opinion by searching the web using Google</description>
+    <abilityWhen>User wants to verify or cross-check information with a web search.</abilityWhen>
+    <parameters>
+      <mode>explicit</mode>
+      <query>
+        <type>string</type>
+        <description>The claim or topic the user wants verified via web search</description>
+        <required>true</required>
+      </query>
+      <inferFrom>current_message</inferFrom>
+      <validation>Query should capture the claim or topic the user wants verified.</validation>
+    </parameters>
+  </tool>
+
+  <!-- Meme tools -->
+  <tool>
+    <name>meme</name>
+    <api>meme</api>
+    <timeout>60</timeout>
+    <description>Create funny meme images from popular templates</description>
+    <abilityWhen>User wants a meme generated, asks for a meme, or describes a funny image macro.</abilityWhen>
+    <parameters>
+      <mode>implicit</mode>
+      <template_and_text>
+        <type>string</type>
+        <description>Output must be: templateName | top text | bottom text. Choose the most fitting meme template for the user's intent.</description>
+        <required>true</required>
+      </template_and_text>
+      <inferFrom>current_message, reply_target</inferFrom>
+      <validation>Output must be: templateName | top text | bottom text. Choose the most fitting meme template for the user's intent. If the user names a specific template, use it; otherwise pick the best match.</validation>
+      <examples>
+        <example>meme success kid | finished all my tasks | on a Monday</example>
+        <example>meme one does not simply | walk into mordor</example>
+      </examples>
+    </parameters>
+    <contextFilterMaxDepth>1</contextFilterMaxDepth>
+  </tool>
+
+  <tool>
+    <name>meme_templates</name>
+    <api>meme</api>
+    <timeout>30</timeout>
+    <description>Return a comma separated list of meme templates</description>
+    <allowEmptyContent>true</allowEmptyContent>
+  </tool>
+</tools>

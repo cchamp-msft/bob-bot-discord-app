@@ -54,8 +54,8 @@ src/
 └── utils/                # Config, logging, file handling, routing, queuing
 
 config/
-├── keywords.default.json # Default keyword definitions
-└── keywords.json         # Runtime keyword config (gitignored)
+├── tools.default.xml    # Default tool definitions (XML format)
+└── tools.xml            # Runtime tools config (gitignored)
 
 docs/                     # Documentation
 tests/                    # Unit tests

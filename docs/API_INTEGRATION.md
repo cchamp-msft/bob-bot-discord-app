@@ -135,7 +135,7 @@ When a user says "weather in Seattle", the bot extracts "Seattle", resolves it v
 
 ### Weather Keywords
 
-A single weather keyword is configured in `config/keywords.default.json`, routing through the AccuWeather path:
+A single weather keyword is configured in `config/tools.default.xml`, routing through the AccuWeather path:
 
 | Keyword | Behavior |
 |---------|----------|
@@ -172,7 +172,7 @@ The bot integrates with [ESPN's public API](https://site.api.espn.com/apis/site/
 
 ### NFL Keywords
 
-Two NFL keywords are configured in `config/keywords.default.json`:
+Two NFL keywords are configured in `config/tools.default.xml`:
 
 | Keyword | Behavior |
 |---------|----------|

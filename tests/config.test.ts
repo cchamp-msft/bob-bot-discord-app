@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { logger } from '../src/utils/logger';
+import { buildToolsXml } from '../src/utils/toolsXmlWriter';
 
 // We can't easily test the singleton since it loads on import.
 // Instead we test the Config class directly by re-creating instances
@@ -27,7 +28,7 @@ describe('Config', () => {
     configDir = path.join(tempDir, 'config');
     fs.mkdirSync(configDir, { recursive: true });
     envPath = path.join(tempDir, '.env');
-    keywordsPath = path.join(configDir, 'keywords.json');
+    keywordsPath = path.join(configDir, 'tools.xml');
   });
 
   afterEach(() => {
@@ -42,7 +43,12 @@ describe('Config', () => {
   });
 
   function writeKeywords(keywords: any[]) {
-    fs.writeFileSync(keywordsPath, JSON.stringify({ keywords }, null, 2));
+    fs.writeFileSync(keywordsPath, buildToolsXml(keywords as any));
+  }
+
+  /** Build minimal raw XML document for validation tests. */
+  function rawToolsXml(...toolBodies: string[]): string {
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<tools>\n${toolBodies.join('\n')}\n</tools>`;
   }
 
   function _writeEnv(entries: Record<string, string>) {
@@ -529,7 +535,7 @@ describe('Config', () => {
     const { config } = require('../src/utils/config');
 
     it('should find keyword case-insensitively', () => {
-      // The runtime keywords.json (copied from keywords.default.json) should have "generate"
+      // The runtime tools.xml (copied from tools.default.xml) should have "generate"
       const kw = config.getKeywordConfig('GENERATE');
       if (kw) {
         expect(kw.keyword.toLowerCase()).toBe('generate');
@@ -543,10 +549,10 @@ describe('Config', () => {
     });
   });
 
-  describe('keywords.default.json copy-on-startup', () => {
+  describe('tools.default.xml copy-on-startup', () => {
     const { config } = require('../src/utils/config');
-    const runtimePath = path.join(__dirname, '../config/keywords.json');
-    const defaultPath = path.join(__dirname, '../config/keywords.default.json');
+    const runtimePath = path.join(__dirname, '../config/tools.xml');
+    const defaultPath = path.join(__dirname, '../config/tools.default.xml');
     let savedRuntime: string | null = null;
 
     beforeEach(() => {
@@ -559,17 +565,17 @@ describe('Config', () => {
     });
 
     afterEach(() => {
-      // Restore runtime keywords.json
+      // Restore runtime tools.xml
       if (savedRuntime !== null) {
         fs.writeFileSync(runtimePath, savedRuntime);
       } else if (fs.existsSync(runtimePath)) {
         fs.unlinkSync(runtimePath);
       }
-      delete process.env.KEYWORDS_CONFIG_PATH;
+      delete process.env.TOOLS_CONFIG_PATH;
       config.reload();
     });
 
-    it('should copy keywords.default.json to keywords.json when runtime file is missing', () => {
+    it('should copy tools.default.xml to tools.xml when runtime file is missing', () => {
       // Remove the runtime file
       if (fs.existsSync(runtimePath)) {
         fs.unlinkSync(runtimePath);
@@ -580,23 +586,20 @@ describe('Config', () => {
       // Runtime file should now exist (copied from default)
       expect(fs.existsSync(runtimePath)).toBe(true);
 
-      // Content should match the default template
-      const defaultContent = JSON.parse(fs.readFileSync(defaultPath, 'utf-8'));
-      const runtimeContent = JSON.parse(fs.readFileSync(runtimePath, 'utf-8'));
+      // Content should match the default template (byte-for-byte copy)
+      const defaultContent = fs.readFileSync(defaultPath, 'utf-8');
+      const runtimeContent = fs.readFileSync(runtimePath, 'utf-8');
       expect(runtimeContent).toEqual(defaultContent);
 
       // Keywords should be loaded
       expect(config.getKeywords().length).toBeGreaterThan(0);
     });
 
-    it('should not overwrite existing runtime keywords.json', () => {
+    it('should not overwrite existing runtime tools.xml', () => {
       // Write a custom runtime file
-      const customKeywords = {
-        keywords: [
-          { keyword: 'customonly', api: 'ollama', timeout: 30, description: 'Custom' },
-        ],
-      };
-      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        { keyword: 'customonly', api: 'ollama', timeout: 30, description: 'Custom' },
+      ] as any));
 
       config.reload();
 
@@ -604,7 +607,7 @@ describe('Config', () => {
       expect(config.getKeywordConfig('customonly')).toBeDefined();
     });
 
-    it('should skip copy-from-default when KEYWORDS_CONFIG_PATH is set', () => {
+    it('should skip copy-from-default when TOOLS_CONFIG_PATH is set', () => {
       // Remove the runtime file
       if (fs.existsSync(runtimePath)) {
         fs.unlinkSync(runtimePath);
@@ -614,11 +617,11 @@ describe('Config', () => {
       writeKeywords([
         { keyword: 'envpath', api: 'ollama', timeout: 30, description: 'From env path' },
       ]);
-      process.env.KEYWORDS_CONFIG_PATH = keywordsPath;
+      process.env.TOOLS_CONFIG_PATH = keywordsPath;
 
       config.reload();
 
-      // Runtime keywords.json should NOT have been created (env path used instead)
+      // Runtime tools.xml should NOT have been created (env path used instead)
       expect(fs.existsSync(runtimePath)).toBe(false);
       expect(config.getKeywordConfig('envpath')).toBeDefined();
     });
@@ -649,7 +652,7 @@ describe('Config', () => {
   describe('getDefaultKeywords', () => {
     const { config } = require('../src/utils/config');
 
-    it('should return an array of keywords from keywords.default.json', () => {
+    it('should return an array of keywords from tools.default.xml', () => {
       const defaults = config.getDefaultKeywords();
       expect(Array.isArray(defaults)).toBe(true);
       expect(defaults.length).toBeGreaterThan(0);
@@ -665,7 +668,7 @@ describe('Config', () => {
 
   describe('default keyword self-heal', () => {
     const { config } = require('../src/utils/config');
-    const runtimePath = path.join(__dirname, '../config/keywords.json');
+    const runtimePath = path.join(__dirname, '../config/tools.xml');
     let savedRuntime: string | null = null;
 
     beforeEach(() => {
@@ -687,13 +690,10 @@ describe('Config', () => {
 
     it('should merge missing built-in keywords from defaults into runtime config', () => {
       // Write a runtime config WITHOUT activity_key
-      const customKeywords = {
-        keywords: [
-          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
-          { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat' },
-        ],
-      };
-      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+        { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat' },
+      ] as any));
       config.reload();
 
       // activity_key should be merged from defaults
@@ -704,13 +704,10 @@ describe('Config', () => {
 
     it('should merge missing non-built-in keywords from defaults into runtime config', () => {
       // Write a runtime config without meme_templates
-      const customKeywords = {
-        keywords: [
-          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
-          { keyword: 'meme', api: 'meme', timeout: 60, description: 'Create meme images' },
-        ],
-      };
-      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+        { keyword: 'meme', api: 'meme', timeout: 60, description: 'Create meme images' },
+      ] as any));
       config.reload();
 
       const mt = config.getKeywordConfig('meme_templates');
@@ -721,13 +718,10 @@ describe('Config', () => {
 
     it('should not duplicate already-present built-in keywords', () => {
       // Write a runtime config WITH activity_key already present
-      const customKeywords = {
-        keywords: [
-          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
-          { keyword: 'activity_key', api: 'ollama', timeout: 10, description: 'Key', builtin: true },
-        ],
-      };
-      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+        { keyword: 'activity_key', api: 'ollama', timeout: 10, description: 'Key', builtin: true },
+      ] as any));
       config.reload();
 
       const matches = config.getKeywords().filter((k: any) => k.keyword.toLowerCase() === 'activity_key');
@@ -737,12 +731,9 @@ describe('Config', () => {
     it('should not backfill optional fields on existing keywords', () => {
       // Write a runtime config with help that does NOT have allowEmptyContent.
       // Existing keyword entries should remain unchanged.
-      const customKeywords = {
-        keywords: [
-          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
-        ],
-      };
-      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+      ] as any));
       config.reload();
 
       const helpKw = config.getKeywordConfig('help');
@@ -752,12 +743,9 @@ describe('Config', () => {
 
     it('should not overwrite existing allowEmptyContent on built-in keyword', () => {
       // Write a runtime config with help that explicitly has allowEmptyContent: false
-      const customKeywords = {
-        keywords: [
-          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true, allowEmptyContent: false },
-        ],
-      };
-      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true, allowEmptyContent: false },
+      ] as any));
       config.reload();
 
       const helpKw = config.getKeywordConfig('help');
@@ -767,12 +755,9 @@ describe('Config', () => {
     });
 
     it('should keep existing keyword unchanged while still adding missing defaults', () => {
-      const customKeywords = {
-        keywords: [
-          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Custom help', builtin: true },
-        ],
-      };
-      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Custom help', builtin: true },
+      ] as any));
       config.reload();
 
       const helpKw = config.getKeywordConfig('help');
@@ -783,37 +768,31 @@ describe('Config', () => {
     });
 
     it('should preserve runtime values for fields that also exist in defaults', () => {
-      const customKeywords = {
-        keywords: [
-          {
-            keyword: 'help',
-            api: 'ollama',
-            timeout: 120,
-            description: 'Help',
-            builtin: true,
-            allowEmptyContent: false,
-            abilityText: 'Custom help text',
-          },
-        ],
-      };
-      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        {
+          keyword: 'help',
+          api: 'ollama',
+          timeout: 120,
+          description: 'Help',
+          builtin: true,
+          allowEmptyContent: false,
+        },
+      ] as any));
       config.reload();
 
       const helpKw = config.getKeywordConfig('help');
       expect(helpKw).toBeDefined();
       // Existing values are retained even when defaults define the same field.
       expect(helpKw!.allowEmptyContent).toBe(false);
-      expect(helpKw!.abilityText).toBe('Custom help text');
+      // In XML, description doubles as abilityText
+      expect(helpKw!.abilityText).toBe('Help');
     });
 
     it('should not backfill multiple missing fields on an existing keyword', () => {
       // Existing keywords are kept as-is; only truly missing keywords are added.
-      const customKeywords = {
-        keywords: [
-          { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
-        ],
-      };
-      fs.writeFileSync(runtimePath, JSON.stringify(customKeywords));
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+      ] as any));
       config.reload();
 
       const helpKw = config.getKeywordConfig('help');
@@ -833,10 +812,10 @@ describe('Config', () => {
     });
   });
 
-  describe('KEYWORDS_CONFIG_PATH support', () => {
+  describe('TOOLS_CONFIG_PATH support', () => {
     const { config } = require('../src/utils/config');
 
-    it('reload should read keywords from KEYWORDS_CONFIG_PATH when set', () => {
+    it('reload should read keywords from TOOLS_CONFIG_PATH when set', () => {
       writeKeywords([
         {
           keyword: 'envkw',
@@ -846,7 +825,7 @@ describe('Config', () => {
         },
       ]);
 
-      process.env.KEYWORDS_CONFIG_PATH = keywordsPath;
+      process.env.TOOLS_CONFIG_PATH = keywordsPath;
 
       try {
         const result = config.reload();
@@ -858,15 +837,15 @@ describe('Config', () => {
         // Default sync merges ALL keywords from defaults, so 'generate' is present
         expect(config.getKeywordConfig('generate')).toBeDefined();
       } finally {
-        delete process.env.KEYWORDS_CONFIG_PATH;
+        delete process.env.TOOLS_CONFIG_PATH;
         config.reload();
       }
     });
   });
 
-  describe('abilityWhen and abilityInputs validation', () => {
+  describe('abilityWhen and parameters validation', () => {
     const { config } = require('../src/utils/config');
-    const kwPath = path.join(__dirname, '../config/keywords.json');
+    const kwPath = path.join(__dirname, '../config/tools.xml');
     let originalContent: string;
 
     beforeEach(() => {
@@ -881,11 +860,13 @@ describe('Config', () => {
     it('should accept valid abilityWhen string', () => {
       fs.writeFileSync(
         kwPath,
-        JSON.stringify({
-          keywords: [
-            { keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test', abilityWhen: 'User asks for test data' },
-          ],
-        })
+        rawToolsXml(`  <tool>
+    <name>testkw</name>
+    <api>nfl</api>
+    <timeout>30</timeout>
+    <description>test</description>
+    <abilityWhen>User asks for test data</abilityWhen>
+  </tool>`)
       );
       config.reload();
       const kw = config.getKeywordConfig('testkw');
@@ -893,40 +874,51 @@ describe('Config', () => {
       expect(kw!.abilityWhen).toBe('User asks for test data');
     });
 
-    it('should reject non-string abilityWhen', () => {
+    it('should treat numeric-looking abilityWhen as string in XML', () => {
+      // In XML all values are strings — numeric-looking values are valid
       fs.writeFileSync(
         kwPath,
-        JSON.stringify({
-          keywords: [
-            { keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test', abilityWhen: 42 },
-          ],
-        })
+        rawToolsXml(`  <tool>
+    <name>testkw</name>
+    <api>nfl</api>
+    <timeout>30</timeout>
+    <description>test</description>
+    <abilityWhen>42</abilityWhen>
+  </tool>`)
       );
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       config.reload();
-      // Should fail to load (keywords empty due to validation error)
-      expect(config.getKeywordConfig('testkw')).toBeUndefined();
-      warnSpy.mockRestore();
+      const kw = config.getKeywordConfig('testkw');
+      expect(kw).toBeDefined();
+      expect(kw!.abilityWhen).toBe('42');
     });
 
-    it('should accept valid abilityInputs with all fields', () => {
+    it('should accept valid parameters with all fields', () => {
       fs.writeFileSync(
         kwPath,
-        JSON.stringify({
-          keywords: [
-            {
-              keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test',
-              abilityInputs: {
-                mode: 'explicit',
-                required: ['location'],
-                optional: ['date'],
-                inferFrom: ['current_message'],
-                validation: 'location must be a city',
-                examples: ['testkw Dallas'],
-              },
-            },
-          ],
-        })
+        rawToolsXml(`  <tool>
+    <name>testkw</name>
+    <api>nfl</api>
+    <timeout>30</timeout>
+    <description>test</description>
+    <parameters>
+      <mode>explicit</mode>
+      <location>
+        <type>string</type>
+        <description>The location</description>
+        <required>true</required>
+      </location>
+      <date>
+        <type>string</type>
+        <description>The date</description>
+        <required>false</required>
+      </date>
+      <inferFrom>current_message</inferFrom>
+      <validation>location must be a city</validation>
+      <examples>
+        <example>testkw Dallas</example>
+      </examples>
+    </parameters>
+  </tool>`)
       );
       config.reload();
       const kw = config.getKeywordConfig('testkw');
@@ -940,17 +932,18 @@ describe('Config', () => {
       expect(kw!.abilityInputs!.examples).toEqual(['testkw Dallas']);
     });
 
-    it('should accept abilityInputs with only mode (minimal)', () => {
+    it('should accept parameters with only mode (minimal)', () => {
       fs.writeFileSync(
         kwPath,
-        JSON.stringify({
-          keywords: [
-            {
-              keyword: 'testkw', api: 'comfyui', timeout: 30, description: 'test',
-              abilityInputs: { mode: 'implicit' },
-            },
-          ],
-        })
+        rawToolsXml(`  <tool>
+    <name>testkw</name>
+    <api>comfyui</api>
+    <timeout>30</timeout>
+    <description>test</description>
+    <parameters>
+      <mode>implicit</mode>
+    </parameters>
+  </tool>`)
       );
       config.reload();
       const kw = config.getKeywordConfig('testkw');
@@ -958,17 +951,18 @@ describe('Config', () => {
       expect(kw!.abilityInputs!.mode).toBe('implicit');
     });
 
-    it('should reject abilityInputs with invalid mode', () => {
+    it('should reject parameters with invalid mode', () => {
       fs.writeFileSync(
         kwPath,
-        JSON.stringify({
-          keywords: [
-            {
-              keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test',
-              abilityInputs: { mode: 'auto' },
-            },
-          ],
-        })
+        rawToolsXml(`  <tool>
+    <name>testkw</name>
+    <api>nfl</api>
+    <timeout>30</timeout>
+    <description>test</description>
+    <parameters>
+      <mode>auto</mode>
+    </parameters>
+  </tool>`)
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       config.reload();
@@ -976,17 +970,22 @@ describe('Config', () => {
       warnSpy.mockRestore();
     });
 
-    it('should reject abilityInputs when required is not an array of strings', () => {
+    it('should reject parameters with no mode element', () => {
       fs.writeFileSync(
         kwPath,
-        JSON.stringify({
-          keywords: [
-            {
-              keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test',
-              abilityInputs: { mode: 'explicit', required: [42] },
-            },
-          ],
-        })
+        rawToolsXml(`  <tool>
+    <name>testkw</name>
+    <api>nfl</api>
+    <timeout>30</timeout>
+    <description>test</description>
+    <parameters>
+      <location>
+        <type>string</type>
+        <description>The location</description>
+        <required>true</required>
+      </location>
+    </parameters>
+  </tool>`)
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       config.reload();
@@ -994,14 +993,10 @@ describe('Config', () => {
       warnSpy.mockRestore();
     });
 
-    it('should reject non-object abilityInputs', () => {
+    it('should reject malformed XML gracefully', () => {
       fs.writeFileSync(
         kwPath,
-        JSON.stringify({
-          keywords: [
-            { keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test', abilityInputs: 'bad' },
-          ],
-        })
+        '<tools><tool><name>testkw</name><api>nfl</api>'
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       config.reload();
@@ -1009,17 +1004,15 @@ describe('Config', () => {
       warnSpy.mockRestore();
     });
 
-    it('should reject abilityInputs when validation is not a string', () => {
+    it('should reject tool with invalid api', () => {
       fs.writeFileSync(
         kwPath,
-        JSON.stringify({
-          keywords: [
-            {
-              keyword: 'testkw', api: 'nfl', timeout: 30, description: 'test',
-              abilityInputs: { mode: 'explicit', validation: 123 },
-            },
-          ],
-        })
+        rawToolsXml(`  <tool>
+    <name>testkw</name>
+    <api>badapi</api>
+    <timeout>30</timeout>
+    <description>test</description>
+  </tool>`)
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       config.reload();
@@ -1030,7 +1023,7 @@ describe('Config', () => {
 
   describe('contextFilterMaxDepth normalization on load', () => {
     const { config } = require('../src/utils/config');
-    const kwPath = path.join(__dirname, '../config/keywords.json');
+    const kwPath = path.join(__dirname, '../config/tools.xml');
     let originalContent: string;
 
     beforeEach(() => {
@@ -1038,7 +1031,7 @@ describe('Config', () => {
     });
 
     afterEach(() => {
-      // Restore runtime keywords.json and reload
+      // Restore runtime tools.xml and reload
       fs.writeFileSync(kwPath, originalContent);
       config.reload();
     });
@@ -1046,11 +1039,13 @@ describe('Config', () => {
     it('should normalize contextFilterMaxDepth of 0 to undefined and log a warning', () => {
       fs.writeFileSync(
         kwPath,
-        JSON.stringify({
-          keywords: [
-            { keyword: 'testdepth', api: 'ollama', timeout: 30, contextFilterMaxDepth: 0 },
-          ],
-        })
+        rawToolsXml(`  <tool>
+    <name>testdepth</name>
+    <api>ollama</api>
+    <timeout>30</timeout>
+    <description>test</description>
+    <contextFilterMaxDepth>0</contextFilterMaxDepth>
+  </tool>`)
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -1069,11 +1064,13 @@ describe('Config', () => {
     it('should accept contextFilterMaxDepth >= 1', () => {
       fs.writeFileSync(
         kwPath,
-        JSON.stringify({
-          keywords: [
-            { keyword: 'testdepth', api: 'ollama', timeout: 30, contextFilterMaxDepth: 3 },
-          ],
-        })
+        rawToolsXml(`  <tool>
+    <name>testdepth</name>
+    <api>ollama</api>
+    <timeout>30</timeout>
+    <description>test</description>
+    <contextFilterMaxDepth>3</contextFilterMaxDepth>
+  </tool>`)
       );
 
       config.reload();

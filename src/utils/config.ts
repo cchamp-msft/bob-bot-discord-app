@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from './logger';
 import { readEnvVar } from './dotenvCodec';
+import { parseToolsXml } from './toolsXmlParser';
+import type { ToolParameter } from './toolsXmlParser';
 import type { PublicConfig } from '../types';
 
 dotenv.config();
@@ -80,6 +82,9 @@ export interface KeywordConfig {
   };
   /** Whether this keyword is a built-in that cannot be edited or deleted — only toggled on/off. */
   builtin?: boolean;
+  /** OpenAI-style parameter definitions for the XML tools format.
+   *  Stored for faithful round-trip when writing back to tools.xml. */
+  parameters?: Record<string, ToolParameter>;
   /** When true, the two-stage Ollama context evaluation is applied before building the prompt.
    *  Defaults to false when omitted. Built-in keywords are unaffected. */
   contextFilterEnabled?: boolean;
@@ -101,25 +106,25 @@ class Config {
   }
 
   private getKeywordsPath(): string {
-    const envPath = process.env.KEYWORDS_CONFIG_PATH;
+    const envPath = process.env.TOOLS_CONFIG_PATH;
     if (envPath) {
       return path.resolve(path.join(__dirname, '../..'), envPath);
     }
-    return path.join(__dirname, '../../config/keywords.json');
+    return path.join(__dirname, '../../config/tools.xml');
   }
 
   private getDefaultKeywordsPath(): string {
-    return path.join(__dirname, '../../config/keywords.default.json');
+    return path.join(__dirname, '../../config/tools.default.xml');
   }
 
   /**
-   * If the runtime keywords.json does not exist and KEYWORDS_CONFIG_PATH is
-   * not set, copy from the tracked keywords.default.json template — mirroring
+   * If the runtime tools.xml does not exist and TOOLS_CONFIG_PATH is
+   * not set, copy from the tracked tools.default.xml template — mirroring
    * the .env.example → .env pattern so the runtime file can be gitignored.
    */
   private ensureKeywordsFile(): void {
     // Skip when user specified a custom path via env.
-    if (process.env.KEYWORDS_CONFIG_PATH) return;
+    if (process.env.TOOLS_CONFIG_PATH) return;
 
     const runtimePath = this.getKeywordsPath();
     if (fs.existsSync(runtimePath)) return;
@@ -138,105 +143,17 @@ class Config {
     const keywordsPath = this.getKeywordsPath();
     try {
       const data = fs.readFileSync(keywordsPath, 'utf-8');
-      const config: ConfigData = JSON.parse(data);
-
-      if (!Array.isArray(config.keywords)) {
-        throw new Error('keywords.json: "keywords" must be an array');
-      }
+      const config: ConfigData = { keywords: parseToolsXml(data) };
 
       for (const entry of config.keywords) {
-        if (!entry.keyword || typeof entry.keyword !== 'string') {
-          throw new Error(`keywords.json: invalid keyword entry — missing "keyword" string`);
-        }
-        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather' && entry.api !== 'nfl' && entry.api !== 'serpapi' && entry.api !== 'meme') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", "nfl", "serpapi", or "meme"`);
-        }
-        if (typeof entry.timeout !== 'number' || entry.timeout <= 0) {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid timeout — must be a positive number`);
-        }
-        if (entry.abilityText !== undefined && typeof entry.abilityText !== 'string') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityText — must be a string`);
-        }
-        if (entry.abilityWhen !== undefined && typeof entry.abilityWhen !== 'string') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityWhen — must be a string`);
-        }
-        if (entry.abilityInputs !== undefined) {
-          const ai = entry.abilityInputs;
-          if (typeof ai !== 'object' || ai === null || Array.isArray(ai)) {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs — must be an object`);
-          }
-          const validModes = ['implicit', 'explicit', 'mixed'];
-          if (!validModes.includes(ai.mode)) {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs.mode "${ai.mode}" — must be "implicit", "explicit", or "mixed"`);
-          }
-          if (ai.required !== undefined && (!Array.isArray(ai.required) || !ai.required.every((s: unknown) => typeof s === 'string'))) {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs.required — must be an array of strings`);
-          }
-          if (ai.optional !== undefined && (!Array.isArray(ai.optional) || !ai.optional.every((s: unknown) => typeof s === 'string'))) {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs.optional — must be an array of strings`);
-          }
-          if (ai.inferFrom !== undefined && (!Array.isArray(ai.inferFrom) || !ai.inferFrom.every((s: unknown) => typeof s === 'string'))) {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs.inferFrom — must be an array of strings`);
-          }
-          if (ai.validation !== undefined && typeof ai.validation !== 'string') {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs.validation — must be a string`);
-          }
-          if (ai.examples !== undefined && (!Array.isArray(ai.examples) || !ai.examples.every((s: unknown) => typeof s === 'string'))) {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid abilityInputs.examples — must be an array of strings`);
-          }
-        }
-        if (entry.finalOllamaPass !== undefined && typeof entry.finalOllamaPass !== 'boolean') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid finalOllamaPass — must be a boolean`);
-        }
-        if (entry.allowEmptyContent !== undefined && typeof entry.allowEmptyContent !== 'boolean') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid allowEmptyContent — must be a boolean`);
-        }
-        if (entry.enabled !== undefined && typeof entry.enabled !== 'boolean') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid enabled — must be a boolean`);
-        }
-        if (entry.retry !== undefined) {
-          const r = entry.retry;
-          if (typeof r !== 'object' || r === null || Array.isArray(r)) {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid retry — must be an object`);
-          }
-          if (r.enabled !== undefined && typeof r.enabled !== 'boolean') {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid retry.enabled — must be a boolean`);
-          }
-          if (r.maxRetries !== undefined) {
-            if (typeof r.maxRetries !== 'number' || !Number.isInteger(r.maxRetries) || r.maxRetries < 0 || r.maxRetries > 10) {
-              throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid retry.maxRetries — must be an integer between 0 and 10`);
-            }
-          }
-          if (r.model !== undefined && typeof r.model !== 'string') {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid retry.model — must be a string`);
-          }
-          if (r.prompt !== undefined && typeof r.prompt !== 'string') {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid retry.prompt — must be a string`);
-          }
-        }
-        if (entry.builtin !== undefined && typeof entry.builtin !== 'boolean') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid builtin — must be a boolean`);
-        }
-        if (entry.contextFilterEnabled !== undefined && typeof entry.contextFilterEnabled !== 'boolean') {
-          throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid contextFilterEnabled — must be a boolean`);
-        }
-        if (entry.contextFilterMinDepth !== undefined) {
-          if (typeof entry.contextFilterMinDepth !== 'number' || entry.contextFilterMinDepth < 1 || !Number.isInteger(entry.contextFilterMinDepth)) {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid contextFilterMinDepth — must be a positive integer (>= 1)`);
-          }
-        }
-        if (entry.contextFilterMaxDepth !== undefined) {
-          if (typeof entry.contextFilterMaxDepth !== 'number' || !Number.isInteger(entry.contextFilterMaxDepth)) {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has invalid contextFilterMaxDepth — must be an integer`);
-          }
-          if (entry.contextFilterMaxDepth < 1) {
-            logger.logWarn('config', `keyword "${entry.keyword}": contextFilterMaxDepth=${entry.contextFilterMaxDepth} is invalid (≥ 1 required) — treating as unset (global default will be used)`);
-            delete entry.contextFilterMaxDepth;
-          }
+        // Post-parse validation: contextFilterMaxDepth < 1 treated as unset
+        if (entry.contextFilterMaxDepth !== undefined && entry.contextFilterMaxDepth < 1) {
+          logger.logWarn('config', `tool "${entry.keyword}": contextFilterMaxDepth=${entry.contextFilterMaxDepth} is invalid (≥ 1 required) — treating as unset (global default will be used)`);
+          delete entry.contextFilterMaxDepth;
         }
         if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMaxDepth !== undefined) {
           if (entry.contextFilterMinDepth > entry.contextFilterMaxDepth) {
-            throw new Error(`keywords.json: keyword "${entry.keyword}" has contextFilterMinDepth (${entry.contextFilterMinDepth}) greater than contextFilterMaxDepth (${entry.contextFilterMaxDepth})`);
+            throw new Error(`tools.xml: tool "${entry.keyword}" has contextFilterMinDepth (${entry.contextFilterMinDepth}) greater than contextFilterMaxDepth (${entry.contextFilterMaxDepth})`);
           }
         }
       }
@@ -257,7 +174,7 @@ class Config {
       logger.log('success', 'config', `Loaded ${this.keywords.length} keywords from config`);
 
       // Merge missing default keywords into runtime so newly added defaults
-      // self-heal even when keywords.json predates them.
+      // self-heal even when tools.xml predates them.
       // Existing keywords are intentionally NOT overwritten.
       this.mergeDefaultKeywords();
     } catch (error) {
@@ -271,15 +188,14 @@ class Config {
   }
 
   /**
-   * Return the keyword array from keywords.default.json.
+   * Return the keyword array from tools.default.xml.
    * Used by the configurator to offer a "sync missing" action.
    */
   getDefaultKeywords(): KeywordConfig[] {
     const defaultPath = this.getDefaultKeywordsPath();
     try {
       const data = fs.readFileSync(defaultPath, 'utf-8');
-      const parsed = JSON.parse(data);
-      return Array.isArray(parsed.keywords) ? parsed.keywords : [];
+      return parseToolsXml(data);
     } catch {
       return [];
     }
@@ -289,7 +205,7 @@ class Config {
    * Self-heal runtime keywords by adding defaults that are missing.
    *
    * Important: existing runtime keywords are NOT overwritten. This allows
-   * users to customize values in keywords.json without defaults replacing them
+   * users to customize values in tools.xml without defaults replacing them
    * on reload.
    */
   private mergeDefaultKeywords(): void {
@@ -311,7 +227,7 @@ class Config {
         existingByKey.set(key, def);
         added++;
         logger.log('success', 'config',
-          `KEYWORDS SELF-HEAL: Added missing keyword "${def.keyword}" from keywords.default.json`);
+          `TOOLS SELF-HEAL: Added missing tool "${def.keyword}" from tools.default.xml`);
       } else {
         keptExisting++;
       }
@@ -319,10 +235,10 @@ class Config {
 
     if (added > 0) {
       logger.log('success', 'config',
-        `KEYWORDS SELF-HEAL: keywords.json merged with defaults — added: ${added}, kept existing: ${keptExisting}, total runtime keywords: ${this.keywords.length}`);
+        `TOOLS SELF-HEAL: tools.xml merged with defaults — added: ${added}, kept existing: ${keptExisting}, total runtime tools: ${this.keywords.length}`);
     } else {
       logger.log('success', 'config',
-        `KEYWORDS SELF-HEAL: No missing defaults found — kept existing keywords unchanged (${keptExisting} matched)`);
+        `TOOLS SELF-HEAL: No missing defaults found — kept existing tools unchanged (${keptExisting} matched)`);
     }
   }
 
@@ -902,7 +818,7 @@ class Config {
   }
 
   /**
-   * Reload hot-reloadable config from .env and keywords.json (runtime copy).
+   * Reload hot-reloadable config from .env and tools.xml (runtime copy).
    * API endpoints and keywords reload in-place.
    * Discord token, client ID, and HTTP port require restart.
    */

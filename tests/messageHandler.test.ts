@@ -4340,7 +4340,7 @@ describe('MessageHandler activity_key keyword', () => {
   });
 
   it('should match when config stores keyword without ! prefix (prefix normalisation)', async () => {
-    // Override the keyword config to use unprefixed keyword, matching runtime config/keywords.json
+    // Override the keyword config to use unprefixed keyword, matching runtime config/tools.xml
     const unprefixedKw = {
       keyword: 'activity_key',
       api: 'ollama' as const,

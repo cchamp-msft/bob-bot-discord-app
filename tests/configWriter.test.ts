@@ -1,13 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { readEnvVar } from '../src/utils/dotenvCodec';
+import { parseToolsXml } from '../src/utils/toolsXmlParser';
 
 // The configWriter module imports from './config' which triggers dotenv + keywords loading.
-// We need .env and keywords.json to exist before importing.
+// We need .env and tools.xml to exist before importing.
 const testDir = path.join(__dirname, '../test-fixtures');
 const _testEnvPath = path.join(testDir, '.env');
 const testKeywordsDir = path.join(testDir, 'config');
-const _testKeywordsPath = path.join(testKeywordsDir, 'keywords.json');
+const _testKeywordsPath = path.join(testKeywordsDir, 'tools.xml');
 
 // We'll test configWriter in isolation by manipulating its private paths via temp files.
 // Since configWriter uses hardcoded paths relative to __dirname, we mock fs instead.
@@ -28,15 +29,15 @@ describe('ConfigWriter', () => {
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'configwriter-'));
     envPath = path.join(tempDir, '.env');
-    keywordsPath = path.join(tempDir, 'keywords.json');
+    keywordsPath = path.join(tempDir, 'tools.xml');
 
     // Override private paths via Object property access
     (configWriter as any).envPath = envPath;
-    process.env.KEYWORDS_CONFIG_PATH = keywordsPath;
+    process.env.TOOLS_CONFIG_PATH = keywordsPath;
   });
 
   afterEach(() => {
-    delete process.env.KEYWORDS_CONFIG_PATH;
+    delete process.env.TOOLS_CONFIG_PATH;
     // Clean up temp dir
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
@@ -174,10 +175,10 @@ describe('ConfigWriter', () => {
     it('should write valid keywords to file', async () => {
       await configWriter.updateKeywords([validKeyword]);
 
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords).toHaveLength(1);
-      expect(content.keywords[0].keyword).toBe('test');
-      expect(content.keywords[0].api).toBe('ollama');
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content).toHaveLength(1);
+      expect(content[0].keyword).toBe('test');
+      expect(content[0].api).toBe('ollama');
     });
 
     it('should reject duplicate keywords (case-insensitive)', async () => {
@@ -241,17 +242,19 @@ describe('ConfigWriter', () => {
         { keyword: 'ask', api: 'ollama', timeout: 120, description: 'Ask question' },
       ]);
 
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords).toHaveLength(2);
-      expect(content.keywords[0].api).toBe('comfyui');
-      expect(content.keywords[1].api).toBe('ollama');
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content).toHaveLength(2);
+      expect(content[0].api).toBe('comfyui');
+      expect(content[1].api).toBe('ollama');
     });
 
     it('should write empty array', async () => {
       await configWriter.updateKeywords([]);
 
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords).toHaveLength(0);
+      const raw = fs.readFileSync(keywordsPath, 'utf-8');
+      // An empty keyword list produces a valid XML doc with no <tool> elements
+      expect(raw).toContain('<tools');
+      expect(raw).not.toContain('<tool>');
     });
 
     it('should accept valid abilityText field', async () => {
@@ -259,8 +262,9 @@ describe('ConfigWriter', () => {
         { ...validKeyword, abilityText: 'do something useful' },
       ]);
 
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].abilityText).toBe('do something useful');
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      // In XML format, description doubles as abilityText
+      expect(content[0].abilityText).toBe(content[0].description);
     });
 
     it('should reject non-string abilityText', async () => {
@@ -276,8 +280,8 @@ describe('ConfigWriter', () => {
         { ...validKeyword, finalOllamaPass: true },
       ]);
 
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].finalOllamaPass).toBe(true);
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].finalOllamaPass).toBe(true);
     });
 
     it('should reject non-boolean finalOllamaPass', async () => {
@@ -296,11 +300,10 @@ describe('ConfigWriter', () => {
       };
       await configWriter.updateKeywords([full]);
 
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0]).toMatchObject({
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0]).toMatchObject({
         keyword: 'test',
         api: 'ollama',
-        abilityText: 'do something',
         finalOllamaPass: true,
       });
     });
@@ -308,9 +311,10 @@ describe('ConfigWriter', () => {
     it('should accept keywords without optional routing fields', async () => {
       await configWriter.updateKeywords([validKeyword]);
 
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].abilityText).toBeUndefined();
-      expect(content.keywords[0].finalOllamaPass).toBeUndefined();
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      // In XML, abilityText is always derived from description
+      expect(content[0].abilityText).toBe('Test keyword');
+      expect(content[0].finalOllamaPass).toBeUndefined();
     });
 
     it('should strip unknown fields like routeApi on save', async () => {
@@ -322,25 +326,25 @@ describe('ConfigWriter', () => {
       } as any;
       await configWriter.updateKeywords([entryWithRouteApi]);
 
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].routeApi).toBeUndefined();
-      expect(content.keywords[0].routeModel).toBeUndefined();
-      expect(content.keywords[0].extraField).toBeUndefined();
-      expect(content.keywords[0].keyword).toBe('test');
-      expect(content.keywords[0].api).toBe('ollama');
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect((content[0] as any).routeApi).toBeUndefined();
+      expect((content[0] as any).routeModel).toBeUndefined();
+      expect((content[0] as any).extraField).toBeUndefined();
+      expect(content[0].keyword).toBe('test');
+      expect(content[0].api).toBe('ollama');
     });
 
     it('should accept valid enabled field (true)', async () => {
       await configWriter.updateKeywords([{ ...validKeyword, enabled: true }]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
       // enabled=true is the default, so it may be omitted in clean output
-      expect(content.keywords[0].keyword).toBe('test');
+      expect(content[0].keyword).toBe('test');
     });
 
     it('should persist enabled=false', async () => {
       await configWriter.updateKeywords([{ ...validKeyword, enabled: false }]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].enabled).toBe(false);
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].enabled).toBe(false);
     });
 
     it('should reject non-boolean enabled', async () => {
@@ -351,8 +355,8 @@ describe('ConfigWriter', () => {
 
     it('should accept valid builtin field', async () => {
       await configWriter.updateKeywords([{ ...validKeyword, builtin: true }]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].builtin).toBe(true);
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].builtin).toBe(true);
     });
 
     it('should reject non-boolean builtin', async () => {
@@ -363,14 +367,14 @@ describe('ConfigWriter', () => {
 
     it('should persist contextFilterEnabled when true', async () => {
       await configWriter.updateKeywords([{ ...validKeyword, contextFilterEnabled: true }]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].contextFilterEnabled).toBe(true);
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].contextFilterEnabled).toBe(true);
     });
 
     it('should not persist contextFilterEnabled when false or omitted', async () => {
       await configWriter.updateKeywords([{ ...validKeyword, contextFilterEnabled: false }]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].contextFilterEnabled).toBeUndefined();
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].contextFilterEnabled).toBeUndefined();
     });
 
     it('should reject non-boolean contextFilterEnabled', async () => {
@@ -383,8 +387,8 @@ describe('ConfigWriter', () => {
       await configWriter.updateKeywords([
         { ...validKeyword, contextFilterMinDepth: 3 },
       ]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].contextFilterMinDepth).toBe(3);
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].contextFilterMinDepth).toBe(3);
     });
 
     it('should reject contextFilterMinDepth of 0', async () => {
@@ -415,8 +419,8 @@ describe('ConfigWriter', () => {
       await configWriter.updateKeywords([
         { ...validKeyword, contextFilterMaxDepth: 10 },
       ]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].contextFilterMaxDepth).toBe(10);
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].contextFilterMaxDepth).toBe(10);
     });
 
     it('should reject contextFilterMaxDepth of 0', async () => {
@@ -451,56 +455,56 @@ describe('ConfigWriter', () => {
       };
       await configWriter.updateKeywords([full]);
 
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0]).toMatchObject({
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0]).toMatchObject({
         contextFilterMinDepth: 2,
         contextFilterMaxDepth: 8,
       });
-      expect(content.keywords[0].contextFilterEnabled).toBeUndefined();
+      expect(content[0].contextFilterEnabled).toBeUndefined();
     });
 
     it('should not persist depth fields when not set', async () => {
       await configWriter.updateKeywords([validKeyword]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].contextFilterEnabled).toBeUndefined();
-      expect(content.keywords[0].contextFilterMinDepth).toBeUndefined();
-      expect(content.keywords[0].contextFilterMaxDepth).toBeUndefined();
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].contextFilterEnabled).toBeUndefined();
+      expect(content[0].contextFilterMinDepth).toBeUndefined();
+      expect(content[0].contextFilterMaxDepth).toBeUndefined();
     });
 
     it('should persist allowEmptyContent=true', async () => {
       await configWriter.updateKeywords([
         { ...validKeyword, allowEmptyContent: true },
       ]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].allowEmptyContent).toBe(true);
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].allowEmptyContent).toBe(true);
     });
 
     it('should persist allowEmptyContent=false', async () => {
       await configWriter.updateKeywords([
         { ...validKeyword, allowEmptyContent: false },
       ]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].allowEmptyContent).toBe(false);
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].allowEmptyContent).toBe(false);
     });
 
     it('should persist finalOllamaPass=false explicitly', async () => {
       await configWriter.updateKeywords([
         { ...validKeyword, finalOllamaPass: false },
       ]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].finalOllamaPass).toBe(false);
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].finalOllamaPass).toBe(false);
     });
 
     it('should omit finalOllamaPass when not provided (inherit default)', async () => {
       await configWriter.updateKeywords([validKeyword]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].finalOllamaPass).toBeUndefined();
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].finalOllamaPass).toBeUndefined();
     });
 
     it('should omit allowEmptyContent when not provided (inherit default)', async () => {
       await configWriter.updateKeywords([validKeyword]);
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].allowEmptyContent).toBeUndefined();
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].allowEmptyContent).toBeUndefined();
     });
 
     it('should reject non-boolean allowEmptyContent', async () => {
@@ -526,18 +530,14 @@ describe('ConfigWriter', () => {
       };
       await configWriter.updateKeywords([full]);
 
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0]).toMatchObject({
-        abilityText: 'Get weather data',
-        abilityWhen: 'User asks about weather.',
-        abilityInputs: {
-          mode: 'explicit',
-          required: ['location'],
-          validation: 'Must be a city name or postal code.',
-          examples: ['weather Dallas'],
-        },
-        allowEmptyContent: false,
-      });
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].abilityWhen).toBe('User asks about weather.');
+      expect(content[0].abilityInputs).toBeDefined();
+      expect(content[0].abilityInputs!.mode).toBe('explicit');
+      expect(content[0].abilityInputs!.required).toEqual(['location']);
+      expect(content[0].abilityInputs!.validation).toBe('Must be a city name or postal code.');
+      expect(content[0].abilityInputs!.examples).toEqual(['weather Dallas']);
+      expect(content[0].allowEmptyContent).toBe(false);
     });
 
     it('should persist retry configuration', async () => {
@@ -547,13 +547,12 @@ describe('ConfigWriter', () => {
       };
       await configWriter.updateKeywords([full]);
 
-      const content = JSON.parse(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content.keywords[0].retry).toEqual({
-        enabled: true,
-        maxRetries: 3,
-        model: 'llama3',
-        prompt: 'try again',
-      });
+      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
+      expect(content[0].retry).toBeDefined();
+      expect(content[0].retry!.enabled).toBe(true);
+      expect(content[0].retry!.maxRetries).toBe(3);
+      expect(content[0].retry!.model).toBe('llama3');
+      expect(content[0].retry!.prompt).toBe('try again');
     });
 
     it('should reject custom help keyword when built-in help is enabled', async () => {

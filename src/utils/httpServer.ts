@@ -441,11 +441,11 @@ class HttpServer {
           logger.log('success', 'configurator', `Config saved — .env keys: ${safeKeyNames.join(', ')}`);
         }
 
-        // Update keywords if provided
+        // Update tools config if provided
         if (keywords && Array.isArray(keywords)) {
           await configWriter.updateKeywords(keywords);
-          messages.push(`Updated keywords config: ${keywords.length} keyword(s)`);
-          logger.log('success', 'configurator', `Config saved — ${keywords.length} keyword(s) written to keywords config`);
+          messages.push(`Updated tools config: ${keywords.length} tool(s)`);
+          logger.log('success', 'configurator', `Config saved — ${keywords.length} tool(s) written to tools config`);
         }
 
         // Hot-reload config

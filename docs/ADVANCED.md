@@ -2,95 +2,120 @@
 
 This document covers advanced configuration options and features for power users.
 
-## Keyword Configuration
+## Tool Configuration
 
-Keywords define how the bot routes requests to different APIs. They can be configured via the web configurator or by editing `config/keywords.json`.
+Tools define how the bot routes requests to different APIs. They can be configured via the web configurator or by editing `config/tools.xml`.
 
-### Keyword Fields Reference
+### Tool Fields Reference
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `keyword` | `string` | **Required.** The trigger word or phrase. |
-| `api` | `string` | **Required.** Target API: `comfyui`, `ollama`, `accuweather`, `nfl`, or `serpapi`. |
-| `timeout` | `number` | **Required.** Request timeout in seconds. |
-| `description` | `string` | **Required.** Human-readable description shown in the configurator. |
-| `abilityText` | `string` | Model-facing description of the ability. Falls back to `description` if omitted. Editable in the configurator detail row. |
-| `abilityWhen` | `string` | Model-facing guidance on when to choose this ability (e.g. "User asks about weather."). |
-| `abilityInputs` | `object` | Structured input guidance for the model. See sub-fields below. |
-| `finalOllamaPass` | `boolean` | Pass the API result through Ollama for conversational refinement using the global final-pass model. |
-| `allowEmptyContent` | `boolean` | When `true`, the keyword works without additional user text (e.g. `!nfl scores` alone). When `false` or absent, the bot prompts the user to include content after the keyword. |
-| `enabled` | `boolean` | Whether the keyword is active (default: `true`). |
-| `retry` | `object` | Per-keyword retry override. Sub-fields: `enabled` (bool), `maxRetries` (0-10), `model` (string), `prompt` (string). |
-| `contextFilterEnabled` | `boolean` | Enable Ollama context evaluation for this keyword (default: `false`). |
-| `contextFilterMinDepth` | `number` | Minimum context messages to always include (>= 1). |
-| `contextFilterMaxDepth` | `number` | Maximum context messages eligible for inclusion (>= 1). |
+| XML Element | Type | Description |
+|-------------|------|-------------|
+| `<name>` | `string` | **Required.** The trigger word or phrase (maps to internal keyword). |
+| `<api>` | `string` | **Required.** Target API: `comfyui`, `ollama`, `accuweather`, `nfl`, `serpapi`, or `meme`. |
+| `<timeout>` | `number` | **Required.** Request timeout in seconds. |
+| `<description>` | `string` | **Required.** Human-readable description (also used as model-facing ability text). |
+| `<abilityWhen>` | `string` | Model-facing guidance on when to choose this ability (e.g. "User asks about weather."). |
+| `<parameters>` | `element` | OpenAI-style parameter definitions. See sub-fields below. |
+| `<finalOllamaPass>` | `boolean` | Pass the API result through Ollama for conversational refinement using the global final-pass model. |
+| `<allowEmptyContent>` | `boolean` | When `true`, the keyword works without additional user text (e.g. `!nfl scores` alone). |
+| `<enabled>` | `boolean` | Whether the tool is active (default: `true`). |
+| `<builtin>` | `boolean` | Built-in tools cannot be edited or deleted — only toggled on/off. |
+| `<retry>` | `element` | Per-tool retry override. Child elements: `<enabled>`, `<maxRetries>` (0-10), `<model>`, `<prompt>`. |
+| `<contextFilterEnabled>` | `boolean` | Enable Ollama context evaluation for this tool (default: `false`). |
+| `<contextFilterMinDepth>` | `number` | Minimum context messages to always include (>= 1). |
+| `<contextFilterMaxDepth>` | `number` | Maximum context messages eligible for inclusion (>= 1). |
 
-### Ability Inputs Configuration
+### Parameters Configuration
 
-The `abilityInputs` object provides structured guidance to the AI about what inputs an ability requires:
+The `<parameters>` element provides OpenAI-style structured guidance to the AI about what inputs a tool requires:
 
-| Sub-field | Type | Description |
-|-----------|------|-------------|
-| `mode` | `'explicit' \| 'implicit' \| 'mixed'` | **Required.** How inputs are provided: user must state them, inferred from context, or a mix. |
-| `required` | `string[]` | Required input names (e.g. `["location"]`). |
-| `optional` | `string[]` | Optional input names (e.g. `["date"]`). |
-| `inferFrom` | `string[]` | Sources to infer inputs from (e.g. `["current_message", "reply_target"]`). |
-| `validation` | `string` | Plain-language validation constraints for the model. |
-| `examples` | `string[]` | 1-2 short usage examples. |
+| Child Element | Type | Description |
+|---------------|------|-------------|
+| `<mode>` | `'explicit' \| 'implicit' \| 'mixed'` | **Required.** How inputs are provided: user must state them, inferred from context, or a mix. |
+| `<inferFrom>` | `string` | Comma-separated inference sources (e.g. `reply_target, current_message`). |
+| `<validation>` | `string` | Plain-language validation constraints for the model. |
+| `<examples>` | `element` | Contains `<example>` child elements with 1-2 short usage examples. |
 
-### Example Keyword Configuration
+Named parameters are child elements within `<parameters>`, each containing `<type>`, `<description>`, and `<required>`:
 
-```json
-{
-  "keyword": "!weather",
-  "api": "accuweather",
-  "timeout": 60,
-  "description": "Get current weather conditions and 5-day forecast",
-  "abilityText": "Get current weather conditions and 5-day forecast",
-  "abilityWhen": "User asks about weather or current conditions for a location.",
-  "abilityInputs": {
-    "mode": "explicit",
-    "required": ["location"],
-    "validation": "Location must be a valid worldwide city name, region, or US postal code.",
-    "examples": ["!weather Dallas", "!weather 90210"]
-  },
-  "contextFilterEnabled": false
-}
+```xml
+<parameters>
+  <mode>explicit</mode>
+  <location>
+    <type>string</type>
+    <description>City name, region, or US postal code</description>
+    <required>true</required>
+  </location>
+  <validation>Location must be a valid worldwide city name, region, or US ZIP code.</validation>
+  <examples>
+    <example>weather Dallas</example>
+    <example>weather 90210</example>
+  </examples>
+</parameters>
+```
+
+### Example Tool Configuration
+
+```xml
+<tool>
+  <name>weather</name>
+  <api>accuweather</api>
+  <timeout>60</timeout>
+  <description>Get weather details including current conditions and forecast</description>
+  <abilityWhen>User asks about weather details for a location.</abilityWhen>
+  <parameters>
+    <mode>explicit</mode>
+    <location>
+      <type>string</type>
+      <description>City name, region, or US postal code</description>
+      <required>true</required>
+    </location>
+    <validation>Location must be a valid worldwide city name, region, or US postal code.</validation>
+    <examples>
+      <example>weather Dallas</example>
+      <example>weather 90210</example>
+    </examples>
+  </parameters>
+  <contextFilterMaxDepth>1</contextFilterMaxDepth>
+</tool>
 ```
 
 Example with final Ollama pass:
 
-```json
-{
-  "keyword": "!nfl scores",
-  "api": "nfl",
-  "timeout": 30,
-  "description": "Get current NFL game scores",
-  "abilityText": "Get current NFL game scores",
-  "abilityWhen": "User asks about NFL scores or game results.",
-  "abilityInputs": {
-    "mode": "mixed",
-    "optional": ["date"],
-    "inferFrom": ["current_message"],
-    "validation": "Date must be YYYYMMDD or YYYY-MM-DD. If omitted, returns the most recent scoreboard."
-  },
-  "finalOllamaPass": true,
-  "allowEmptyContent": true
-}
+```xml
+<tool>
+  <name>nfl scores</name>
+  <api>nfl</api>
+  <timeout>30</timeout>
+  <description>Get current NFL game scores</description>
+  <abilityWhen>User asks about NFL scores or game results.</abilityWhen>
+  <parameters>
+    <mode>mixed</mode>
+    <date>
+      <type>string</type>
+      <description>Date in YYYYMMDD or YYYY-MM-DD format</description>
+      <required>false</required>
+    </date>
+    <inferFrom>current_message</inferFrom>
+    <validation>Date must be YYYYMMDD or YYYY-MM-DD. If omitted, returns the most recent scoreboard.</validation>
+  </parameters>
+  <finalOllamaPass>true</finalOllamaPass>
+  <allowEmptyContent>true</allowEmptyContent>
+</tool>
 ```
 
 Example with context evaluation enabled:
 
-```json
-{
-  "keyword": "!chat",
-  "api": "ollama",
-  "timeout": 300,
-  "description": "Chat with Ollama AI",
-  "contextFilterEnabled": true,
-  "contextFilterMinDepth": 2,
-  "contextFilterMaxDepth": 8
-}
+```xml
+<tool>
+  <name>chat</name>
+  <api>ollama</api>
+  <timeout>300</timeout>
+  <description>Chat with Ollama AI</description>
+  <contextFilterEnabled>true</contextFilterEnabled>
+  <contextFilterMinDepth>2</contextFilterMinDepth>
+  <contextFilterMaxDepth>8</contextFilterMaxDepth>
+</tool>
 ```
 
 ## Global Final-Pass Model
