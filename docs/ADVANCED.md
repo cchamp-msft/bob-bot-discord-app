@@ -266,14 +266,14 @@ Configure how files are handled and served:
 
 ## Request Queue Configuration
 
-Configure per-keyword timeouts in `config/keywords.json`:
+Configure per-keyword timeouts in `config/tools.xml`:
 
-```json
-{
-  "keyword": "!generate",
-  "api": "comfyui",
-  "timeout": 300
-}
+```xml
+<tool>
+  <name>generate</name>
+  <api>comfyui</api>
+  <timeout>300</timeout>
+</tool>
 ```
 
 - Each API processes only 1 request at a time
@@ -308,7 +308,7 @@ npm run test:watch
 ### Test Coverage
 
 - **config.test.ts** — Environment parsing, public config, keyword routing
-- **configWriter.test.ts** — .env persistence, keywords.json validation
+- **configWriter.test.ts** — .env persistence, tools.xml validation
 - **fileHandler.test.ts** — File saving, sanitization, path generation
 - **logger.test.ts** — Log formatting, level mapping, console output
 - **requestQueue.test.ts** — API locking, timeouts, concurrency

@@ -109,14 +109,14 @@ describe('Keywords — Ctx Depth two-row layout', () => {
 describe('Keywords — toolbar actions', () => {
   const script = extractScript();
 
-  it('renders Download JSON and Restore Defaults buttons in keywords section', () => {
-    expect(html).toContain('Download JSON');
+  it('renders Download XML and Restore Defaults buttons in keywords section', () => {
+    expect(html).toContain('Download XML');
     expect(html).toContain('Restore Defaults');
   });
 
-  it('defines downloadKeywordsJson handler', () => {
-    expect(script).toContain('function downloadKeywordsJson()');
-    expect(script).toContain("a.download = 'keywords.json'");
+  it('defines downloadToolsXml handler', () => {
+    expect(script).toContain('function downloadToolsXml()');
+    expect(script).toContain("a.download = 'tools.xml'");
   });
 
   it('defines restoreDefaultKeywords handler', () => {

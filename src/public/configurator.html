@@ -1085,7 +1085,7 @@ flowchart LR
         <div style="margin-top:10px">
           <button class="btn-secondary btn-sm" onclick="addKeywordRow()">+ Add Keyword</button>
           <button class="btn-secondary btn-sm" id="syncDefaultsBtn" style="margin-left:8px;display:none" onclick="syncMissingDefaults()">+ Add Missing Defaults</button>
-          <button class="btn-secondary btn-sm" style="margin-left:8px" onclick="downloadKeywordsJson()">Download JSON</button>
+          <button class="btn-secondary btn-sm" style="margin-left:8px" onclick="downloadToolsXml()">Download XML</button>
           <button class="btn-secondary btn-sm" style="margin-left:8px" onclick="restoreDefaultKeywords()">Restore Defaults</button>
           <span id="syncDefaultsInfo" style="font-size:0.75em;color:var(--text-dim);margin-left:8px"></span>
         </div>
@@ -1645,20 +1645,68 @@ flowchart LR
     conLog(`[${new Date().toISOString()}] Synced ${missing.length} missing default keyword(s): ${missing.map(m => m.keyword).join(', ')}`, 'ok');
   }
 
-  function downloadKeywordsJson() {
-    const payload = {
-      keywords: collectKeywords(),
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2) + '\n'], { type: 'application/json' });
+  function downloadToolsXml() {
+    const keywords = collectKeywords();
+    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<tools>\n';
+    for (const kw of keywords) {
+      xml += '  <tool>\n';
+      xml += `    <name>${escXml(kw.keyword)}</name>\n`;
+      xml += `    <api>${escXml(kw.api)}</api>\n`;
+      xml += `    <timeout>${kw.timeout}</timeout>\n`;
+      if (kw.description) xml += `    <description>${escXml(kw.description)}</description>\n`;
+      if (kw.builtin) xml += '    <builtin>true</builtin>\n';
+      if (kw.enabled === false) xml += '    <enabled>false</enabled>\n';
+      if (kw.finalOllamaPass) xml += '    <finalOllamaPass>true</finalOllamaPass>\n';
+      if (kw.contextFilterEnabled) xml += '    <contextFilterEnabled>true</contextFilterEnabled>\n';
+      if (kw.contextFilterMinDepth) xml += `    <contextFilterMinDepth>${kw.contextFilterMinDepth}</contextFilterMinDepth>\n`;
+      if (kw.contextFilterMaxDepth) xml += `    <contextFilterMaxDepth>${kw.contextFilterMaxDepth}</contextFilterMaxDepth>\n`;
+      if (kw.allowEmptyContent === true) xml += '    <allowEmptyContent>true</allowEmptyContent>\n';
+      else if (kw.allowEmptyContent === false) xml += '    <allowEmptyContent>false</allowEmptyContent>\n';
+      if (kw.abilityText) xml += `    <abilityText>${escXml(kw.abilityText)}</abilityText>\n`;
+      if (kw.abilityWhen) xml += `    <abilityWhen>${escXml(kw.abilityWhen)}</abilityWhen>\n`;
+      if (kw.abilityInputs) {
+        xml += '    <parameters>\n';
+        xml += `      <mode>${escXml(kw.abilityInputs.mode)}</mode>\n`;
+        if (kw.abilityInputs.required) {
+          for (const p of kw.abilityInputs.required) {
+            xml += `      <${escXml(p)}>\n        <type>string</type>\n        <required>true</required>\n      </${escXml(p)}>\n`;
+          }
+        }
+        if (kw.abilityInputs.optional) {
+          for (const p of kw.abilityInputs.optional) {
+            xml += `      <${escXml(p)}>\n        <type>string</type>\n        <required>false</required>\n      </${escXml(p)}>\n`;
+          }
+        }
+        if (kw.abilityInputs.inferFrom) xml += `      <inferFrom>${kw.abilityInputs.inferFrom.join(', ')}</inferFrom>\n`;
+        if (kw.abilityInputs.validation) xml += `      <validation>${escXml(kw.abilityInputs.validation)}</validation>\n`;
+        if (kw.abilityInputs.examples) {
+          xml += '      <examples>\n';
+          for (const ex of kw.abilityInputs.examples) xml += `        <example>${escXml(ex)}</example>\n`;
+          xml += '      </examples>\n';
+        }
+        xml += '    </parameters>\n';
+      }
+      if (kw.retry) {
+        xml += '    <retry>\n';
+        if (kw.retry.enabled !== undefined) xml += `      <enabled>${kw.retry.enabled}</enabled>\n`;
+        if (kw.retry.maxRetries !== undefined) xml += `      <maxRetries>${kw.retry.maxRetries}</maxRetries>\n`;
+        if (kw.retry.model) xml += `      <model>${escXml(kw.retry.model)}</model>\n`;
+        if (kw.retry.prompt) xml += `      <prompt>${escXml(kw.retry.prompt)}</prompt>\n`;
+        xml += '    </retry>\n';
+      }
+      xml += '  </tool>\n';
+    }
+    xml += '</tools>\n';
+    const blob = new Blob([xml], { type: 'application/xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'keywords.json';
+    a.download = 'tools.xml';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    conLog(`[${new Date().toISOString()}] Downloaded keywords.json from configurator table`, 'ok');
+    conLog(`[${new Date().toISOString()}] Downloaded tools.xml from configurator table`, 'ok');
   }
 
   function restoreDefaultKeywords() {
@@ -2371,6 +2419,10 @@ flowchart LR
   // ── Helpers ────────────────────────────────────────
   function esc(s) {
     return s.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function escXml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
   }
 
   /**
