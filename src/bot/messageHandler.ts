@@ -389,9 +389,8 @@ class MessageHandler {
     const apiKeywordMatched = keywordMatched && keywordConfig!.api !== 'ollama';
 
     if (!keywordConfig) {
-      const configuredChat = this.findEnabledKeywordByName('chat');
-      keywordConfig = configuredChat ?? {
-        keyword: 'chat',
+      keywordConfig = {
+        keyword: '__default__',
         api: 'ollama',
         timeout: config.getDefaultTimeout(),
         description: 'Default chat via Ollama',
@@ -1137,9 +1136,9 @@ class MessageHandler {
     const timeout = keywordConfig.timeout || config.getDefaultTimeout();
 
     // Apply context filter (Ollama-based relevance evaluation) before building the prompt,
-    // only when the keyword has contextFilterEnabled set to true.
+    // only when global context evaluation is enabled.
     let filteredHistory = conversationHistory;
-    if (keywordConfig.contextFilterEnabled && conversationHistory.length > 0) {
+    if (config.getContextEvalEnabled() && conversationHistory.length > 0) {
       const preFilterCount = conversationHistory.filter(m => m.role !== 'system').length;
       logger.log('success', 'system',
         `TWO-STAGE: Context before eval: ${conversationHistory.length} total (${preFilterCount} non-system)`);
@@ -1151,9 +1150,9 @@ class MessageHandler {
       );
       logger.log('success', 'system',
         `TWO-STAGE: Context after eval: ${filteredHistory.length} messages (system messages excluded)`);
-    } else if (!keywordConfig.contextFilterEnabled && conversationHistory.length > 0) {
+    } else if (!config.getContextEvalEnabled() && conversationHistory.length > 0) {
       logger.log('success', 'system',
-        `TWO-STAGE: Context eval skipped (contextFilterEnabled is off for "${keywordConfig.keyword}")`);
+        `TWO-STAGE: Context eval skipped (global CONTEXT_EVAL_ENABLED is off)`);
     }
 
     // Append the triggering message to context so the model knows who is asking.

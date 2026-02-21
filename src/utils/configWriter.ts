@@ -273,9 +273,6 @@ class ConfigWriter {
         if (entry.builtin !== undefined && typeof entry.builtin !== 'boolean') {
           throw new Error(`Keyword "${entry.keyword}" has invalid builtin — must be a boolean`);
         }
-        if (entry.contextFilterEnabled !== undefined && typeof entry.contextFilterEnabled !== 'boolean') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid contextFilterEnabled — must be a boolean`);
-        }
         if (entry.contextFilterMinDepth !== undefined) {
           if (typeof entry.contextFilterMinDepth !== 'number' || entry.contextFilterMinDepth < 1 || !Number.isInteger(entry.contextFilterMinDepth)) {
             throw new Error(`Keyword "${entry.keyword}" has invalid contextFilterMinDepth — must be a positive integer (>= 1)`);
@@ -330,7 +327,6 @@ class ConfigWriter {
           if (Object.keys(cleanRetry).length > 0) clean.retry = cleanRetry;
         }
         if (entry.builtin) clean.builtin = true;
-        if (entry.contextFilterEnabled === true) clean.contextFilterEnabled = true;
         if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMinDepth >= 1) clean.contextFilterMinDepth = entry.contextFilterMinDepth;
         if (entry.contextFilterMaxDepth !== undefined && entry.contextFilterMaxDepth >= 1) clean.contextFilterMaxDepth = entry.contextFilterMaxDepth;
         return clean;

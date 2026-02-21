@@ -85,9 +85,6 @@ export interface KeywordConfig {
   /** OpenAI-style parameter definitions for the XML tools format.
    *  Stored for faithful round-trip when writing back to tools.xml. */
   parameters?: Record<string, ToolParameter>;
-  /** When true, the two-stage Ollama context evaluation is applied before building the prompt.
-   *  Defaults to false when omitted. Built-in keywords are unaffected. */
-  contextFilterEnabled?: boolean;
   /** Minimum number of most-recent context messages to always include (depth counted from newest). Must be >= 1. Defaults to 1. */
   contextFilterMinDepth?: number;
   /** Maximum number of context messages eligible for inclusion (depth counted from newest). Defaults to global reply-chain max depth. */
@@ -527,6 +524,43 @@ class Config {
 
   getErrorMessage(): string {
     return process.env.ERROR_MESSAGE || "I'm experiencing technical difficulties. Please try again later.";
+  }
+
+  /**
+   * Whether global context evaluation is enabled.
+   * When false, the bot will skip context filtering and send all messages to Ollama.
+   * Default: true.
+   */
+  getContextEvalEnabled(): boolean {
+    return process.env.CONTEXT_EVAL_ENABLED !== 'false';
+  }
+
+  /**
+   * Ollama model used for context evaluation.
+   * Falls back to the default OLLAMA_MODEL if not set.
+   */
+  getContextEvalModel(): string {
+    return process.env.CONTEXT_EVAL_MODEL || this.getOllamaModel();
+  }
+
+  /**
+   * System prompt used for context evaluation.
+   * Default is the built-in prompt from contextEvaluator.ts.
+   */
+  getContextEvalPrompt(): string {
+    const val = process.env.CONTEXT_EVAL_PROMPT;
+    if (val === undefined) {
+      return 'You are a context relevance evaluator. Your job is to determine which recent conversation messages are relevant to the current user prompt.\n\nYou will be given a list of conversation messages (numbered from most recent to oldest) and the current user prompt.\nDetermine which messages should be included as context for responding to the user.\n\nRules:\n- You MUST always include at least indices 1 through 20 (the most recent messages).\n- You may include up to 30 message(s) total.\n- Prioritize newer messages over older ones — only include older messages when clearly relevant.\n- Messages tagged [reply] or [thread] are from a direct reply chain or thread and are generally more relevant than [channel] messages.\n- If messages vary topics too greatly, prefer the most recent topic.\n- You may select non-contiguous messages (e.g. 1, 3, 5) if only specific older messages are relevant.\n- Respond with ONLY a JSON array of integer indices — e.g. [1, 2, 4].\n- Do not include any explanation, punctuation, or extra text outside of the JSON array.';
+    }
+    return val;
+  }
+
+  /**
+   * Maximum number of messages to consider for context evaluation.
+   * Default: 2048, range: 256-131072.
+   */
+  getContextEvalContextSize(): number {
+    return this.parseIntEnv('CONTEXT_EVAL_CONTEXT_SIZE', 2048);
   }
 
 
