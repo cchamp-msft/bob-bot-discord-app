@@ -1,11 +1,11 @@
-import type { KeywordConfig } from './config';
+import type { ToolConfig } from './config';
 
-/** Keywords that are internal-only (e.g. !help, !activity_key). Not sent to Ollama as tools. */
-const INTERNAL_ONLY_KEYWORDS = new Set(['help', 'activity_key']);
+/** Tool names that are internal-only (e.g. !help, !activity_key). Not sent to Ollama as tools. */
+const INTERNAL_ONLY_TOOLS = new Set(['help', 'activity_key']);
 
-function isInternalOnlyKeyword(keyword: string): boolean {
-  const normalized = keyword.replace(/^!\s*/, '').trim().toLowerCase();
-  return INTERNAL_ONLY_KEYWORDS.has(normalized);
+function isInternalOnlyTool(name: string): boolean {
+  const normalized = name.replace(/^!\s*/, '').trim().toLowerCase();
+  return INTERNAL_ONLY_TOOLS.has(normalized);
 }
 
 /**
@@ -26,33 +26,33 @@ export interface OllamaTool {
 }
 
 /**
- * Build OpenAI-compatible tool definitions from keyword config for Ollama's native tools.
- * Excludes internal-only tools (help, activity_key) and non-routable keywords
+ * Build OpenAI-compatible tool definitions from tool config for Ollama's native tools.
+ * Excludes internal-only tools (help, activity_key) and non-routable tools
  * (disabled, builtin, api === 'ollama').
  *
- * @param keywords - Full keyword list (e.g. from config).
+ * @param tools - Full tool list (e.g. from config).
  * @returns Tool definitions suitable for the `tools` parameter of /api/chat.
  */
-export function buildOllamaToolsSchema(keywords: KeywordConfig[]): OllamaTool[] {
-  const filtered = keywords.filter(
+export function buildOllamaToolsSchema(tools: ToolConfig[]): OllamaTool[] {
+  const filtered = tools.filter(
     (k) =>
       k.enabled !== false &&
       !k.builtin &&
       k.api !== 'ollama' &&
-      !isInternalOnlyKeyword(k.keyword)
+      !isInternalOnlyTool(k.name)
   );
 
   const seen = new Set<string>();
-  const tools: OllamaTool[] = [];
+  const result: OllamaTool[] = [];
 
   for (const k of filtered) {
-    const name = k.keyword.replace(/^!\s*/, '').trim().toLowerCase();
+    const name = k.name.replace(/^!\s*/, '').trim().toLowerCase();
     if (seen.has(name)) continue;
     seen.add(name);
 
     const description = k.abilityText ?? k.description;
     const params = buildParameters(k);
-    tools.push({
+    result.push({
       type: 'function',
       function: {
         name,
@@ -62,13 +62,13 @@ export function buildOllamaToolsSchema(keywords: KeywordConfig[]): OllamaTool[] 
     });
   }
 
-  return tools;
+  return result;
 }
 
-function buildParameters(keywordConfig: KeywordConfig): OllamaTool['function']['parameters'] {
+function buildParameters(toolConfig: ToolConfig): OllamaTool['function']['parameters'] {
   const props: Record<string, { type: 'string'; description?: string }> = {};
   const required: string[] = [];
-  const ai = keywordConfig.abilityInputs;
+  const ai = toolConfig.abilityInputs;
 
   if (!ai) {
     props.input = {
@@ -117,21 +117,21 @@ function buildParameters(keywordConfig: KeywordConfig): OllamaTool['function']['
 }
 
 /**
- * Resolve a tool name (as returned by Ollama) back to the keyword config.
- * Tool name is the keyword normalized (no !, lowercased). First match wins.
+ * Resolve a tool name (as returned by Ollama) back to the tool config.
+ * Tool name is the name normalized (no !, lowercased). First match wins.
  */
-export function resolveToolNameToKeyword(
+export function resolveToolNameToTool(
   toolName: string,
-  keywords: KeywordConfig[]
-): KeywordConfig | undefined {
+  tools: ToolConfig[]
+): ToolConfig | undefined {
   const normalized = toolName.replace(/^!\s*/, '').trim().toLowerCase();
-  return keywords.find(
+  return tools.find(
     (k) =>
       k.enabled !== false &&
       !k.builtin &&
       k.api !== 'ollama' &&
-      !isInternalOnlyKeyword(k.keyword) &&
-      k.keyword.replace(/^!\s*/, '').trim().toLowerCase() === normalized
+      !isInternalOnlyTool(k.name) &&
+      k.name.replace(/^!\s*/, '').trim().toLowerCase() === normalized
   );
 }
 
@@ -140,13 +140,13 @@ export function resolveToolNameToKeyword(
  * expected by executeRoutedRequest / apiManager.executeRequest per API.
  */
 export function toolArgumentsToContent(
-  keywordConfig: KeywordConfig,
+  toolConfig: ToolConfig,
   args: Record<string, unknown>
 ): string {
   const get = (key: string): string =>
     typeof args[key] === 'string' ? (args[key] as string).trim() : '';
 
-  switch (keywordConfig.api) {
+  switch (toolConfig.api) {
     case 'accuweather':
       return get('location') || get('input') || '';
     case 'comfyui': {
@@ -157,8 +157,8 @@ export function toolArgumentsToContent(
     case 'serpapi':
       return get('query') || get('input') || '';
     case 'nfl': {
-      const kw = keywordConfig.keyword.toLowerCase();
-      if (kw.includes('news')) return get('filter') || get('input') || '';
+      const name = toolConfig.name.toLowerCase();
+      if (name.includes('news')) return get('filter') || get('input') || '';
       return get('date') || get('input') || '';
     }
     case 'meme': {

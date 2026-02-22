@@ -1,40 +1,40 @@
-import { config, KeywordConfig, COMMAND_PREFIX } from './config';
+import { config, ToolConfig, COMMAND_PREFIX } from './config';
 import { logger } from './logger';
 import { ollamaClient, OllamaResponse } from '../api/ollamaClient';
 import { requestQueue } from './requestQueue';
 
 /**
- * Result of an AI-based keyword classification attempt.
+ * Result of an AI-based tool classification attempt.
  */
 export interface ClassificationResult {
-  /** The matched keyword config, or null if no keyword was identified. */
-  keywordConfig: KeywordConfig | null;
+  /** The matched tool config, or null if no tool was identified. */
+  toolConfig: ToolConfig | null;
   /** Whether the classification was performed by AI (true) or skipped/failed (false). */
   wasClassified: boolean;
 }
 
 /**
- * Build the system prompt for keyword classification.
- * Instructs Ollama to analyze user intent and return only the matching keyword.
+ * Build the system prompt for tool classification.
+ * Instructs Ollama to analyze user intent and return only the matching tool name.
  */
-function buildClassificationPrompt(keywords: KeywordConfig[]): string {
-  // Filter out Ollama-only keywords to avoid confusion during classification
-  const filteredKeywords = keywords.filter(k => k.api !== 'ollama' || k.builtin === true);
+function buildClassificationPrompt(tools: ToolConfig[]): string {
+  // Filter out Ollama-only tools to avoid confusion during classification
+  const filteredTools = tools.filter(k => k.api !== 'ollama' || k.builtin === true);
   
-  const keywordList = filteredKeywords
-    .map((k) => `- "${k.keyword}": ${k.description}`)
+  const toolList = filteredTools
+    .map((k) => `- "${k.name}": ${k.description}`)
     .join('\n');
 
   return [
-    'You are a keyword classifier. Your job is to analyze the user\'s message and determine which keyword best matches their intent.',
-    'You MUST respond with ONLY the keyword value — no explanation, no punctuation, no extra text.',
-    'If no keyword clearly matches, respond with exactly: NONE',
+    'You are a tool classifier. Your job is to analyze the user\'s message and determine which tool best matches their intent.',
+    'You MUST respond with ONLY the tool name — no explanation, no punctuation, no extra text.',
+    'If no tool clearly matches, respond with exactly: NONE',
     '',
-    'Available keywords:',
-    keywordList,
+    'Available tools:',
+    toolList,
     '',
     'Rules:',
-    '- Respond with exactly one keyword from the list above, or NONE.',
+    '- Respond with exactly one tool name from the list above, or NONE.',
     '- Do not include quotes or formatting.',
     '- Match based on the user\'s intent, not literal word presence.',
     '- If the message is a plain answer, clarification question, or conversational filler (not a user request), return NONE.',
@@ -44,28 +44,28 @@ function buildClassificationPrompt(keywords: KeywordConfig[]): string {
 
 /**
  * Classify user intent by sending the message to Ollama with a prompt
- * injection that asks it to identify the best-matching keyword.
+ * injection that asks it to identify the best-matching tool.
  *
- * This is used as a fallback when regex-based keyword matching finds no hit.
+ * This is used as a fallback when direct tool matching finds no hit.
  *
  * @param content - The user's message content (after mention stripping).
  * @param requester - Username for logging.
  * @param signal - Optional abort signal for timeout coordination.
- * @returns Classification result with matched keyword config or null.
+ * @returns Classification result with matched tool config or null.
  */
 export async function classifyIntent(
   content: string,
   requester: string,
   signal?: AbortSignal
 ): Promise<ClassificationResult> {
-  const keywords = config.getKeywords().filter(k => k.enabled !== false);
+  const tools = config.getTools().filter(k => k.enabled !== false);
 
-  if (keywords.length === 0) {
-    logger.log('success', 'system', 'CLASSIFIER: No keywords configured, skipping classification');
-    return { keywordConfig: null, wasClassified: false };
+  if (tools.length === 0) {
+    logger.log('success', 'system', 'CLASSIFIER: No tools configured, skipping classification');
+    return { toolConfig: null, wasClassified: false };
   }
 
-  const systemPrompt = buildClassificationPrompt(keywords);
+  const systemPrompt = buildClassificationPrompt(tools);
 
   try {
     logger.log('success', 'system', `CLASSIFIER: Classifying intent for "${content.substring(0, 80)}..."`);
@@ -95,7 +95,7 @@ export async function classifyIntent(
 
     if (!response.success || !response.data?.text) {
       logger.logError('system', `CLASSIFIER: Ollama classification failed: ${response.error ?? 'no response text'}`);
-      return { keywordConfig: null, wasClassified: false };
+      return { toolConfig: null, wasClassified: false };
     }
 
     const rawResult = response.data.text.trim().toLowerCase();
@@ -105,33 +105,33 @@ export async function classifyIntent(
     // Strip the command prefix if the model included it
     const cleanedBare = cleaned.startsWith(COMMAND_PREFIX) ? cleaned.slice(COMMAND_PREFIX.length) : cleaned;
 
-    logger.log('success', 'system', `CLASSIFIER: Ollama returned keyword "${cleaned}"`);
+    logger.log('success', 'system', `CLASSIFIER: Ollama returned tool "${cleaned}"`);
 
     if (cleaned === 'none' || cleanedBare === 'none') {
-      return { keywordConfig: null, wasClassified: true };
+      return { toolConfig: null, wasClassified: true };
     }
 
-    // Look up the keyword config by matching against registered keywords
-    // Support both prefixed and bare keyword matches
-    const matched = keywords.find(
+    // Look up the tool config by matching against registered tools
+    // Support both prefixed and bare tool name matches
+    const matched = tools.find(
       (k) => {
-        const kwLower = k.keyword.toLowerCase();
-        const kwBare = kwLower.startsWith(COMMAND_PREFIX) ? kwLower.slice(COMMAND_PREFIX.length) : kwLower;
-        return kwLower === cleaned || kwBare === cleanedBare;
+        const nameLower = k.name.toLowerCase();
+        const nameBare = nameLower.startsWith(COMMAND_PREFIX) ? nameLower.slice(COMMAND_PREFIX.length) : nameLower;
+        return nameLower === cleaned || nameBare === cleanedBare;
       }
     );
 
     if (!matched) {
-      logger.logWarn('system', `CLASSIFIER: Ollama returned unrecognized keyword "${cleaned}", falling back`);
-      return { keywordConfig: null, wasClassified: true };
+      logger.logWarn('system', `CLASSIFIER: Ollama returned unrecognized tool "${cleaned}", falling back`);
+      return { toolConfig: null, wasClassified: true };
     }
 
-    logger.log('success', 'system', `CLASSIFIER: Matched keyword "${matched.keyword}" for user ${requester}`);
-    return { keywordConfig: matched, wasClassified: true };
+    logger.log('success', 'system', `CLASSIFIER: Matched tool "${matched.name}" for user ${requester}`);
+    return { toolConfig: matched, wasClassified: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     logger.logError('system', `CLASSIFIER: Classification error: ${errorMsg}`);
-    return { keywordConfig: null, wasClassified: false };
+    return { toolConfig: null, wasClassified: false };
   }
 }
 
@@ -143,14 +143,14 @@ export { buildClassificationPrompt };
  * This helps Ollama understand what external tools are available so it can
  * suggest appropriate API calls in its response.
  *
- * Only keywords with `abilityText` configured and a non-Ollama API are included.
+ * Only tools with `abilityText` configured and a non-Ollama API are included.
  * Returns empty string if no abilities are configured.
  */
 export function buildAbilitiesContext(): string {
-  const keywords = config.getKeywords().filter(k => k.enabled !== false);
-  const abilities = keywords
+  const tools = config.getTools().filter(k => k.enabled !== false);
+  const abilities = tools
     .filter((k) => k.abilityText && k.api !== 'ollama')
-    .map((k) => `- ${k.abilityText} (keyword: "${k.keyword}")`)
+    .map((k) => `- ${k.abilityText} (tool: "${k.name}")`)
     // Deduplicate entries with identical text
     .filter((item, index, self) => self.indexOf(item) === index);
 
@@ -160,7 +160,7 @@ export function buildAbilitiesContext(): string {
     'You have access to the following abilities through external APIs:',
     ...abilities,
     '',
-    `If the user's request requires one of these abilities, include ONLY the keyword on its own line prefixed with "${COMMAND_PREFIX}" (e.g. "${COMMAND_PREFIX}weather") so the request can be routed to the correct API.`,
-    'Do not fabricate data for these abilities — if an ability is needed, state the keyword and let the API handle it.',
+    `If the user's request requires one of these abilities, include ONLY the tool name on its own line prefixed with "${COMMAND_PREFIX}" (e.g. "${COMMAND_PREFIX}weather") so the request can be routed to the correct API.`,
+    'Do not fabricate data for these abilities — if an ability is needed, state the tool name and let the API handle it.',
   ].join('\n');
 }
