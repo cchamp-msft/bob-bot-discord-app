@@ -196,9 +196,19 @@ describe('ContextEvaluator', () => {
   });
 
   describe('evaluateContextWindow', () => {
-    it('should evaluate even when deprecated contextFilterEnabled is false', async () => {
+    it('should evaluate when global context evaluation is enabled', async () => {
+      // Mock the global config to return true for context evaluation enabled
+      jest.mock('../src/utils/config', () => ({
+        config: {
+          getContextEvalEnabled: jest.fn(() => true),
+          getOllamaModel: jest.fn(() => 'llama2'),
+          getDefaultTimeout: jest.fn(() => 300),
+          getReplyChainMaxDepth: jest.fn(() => 10),
+        },
+      }));
+
       const history = makeHistory(5);
-      const kw = makeKeyword({ contextFilterEnabled: false });
+      const kw = makeKeyword();
 
       mockGenerate.mockResolvedValue({
         success: true,
@@ -211,19 +221,25 @@ describe('ContextEvaluator', () => {
       expect(result).toHaveLength(3);
     });
 
-    it('should evaluate even when deprecated contextFilterEnabled is undefined', async () => {
+    it('should skip evaluation when global context evaluation is disabled', async () => {
+      // Mock the global config to return false for context evaluation enabled
+      jest.mock('../src/utils/config', () => ({
+        config: {
+          getContextEvalEnabled: jest.fn(() => false),
+          getOllamaModel: jest.fn(() => 'llama2'),
+          getDefaultTimeout: jest.fn(() => 300),
+          getReplyChainMaxDepth: jest.fn(() => 10),
+        },
+      }));
+
       const history = makeHistory(5);
       const kw = makeKeyword();
 
-      mockGenerate.mockResolvedValue({
-        success: true,
-        data: { text: '[1, 2]' },
-      });
-
+      // When context eval is disabled, it should return all history without calling Ollama
       const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
 
-      expect(mockExecute).toHaveBeenCalled();
-      expect(result).toHaveLength(2);
+      expect(mockExecute).not.toHaveBeenCalled();
+      expect(result).toHaveLength(5);
     });
 
     it('should return empty array for empty history', async () => {

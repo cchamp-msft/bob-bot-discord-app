@@ -187,7 +187,7 @@ class OllamaClient {
     model?: string,
     conversationHistory?: ChatMessage[],
     signal?: AbortSignal,
-    options?: { includeSystemPrompt?: boolean; tools?: OllamaTool[] },
+    options?: { includeSystemPrompt?: boolean; tools?: OllamaTool[]; contextSize?: number },
     images?: string[],
   ): Promise<OllamaResponse> {
     let selectedModel = model || config.getOllamaModel();
@@ -267,6 +267,11 @@ class OllamaClient {
       };
       if (options?.tools && options.tools.length > 0) {
         requestBody.tools = options.tools;
+      }
+      if (options?.contextSize) {
+        requestBody.options = {
+          num_ctx: options.contextSize,
+        };
       }
 
       // DEBUG: log full Ollama request messages

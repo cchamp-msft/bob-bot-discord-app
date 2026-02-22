@@ -563,6 +563,42 @@ class Config {
     return this.parseIntEnv('CONTEXT_EVAL_CONTEXT_SIZE', 2048);
   }
 
+  /**
+   * Ollama model used for tool evaluation.
+   * Falls back to the default OLLAMA_MODEL if not set.
+   */
+  getOllamaToolModel(): string {
+    return process.env.OLLAMA_TOOL_MODEL || this.getOllamaModel();
+  }
+
+  /**
+   * System prompt used for tool evaluation.
+   * Default is the built-in prompt from contextEvaluator.ts.
+   */
+  getOllamaToolPrompt(): string {
+    const val = process.env.OLLAMA_TOOL_PROMPT;
+    if (val === undefined) {
+      return 'You are a helpful assistant. Analyze the user message and determine what API to use. If you are unsure, respond with a concise explanation and suggest the best next step.';
+    }
+    return val;
+  }
+
+  /**
+   * Maximum number of messages to consider for tool evaluation.
+   * Default: 2048, range: 256-131072.
+   */
+  getOllamaToolContextSize(): number {
+    return this.parseIntEnv('OLLAMA_TOOL_CONTEXT_SIZE', 2048);
+  }
+
+  /**
+   * Maximum number of messages to consider for final Ollama pass.
+   * Default: 2048, range: 256-131072.
+   */
+  getOllamaFinalPassContextSize(): number {
+    return this.parseIntEnv('OLLAMA_FINAL_PASS_CONTEXT_SIZE', 2048);
+  }
+
 
 
   getErrorRateLimitMinutes(): number {

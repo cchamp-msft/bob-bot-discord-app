@@ -365,10 +365,14 @@ describe('ConfigWriter', () => {
       ).rejects.toThrow('invalid builtin');
     });
 
-    it('should persist contextFilterEnabled when true', async () => {
-      await configWriter.updateKeywords([{ ...validKeyword, contextFilterEnabled: true }]);
+    it('should not persist contextFilterEnabled when true (deprecated)', async () => {
+      // This test is removed as contextFilterEnabled is deprecated
+      // The field should be stripped from the XML output if present
+      const entry = { ...validKeyword, contextFilterEnabled: true };
+      await configWriter.updateKeywords([entry]);
       const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content[0].contextFilterEnabled).toBe(true);
+      // Should not contain contextFilterEnabled property in the XML output
+      expect(content[0].contextFilterEnabled).toBeUndefined();
     });
 
     it('should not persist contextFilterEnabled when false or omitted', async () => {
