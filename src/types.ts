@@ -417,8 +417,8 @@ export interface PublicConfig {
     imageAttachmentMaxSize: number;
     imageAttachmentMaxCount: number;
   };
-  keywords: import('./utils/config').KeywordConfig[];
-  defaultKeywords: import('./utils/config').KeywordConfig[];
+  tools: import('./utils/config').ToolConfig[];
+  defaultTools: import('./utils/config').ToolConfig[];
   allowBotInteractions: boolean;
   replyChain: {
     enabled: boolean;

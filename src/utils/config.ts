@@ -30,13 +30,13 @@ function normalizeEscapedEnvVars(): void {
 normalizeEscapedEnvVars();
 
 /**
- * The prefix character required for direct keyword invocation in messages.
+ * The prefix character required for direct tool invocation in messages.
  * Natural language messages (without this prefix) go through model inference.
  * Model-emitted directives also use this prefix.
  */
 export const COMMAND_PREFIX = '!';
 
-/** Structured guidance for how a keyword's inputs are inferred and validated. All context is available by default. */
+/** Structured guidance for how a tool's inputs are inferred and validated. All context is available by default. */
 export interface AbilityInputs {
   /** How inputs are provided: 'implicit' (inferred from context), 'explicit' (user must provide), 'mixed' (some inferred, some required). */
   mode: 'implicit' | 'explicit' | 'mixed';
@@ -52,12 +52,12 @@ export interface AbilityInputs {
   examples?: string[];
 }
 
-export interface KeywordConfig {
-  keyword: string;
+export interface ToolConfig {
+  name: string;
   api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
   timeout: number;
   description: string;
-  /** Human-readable description of this keyword's API ability, provided to Ollama as context so it can suggest using this API when relevant. */
+  /** Human-readable description of this tool's API ability, provided to Ollama as context so it can suggest using this API when relevant. */
   abilityText?: string;
   /** Model-facing: when to use this ability (e.g., "User wants an image generated"). */
   abilityWhen?: string;
@@ -65,22 +65,22 @@ export interface KeywordConfig {
   abilityInputs?: AbilityInputs;
   /** When true, pass the API result back through Ollama for conversational refinement. */
   finalOllamaPass?: boolean;
-  /** When true, this keyword can be invoked with no additional user content (e.g. 'nfl scores' alone). */
+  /** When true, this tool can be invoked with no additional user content (e.g. 'nfl_scores' alone). */
   allowEmptyContent?: boolean;
-  /** Whether this keyword is currently enabled. Defaults to true when omitted. */
+  /** Whether this tool is currently enabled. Defaults to true when omitted. */
   enabled?: boolean;
-  /** Optional per-keyword retry override (global defaults exist). */
+  /** Optional per-tool retry override (global defaults exist). */
   retry?: {
-    /** When set, overrides the global ABILITY_RETRY_ENABLED for this keyword. */
+    /** When set, overrides the global ABILITY_RETRY_ENABLED for this tool. */
     enabled?: boolean;
-    /** When set, overrides global ABILITY_RETRY_MAX_RETRIES for this keyword. */
+    /** When set, overrides global ABILITY_RETRY_MAX_RETRIES for this tool. */
     maxRetries?: number;
-    /** Optional per-keyword model override (defaults to global retry model, then default Ollama model). */
+    /** Optional per-tool model override (defaults to global retry model, then default Ollama model). */
     model?: string;
-    /** Optional per-keyword prompt override (defaults to global retry prompt). */
+    /** Optional per-tool prompt override (defaults to global retry prompt). */
     prompt?: string;
   };
-  /** Whether this keyword is a built-in that cannot be edited or deleted — only toggled on/off. */
+  /** Whether this tool is a built-in that cannot be edited or deleted — only toggled on/off. */
   builtin?: boolean;
   /** OpenAI-style parameter definitions for the XML tools format.
    *  Stored for faithful round-trip when writing back to tools.xml. */
@@ -91,18 +91,21 @@ export interface KeywordConfig {
   contextFilterMaxDepth?: number;
 }
 
+/** @deprecated Use ToolConfig instead. */
+export type KeywordConfig = ToolConfig;
+
 export interface ConfigData {
-  keywords: KeywordConfig[];
+  tools: ToolConfig[];
 }
 
 class Config {
-  private keywords: KeywordConfig[] = [];
+  private tools: ToolConfig[] = [];
 
   constructor() {
-    this.loadKeywords();
+    this.loadTools();
   }
 
-  private getKeywordsPath(): string {
+  private getToolsPath(): string {
     const envPath = process.env.TOOLS_CONFIG_PATH;
     if (envPath) {
       return path.resolve(path.join(__dirname, '../..'), envPath);
@@ -110,7 +113,7 @@ class Config {
     return path.join(__dirname, '../../config/tools.xml');
   }
 
-  private getDefaultKeywordsPath(): string {
+  private getDefaultToolsPath(): string {
     return path.join(__dirname, '../../config/tools.default.xml');
   }
 
@@ -119,77 +122,77 @@ class Config {
    * not set, copy from the tracked tools.default.xml template — mirroring
    * the .env.example → .env pattern so the runtime file can be gitignored.
    */
-  private ensureKeywordsFile(): void {
+  private ensureToolsFile(): void {
     // Skip when user specified a custom path via env.
     if (process.env.TOOLS_CONFIG_PATH) return;
 
-    const runtimePath = this.getKeywordsPath();
+    const runtimePath = this.getToolsPath();
     if (fs.existsSync(runtimePath)) return;
 
-    const defaultPath = this.getDefaultKeywordsPath();
+    const defaultPath = this.getDefaultToolsPath();
     if (fs.existsSync(defaultPath)) {
       fs.copyFileSync(defaultPath, runtimePath);
       logger.log('success', 'config', `Created runtime ${path.basename(runtimePath)} from ${path.basename(defaultPath)}`);
     } else {
-      logger.logWarn('config', `No keywords config found — neither ${runtimePath} nor ${defaultPath} exist`);
+      logger.logWarn('config', `No tools config found — neither ${runtimePath} nor ${defaultPath} exist`);
     }
   }
 
-  private loadKeywords(): void {
-    this.ensureKeywordsFile();
-    const keywordsPath = this.getKeywordsPath();
+  private loadTools(): void {
+    this.ensureToolsFile();
+    const toolsPath = this.getToolsPath();
     try {
-      const data = fs.readFileSync(keywordsPath, 'utf-8');
-      const config: ConfigData = { keywords: parseToolsXml(data) };
+      const data = fs.readFileSync(toolsPath, 'utf-8');
+      const configData: ConfigData = { tools: parseToolsXml(data) };
 
-      for (const entry of config.keywords) {
+      for (const entry of configData.tools) {
         // Post-parse validation: contextFilterMaxDepth < 1 treated as unset
         if (entry.contextFilterMaxDepth !== undefined && entry.contextFilterMaxDepth < 1) {
-          logger.logWarn('config', `tool "${entry.keyword}": contextFilterMaxDepth=${entry.contextFilterMaxDepth} is invalid (≥ 1 required) — treating as unset (global default will be used)`);
+          logger.logWarn('config', `tool "${entry.name}": contextFilterMaxDepth=${entry.contextFilterMaxDepth} is invalid (≥ 1 required) — treating as unset (global default will be used)`);
           delete entry.contextFilterMaxDepth;
         }
         if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMaxDepth !== undefined) {
           if (entry.contextFilterMinDepth > entry.contextFilterMaxDepth) {
-            throw new Error(`tools.xml: tool "${entry.keyword}" has contextFilterMinDepth (${entry.contextFilterMinDepth}) greater than contextFilterMaxDepth (${entry.contextFilterMaxDepth})`);
+            throw new Error(`tools.xml: tool "${entry.name}" has contextFilterMinDepth (${entry.contextFilterMinDepth}) greater than contextFilterMaxDepth (${entry.contextFilterMaxDepth})`);
           }
         }
       }
 
-      // Enforce: custom \"help\" keyword is only allowed when the built-in help keyword is disabled
-      const helpKeyword = `${COMMAND_PREFIX}help`;
-      const builtinHelp = config.keywords.find(k => k.builtin && k.keyword.toLowerCase() === helpKeyword);
+      // Enforce: custom "help" tool is only allowed when the built-in help tool is disabled
+      const helpTool = `${COMMAND_PREFIX}help`;
+      const builtinHelp = configData.tools.find(k => k.builtin && k.name.toLowerCase() === helpTool);
       const builtinHelpEnabled = builtinHelp ? builtinHelp.enabled !== false : false;
       if (builtinHelpEnabled) {
-        const customHelp = config.keywords.find(k => !k.builtin && k.keyword.toLowerCase() === helpKeyword);
+        const customHelp = configData.tools.find(k => !k.builtin && k.name.toLowerCase() === helpTool);
         if (customHelp) {
-          logger.logWarn('config', 'Ignoring custom "help" keyword because the built-in help keyword is enabled');
-          config.keywords = config.keywords.filter(k => k !== customHelp);
+          logger.logWarn('config', 'Ignoring custom "help" tool because the built-in help tool is enabled');
+          configData.tools = configData.tools.filter(k => k !== customHelp);
         }
       }
 
-      this.keywords = config.keywords;
-      logger.log('success', 'config', `Loaded ${this.keywords.length} keywords from config`);
+      this.tools = configData.tools;
+      logger.log('success', 'config', `Loaded ${this.tools.length} tools from config`);
 
-      // Merge missing default keywords into runtime so newly added defaults
+      // Merge missing default tools into runtime so newly added defaults
       // self-heal even when tools.xml predates them.
-      // Existing keywords are intentionally NOT overwritten.
-      this.mergeDefaultKeywords();
+      // Existing tools are intentionally NOT overwritten.
+      this.mergeDefaultTools();
     } catch (error) {
-      logger.logError('config', `Failed to load keywords config (${keywordsPath}): ${error}`);
-      this.keywords = [];
+      logger.logError('config', `Failed to load tools config (${toolsPath}): ${error}`);
+      this.tools = [];
     }
   }
 
-  getKeywords(): KeywordConfig[] {
-    return this.keywords;
+  getTools(): ToolConfig[] {
+    return this.tools;
   }
 
   /**
-   * Return the keyword array from tools.default.xml.
+   * Return the tool array from tools.default.xml.
    * Used by the configurator to offer a "sync missing" action.
    */
-  getDefaultKeywords(): KeywordConfig[] {
-    const defaultPath = this.getDefaultKeywordsPath();
+  getDefaultTools(): ToolConfig[] {
+    const defaultPath = this.getDefaultToolsPath();
     try {
       const data = fs.readFileSync(defaultPath, 'utf-8');
       return parseToolsXml(data);
@@ -199,32 +202,32 @@ class Config {
   }
 
   /**
-   * Self-heal runtime keywords by adding defaults that are missing.
+   * Self-heal runtime tools by adding defaults that are missing.
    *
-   * Important: existing runtime keywords are NOT overwritten. This allows
+   * Important: existing runtime tools are NOT overwritten. This allows
    * users to customize values in tools.xml without defaults replacing them
    * on reload.
    */
-  private mergeDefaultKeywords(): void {
-    const defaults = this.getDefaultKeywords();
+  private mergeDefaultTools(): void {
+    const defaults = this.getDefaultTools();
     const existingByKey = new Map(
-      this.keywords.map(k => [k.keyword.toLowerCase(), k])
+      this.tools.map(k => [k.name.toLowerCase(), k])
     );
 
     let added = 0;
     let keptExisting = 0;
 
     for (const def of defaults) {
-      const key = def.keyword.toLowerCase();
+      const key = def.name.toLowerCase();
       const existing = existingByKey.get(key);
 
       if (!existing) {
-        // New keyword from defaults — append
-        this.keywords.push({ ...def });
+        // New tool from defaults — append
+        this.tools.push({ ...def });
         existingByKey.set(key, def);
         added++;
         logger.log('success', 'config',
-          `TOOLS SELF-HEAL: Added missing tool "${def.keyword}" from tools.default.xml`);
+          `TOOLS SELF-HEAL: Added missing tool "${def.name}" from tools.default.xml`);
       } else {
         keptExisting++;
       }
@@ -232,21 +235,21 @@ class Config {
 
     if (added > 0) {
       logger.log('success', 'config',
-        `TOOLS SELF-HEAL: tools.xml merged with defaults — added: ${added}, kept existing: ${keptExisting}, total runtime tools: ${this.keywords.length}`);
+        `TOOLS SELF-HEAL: tools.xml merged with defaults — added: ${added}, kept existing: ${keptExisting}, total runtime tools: ${this.tools.length}`);
     } else {
       logger.log('success', 'config',
         `TOOLS SELF-HEAL: No missing defaults found — kept existing tools unchanged (${keptExisting} matched)`);
     }
   }
 
-  getKeywordConfig(keyword: string): KeywordConfig | undefined {
-    const normalized = keyword.toLowerCase();
-    // Support lookup by keyword with or without the command prefix
+  getToolConfig(toolName: string): ToolConfig | undefined {
+    const normalized = toolName.toLowerCase();
+    // Support lookup by tool name with or without the command prefix
     const withPrefix = normalized.startsWith(COMMAND_PREFIX) ? normalized : `${COMMAND_PREFIX}${normalized}`;
     const withoutPrefix = normalized.startsWith(COMMAND_PREFIX) ? normalized.slice(COMMAND_PREFIX.length) : normalized;
-    return this.keywords.find(
+    return this.tools.find(
       (k) => {
-        const kw = k.keyword.toLowerCase();
+        const kw = k.name.toLowerCase();
         return kw === withPrefix || kw === withoutPrefix || kw === normalized;
       }
     );
@@ -870,7 +873,7 @@ class Config {
 
   /**
    * Reload hot-reloadable config from .env and tools.xml (runtime copy).
-   * API endpoints and keywords reload in-place.
+   * API endpoints and tools reload in-place.
    * Discord token, client ID, and HTTP port require restart.
    */
   reload(): { reloaded: string[]; requiresRestart: string[] } {
@@ -1018,9 +1021,9 @@ class Config {
     if (this.getComfyUIDefaultDenoise() !== prevDefaultDenoise) reloaded.push('COMFYUI_DEFAULT_DENOISE');
     if (this.getComfyUIDefaultSeed() !== prevDefaultSeed) reloaded.push('COMFYUI_DEFAULT_SEED');
 
-    // Reload keywords
-    this.loadKeywords();
-    reloaded.push('keywords');
+    // Reload tools
+    this.loadTools();
+    reloaded.push('tools');
 
     return { reloaded, requiresRestart };
   }
@@ -1102,8 +1105,8 @@ class Config {
         imageAttachmentMaxSize: this.getImageAttachmentMaxSize(),
         imageAttachmentMaxCount: this.getImageAttachmentMaxCount(),
       },
-      keywords: this.getKeywords(),
-      defaultKeywords: this.getDefaultKeywords(),
+      tools: this.getTools(),
+      defaultTools: this.getDefaultTools(),
       allowBotInteractions: this.getAllowBotInteractions(),
       replyChain: {
         enabled: this.getReplyChainEnabled(),
