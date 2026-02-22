@@ -136,10 +136,10 @@ class SerpApiClient {
   // ── Main request handler ────────────────────────────────────────
 
   /**
-   * Handle a search request dispatched by the API router.
+   * Handle a web_search request dispatched by the API router.
    * Performs a Google Search via SerpAPI and returns formatted results.
    */
-  async handleRequest(content: string, keyword: string, signal?: AbortSignal): Promise<SerpApiResponse> {
+  async handleRequest(content: string, toolName: string, signal?: AbortSignal): Promise<SerpApiResponse> {
     const query = content.trim();
     if (!query) {
       return { success: false, error: 'No search query provided' };
@@ -151,10 +151,8 @@ class SerpApiClient {
     }
 
     try {
-      logger.log('success', 'system', `SERPAPI: Searching "${query}" (keyword: ${keyword})`);
-      // "second opinion" only needs the AI Overview — request minimal organic results
-      const num = keyword === 'second opinion' ? 1 : 5;
-      const data = await this.googleSearch(query, apiKey, signal, num);
+      logger.log('success', 'system', `SERPAPI: Searching "${query}" (tool: ${toolName})`);
+      const data = await this.googleSearch(query, apiKey, signal);
 
       // Log response shape for debugging AIO availability issues
       logger.logDebugLazy('serpapi', () => {
@@ -182,18 +180,7 @@ class SerpApiClient {
         }
       }
 
-      // Route to the appropriate formatter based on keyword.
-      let text: string;
-      if (keyword === 'second opinion') {
-        // Organic results are not rendered for "second opinion" — strip them
-        // from the raw data so downstream consumers don't receive them either.
-        delete data.organic_results;
-        text = this.formatAIOverviewOnly(data, query);
-      } else if (keyword === 'find content') {
-        text = this.formatContentSearch(data, query);
-      } else {
-        text = this.formatSearchText(data, query);
-      }
+      const text = this.formatSearchText(data, query);
       return {
         success: true,
         data: { text, raw: data },
@@ -287,109 +274,6 @@ class SerpApiClient {
       logger.logWarn('serpapi', `AI Overview fetch failed (non-fatal): ${msg}`);
       return null;
     }
-  }
-
-  // ── Formatting: AI Overview only (second opinion) ──────────────
-
-  /**
-   * Format only the AI Overview section for "second opinion" responses.
-   * Returns a user-friendly message when no AI Overview is available.
-   */
-  formatAIOverviewOnly(data: SerpApiSearchResponse, query: string): string {
-    const parts: string[] = [];
-
-    parts.push(`🔎 **Second opinion for:** *${query}*\n`);
-
-    // 1. Try top-level AI Overview first
-    if (data.ai_overview?.text_blocks?.length) {
-      this.renderAIOverviewSection(parts, data.ai_overview, undefined, 10);
-    }
-
-    // 2. If no top-level AIO content, search for embedded AI overviews
-    //    (e.g. knowledge_graph.types.ai_overview, knowledge_graph.layering.ai_overview)
-    if (parts.length <= 1) {
-      const embedded = this.findEmbeddedAIOverviews(data);
-      for (const entry of embedded) {
-        this.renderAIOverviewSection(parts, entry.aiOverview, entry.subtitle, 10);
-      }
-    }
-
-    // 3. If still only the header line, no AI overview content was found anywhere
-    if (parts.length <= 1) {
-      if (data.ai_overview?.error) {
-        parts.push(`⚠️ Google AI Overview returned an error: ${data.ai_overview.error}`);
-      } else {
-        parts.push(`⚠️ Google did not return an AI Overview for this query.`);
-      }
-      parts.push(`This can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.`);
-      logger.log('warn', 'serpapi', 'AI Overview availability is locale-dependent — ensure SERPAPI_HL and SERPAPI_GL are set (e.g. en/us).');
-      parts.push(`💡 *Tip: Try rephrasing your query or using the **search** or **find content** keyword for full results.*`);
-    }
-
-    return parts.join('\n').trim();
-  }
-
-  // ── Formatting: Content search (find content) ──────────────────
-
-  /**
-   * Format search results focused on pertinent content: answer box,
-   * knowledge graph, generic blocks, and organic results.
-   * AI Overview is intentionally excluded — that is "second opinion"'s domain.
-   */
-  formatContentSearch(data: SerpApiSearchResponse, query: string): string {
-    const parts: string[] = [];
-
-    parts.push(`🔍 **Content found for:** *${query}*\n`);
-
-    // Answer Box (direct answer)
-    if (data.answer_box) {
-      const ab = data.answer_box;
-      const answer = ab.answer || ab.snippet || '';
-      if (answer) {
-        parts.push(`📋 **Direct Answer:**`);
-        if (ab.title) parts.push(`> **${ab.title}**`);
-        parts.push(`> ${answer}`);
-        if (ab.link) parts.push(`> [Source](${ab.link})`);
-        parts.push('');
-      }
-    }
-
-    // Knowledge Graph
-    if (data.knowledge_graph?.description) {
-      const kg = data.knowledge_graph;
-      parts.push(`📖 **${kg.title || 'Knowledge Graph'}**${kg.type ? ` *(${kg.type})*` : ''}`);
-      parts.push(`> ${kg.description}`);
-      if (kg.source?.link) parts.push(`> [Source: ${kg.source.name || 'Link'}](${kg.source.link})`);
-      parts.push('');
-    }
-
-    // Generic iteration: render blocks not already handled above
-    // Exclude ai_overview — that belongs to "second opinion"
-    const extras = this.getExtraBlocks(data, ['answer_box', 'knowledge_graph', 'ai_overview', 'organic_results']);
-    for (const key of extras) {
-      const block = this.formatStructuredBlock(key, data[key]);
-      if (block.length > 0) {
-        parts.push(...block);
-        parts.push('');
-      }
-    }
-
-    // Organic Results (top 5)
-    const organics = data.organic_results?.slice(0, 5) ?? [];
-    if (organics.length > 0) {
-      parts.push(`📄 **Top Results:**`);
-      for (const result of organics) {
-        const snippet = result.snippet ? ` — ${result.snippet}` : '';
-        parts.push(`${result.position}. [${result.title}](${result.link})${snippet}`);
-      }
-    }
-
-    // If we only have the header line, nothing was found
-    if (parts.length <= 1) {
-      parts.push(`No content found for "${query}".`);
-    }
-
-    return parts.join('\n').trim();
   }
 
   // ── Formatting: Discord-friendly text ─────────────────────────
