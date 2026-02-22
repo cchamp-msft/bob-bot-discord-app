@@ -11,6 +11,7 @@
     "register": "ts-node src/registerCommands.ts",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:e2e": "jest --config jest.e2e.config.ts --verbose",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
