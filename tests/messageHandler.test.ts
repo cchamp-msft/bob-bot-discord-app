@@ -31,8 +31,8 @@ jest.mock('../src/utils/config', () => ({
   config: {
     getErrorRateLimitMinutes: jest.fn(() => 1), // 1 minute for test speed
     getErrorMessage: jest.fn(() => 'Test error message'),
-    getKeywords: jest.fn(() => []),
-    getKeywordConfig: jest.fn(),
+    getTools: jest.fn(() => []),
+    getToolConfig: jest.fn(),
     getDefaultTimeout: jest.fn(() => 300),
     getReplyChainEnabled: jest.fn(() => true),
     getContextEvalEnabled: jest.fn(() => true),
@@ -84,7 +84,7 @@ jest.mock('../src/utils/fileHandler', () => ({
 }));
 
 jest.mock('../src/utils/keywordClassifier', () => ({
-  classifyIntent: jest.fn().mockResolvedValue({ keywordConfig: null, wasClassified: false }),
+  classifyIntent: jest.fn().mockResolvedValue({ toolConfig: null, wasClassified: false }),
   buildAbilitiesContext: jest.fn().mockReturnValue(''),
 }));
 
@@ -102,7 +102,7 @@ jest.mock('../src/utils/promptBuilder', () => ({
     userContent: (opts.externalData ? `<external_data>\n${opts.externalData}\n</external_data>\n\n` : '') + `<current_question>\n${opts.userMessage}\n</current_question>`,
     messages: [],
   })),
-  parseFirstLineKeyword: jest.fn(() => ({ keywordConfig: null, parsedLine: '', matched: false })),
+  parseFirstLineTool: jest.fn(() => ({ toolConfig: null, parsedLine: '', matched: false })),
 }));
 
 jest.mock('../src/utils/apiRouter', () => ({
@@ -113,7 +113,7 @@ jest.mock('../src/utils/apiRouter', () => ({
 
 jest.mock('../src/utils/toolsSchema', () => ({
   buildOllamaToolsSchema: jest.fn().mockReturnValue([]),
-  resolveToolNameToKeyword: jest.fn(),
+  resolveToolNameToTool: jest.fn(),
   toolArgumentsToContent: jest.fn(),
 }));
 
@@ -150,7 +150,7 @@ jest.mock('../src/utils/activityKeyManager', () => ({
 import { config } from '../src/utils/config';
 import { classifyIntent } from '../src/utils/keywordClassifier';
 import { executeRoutedRequest, inferAbilityParameters } from '../src/utils/apiRouter';
-import { assemblePrompt, parseFirstLineKeyword } from '../src/utils/promptBuilder';
+import { assemblePrompt, parseFirstLineTool } from '../src/utils/promptBuilder';
 import { activityEvents } from '../src/utils/activityEvents';
 import axios from 'axios';
 import type { Message } from 'discord.js';
@@ -747,182 +747,182 @@ describe('MessageHandler Discord mention stripping', () => {
   });
 });
 
-describe('MessageHandler stripKeyword', () => {
-  it('should strip the first occurrence of the keyword (case-insensitive)', () => {
-    const result = (messageHandler as any).stripKeyword('!generate a beautiful sunset', '!generate');
+describe('MessageHandler stripToolName', () => {
+  it('should strip the first occurrence of the tool name (case-insensitive)', () => {
+    const result = (messageHandler as any).stripToolName('!generate a beautiful sunset', '!generate');
     expect(result).toBe('a beautiful sunset');
   });
 
-  it('should strip only the first occurrence when keyword appears multiple times', () => {
-    const result = (messageHandler as any).stripKeyword('!generate the word generate in a sentence', '!generate');
+  it('should strip only the first occurrence when tool name appears multiple times', () => {
+    const result = (messageHandler as any).stripToolName('!generate the word generate in a sentence', '!generate');
     expect(result).toBe('the word generate in a sentence');
   });
 
   it('should be case-insensitive', () => {
-    const result = (messageHandler as any).stripKeyword('!GENERATE a cat picture', '!generate');
+    const result = (messageHandler as any).stripToolName('!GENERATE a cat picture', '!generate');
     expect(result).toBe('a cat picture');
   });
 
-  it('should handle keyword at end of string', () => {
-    const result = (messageHandler as any).stripKeyword('!generate please', '!generate');
+  it('should handle tool name at end of string', () => {
+    const result = (messageHandler as any).stripToolName('!generate please', '!generate');
     expect(result).toBe('please');
   });
 
-  it('should handle keyword in the middle of string', () => {
-    const result = (messageHandler as any).stripKeyword('!imagine please a dog', '!imagine');
+  it('should handle tool name in the middle of string', () => {
+    const result = (messageHandler as any).stripToolName('!imagine please a dog', '!imagine');
     expect(result).toBe('please a dog');
   });
 
-  it('should return empty string when content is only the keyword', () => {
-    const result = (messageHandler as any).stripKeyword('!generate', '!generate');
+  it('should return empty string when content is only the tool name', () => {
+    const result = (messageHandler as any).stripToolName('!generate', '!generate');
     expect(result).toBe('');
   });
 
   it('should not strip partial word matches', () => {
-    const result = (messageHandler as any).stripKeyword('regenerate the image', '!generate');
+    const result = (messageHandler as any).stripToolName('regenerate the image', '!generate');
     expect(result).toBe('regenerate the image');
   });
 
-  it('should handle special regex characters in keyword', () => {
-    const result = (messageHandler as any).stripKeyword('!draw.io use to generate', '!draw.io');
+  it('should handle special regex characters in tool name', () => {
+    const result = (messageHandler as any).stripToolName('!draw.io use to generate', '!draw.io');
     expect(result).toBe('use to generate');
   });
 
   it('should collapse multiple spaces after stripping', () => {
-    const result = (messageHandler as any).stripKeyword('!generate  please  a cat', '!generate');
+    const result = (messageHandler as any).stripToolName('!generate  please  a cat', '!generate');
     expect(result).toBe('please  a cat');
   });
 });
 
-describe('MessageHandler findKeyword (start-anchored)', () => {
-  function setKeywords(keywords: any[]) {
-    (config.getKeywords as jest.Mock).mockReturnValue(keywords);
+describe('MessageHandler findTool (start-anchored)', () => {
+  function setTools(tools: any[]) {
+    (config.getTools as jest.Mock).mockReturnValue(tools);
   }
 
-  const weatherKw = { keyword: '!weather', api: 'accuweather', timeout: 60, description: 'Weather' };
-  const nflKw = { keyword: '!nfl', api: 'nfl', timeout: 30, description: 'NFL generic' };
-  const nflScoresKw = { keyword: '!nfl scores', api: 'nfl', timeout: 30, description: 'NFL scores' };
-  const generateKw = { keyword: '!generate', api: 'comfyui', timeout: 600, description: 'Generate image' };
-  const helpKw = { keyword: '!help', api: 'ollama', timeout: 30, description: 'Help', builtin: true, allowEmptyContent: true };
-  const chatKw = { keyword: '!chat', api: 'ollama', timeout: 300, description: 'Chat' };
+  const weatherKw = { name: '!weather', api: 'accuweather', timeout: 60, description: 'Weather' };
+  const nflKw = { name: '!nfl', api: 'nfl', timeout: 30, description: 'NFL generic' };
+  const nflScoresKw = { name: '!nfl scores', api: 'nfl', timeout: 30, description: 'NFL scores' };
+  const generateKw = { name: '!generate', api: 'comfyui', timeout: 600, description: 'Generate image' };
+  const helpKw = { name: '!help', api: 'ollama', timeout: 30, description: 'Help', builtin: true, allowEmptyContent: true };
+  const chatKw = { name: '!chat', api: 'ollama', timeout: 300, description: 'Chat' };
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('should match keyword at the start of message', () => {
-    setKeywords([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('!weather 45403');
+  it('should match tool at the start of message', () => {
+    setTools([weatherKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findTool('!weather 45403');
     expect(result).toBe(weatherKw);
   });
 
-  it('should NOT match keyword in the middle of message', () => {
-    setKeywords([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('what is the weather like');
+  it('should NOT match tool in the middle of message', () => {
+    setTools([weatherKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findTool('what is the weather like');
     expect(result).toBeUndefined();
   });
 
-  it('should NOT match keyword that appears only inside the message', () => {
-    setKeywords([generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('can you generate a cat');
+  it('should NOT match tool that appears only inside the message', () => {
+    setTools([generateKw, chatKw]);
+    const result = (messageHandler as any).findTool('can you generate a cat');
     expect(result).toBeUndefined();
   });
 
-  it('should match longer multi-word keyword over shorter overlap', () => {
-    setKeywords([nflKw, nflScoresKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('!nfl scores 20251116');
+  it('should match longer multi-word tool name over shorter overlap', () => {
+    setTools([nflKw, nflScoresKw, chatKw]);
+    const result = (messageHandler as any).findTool('!nfl scores 20251116');
     expect(result).toBe(nflScoresKw);
   });
 
-  it('should match shorter keyword when longer overlap does not match', () => {
-    setKeywords([nflKw, nflScoresKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('!nfl preseason update');
+  it('should match shorter tool name when longer overlap does not match', () => {
+    setTools([nflKw, nflScoresKw, chatKw]);
+    const result = (messageHandler as any).findTool('!nfl preseason update');
     expect(result).toBe(nflKw);
   });
 
   it('should match "weather" when message starts with weather', () => {
-    setKeywords([weatherKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('!weather 45403');
+    setTools([weatherKw, chatKw]);
+    const result = (messageHandler as any).findTool('!weather 45403');
     expect(result).toBe(weatherKw);
   });
 
   it('should match "generate" at message start', () => {
-    setKeywords([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('!generate a cat picture');
+    setTools([weatherKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findTool('!generate a cat picture');
     expect(result).toBe(generateKw);
   });
 
   it('should be case-insensitive', () => {
-    setKeywords([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('!WEATHER 45403');
+    setTools([weatherKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findTool('!WEATHER 45403');
     expect(result).toBe(weatherKw);
   });
 
   it('should not match partial words at start', () => {
-    setKeywords([generateKw]);
-    const result = (messageHandler as any).findKeyword('generates many images');
+    setTools([generateKw]);
+    const result = (messageHandler as any).findTool('generates many images');
     expect(result).toBeUndefined();
   });
 
-  it('should return undefined when no keywords configured', () => {
-    setKeywords([]);
-    const result = (messageHandler as any).findKeyword('!weather 45403');
+  it('should return undefined when no tools configured', () => {
+    setTools([]);
+    const result = (messageHandler as any).findTool('!weather 45403');
     expect(result).toBeUndefined();
   });
 
   it('should return undefined for conversational phrasing', () => {
-    setKeywords([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('can you tell me the weather for dayton');
+    setTools([weatherKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findTool('can you tell me the weather for dayton');
     expect(result).toBeUndefined();
   });
 
-  it('should skip disabled keywords', () => {
+  it('should skip disabled tools', () => {
     const disabledWeather = { ...weatherKw, enabled: false };
-    setKeywords([disabledWeather, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('!weather 45403');
+    setTools([disabledWeather, generateKw, chatKw]);
+    const result = (messageHandler as any).findTool('!weather 45403');
     expect(result).toBeUndefined();
   });
 
-  it('should match enabled keyword when a different keyword is disabled', () => {
+  it('should match enabled tool when a different tool is disabled', () => {
     const disabledChat = { ...chatKw, enabled: false };
-    setKeywords([weatherKw, generateKw, disabledChat]);
-    const result = (messageHandler as any).findKeyword('!weather 45403');
+    setTools([weatherKw, generateKw, disabledChat]);
+    const result = (messageHandler as any).findTool('!weather 45403');
     expect(result).toBe(weatherKw);
   });
 
-  it('should match standalone help keyword', () => {
-    setKeywords([helpKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('!help');
+  it('should match standalone help tool name', () => {
+    setTools([helpKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findTool('!help');
     expect(result).toBe(helpKw);
   });
 
-  it('should match help keyword case-insensitively', () => {
-    setKeywords([helpKw, generateKw, chatKw]);
-    expect((messageHandler as any).findKeyword('!Help')).toBe(helpKw);
-    expect((messageHandler as any).findKeyword('!HELP')).toBe(helpKw);
+  it('should match help tool case-insensitively', () => {
+    setTools([helpKw, generateKw, chatKw]);
+    expect((messageHandler as any).findTool('!Help')).toBe(helpKw);
+    expect((messageHandler as any).findTool('!HELP')).toBe(helpKw);
   });
 
-  it('should NOT match help keyword when followed by more text', () => {
-    setKeywords([helpKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findKeyword('!help me with this');
+  it('should NOT match help tool when followed by more text', () => {
+    setTools([helpKw, generateKw, chatKw]);
+    const result = (messageHandler as any).findTool('!help me with this');
     expect(result).toBeUndefined();
   });
 });
 
 describe('MessageHandler buildHelpResponse', () => {
-  function setKeywords(keywords: any[]) {
-    (config.getKeywords as jest.Mock).mockReturnValue(keywords);
+  function setTools(tools: any[]) {
+    (config.getTools as jest.Mock).mockReturnValue(tools);
   }
 
   afterEach(() => jest.restoreAllMocks());
 
   it('should include enabled capabilities and their descriptions', () => {
-    setKeywords([
-      { keyword: '!help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
-      { keyword: '!generate', api: 'comfyui', timeout: 600, description: 'Generate image using ComfyUI' },
-      { keyword: '!weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
+    setTools([
+      { name: '!help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
+      { name: '!generate', api: 'comfyui', timeout: 600, description: 'Generate image using ComfyUI' },
+      { name: '!weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
     ]);
 
     const result = (messageHandler as any).buildHelpResponse();
-    expect(result).toContain('**Available Commands**');
+    expect(result).toContain('**Available Tools**');
     expect(result).toContain('`!generate`');
     expect(result).toContain('Generate image using ComfyUI');
     expect(result).toContain('`!weather`');
@@ -930,11 +930,11 @@ describe('MessageHandler buildHelpResponse', () => {
     expect(result).not.toContain('!help');
   });
 
-  it('should exclude disabled keywords', () => {
-    setKeywords([
-      { keyword: '!help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
-      { keyword: '!generate', api: 'comfyui', timeout: 600, description: 'Generate image', enabled: false },
-      { keyword: '!weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
+  it('should exclude disabled tools', () => {
+    setTools([
+      { name: '!help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
+      { name: '!generate', api: 'comfyui', timeout: 600, description: 'Generate image', enabled: false },
+      { name: '!weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
     ]);
 
     const result = (messageHandler as any).buildHelpResponse();
@@ -942,17 +942,17 @@ describe('MessageHandler buildHelpResponse', () => {
     expect(result).toContain('`!weather`');
   });
 
-  it('should include fallback line when no non-help keywords are configured', () => {
-    setKeywords([
-      { keyword: '!help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
+  it('should include fallback line when no non-help tools are configured', () => {
+    setTools([
+      { name: '!help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
     ]);
 
     const result = (messageHandler as any).buildHelpResponse();
-    expect(result).toContain('No commands are currently configured');
+    expect(result).toContain('No tools are currently configured');
   });
 });
 
-describe('MessageHandler help keyword handling (model path)', () => {
+describe('MessageHandler help tool handling (model path)', () => {
   function createMentionedMessage(content: string): any {
     const botUserId = 'bot-123';
     return {
@@ -977,22 +977,22 @@ describe('MessageHandler help keyword handling (model path)', () => {
   }
 
   const helpKw = {
-    keyword: '!help',
+    name: '!help',
     api: 'ollama' as const,
     timeout: 30,
     description: 'Show help',
     builtin: true,
     allowEmptyContent: true,
   };
-  const generateKw = { keyword: '!generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
+  const generateKw = { name: '!generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([helpKw, generateKw]);
+    (config.getTools as jest.Mock).mockReturnValue([helpKw, generateKw]);
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
-      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
-      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+      .mockResolvedValue({ toolConfig: null, wasClassified: false });
+    (parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>)
+      .mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
   });
 
   it('should short-circuit with a direct help reply without calling Ollama', async () => {
@@ -1000,13 +1000,13 @@ describe('MessageHandler help keyword handling (model path)', () => {
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).toHaveBeenCalledWith(
-      expect.stringContaining('**Available Commands**')
+      expect.stringContaining('**Available Tools**')
     );
     // Should NOT call assemblePrompt / Ollama at all
     expect(assemblePrompt as jest.MockedFunction<typeof assemblePrompt>).not.toHaveBeenCalled();
   });
 
-  it('should not treat "help me" as help keyword and should keep original content', async () => {
+  it('should not treat "help me" as help tool and should keep original content', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValue({
       success: true,
@@ -1024,7 +1024,7 @@ describe('MessageHandler help keyword handling (model path)', () => {
   });
 });
 
-describe('MessageHandler built-in help keyword handling', () => {
+describe('MessageHandler built-in help tool handling', () => {
   function createMentionedMessage(content: string): any {
     const botUserId = 'bot-123';
     return {
@@ -1048,15 +1048,15 @@ describe('MessageHandler built-in help keyword handling', () => {
     };
   }
 
-  const helpKw = { keyword: '!help', api: 'ollama' as const, timeout: 30, description: 'Show help', builtin: true, allowEmptyContent: true };
-  const generateKw = { keyword: '!generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
+  const helpKw = { name: '!help', api: 'ollama' as const, timeout: 30, description: 'Show help', builtin: true, allowEmptyContent: true };
+  const generateKw = { name: '!generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('should route bare "help" without prefix through normal chat path', async () => {
-    (config.getKeywords as jest.Mock).mockReturnValue([helpKw, generateKw]);
+    (config.getTools as jest.Mock).mockReturnValue([helpKw, generateKw]);
 
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValue({
@@ -1065,9 +1065,9 @@ describe('MessageHandler built-in help keyword handling', () => {
     });
 
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
-      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
-      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+      .mockResolvedValue({ toolConfig: null, wasClassified: false });
+    (parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>)
+      .mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
 
     const msg = createMentionedMessage('<@bot-123> help');
     await messageHandler.handleMessage(msg);
@@ -1083,7 +1083,7 @@ describe('MessageHandler built-in help keyword handling', () => {
 
   it('should not trigger help when built-in help is disabled', async () => {
     const disabledHelp = { ...helpKw, enabled: false };
-    (config.getKeywords as jest.Mock).mockReturnValue([disabledHelp, generateKw]);
+    (config.getTools as jest.Mock).mockReturnValue([disabledHelp, generateKw]);
 
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValue({
@@ -1092,9 +1092,9 @@ describe('MessageHandler built-in help keyword handling', () => {
     });
 
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
-      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
-      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+      .mockResolvedValue({ toolConfig: null, wasClassified: false });
+    (parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>)
+      .mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
 
     const msg = createMentionedMessage('<@bot-123> help');
     await messageHandler.handleMessage(msg);
@@ -1110,7 +1110,7 @@ describe('MessageHandler built-in help keyword handling', () => {
   });
 });
 
-describe('MessageHandler standalone allowEmptyContent keywords', () => {
+describe('MessageHandler standalone allowEmptyContent tools', () => {
   function createMentionedMessage(content: string): any {
     const botUserId = 'bot-123';
     return {
@@ -1135,7 +1135,7 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
   }
 
   const nflScoresKw = {
-    keyword: '!nfl scores',
+    name: '!nfl scores',
     api: 'nfl' as const,
     timeout: 30,
     description: 'Get current NFL game scores',
@@ -1144,7 +1144,7 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
     allowEmptyContent: true,
   };
   const nflNewsKw = {
-    keyword: '!nfl news',
+    name: '!nfl news',
     api: 'nfl' as const,
     timeout: 30,
     description: 'Get latest NFL news headlines',
@@ -1153,21 +1153,21 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
     allowEmptyContent: true,
   };
   const memeTemplatesKw = {
-    keyword: '!meme_templates',
+    name: '!meme_templates',
     api: 'meme' as const,
     timeout: 30,
     description: 'Return meme templates',
     allowEmptyContent: true,
   };
-  const chatKw = { keyword: '!chat', api: 'ollama' as const, timeout: 300, description: 'Chat' };
+  const chatKw = { name: '!chat', api: 'ollama' as const, timeout: 300, description: 'Chat' };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([nflScoresKw, nflNewsKw, memeTemplatesKw, chatKw]);
+    (config.getTools as jest.Mock).mockReturnValue([nflScoresKw, nflNewsKw, memeTemplatesKw, chatKw]);
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
-      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
-      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+      .mockResolvedValue({ toolConfig: null, wasClassified: false });
+    (parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>)
+      .mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
   });
 
   it('should route standalone "nfl scores" without prompting for content (guild mention)', async () => {
@@ -1182,7 +1182,7 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).not.toHaveBeenCalledWith(
-      'Please include a prompt or question after the keyword!'
+      'Please include a prompt or question after the tool name!'
     );
     expect(mockRouted).toHaveBeenCalled();
   });
@@ -1199,25 +1199,25 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).not.toHaveBeenCalledWith(
-      'Please include a prompt or question after the keyword!'
+      'Please include a prompt or question after the tool name!'
     );
     expect(mockRouted).toHaveBeenCalled();
   });
 
   it('should prompt for content when allowEmptyContent is absent', async () => {
     const noEmptyKw = {
-      keyword: '!nfl scores',
+      name: '!nfl scores',
       api: 'nfl' as const,
       timeout: 30,
       description: 'Get current NFL game scores',
     };
-    (config.getKeywords as jest.Mock).mockReturnValue([noEmptyKw, chatKw]);
+    (config.getTools as jest.Mock).mockReturnValue([noEmptyKw, chatKw]);
 
     const msg = createMentionedMessage('<@bot-123> !nfl scores');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).toHaveBeenCalledWith(
-      'Please include a prompt or question after the keyword!'
+      'Please include a prompt or question after the tool name!'
     );
   });
 
@@ -1233,7 +1233,7 @@ describe('MessageHandler standalone allowEmptyContent keywords', () => {
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).not.toHaveBeenCalledWith(
-      'Please include a prompt or question after the keyword!'
+      'Please include a prompt or question after the tool name!'
     );
     expect(mockRouted).toHaveBeenCalledWith(
       memeTemplatesKw,
@@ -1434,7 +1434,7 @@ describe('MessageHandler handleComfyUIResponse fallback content', () => {
   });
 });
 
-describe('MessageHandler reply-only-keyword for comfyui', () => {
+describe('MessageHandler reply-only-tool for comfyui', () => {
   function createComfyUIReplyMessage(content: string, referencedContent: string): any {
     const botUserId = 'bot-123';
     return {
@@ -1463,9 +1463,9 @@ describe('MessageHandler reply-only-keyword for comfyui', () => {
     };
   }
 
-  it('should use quoted content when user replies with only the keyword', async () => {
-    (config.getKeywords as jest.Mock).mockReturnValue([
-      { keyword: '!generate', api: 'comfyui', timeout: 300, description: 'Image gen' },
+  it('should use quoted content when user replies with only the tool name', async () => {
+    (config.getTools as jest.Mock).mockReturnValue([
+      { name: '!generate', api: 'comfyui', timeout: 300, description: 'Image gen' },
     ]);
     const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
     mockExecuteRoutedRequest.mockResolvedValueOnce({
@@ -1495,7 +1495,7 @@ describe('MessageHandler reply-only-keyword for comfyui', () => {
   });
 });
 
-describe('MessageHandler first-word keyword routing', () => {
+describe('MessageHandler first-word tool routing', () => {
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
 
   function createMentionedMessage(content: string): any {
@@ -1523,17 +1523,17 @@ describe('MessageHandler first-word keyword routing', () => {
     };
   }
 
-  const weatherKw = { keyword: '!weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
-  const nflKw = { keyword: '!nfl' as const, api: 'nfl' as const, timeout: 30, description: 'NFL generic' };
-  const nflScoresKw = { keyword: '!nfl scores' as const, api: 'nfl' as const, timeout: 30, description: 'NFL scores' };
-  const generateKw = { keyword: '!generate', api: 'comfyui' as const, timeout: 300, description: 'Image gen' };
+  const weatherKw = { name: '!weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
+  const nflKw = { name: '!nfl' as const, api: 'nfl' as const, timeout: 30, description: 'NFL generic' };
+  const nflScoresKw = { name: '!nfl scores' as const, api: 'nfl' as const, timeout: 30, description: 'NFL scores' };
+  const generateKw = { name: '!generate', api: 'comfyui' as const, timeout: 300, description: 'Image gen' };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([weatherKw, nflKw, nflScoresKw, generateKw]);
+    (config.getTools as jest.Mock).mockReturnValue([weatherKw, nflKw, nflScoresKw, generateKw]);
   });
 
-  it('should route to API when keyword is at message start', async () => {
+  it('should route to API when tool is at message start', async () => {
     mockExecuteRoutedRequest.mockResolvedValueOnce({
       finalResponse: { success: true, data: { text: 'Sunny' } },
       finalApi: 'accuweather',
@@ -1552,7 +1552,7 @@ describe('MessageHandler first-word keyword routing', () => {
     );
   });
 
-  it('should prefer longer keyword when both match at start', async () => {
+  it('should prefer longer tool name when both match at start', async () => {
     mockExecuteRoutedRequest.mockResolvedValueOnce({
       finalResponse: { success: true, data: { text: 'Scores' } },
       finalApi: 'nfl',
@@ -1571,7 +1571,7 @@ describe('MessageHandler first-word keyword routing', () => {
     );
   });
 
-  it('should NOT match keyword in middle of message — goes to two-stage', async () => {
+  it('should NOT match tool in middle of message — goes to two-stage', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValue({
       success: true,
@@ -1580,7 +1580,7 @@ describe('MessageHandler first-word keyword routing', () => {
 
     // classifyIntent returns no match so no API routing
     const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
-    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: true });
+    mockClassifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: true });
 
     const msg = createMentionedMessage('<@bot-123> what is the weather like');
     await messageHandler.handleMessage(msg);
@@ -1610,7 +1610,7 @@ describe('MessageHandler first-word keyword routing', () => {
     );
   });
 
-  it('should preserve "chat" in non-keyword messages (no stripping on default fallback)', async () => {
+  it('should preserve "chat" in non-tool messages (no stripping on default fallback)', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValue({
       success: true,
@@ -1618,12 +1618,12 @@ describe('MessageHandler first-word keyword routing', () => {
     });
 
     const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
-    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: true });
+    mockClassifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: true });
 
     const msg = createMentionedMessage('<@bot-123> let\'s chat about dogs');
     await messageHandler.handleMessage(msg);
 
-    // Content passed to Ollama should still contain "chat" — it was not a keyword match
+    // Content passed to Ollama should still contain "chat" — it was not a tool match
     expect(requestQueue.execute).toHaveBeenCalledWith(
       'ollama',
       'testuser',
@@ -1644,10 +1644,10 @@ describe('MessageHandler first-word keyword routing', () => {
 
   // ── SerpAPI "second opinion" routing regression ─────────────
 
-  it('should route "second opinion" keyword to SerpAPI via executeRoutedRequest', async () => {
-    const searchKw = { keyword: '!search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
-    const secondOpinionKw = { keyword: '!second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
-    (config.getKeywords as jest.Mock).mockReturnValue([searchKw, secondOpinionKw, weatherKw, generateKw]);
+  it('should route "second opinion" tool to SerpAPI via executeRoutedRequest', async () => {
+    const searchKw = { name: '!search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
+    const secondOpinionKw = { name: '!second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
+    (config.getTools as jest.Mock).mockReturnValue([searchKw, secondOpinionKw, weatherKw, generateKw]);
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
       finalResponse: { success: true, data: { text: '🔎 **Second opinion for:** *is water wet*\n\n🤖 **Google AI Overview:**\n> Water is wet.' } },
@@ -1670,9 +1670,9 @@ describe('MessageHandler first-word keyword routing', () => {
   });
 
   it('should prefer "second opinion" (longer) over "search" when both match at start', async () => {
-    const searchKw = { keyword: '!search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
-    const secondOpinionKw = { keyword: '!second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
-    (config.getKeywords as jest.Mock).mockReturnValue([searchKw, secondOpinionKw]);
+    const searchKw = { name: '!search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
+    const secondOpinionKw = { name: '!second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
+    (config.getTools as jest.Mock).mockReturnValue([searchKw, secondOpinionKw]);
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
       finalResponse: { success: true, data: { text: 'overview text' } },
@@ -1693,9 +1693,9 @@ describe('MessageHandler first-word keyword routing', () => {
   });
 
   it('should NOT route to SerpAPI when "second opinion" appears in the middle of the message', async () => {
-    const searchKw = { keyword: '!search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
-    const secondOpinionKw = { keyword: '!second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
-    (config.getKeywords as jest.Mock).mockReturnValue([searchKw, secondOpinionKw, weatherKw, generateKw]);
+    const searchKw = { name: '!search', api: 'serpapi' as const, timeout: 60, description: 'Search the web' };
+    const secondOpinionKw = { name: '!second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
+    (config.getTools as jest.Mock).mockReturnValue([searchKw, secondOpinionKw, weatherKw, generateKw]);
 
     const { requestQueue } = require('../src/utils/requestQueue');
     requestQueue.execute.mockResolvedValue({
@@ -1704,12 +1704,12 @@ describe('MessageHandler first-word keyword routing', () => {
     });
 
     const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
-    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: true });
+    mockClassifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: true });
 
     const msg = createMentionedMessage('<@bot-123> I want a second opinion on this');
     await messageHandler.handleMessage(msg);
 
-    // Should NOT have used the routed pipeline — keyword was not at message start
+    // Should NOT have used the routed pipeline — tool was not at message start
     expect(mockExecuteRoutedRequest).not.toHaveBeenCalled();
     expect(requestQueue.execute).toHaveBeenCalled();
   });
@@ -1718,7 +1718,7 @@ describe('MessageHandler first-word keyword routing', () => {
 describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () => {
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
 
-  const secondOpinionKw = { keyword: '!second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
+  const secondOpinionKw = { name: '!second opinion', api: 'serpapi' as const, timeout: 60, description: 'Get a second opinion via Google' };
 
   function createMentionedMessage(content: string): any {
     const botUserId = 'bot-123';
@@ -1747,7 +1747,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([secondOpinionKw]);
+    (config.getTools as jest.Mock).mockReturnValue([secondOpinionKw]);
   });
 
   it('should show user-facing fallback text when AIO is absent — not a generic error', async () => {
@@ -1755,7 +1755,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
       finalResponse: {
         success: true,
         data: {
-          text: '🔎 **Second opinion for:** *niche topic*\n\n⚠️ Google did not return an AI Overview for this query.\nThis can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.\n💡 *Tip: Try rephrasing your query or using the **search** keyword for full results.*',
+          text: '🔎 **Second opinion for:** *niche topic*\n\n⚠️ Google did not return an AI Overview for this query.\nThis can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.\n💡 *Tip: Try rephrasing your query or using the **web_search** tool for full results.*',
           raw: {},
         },
       },
@@ -1781,7 +1781,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
       finalResponse: {
         success: true,
         data: {
-          text: '🔎 **Second opinion for:** *restricted*\n\n⚠️ Google AI Overview returned an error: Content restriction\nThis can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.\n💡 *Tip: Try rephrasing your query or using the **search** keyword for full results.*',
+          text: '🔎 **Second opinion for:** *restricted*\n\n⚠️ Google AI Overview returned an error: Content restriction\nThis can happen when the topic is too niche, ambiguous, or not well-suited for an AI-generated summary.\n💡 *Tip: Try rephrasing your query or using the **web_search** tool for full results.*',
           raw: {},
         },
       },
@@ -1816,10 +1816,10 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
   });
 });
 
-describe('MessageHandler SerpAPI find content keyword routing', () => {
+describe('MessageHandler SerpAPI find content tool routing', () => {
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
 
-  const findContentKw = { keyword: '!find content', api: 'serpapi' as const, timeout: 60, description: 'Find pertinent web content', contextFilterMaxDepth: 1 };
+  const findContentKw = { name: '!find content', api: 'serpapi' as const, timeout: 60, description: 'Find pertinent web content', contextFilterMaxDepth: 1 };
 
   function createMentionedMessage(content: string): any {
     const botUserId = 'bot-123';
@@ -1846,11 +1846,11 @@ describe('MessageHandler SerpAPI find content keyword routing', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([findContentKw]);
+    (config.getTools as jest.Mock).mockReturnValue([findContentKw]);
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
-      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
-      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+      .mockResolvedValue({ toolConfig: null, wasClassified: false });
+    (parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>)
+      .mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
   });
 
   it('should route "find content <topic>" through serpapi pipeline', async () => {
@@ -1875,7 +1875,7 @@ describe('MessageHandler SerpAPI find content keyword routing', () => {
       })
     );
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ keyword: '!find content', api: 'serpapi' }),
+      expect.objectContaining({ name: '!find content', api: 'serpapi' }),
       'TypeScript generics',
       'testuser',
       expect.any(Array),
@@ -1889,16 +1889,16 @@ describe('MessageHandler SerpAPI find content keyword routing', () => {
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).toHaveBeenCalledWith(
-      'Please include a prompt or question after the keyword!'
+      'Please include a prompt or question after the tool name!'
     );
     expect(logger.logIgnored).toHaveBeenCalled();
   });
 });
 
-describe('MessageHandler standalone help keyword uses actual config flag', () => {
+describe('MessageHandler standalone help tool uses actual config flag', () => {
   const _mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
 
-  const helpKw = { keyword: '!help', api: 'ollama' as const, timeout: 120, description: 'Show help', builtin: true, allowEmptyContent: true };
+  const helpKw = { name: '!help', api: 'ollama' as const, timeout: 120, description: 'Show help', builtin: true, allowEmptyContent: true };
 
   function createDmMessage(content: string): any {
     const sharedGuild = {
@@ -1929,11 +1929,11 @@ describe('MessageHandler standalone help keyword uses actual config flag', () =>
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([helpKw]);
+    (config.getTools as jest.Mock).mockReturnValue([helpKw]);
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
-      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
-      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+      .mockResolvedValue({ toolConfig: null, wasClassified: false });
+    (parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>)
+      .mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
   });
 
   it('should NOT reject standalone "help" when allowEmptyContent is true', async () => {
@@ -1947,21 +1947,21 @@ describe('MessageHandler standalone help keyword uses actual config flag', () =>
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).not.toHaveBeenCalledWith(
-      'Please include a prompt or question after the keyword!'
+      'Please include a prompt or question after the tool name!'
     );
     expect(msg.reply).toHaveBeenCalled();
   });
 
   it('should reject standalone "help" when allowEmptyContent is absent', async () => {
     const { logger } = require('../src/utils/logger');
-    const helpNoEmpty = { keyword: '!help', api: 'ollama' as const, timeout: 120, description: 'Show help', builtin: true };
-    (config.getKeywords as jest.Mock).mockReturnValue([helpNoEmpty]);
+    const helpNoEmpty = { name: '!help', api: 'ollama' as const, timeout: 120, description: 'Show help', builtin: true };
+    (config.getTools as jest.Mock).mockReturnValue([helpNoEmpty]);
 
     const msg = createDmMessage('!help');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).toHaveBeenCalledWith(
-      'Please include a prompt or question after the keyword!'
+      'Please include a prompt or question after the tool name!'
     );
     expect(logger.logIgnored).toHaveBeenCalled();
   });
@@ -1970,7 +1970,7 @@ describe('MessageHandler standalone help keyword uses actual config flag', () =>
 describe('MessageHandler two-stage evaluation', () => {
   const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
-  const mockParseFirstLineKeyword = parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>;
+  const mockparseFirstLineTool = parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>;
 
   function createMentionedMessage(content: string): any {
     const botUserId = 'bot-123';
@@ -1997,23 +1997,23 @@ describe('MessageHandler two-stage evaluation', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([]);
-    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    mockParseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    (config.getTools as jest.Mock).mockReturnValue([]);
+    mockClassifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: false });
+    mockparseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
   });
 
-  it('should return Ollama response as direct chat when model does not include keyword directive', async () => {
+  it('should return Ollama response as direct chat when model does not include tool directive', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
-    // Ollama response — no keyword directive on first line
+    // Ollama response — no tool directive on first line
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
       data: { text: 'I can check the weather for you!' },
     });
 
-    // parseFirstLineKeyword does NOT match (no directive on first line)
-    mockParseFirstLineKeyword.mockReturnValueOnce({
-      keywordConfig: null,
+    // parseFirstLineTool does NOT match (no directive on first line)
+    mockparseFirstLineTool.mockReturnValueOnce({
+      toolConfig: null,
       parsedLine: '',
       matched: false,
     });
@@ -2035,8 +2035,8 @@ describe('MessageHandler two-stage evaluation', () => {
   it('should route using inferred first-line parameters when provided by parser', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
-    const weatherKeyword = {
-      keyword: '!weather',
+    const weatherTool = {
+      name: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -2047,8 +2047,8 @@ describe('MessageHandler two-stage evaluation', () => {
       data: { text: 'weather: Seattle, WA\nLet me check that.' },
     });
 
-    mockParseFirstLineKeyword.mockReturnValueOnce({
-      keywordConfig: weatherKeyword,
+    mockparseFirstLineTool.mockReturnValueOnce({
+      toolConfig: weatherTool,
       parsedLine: 'weather seattle wa',
       matched: true,
       inferredInput: 'Seattle, WA',
@@ -2064,7 +2064,7 @@ describe('MessageHandler two-stage evaluation', () => {
     await messageHandler.handleMessage(msg);
 
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ ...weatherKeyword, finalOllamaPass: true }),
+      expect.objectContaining({ ...weatherTool, finalOllamaPass: true }),
       'Seattle, WA',
       'testuser',
       [{ role: 'user', content: 'testuser: is it going to rain in Seattle', contextSource: 'trigger', hasNamePrefix: true }],
@@ -2072,11 +2072,11 @@ describe('MessageHandler two-stage evaluation', () => {
     );
   });
 
-  it('should send commentary prelude and inline-replace directive keyword before routed response', async () => {
+  it('should send commentary prelude and inline-replace directive tool name before routed response', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
-    const weatherKeyword = {
-      keyword: '!weather',
+    const weatherTool = {
+      name: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -2087,8 +2087,8 @@ describe('MessageHandler two-stage evaluation', () => {
       data: { text: 'Commentary + directive' },
     });
 
-    mockParseFirstLineKeyword.mockReturnValueOnce({
-      keywordConfig: weatherKeyword,
+    mockparseFirstLineTool.mockReturnValueOnce({
+      toolConfig: weatherTool,
       parsedLine: 'weather seattle wa',
       matched: true,
       inferredInput: 'Seattle, WA',
@@ -2112,14 +2112,14 @@ describe('MessageHandler two-stage evaluation', () => {
     );
   });
 
-  it('should preserve inline inferred params for keyword-only implicit ability invocation', async () => {
+  it('should preserve inline inferred params for tool-only implicit ability invocation', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
-    const imagineKeyword = {
-      keyword: 'imagine',
+    const imagineTool = {
+      name: 'imagine',
       api: 'comfyui' as const,
       timeout: 120,
-      description: 'Generate image using alternate keyword',
+      description: 'Generate image using alternate tool name',
       abilityInputs: {
         mode: 'implicit' as const,
       },
@@ -2130,8 +2130,8 @@ describe('MessageHandler two-stage evaluation', () => {
       data: { text: '!imagine alien guy saying "whoa, aliens"' },
     });
 
-    mockParseFirstLineKeyword.mockReturnValueOnce({
-      keywordConfig: imagineKeyword,
+    mockparseFirstLineTool.mockReturnValueOnce({
+      toolConfig: imagineTool,
       parsedLine: '!imagine alien guy saying "whoa, aliens"',
       matched: true,
       inferredInput: 'alien guy saying "whoa, aliens"',
@@ -2147,7 +2147,7 @@ describe('MessageHandler two-stage evaluation', () => {
     await messageHandler.handleMessage(msg);
 
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ ...imagineKeyword, finalOllamaPass: false }),
+      expect.objectContaining({ ...imagineTool, finalOllamaPass: false }),
       'alien guy saying "whoa, aliens"',
       'testuser',
       [{ role: 'user', content: 'testuser: imagine', contextSource: 'trigger', hasNamePrefix: true }],
@@ -2155,11 +2155,11 @@ describe('MessageHandler two-stage evaluation', () => {
     );
   });
 
-  it('should force finalOllamaPass true for model-inferred abilities even when keyword config omits it', async () => {
+  it('should force finalOllamaPass true for model-inferred abilities even when tool config omits it', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
-    const searchKeyword = {
-      keyword: '!search',
+    const searchTool = {
+      name: '!search',
       api: 'serpapi' as const,
       timeout: 60,
       description: 'Search web',
@@ -2171,8 +2171,8 @@ describe('MessageHandler two-stage evaluation', () => {
       data: { text: 'search: latest AI news\nLet me look that up.' },
     });
 
-    mockParseFirstLineKeyword.mockReturnValueOnce({
-      keywordConfig: searchKeyword,
+    mockparseFirstLineTool.mockReturnValueOnce({
+      toolConfig: searchTool,
       parsedLine: 'search latest ai news',
       matched: true,
       inferredInput: 'latest AI news',
@@ -2189,7 +2189,7 @@ describe('MessageHandler two-stage evaluation', () => {
 
     // Model-inferred abilities must always set finalOllamaPass: true
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ ...searchKeyword, finalOllamaPass: true }),
+      expect.objectContaining({ ...searchTool, finalOllamaPass: true }),
       'latest AI news',
       'testuser',
       expect.anything(),
@@ -2197,7 +2197,7 @@ describe('MessageHandler two-stage evaluation', () => {
     );
   });
 
-  it('should return Ollama response when second classification finds no API keyword', async () => {
+  it('should return Ollama response when second classification finds no API tool name', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
     // Ollama response (generic chat, no API suggestion)
@@ -2208,7 +2208,7 @@ describe('MessageHandler two-stage evaluation', () => {
 
     // classifyIntent (on Ollama response): no match
     mockClassifyIntent.mockResolvedValueOnce({
-      keywordConfig: null,
+      toolConfig: null,
       wasClassified: true,
     });
 
@@ -2231,15 +2231,15 @@ describe('MessageHandler two-stage evaluation', () => {
       data: { text: 'Which meme template (and any top/bottom text) should I use?' },
     });
 
-    const memeKeyword = {
-      keyword: '!meme',
+    const memeTool = {
+      name: '!meme',
       api: 'meme' as const,
       timeout: 60,
       description: 'Create meme images',
     };
 
     mockClassifyIntent.mockResolvedValueOnce({
-      keywordConfig: memeKeyword,
+      toolConfig: memeTool,
       wasClassified: true,
     });
 
@@ -2260,15 +2260,15 @@ describe('MessageHandler two-stage evaluation', () => {
       data: { text: 'The square root is 16.' },
     });
 
-    const memeKeyword = {
-      keyword: '!meme',
+    const memeTool = {
+      name: '!meme',
       api: 'meme' as const,
       timeout: 60,
       description: 'Create meme images',
     };
 
     mockClassifyIntent.mockResolvedValueOnce({
-      keywordConfig: memeKeyword,
+      toolConfig: memeTool,
       wasClassified: true,
     });
 
@@ -2281,7 +2281,7 @@ describe('MessageHandler two-stage evaluation', () => {
     );
   });
 
-  it('should skip second classification when second classify finds ollama keyword', async () => {
+  it('should skip second classification when second classify finds ollama tool name', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
     requestQueue.execute.mockResolvedValueOnce({
@@ -2289,16 +2289,16 @@ describe('MessageHandler two-stage evaluation', () => {
       data: { text: 'Let me think about that...' },
     });
 
-    // classifyIntent (on Ollama response) returns an ollama keyword (should be treated as no API match)
+    // classifyIntent (on Ollama response) returns an ollama tool (should be treated as no API match)
     mockClassifyIntent.mockResolvedValueOnce({
-      keywordConfig: { keyword: '!chat', api: 'ollama' as const, timeout: 300, description: 'Chat' },
+      toolConfig: { name: '!chat', api: 'ollama' as const, timeout: 300, description: 'Chat' },
       wasClassified: true,
     });
 
     const msg = createMentionedMessage('<@bot-123> tell me a joke');
     await messageHandler.handleMessage(msg);
 
-    // Should NOT route to API since the keyword is ollama
+    // Should NOT route to API since the tool is ollama
     expect(mockExecuteRoutedRequest).not.toHaveBeenCalled();
   });
 
@@ -2351,7 +2351,7 @@ describe('MessageHandler two-stage evaluation', () => {
 describe('MessageHandler trigger message attribution', () => {
   const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
-  const mockParseFirstLineKeyword = parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>;
+  const mockparseFirstLineTool = parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>;
 
   function createMentionedMessage(content: string, username = 'testuser'): any {
     const botUserId = 'bot-123';
@@ -2378,13 +2378,13 @@ describe('MessageHandler trigger message attribution', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    mockParseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    mockClassifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: false });
+    mockparseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
   });
 
-  it('should append trigger message with contextSource for direct keyword path', async () => {
-    const weatherKw = { keyword: '!weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
-    (config.getKeywords as jest.Mock).mockReturnValue([weatherKw]);
+  it('should append trigger message with contextSource for direct tool path', async () => {
+    const weatherKw = { name: '!weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
+    (config.getTools as jest.Mock).mockReturnValue([weatherKw]);
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
       finalResponse: { success: true, data: { text: 'Sunny' } },
@@ -2415,13 +2415,13 @@ describe('MessageHandler trigger message attribution', () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
     const weatherKwWithFinalPass = {
-      keyword: '!weather',
+      name: '!weather',
       api: 'accuweather' as const,
       timeout: 120,
       description: 'Weather',
       finalOllamaPass: true,
     };
-    (config.getKeywords as jest.Mock).mockReturnValue([]);
+    (config.getTools as jest.Mock).mockReturnValue([]);
 
     // Stage 1: Ollama response
     requestQueue.execute.mockResolvedValueOnce({
@@ -2429,9 +2429,9 @@ describe('MessageHandler trigger message attribution', () => {
       data: { text: 'weather\nLet me check the weather for you.' },
     });
 
-    // parseFirstLineKeyword matches "weather"
-    mockParseFirstLineKeyword.mockReturnValueOnce({
-      keywordConfig: weatherKwWithFinalPass,
+    // parseFirstLineTool matches "weather"
+    mockparseFirstLineTool.mockReturnValueOnce({
+      toolConfig: weatherKwWithFinalPass,
       parsedLine: 'weather',
       matched: true,
     });
@@ -2462,8 +2462,8 @@ describe('MessageHandler trigger message attribution', () => {
   });
 
   it('should properly form trigger message when content has special characters', async () => {
-    const weatherKw = { keyword: '!weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
-    (config.getKeywords as jest.Mock).mockReturnValue([weatherKw]);
+    const weatherKw = { name: '!weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
+    (config.getTools as jest.Mock).mockReturnValue([weatherKw]);
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
       finalResponse: { success: true, data: { text: 'Sunny' } },
@@ -2517,11 +2517,11 @@ describe('MessageHandler DM handling', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([]);
+    (config.getTools as jest.Mock).mockReturnValue([]);
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
-      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
-      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+      .mockResolvedValue({ toolConfig: null, wasClassified: false });
+    (parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>)
+      .mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
   });
 
   it('should accept DM messages without mentions or replies', async () => {
@@ -2578,7 +2578,7 @@ describe('MessageHandler DM handling', () => {
   });
 });
 
-describe('MessageHandler empty-content bypass for NFL keywords', () => {
+describe('MessageHandler empty-content bypass for NFL tools', () => {
   function createDmMessage(content: string): any {
     const botUserId = 'bot-123';
     const sharedGuild = {
@@ -2611,15 +2611,15 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([
-      { keyword: '!nfl scores', api: 'nfl', timeout: 30, description: 'All scores', allowEmptyContent: true },
-      { keyword: '!nfl news', api: 'nfl', timeout: 30, description: 'NFL news', allowEmptyContent: true },
-      { keyword: '!generate', api: 'comfyui', timeout: 60, description: 'Generate image' },
+    (config.getTools as jest.Mock).mockReturnValue([
+      { name: '!nfl scores', api: 'nfl', timeout: 30, description: 'All scores', allowEmptyContent: true },
+      { name: '!nfl news', api: 'nfl', timeout: 30, description: 'NFL news', allowEmptyContent: true },
+      { name: '!generate', api: 'comfyui', timeout: 60, description: 'Generate image' },
     ]);
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
-      .mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
-      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+      .mockResolvedValue({ toolConfig: null, wasClassified: false });
+    (parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>)
+      .mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
   });
 
   it('should NOT reply with empty-content error for "nfl scores" with no extra text', async () => {
@@ -2635,20 +2635,20 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
 
     // Should NOT show the "please include a prompt" message
     expect(msg.reply).not.toHaveBeenCalledWith(
-      'Please include a prompt or question after the keyword!'
+      'Please include a prompt or question after the tool name!'
     );
     // Should have called executeRoutedRequest
     expect(mockRouted).toHaveBeenCalled();
   });
 
-  it('should still reject empty content for keywords without allowEmptyContent', async () => {
+  it('should still reject empty content for tools without allowEmptyContent', async () => {
     const { logger } = require('../src/utils/logger');
     const msg = createDmMessage('!generate');
     await messageHandler.handleMessage(msg);
 
     // Should show the "please include a prompt" message
     expect(msg.reply).toHaveBeenCalledWith(
-      'Please include a prompt or question after the keyword!'
+      'Please include a prompt or question after the tool name!'
     );
     expect(logger.logIgnored).toHaveBeenCalled();
   });
@@ -2665,7 +2665,7 @@ describe('MessageHandler empty-content bypass for NFL keywords', () => {
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).not.toHaveBeenCalledWith(
-      'Please include a prompt or question after the keyword!'
+      'Please include a prompt or question after the tool name!'
     );
     expect(mockRouted).toHaveBeenCalled();
   });
@@ -2676,7 +2676,7 @@ describe('MessageHandler — Context Evaluation integration', () => {
   const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
 
   const ctxEvalKw = {
-    keyword: '!chat',
+    name: '!chat',
     api: 'ollama' as const,
     timeout: 300,
     description: 'Chat',
@@ -2712,7 +2712,7 @@ describe('MessageHandler — Context Evaluation integration', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([ctxEvalKw]);
+    (config.getTools as jest.Mock).mockReturnValue([ctxEvalKw]);
     (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
     (config.getContextEvalEnabled as jest.Mock).mockReturnValue(true);
     mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
@@ -2721,10 +2721,10 @@ describe('MessageHandler — Context Evaluation integration', () => {
   it('should not call evaluateContextWindow when channel history is empty and no reply', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const { classifyIntent } = require('../src/utils/keywordClassifier');
-    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+    const { parseFirstLineTool } = require('../src/utils/promptBuilder');
 
-    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    classifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: false });
+    parseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
 
     // Ollama direct chat response
     requestQueue.execute.mockResolvedValueOnce({
@@ -2743,10 +2743,10 @@ describe('MessageHandler — Context Evaluation integration', () => {
   it('should call evaluateContextWindow when channel history is non-empty (guild mention, no reply)', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const { classifyIntent } = require('../src/utils/keywordClassifier');
-    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+    const { parseFirstLineTool } = require('../src/utils/promptBuilder');
 
-    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    classifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: false });
+    parseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
 
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
@@ -2773,13 +2773,13 @@ describe('MessageHandler — Context Evaluation integration', () => {
     expect(mockEvaluate).toHaveBeenCalled();
   });
 
-  it('should apply configured chat context filter for no-keyword default chat fallback', async () => {
+  it('should apply configured chat context filter for no-tool default chat fallback', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const { classifyIntent } = require('../src/utils/keywordClassifier');
-    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+    const { parseFirstLineTool } = require('../src/utils/promptBuilder');
 
-    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    classifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: false });
+    parseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
 
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
@@ -2807,12 +2807,12 @@ describe('MessageHandler — Context Evaluation integration', () => {
   it('should skip evaluateContextWindow when global context evaluation is disabled', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const { classifyIntent } = require('../src/utils/keywordClassifier');
-    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+    const { parseFirstLineTool } = require('../src/utils/promptBuilder');
 
     (config.getContextEvalEnabled as jest.Mock).mockReturnValue(false);
 
-    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    classifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: false });
+    parseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
 
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
@@ -3127,7 +3127,7 @@ describe('MessageHandler collectChannelHistory — parameterized depth', () => {
   });
 });
 
-describe('MessageHandler guild context — maxContextDepth = min(keyword, global)', () => {
+describe('MessageHandler guild context — maxContextDepth = min(tool, global)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
@@ -3135,25 +3135,25 @@ describe('MessageHandler guild context — maxContextDepth = min(keyword, global
     (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
   });
 
-  it('should cap collated context at min(keywordMax, globalMax)', async () => {
-    // Keyword has contextFilterMaxDepth = 5, global = 30 → effective = 5
+  it('should cap collated context at min(toolMax, globalMax)', async () => {
+    // Tool has contextFilterMaxDepth = 5, global = 30 → effective = 5
     const kw = {
-      keyword: '!chat',
+      name: '!chat',
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
       contextFilterMaxDepth: 5,
     };
-    (config.getKeywords as jest.Mock).mockReturnValue([kw]);
+    (config.getTools as jest.Mock).mockReturnValue([kw]);
 
     const { requestQueue } = require('../src/utils/requestQueue');
     const { classifyIntent } = require('../src/utils/keywordClassifier');
-    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+    const { parseFirstLineTool } = require('../src/utils/promptBuilder');
     const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
     const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
 
-    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    classifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: false });
+    parseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
     mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
 
     requestQueue.execute.mockResolvedValueOnce({
@@ -3161,7 +3161,7 @@ describe('MessageHandler guild context — maxContextDepth = min(keyword, global
       data: { text: 'Response!' },
     });
 
-    // Create 10 channel messages — more than the keyword max of 5
+    // Create 10 channel messages — more than the tool max of 5
     const channelMessages = new Map(
       Array.from({ length: 10 }, (_, i) => [
         `ch-${i}`,
@@ -3210,7 +3210,7 @@ describe('MessageHandler guild context — maxContextDepth = min(keyword, global
       expect(historyArg.length).toBeLessThanOrEqual(5);
     }
 
-    // channel.messages.fetch should use keyword max (5+1=6), not global (30+1=31)
+    // channel.messages.fetch should use tool max (5+1=6), not global (30+1=31)
     expect(msg.channel.messages.fetch).toHaveBeenCalledWith({
       limit: 6,
       before: 'trigger-msg',
@@ -3229,21 +3229,21 @@ describe('MessageHandler thread source promotion', () => {
 
   it('should promote thread history to primary when no reply chain exists', async () => {
     const kw = {
-      keyword: '!chat',
+      name: '!chat',
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
     };
-    (config.getKeywords as jest.Mock).mockReturnValue([kw]);
+    (config.getTools as jest.Mock).mockReturnValue([kw]);
 
     const { requestQueue } = require('../src/utils/requestQueue');
     const { classifyIntent } = require('../src/utils/keywordClassifier');
-    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+    const { parseFirstLineTool } = require('../src/utils/promptBuilder');
     const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
     const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
 
-    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    classifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: false });
+    parseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
     mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
 
     requestQueue.execute.mockResolvedValueOnce({
@@ -3309,21 +3309,21 @@ describe('MessageHandler thread source promotion', () => {
 
   it('should NOT promote channel history to primary when in a non-thread channel', async () => {
     const kw = {
-      keyword: '!chat',
+      name: '!chat',
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
     };
-    (config.getKeywords as jest.Mock).mockReturnValue([kw]);
+    (config.getTools as jest.Mock).mockReturnValue([kw]);
 
     const { requestQueue } = require('../src/utils/requestQueue');
     const { classifyIntent } = require('../src/utils/keywordClassifier');
-    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+    const { parseFirstLineTool } = require('../src/utils/promptBuilder');
     const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
     const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
 
-    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    classifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: false });
+    parseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
     mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
 
     requestQueue.execute.mockResolvedValueOnce({
@@ -3786,14 +3786,14 @@ describe('MessageHandler handleMessage — ALLOW_BOT_INTERACTIONS gating', () =>
 
   it('should process other bot messages when ALLOW_BOT_INTERACTIONS is true', async () => {
     (config.getAllowBotInteractions as jest.Mock).mockReturnValue(true);
-    (config.getKeywords as jest.Mock).mockReturnValue([]);
+    (config.getTools as jest.Mock).mockReturnValue([]);
 
     const { requestQueue } = require('../src/utils/requestQueue');
     const { classifyIntent } = require('../src/utils/keywordClassifier');
-    const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
+    const { parseFirstLineTool } = require('../src/utils/promptBuilder');
 
-    classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    classifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: false });
+    parseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
       data: { text: 'Reply to bot!' },
@@ -3851,7 +3851,7 @@ describe('MessageHandler handleMessage — ALLOW_BOT_INTERACTIONS gating', () =>
 describe('MessageHandler activity event emission', () => {
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
   const mockClassifyIntent = classifyIntent as jest.MockedFunction<typeof classifyIntent>;
-  const mockParseFirstLineKeyword = parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>;
+  const mockparseFirstLineTool = parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>;
 
   function createMsg(content: string, isDM = false): any {
     const botUserId = 'bot-123';
@@ -3884,9 +3884,9 @@ describe('MessageHandler activity event emission', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (messageHandler as any).lastErrorMessageTime = 0;
-    (config.getKeywords as jest.Mock).mockReturnValue([]);
-    mockClassifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
-    mockParseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    (config.getTools as jest.Mock).mockReturnValue([]);
+    mockClassifyIntent.mockResolvedValue({ toolConfig: null, wasClassified: false });
+    mockparseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
   });
 
   it('emits message_received for DM', async () => {
@@ -3895,7 +3895,7 @@ describe('MessageHandler activity event emission', () => {
       success: true,
       data: { text: 'Hello there!' },
     });
-    mockClassifyIntent.mockResolvedValueOnce({ keywordConfig: null, wasClassified: false });
+    mockClassifyIntent.mockResolvedValueOnce({ toolConfig: null, wasClassified: false });
 
     const msg = createMsg('hello', true);
     await messageHandler.handleMessage(msg);
@@ -3909,7 +3909,7 @@ describe('MessageHandler activity event emission', () => {
       success: true,
       data: { text: 'Hi!' },
     });
-    mockClassifyIntent.mockResolvedValueOnce({ keywordConfig: null, wasClassified: false });
+    mockClassifyIntent.mockResolvedValueOnce({ toolConfig: null, wasClassified: false });
 
     const msg = createMsg('hi');
     await messageHandler.handleMessage(msg);
@@ -3917,14 +3917,14 @@ describe('MessageHandler activity event emission', () => {
     expect(activityEvents.emitMessageReceived).toHaveBeenCalledWith(false, 'hi');
   });
 
-  it('emits routing_decision on keyword match path', async () => {
-    const weatherKeyword = {
-      keyword: '!weather',
+  it('emits routing_decision on tool match path', async () => {
+    const weatherTool = {
+      name: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
     };
-    (config.getKeywords as jest.Mock).mockReturnValue([weatherKeyword]);
+    (config.getTools as jest.Mock).mockReturnValue([weatherTool]);
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
       finalResponse: { success: true, data: { text: 'Sunny, 72°F' } },
@@ -3940,10 +3940,10 @@ describe('MessageHandler activity event emission', () => {
     );
   });
 
-  it('emits routing_decision on two-stage keyword parse', async () => {
+  it('emits routing_decision on two-stage tool parse', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
-    const weatherKeyword = {
-      keyword: '!weather',
+    const weatherTool = {
+      name: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -3955,9 +3955,9 @@ describe('MessageHandler activity event emission', () => {
       data: { text: 'weather\nLet me check that' },
     });
 
-    // parseFirstLineKeyword matches
-    mockParseFirstLineKeyword.mockReturnValueOnce({
-      keywordConfig: weatherKeyword,
+    // parseFirstLineTool matches
+    mockparseFirstLineTool.mockReturnValueOnce({
+      toolConfig: weatherTool,
       parsedLine: 'weather',
       matched: true,
     });
@@ -3982,7 +3982,7 @@ describe('MessageHandler activity event emission', () => {
       success: true,
       data: { text: 'The answer is 42.' },
     });
-    mockClassifyIntent.mockResolvedValueOnce({ keywordConfig: null, wasClassified: false });
+    mockClassifyIntent.mockResolvedValueOnce({ toolConfig: null, wasClassified: false });
 
     const msg = createMsg('meaning of life');
     await messageHandler.handleMessage(msg);
@@ -4003,13 +4003,13 @@ describe('MessageHandler activity event emission', () => {
   });
 
   it('emits error when dispatch receives failed response', async () => {
-    const weatherKeyword = {
-      keyword: '!weather',
+    const weatherTool = {
+      name: '!weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
     };
-    (config.getKeywords as jest.Mock).mockReturnValue([weatherKeyword]);
+    (config.getTools as jest.Mock).mockReturnValue([weatherTool]);
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
       finalResponse: { success: false, error: 'Location not found' },
@@ -4031,7 +4031,7 @@ describe('MessageHandler activity event emission', () => {
       success: true,
       data: { text: 'Hi!' },
     });
-    mockClassifyIntent.mockResolvedValueOnce({ keywordConfig: null, wasClassified: false });
+    mockClassifyIntent.mockResolvedValueOnce({ toolConfig: null, wasClassified: false });
 
     const msg = createMsg('secret password 12345');
     await messageHandler.handleMessage(msg);
@@ -4108,7 +4108,7 @@ describe('MessageHandler DM guild-membership gate', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([]);
+    (config.getTools as jest.Mock).mockReturnValue([]);
     (config.getAllowBotInteractions as jest.Mock).mockReturnValue(false);
     (config.getReplyChainEnabled as jest.Mock).mockReturnValue(false);
   });
@@ -4201,12 +4201,12 @@ describe('MessageHandler DM guild-membership gate', () => {
   });
 });
 
-describe('MessageHandler activity_key keyword', () => {
+describe('MessageHandler activity_key tool name', () => {
   const { logger } = require('../src/utils/logger');
   const { activityKeyManager } = require('../src/utils/activityKeyManager');
 
   const activityKeyKw = {
-    keyword: '!activity_key',
+    name: '!activity_key',
     api: 'ollama' as const,
     timeout: 10,
     description: 'Request a temporary access key for the activity monitor',
@@ -4268,7 +4268,7 @@ describe('MessageHandler activity_key keyword', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([activityKeyKw]);
+    (config.getTools as jest.Mock).mockReturnValue([activityKeyKw]);
     (config.getAllowBotInteractions as jest.Mock).mockReturnValue(false);
     (config.getReplyChainEnabled as jest.Mock).mockReturnValue(false);
     (config.getActivityKeyTtl as jest.Mock).mockReturnValue(300);
@@ -4309,7 +4309,7 @@ describe('MessageHandler activity_key keyword', () => {
     const msg = createDmMsg('!activity_key something');
     await messageHandler.handleMessage(msg);
 
-    // It should NOT have issued a key — it doesn't match the standalone keyword
+    // It should NOT have issued a key — it doesn't match the standalone tool
     expect(activityKeyManager.issueKey).not.toHaveBeenCalled();
   });
 
@@ -4339,17 +4339,17 @@ describe('MessageHandler activity_key keyword', () => {
     expect(activityEvents.emitMessageReceived).not.toHaveBeenCalled();
   });
 
-  it('should match when config stores keyword without ! prefix (prefix normalisation)', async () => {
-    // Override the keyword config to use unprefixed keyword, matching runtime config/tools.xml
+  it('should match when config stores name without ! prefix (prefix normalisation)', async () => {
+    // Override the tool config to use unprefixed name, matching runtime config/tools.xml
     const unprefixedKw = {
-      keyword: 'activity_key',
+      name: 'activity_key',
       api: 'ollama' as const,
       timeout: 10,
       description: 'Request key',
       builtin: true,
       allowEmptyContent: true,
     };
-    (config.getKeywords as jest.Mock).mockReturnValue([unprefixedKw]);
+    (config.getTools as jest.Mock).mockReturnValue([unprefixedKw]);
 
     const msg = createDmMsg('!activity_key');
     await messageHandler.handleMessage(msg);
@@ -4391,20 +4391,20 @@ describe('MessageHandler meme two-stage routing fallback', () => {
   }
 
   const memeKw = {
-    keyword: '!meme',
+    name: '!meme',
     api: 'meme' as const,
     timeout: 60,
     description: 'Create funny meme images',
     abilityInputs: { mode: 'implicit' as const },
   };
-  const chatKw = { keyword: '!chat', api: 'ollama' as const, timeout: 60, description: 'Chat' };
+  const chatKw = { name: '!chat', api: 'ollama' as const, timeout: 60, description: 'Chat' };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (config.getKeywords as jest.Mock).mockReturnValue([memeKw, chatKw]);
+    (config.getTools as jest.Mock).mockReturnValue([memeKw, chatKw]);
     (config.getReplyChainEnabled as jest.Mock).mockReturnValue(false);
-    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
-      .mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
+    (parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>)
+      .mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
   });
 
   it('routes likely meme requests through meme API when first-line directive is missing', async () => {
@@ -4437,7 +4437,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
     );
 
     expect(executeRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ keyword: '!meme', api: 'meme', finalOllamaPass: false }),
+      expect.objectContaining({ name: '!meme', api: 'meme', finalOllamaPass: false }),
       'fwp | Just got my license | Now every road is a final boss',
       'testuser',
       [{ role: 'user', content: 'testuser: can you make a meme about a kid learning to drive', contextSource: 'trigger', hasNamePrefix: true }],
@@ -4458,11 +4458,11 @@ describe('MessageHandler meme two-stage routing fallback', () => {
       data: { text: '!meme fwp | line 1 | line 2' },
     });
 
-    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+    (parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>)
       .mockReturnValueOnce({
         matched: true,
         parsedLine: '!meme fwp | line 1 | line 2',
-        keywordConfig: memeKw,
+        toolConfig: memeKw,
         inferredInput: 'fwp | line 1 | line 2',
       });
 
@@ -4484,7 +4484,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
 
     // Should use the first-stage inline input directly
     expect(executeRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ keyword: '!meme', api: 'meme', finalOllamaPass: false }),
+      expect.objectContaining({ name: '!meme', api: 'meme', finalOllamaPass: false }),
       'fwp | line 1 | line 2',
       'testuser',
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
@@ -4499,11 +4499,11 @@ describe('MessageHandler meme two-stage routing fallback', () => {
       data: { text: '!meme' },
     });
 
-    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+    (parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>)
       .mockReturnValueOnce({
         matched: true,
         parsedLine: '!meme',
-        keywordConfig: memeKw,
+        toolConfig: memeKw,
         // No inferredInput — second-pass inference should kick in
       });
 
@@ -4535,7 +4535,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
 
     // Should use the inferred result
     expect(executeRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ keyword: '!meme', api: 'meme', finalOllamaPass: false }),
+      expect.objectContaining({ name: '!meme', api: 'meme', finalOllamaPass: false }),
       'fwp | inferred top | inferred bottom',
       'testuser',
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
@@ -4550,11 +4550,11 @@ describe('MessageHandler meme two-stage routing fallback', () => {
       data: { text: '!meme fwp | line 1 | line 2' },
     });
 
-    (parseFirstLineKeyword as jest.MockedFunction<typeof parseFirstLineKeyword>)
+    (parseFirstLineTool as jest.MockedFunction<typeof parseFirstLineTool>)
       .mockReturnValueOnce({
         matched: true,
         parsedLine: '!meme fwp | line 1 | line 2',
-        keywordConfig: memeKw,
+        toolConfig: memeKw,
         inferredInput: 'fwp | line 1 | line 2',
       });
 

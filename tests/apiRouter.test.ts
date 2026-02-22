@@ -14,7 +14,7 @@ jest.mock('../src/utils/config', () => ({
     getAccuWeatherApiKey: jest.fn(() => ''),
     getAccuWeatherDefaultLocation: jest.fn(() => ''),
     getAccuWeatherDefaultWeatherType: jest.fn(() => 'full'),
-    getKeywords: jest.fn(() => []),
+    getTools: jest.fn(() => []),
     getSerpApiEndpoint: jest.fn(() => 'https://serpapi.com'),
     getSerpApiKey: jest.fn(() => ''),
     getMemeLoggingDebug: jest.fn(() => false),
@@ -84,7 +84,7 @@ jest.mock('../src/utils/activityEvents', () => ({
 
 import { executeRoutedRequest, inferAbilityParameters } from '../src/utils/apiRouter';
 import { requestQueue } from '../src/utils/requestQueue';
-import { KeywordConfig } from '../src/utils/config';
+import { ToolConfig } from '../src/utils/config';
 import { accuweatherClient } from '../src/api/accuweatherClient';
 import { apiManager } from '../src/api';
 import { config } from '../src/utils/config';
@@ -103,8 +103,8 @@ describe('ApiRouter', () => {
       (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
       (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
 
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather',
@@ -129,7 +129,7 @@ describe('ApiRouter', () => {
         data: { text: 'Sunny, 72°F' },
       });
 
-      const result = await executeRoutedRequest(keyword, 'asdfasdf', 'testuser');
+      const result = await executeRoutedRequest(tool, 'asdfasdf', 'testuser');
 
       expect(result.finalApi).toBe('accuweather');
       expect(result.finalResponse.success).toBe(true);
@@ -146,8 +146,8 @@ describe('ApiRouter', () => {
       (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
       (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
 
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather',
@@ -186,7 +186,7 @@ describe('ApiRouter', () => {
         errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
       });
 
-      const result = await executeRoutedRequest(keyword, 'q', 'testuser');
+      const result = await executeRoutedRequest(tool, 'q', 'testuser');
 
       expect(result.finalApi).toBe('accuweather');
       expect(result.finalResponse.success).toBe(false);
@@ -199,8 +199,8 @@ describe('ApiRouter', () => {
       (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
       (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
 
-      const keyword: KeywordConfig = {
-        keyword: 'generate',
+      const tool: ToolConfig = {
+        name: 'generate',
         api: 'comfyui',
         timeout: 300,
         description: 'Generate image',
@@ -231,7 +231,7 @@ describe('ApiRouter', () => {
         error: 'ComfyUI still unavailable',
       });
 
-      const result = await executeRoutedRequest(keyword, 'a sunset', 'testuser');
+      const result = await executeRoutedRequest(tool, 'a sunset', 'testuser');
 
       expect(result.finalResponse.success).toBe(false);
       expect(mockExecute).toHaveBeenCalledTimes(5);
@@ -242,8 +242,8 @@ describe('ApiRouter', () => {
       (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
       (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
 
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather',
@@ -262,7 +262,7 @@ describe('ApiRouter', () => {
         data: { text: '   ' },
       });
 
-      const result = await executeRoutedRequest(keyword, 'xyz', 'testuser');
+      const result = await executeRoutedRequest(tool, 'xyz', 'testuser');
 
       expect(result.finalResponse.success).toBe(false);
       // Only primary + refine, no second AccuWeather attempt
@@ -274,8 +274,8 @@ describe('ApiRouter', () => {
       (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
       (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
 
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather',
@@ -294,7 +294,7 @@ describe('ApiRouter', () => {
         data: { text: 'foo' },
       });
 
-      const result = await executeRoutedRequest(keyword, 'foo', 'testuser');
+      const result = await executeRoutedRequest(tool, 'foo', 'testuser');
 
       expect(result.finalResponse.success).toBe(false);
       // Only primary + refine, no second AccuWeather attempt
@@ -306,8 +306,8 @@ describe('ApiRouter', () => {
       (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
       (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
 
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather',
@@ -325,7 +325,7 @@ describe('ApiRouter', () => {
         data: { text: 'seattle' },
       });
 
-      const result = await executeRoutedRequest(keyword, 'Seattle', 'testuser');
+      const result = await executeRoutedRequest(tool, 'Seattle', 'testuser');
 
       expect(result.finalResponse.success).toBe(false);
       expect(mockExecute).toHaveBeenCalledTimes(2);
@@ -336,8 +336,8 @@ describe('ApiRouter', () => {
       (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
       (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
 
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather',
@@ -362,20 +362,20 @@ describe('ApiRouter', () => {
         data: { text: 'Sunny, 55°F' },
       });
 
-      const result = await executeRoutedRequest(keyword, '', 'testuser');
+      const result = await executeRoutedRequest(tool, '', 'testuser');
 
       expect(result.finalResponse.success).toBe(true);
       expect(mockExecute).toHaveBeenCalledTimes(3);
       expect(result.stages).toHaveLength(3);
     });
 
-    it('should respect per-keyword retry.enabled=false override', async () => {
-      // Global retry is on, but keyword override disables it
+    it('should respect per-tool retry.enabled=false override', async () => {
+      // Global retry is on, but tool override disables it
       (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
       (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
 
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather',
@@ -388,7 +388,7 @@ describe('ApiRouter', () => {
         errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
       });
 
-      const result = await executeRoutedRequest(keyword, 'xyz', 'testuser');
+      const result = await executeRoutedRequest(tool, 'xyz', 'testuser');
 
       expect(result.finalResponse.success).toBe(false);
       // No retries attempted
@@ -396,12 +396,12 @@ describe('ApiRouter', () => {
       expect(result.stages).toHaveLength(1);
     });
 
-    it('should respect per-keyword retry.maxRetries=1 override', async () => {
+    it('should respect per-tool retry.maxRetries=1 override', async () => {
       (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
       (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(5);
 
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather',
@@ -428,7 +428,7 @@ describe('ApiRouter', () => {
         errorCode: 'ACCUWEATHER_UNKNOWN_LOCATION',
       });
 
-      const result = await executeRoutedRequest(keyword, 'x', 'testuser');
+      const result = await executeRoutedRequest(tool, 'x', 'testuser');
 
       expect(result.finalResponse.success).toBe(false);
       // 1 primary + 1 refine + 1 retry = 3 (not 5 from global maxRetries)
@@ -440,8 +440,8 @@ describe('ApiRouter', () => {
       (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
       (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(2);
 
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather',
@@ -480,7 +480,7 @@ describe('ApiRouter', () => {
         error: 'Failed to fetch current conditions for Seattle, WA.',
       });
 
-      const result = await executeRoutedRequest(keyword, 'weather Seattle', 'testuser');
+      const result = await executeRoutedRequest(tool, 'weather Seattle', 'testuser');
 
       expect(result.finalResponse.success).toBe(false);
       expect(mockExecute.mock.calls.length).toBeGreaterThanOrEqual(5);
@@ -491,8 +491,8 @@ describe('ApiRouter', () => {
     it('should include OLLAMA_FINAL_PASS_PROMPT in final-pass system content', async () => {
       (config.getOllamaFinalPassPrompt as jest.Mock).mockReturnValue('Be extra opinionated.');
 
-      const keyword: KeywordConfig = {
-        keyword: 'nfl scores',
+      const tool: ToolConfig = {
+        name: 'nfl_scores',
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
@@ -513,7 +513,7 @@ describe('ApiRouter', () => {
         return { success: true, data: { text: 'AI response' } };
       });
 
-      await executeRoutedRequest(keyword, 'who won?', 'testuser');
+      await executeRoutedRequest(tool, 'who won?', 'testuser');
 
       // The system content passed to apiManager should include the final-pass prompt
       const systemMessages = mockApiExecute.mock.calls[0][5] as Array<{ role: string; content: string }>;
@@ -523,8 +523,8 @@ describe('ApiRouter', () => {
     it('should not append empty final-pass prompt to system content', async () => {
       (config.getOllamaFinalPassPrompt as jest.Mock).mockReturnValue('');
 
-      const keyword: KeywordConfig = {
-        keyword: 'nfl scores',
+      const tool: ToolConfig = {
+        name: 'nfl_scores',
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
@@ -543,7 +543,7 @@ describe('ApiRouter', () => {
         return { success: true, data: { text: 'AI response' } };
       });
 
-      await executeRoutedRequest(keyword, 'who won?', 'testuser');
+      await executeRoutedRequest(tool, 'who won?', 'testuser');
 
       const systemMessages = mockApiExecute.mock.calls[0][5] as Array<{ role: string; content: string }>;
       // Should be persona only, no trailing newlines from empty prompt
@@ -553,8 +553,8 @@ describe('ApiRouter', () => {
 
   describe('executeRoutedRequest — single stage (no final pass)', () => {
     it('should execute a single API request when no finalOllamaPass is configured', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'chat',
+      const tool: ToolConfig = {
+        name: 'chat',
         api: 'ollama',
         timeout: 300,
         description: 'Chat with AI',
@@ -565,7 +565,7 @@ describe('ApiRouter', () => {
         data: { text: 'Hello!' },
       });
 
-      const result = await executeRoutedRequest(keyword, 'hello', 'testuser');
+      const result = await executeRoutedRequest(tool, 'hello', 'testuser');
 
       expect(result.finalApi).toBe('ollama');
       expect(result.finalResponse.success).toBe(true);
@@ -574,8 +574,8 @@ describe('ApiRouter', () => {
     });
 
     it('should return failure when primary API fails', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'generate',
+      const tool: ToolConfig = {
+        name: 'generate',
         api: 'comfyui',
         timeout: 300,
         description: 'Generate image',
@@ -586,15 +586,15 @@ describe('ApiRouter', () => {
         error: 'ComfyUI is down',
       });
 
-      const result = await executeRoutedRequest(keyword, 'a sunset', 'testuser');
+      const result = await executeRoutedRequest(tool, 'a sunset', 'testuser');
 
       expect(result.finalResponse.success).toBe(false);
       expect(result.stages).toHaveLength(1);
     });
 
     it('should execute accuweather directly without final pass', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather',
@@ -605,7 +605,7 @@ describe('ApiRouter', () => {
         data: { text: 'Sunny, 72°F' },
       });
 
-      const result = await executeRoutedRequest(keyword, 'weather in Seattle', 'testuser');
+      const result = await executeRoutedRequest(tool, 'weather in Seattle', 'testuser');
 
       expect(result.finalApi).toBe('accuweather');
       expect(result.finalResponse.success).toBe(true);
@@ -613,9 +613,9 @@ describe('ApiRouter', () => {
       expect(mockExecute).toHaveBeenCalledTimes(1);
     });
 
-    it('should execute serpapi "search" keyword directly without final pass', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'search',
+    it('should execute serpapi "web_search" tool directly without final pass', async () => {
+      const tool: ToolConfig = {
+        name: 'web_search',
         api: 'serpapi',
         timeout: 60,
         description: 'Search the web',
@@ -626,31 +626,7 @@ describe('ApiRouter', () => {
         data: { text: '🔎 **Search results for:** *TypeScript tips*', raw: {} },
       });
 
-      const result = await executeRoutedRequest(keyword, 'TypeScript tips', 'testuser');
-
-      expect(result.finalApi).toBe('serpapi');
-      expect(result.finalResponse.success).toBe(true);
-      expect(result.stages).toHaveLength(1);
-      expect(mockExecute).toHaveBeenCalledTimes(1);
-    });
-
-    it('should execute serpapi "second opinion" keyword directly without final pass', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'second opinion',
-        api: 'serpapi',
-        timeout: 60,
-        description: 'Get a second opinion via Google',
-      };
-
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: {
-          text: '🔎 **Second opinion for:** *best practices*\n\n🤖 **Google AI Overview:**\n> Follow SOLID principles.',
-          raw: {},
-        },
-      });
-
-      const result = await executeRoutedRequest(keyword, 'best practices', 'testuser');
+      const result = await executeRoutedRequest(tool, 'TypeScript tips', 'testuser');
 
       expect(result.finalApi).toBe('serpapi');
       expect(result.finalResponse.success).toBe(true);
@@ -659,11 +635,11 @@ describe('ApiRouter', () => {
     });
 
     it('should return failure when serpapi request fails', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'second opinion',
+      const tool: ToolConfig = {
+        name: 'web_search',
         api: 'serpapi',
         timeout: 60,
-        description: 'Get a second opinion via Google',
+        description: 'Search the web',
       };
 
       mockExecute.mockResolvedValueOnce({
@@ -671,40 +647,19 @@ describe('ApiRouter', () => {
         error: 'SerpAPI key is not configured',
       });
 
-      const result = await executeRoutedRequest(keyword, 'test query', 'testuser');
+      const result = await executeRoutedRequest(tool, 'test query', 'testuser');
 
       expect(result.finalResponse.success).toBe(false);
       expect(result.finalResponse.error).toContain('not configured');
       expect(result.stages).toHaveLength(1);
     });
 
-    it('should execute serpapi "find content" keyword directly without final pass', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'find content',
-        api: 'serpapi',
-        timeout: 60,
-        description: 'Find pertinent web content related to a topic using Google',
-        contextFilterMaxDepth: 1,
-      };
-
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: { text: '🔎 **Search results for:** *React hooks*\n\nResult 1...', raw: {} },
-      });
-
-      const result = await executeRoutedRequest(keyword, 'React hooks', 'testuser');
-
-      expect(result.finalApi).toBe('serpapi');
-      expect(result.finalResponse.success).toBe(true);
-      expect(result.stages).toHaveLength(1);
-      expect(mockExecute).toHaveBeenCalledTimes(1);
-    });
   });
 
   describe('executeRoutedRequest — with finalOllamaPass', () => {
     it('should add final Ollama refinement pass after comfyui', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'generate',
+      const tool: ToolConfig = {
+        name: 'generate',
         api: 'comfyui',
         timeout: 300,
         description: 'Generate image',
@@ -723,7 +678,7 @@ describe('ApiRouter', () => {
         data: { text: 'I generated a beautiful image for you!' },
       });
 
-      const result = await executeRoutedRequest(keyword, 'draw a cat', 'testuser');
+      const result = await executeRoutedRequest(tool, 'draw a cat', 'testuser');
 
       expect(result.finalApi).toBe('ollama');
       expect(result.stages).toHaveLength(2);
@@ -731,8 +686,8 @@ describe('ApiRouter', () => {
     });
 
     it('should emit final-pass thought event before final Ollama call', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'generate',
+      const tool: ToolConfig = {
+        name: 'generate',
         api: 'comfyui',
         timeout: 300,
         description: 'Generate image',
@@ -751,14 +706,14 @@ describe('ApiRouter', () => {
         data: { text: 'Beautiful image!' },
       });
 
-      await executeRoutedRequest(keyword, 'draw a cat', 'testuser');
+      await executeRoutedRequest(tool, 'draw a cat', 'testuser');
 
       expect(activityEvents.emitFinalPassThought).toHaveBeenCalledWith('generate');
     });
 
     it('should not emit final-pass thought when primary API is Ollama', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'chat',
+      const tool: ToolConfig = {
+        name: 'chat',
         api: 'ollama',
         timeout: 300,
         description: 'Chat',
@@ -770,14 +725,14 @@ describe('ApiRouter', () => {
         data: { text: 'Direct response' },
       });
 
-      await executeRoutedRequest(keyword, 'hello', 'testuser');
+      await executeRoutedRequest(tool, 'hello', 'testuser');
 
       expect(activityEvents.emitFinalPassThought).not.toHaveBeenCalled();
     });
 
     it('should skip final Ollama pass when primary API is already Ollama', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'chat',
+      const tool: ToolConfig = {
+        name: 'chat',
         api: 'ollama',
         timeout: 300,
         description: 'Chat',
@@ -789,7 +744,7 @@ describe('ApiRouter', () => {
         data: { text: 'Direct response' },
       });
 
-      const result = await executeRoutedRequest(keyword, 'hello', 'testuser');
+      const result = await executeRoutedRequest(tool, 'hello', 'testuser');
 
       // Should only have 1 stage since final pass would be redundant
       expect(mockExecute).toHaveBeenCalledTimes(1);
@@ -797,8 +752,8 @@ describe('ApiRouter', () => {
     });
 
     it('should return primary result when final Ollama pass fails', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'generate',
+      const tool: ToolConfig = {
+        name: 'generate',
         api: 'comfyui',
         timeout: 300,
         description: 'Generate image',
@@ -817,7 +772,7 @@ describe('ApiRouter', () => {
         error: 'Ollama down',
       });
 
-      const result = await executeRoutedRequest(keyword, 'draw a cat', 'testuser');
+      const result = await executeRoutedRequest(tool, 'draw a cat', 'testuser');
 
       // Should fall back to ComfyUI result
       expect(result.finalApi).toBe('comfyui');
@@ -828,8 +783,8 @@ describe('ApiRouter', () => {
 
   describe('executeRoutedRequest — AccuWeather with final Ollama pass', () => {
     it('should use formatWeatherContextForAI for AccuWeather final pass', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 120,
         description: 'Weather',
@@ -858,7 +813,7 @@ describe('ApiRouter', () => {
         data: { text: 'Beautiful day in Seattle! Sunny skies with 72°F.' },
       });
 
-      const result = await executeRoutedRequest(keyword, 'weather for Seattle', 'testuser');
+      const result = await executeRoutedRequest(tool, 'weather for Seattle', 'testuser');
 
       expect(result.finalApi).toBe('ollama');
       expect(result.stages).toHaveLength(2);
@@ -870,8 +825,8 @@ describe('ApiRouter', () => {
     });
 
     it('should use "Unknown location" when location data is missing', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 120,
         description: 'Weather',
@@ -888,7 +843,7 @@ describe('ApiRouter', () => {
         data: { text: 'Weather' },
       });
 
-      await executeRoutedRequest(keyword, 'weather', 'testuser');
+      await executeRoutedRequest(tool, 'weather', 'testuser');
 
       expect(accuweatherClient.formatWeatherContextForAI).toHaveBeenCalledWith(
         'Unknown location',
@@ -898,8 +853,8 @@ describe('ApiRouter', () => {
     });
 
     it('should fall back to AccuWeather result when final Ollama pass fails', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 120,
         description: 'Weather',
@@ -916,7 +871,7 @@ describe('ApiRouter', () => {
         error: 'Ollama timeout',
       });
 
-      const result = await executeRoutedRequest(keyword, 'weather', 'testuser');
+      const result = await executeRoutedRequest(tool, 'weather', 'testuser');
 
       expect(result.finalApi).toBe('accuweather');
       expect(result.finalResponse.success).toBe(true);
@@ -925,8 +880,8 @@ describe('ApiRouter', () => {
 
   describe('executeRoutedRequest — finalOllamaPass model', () => {
     it('should use global final-pass model in final Ollama pass', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'generate',
+      const tool: ToolConfig = {
+        name: 'generate',
         api: 'comfyui',
         timeout: 300,
         description: 'Generate image',
@@ -943,7 +898,7 @@ describe('ApiRouter', () => {
         data: { text: 'Described image' },
       });
 
-      await executeRoutedRequest(keyword, 'test', 'testuser');
+      await executeRoutedRequest(tool, 'test', 'testuser');
 
       // Final pass should be called
       expect(mockExecute).toHaveBeenCalledTimes(2);
@@ -952,8 +907,8 @@ describe('ApiRouter', () => {
 
   describe('executeRoutedRequest — NFL routing', () => {
     it('should route NFL requests through requestQueue with nfl api type', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'nfl scores',
+      const tool: ToolConfig = {
+        name: 'nfl_scores',
         api: 'nfl',
         timeout: 30,
         description: 'NFL scores',
@@ -964,7 +919,7 @@ describe('ApiRouter', () => {
         data: { text: '🏈 **NFL Scores**\n\n✅ Eagles 28 - Cowboys 21 (Final)', games: [] },
       });
 
-      const result = await executeRoutedRequest(keyword, 'nfl scores', 'testuser');
+      const result = await executeRoutedRequest(tool, 'nfl scores', 'testuser');
 
       expect(result.finalApi).toBe('nfl');
       expect(result.finalResponse.success).toBe(true);
@@ -972,7 +927,7 @@ describe('ApiRouter', () => {
       expect(mockExecute).toHaveBeenCalledWith(
         'nfl',
         'testuser',
-        'nfl scores',
+        'nfl_scores',
         30,
         expect.any(Function),
         undefined
@@ -980,8 +935,8 @@ describe('ApiRouter', () => {
     });
 
     it('should support NFL with final Ollama pass', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'nfl',
+      const tool: ToolConfig = {
+        name: 'nfl',
         api: 'nfl',
         timeout: 60,
         description: 'NFL chat',
@@ -1000,7 +955,7 @@ describe('ApiRouter', () => {
         data: { text: 'The Chiefs are currently leading the Ravens 14-10 in an exciting game!' },
       });
 
-      const result = await executeRoutedRequest(keyword, 'who is winning the chiefs game?', 'testuser');
+      const result = await executeRoutedRequest(tool, 'who is winning the chiefs game?', 'testuser');
 
       expect(result.finalApi).toBe('ollama');
       expect(result.stages).toHaveLength(2);
@@ -1008,8 +963,8 @@ describe('ApiRouter', () => {
     });
 
     it('should fall back to NFL result when final Ollama pass fails', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'nfl',
+      const tool: ToolConfig = {
+        name: 'nfl',
         api: 'nfl',
         timeout: 60,
         description: 'NFL chat',
@@ -1026,15 +981,15 @@ describe('ApiRouter', () => {
         error: 'Ollama unavailable',
       });
 
-      const result = await executeRoutedRequest(keyword, 'nfl update', 'testuser');
+      const result = await executeRoutedRequest(tool, 'nfl update', 'testuser');
 
       expect(result.finalApi).toBe('nfl');
       expect(result.finalResponse.success).toBe(true);
     });
 
     it('should return error when NFL request fails', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'nfl scores',
+      const tool: ToolConfig = {
+        name: 'nfl_scores',
         api: 'nfl',
         timeout: 30,
         description: 'NFL scores',
@@ -1045,7 +1000,7 @@ describe('ApiRouter', () => {
         error: 'NFL API key not configured',
       });
 
-      const result = await executeRoutedRequest(keyword, 'nfl scores', 'testuser');
+      const result = await executeRoutedRequest(tool, 'nfl scores', 'testuser');
 
       expect(result.finalApi).toBe('nfl');
       expect(result.finalResponse.success).toBe(false);
@@ -1055,8 +1010,8 @@ describe('ApiRouter', () => {
 
   describe('executeRoutedRequest — signal forwarding', () => {
     it('should pass caller signal to requestQueue.execute', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'chat',
+      const tool: ToolConfig = {
+        name: 'chat',
         api: 'ollama',
         timeout: 300,
         description: 'Chat',
@@ -1068,7 +1023,7 @@ describe('ApiRouter', () => {
       });
 
       const controller = new AbortController();
-      await executeRoutedRequest(keyword, 'hello', 'testuser', undefined, undefined, controller.signal);
+      await executeRoutedRequest(tool, 'hello', 'testuser', undefined, undefined, controller.signal);
 
       // requestQueue.execute should have been called with the signal as 6th arg
       expect(mockExecute).toHaveBeenCalledWith(
@@ -1079,8 +1034,8 @@ describe('ApiRouter', () => {
     });
 
     it('should pass caller signal for NFL requests too', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'nfl scores',
+      const tool: ToolConfig = {
+        name: 'nfl_scores',
         api: 'nfl',
         timeout: 30,
         description: 'NFL scores',
@@ -1092,18 +1047,18 @@ describe('ApiRouter', () => {
       });
 
       const controller = new AbortController();
-      await executeRoutedRequest(keyword, '', 'testuser', undefined, undefined, controller.signal);
+      await executeRoutedRequest(tool, '', 'testuser', undefined, undefined, controller.signal);
 
       expect(mockExecute).toHaveBeenCalledWith(
-        'nfl', 'testuser', 'nfl scores', 30,
+        'nfl', 'testuser', 'nfl_scores', 30,
         expect.any(Function),
         controller.signal
       );
     });
 
     it('should pass caller signal to final Ollama pass', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'nfl',
+      const tool: ToolConfig = {
+        name: 'nfl',
         api: 'nfl',
         timeout: 60,
         description: 'NFL',
@@ -1123,7 +1078,7 @@ describe('ApiRouter', () => {
       });
 
       const controller = new AbortController();
-      await executeRoutedRequest(keyword, 'what happened in the nfl?', 'testuser', undefined, undefined, controller.signal);
+      await executeRoutedRequest(tool, 'what happened in the nfl?', 'testuser', undefined, undefined, controller.signal);
 
       // Both calls should receive the signal as 6th arg
       expect(mockExecute).toHaveBeenCalledTimes(2);
@@ -1141,7 +1096,7 @@ describe('ApiRouter', () => {
      * Helper: sets up a final-pass flow and captures the prompt string
      * passed through to apiManager.executeRequest via the callback.
      */
-    async function captureNflFinalPrompt(keyword: KeywordConfig, nflText: string, userContent: string): Promise<string> {
+    async function captureNflFinalPrompt(tool: ToolConfig, nflText: string, userContent: string): Promise<string> {
       // Primary NFL result
       mockExecute.mockResolvedValueOnce({
         success: true,
@@ -1155,22 +1110,22 @@ describe('ApiRouter', () => {
         return { success: true, data: { text: 'AI response' } };
       });
 
-      await executeRoutedRequest(keyword, userContent, 'testuser');
+      await executeRoutedRequest(tool, userContent, 'testuser');
 
       // The prompt is the 3rd argument to apiManager.executeRequest
       return mockApiExecute.mock.calls[0][2] as string;
     }
 
     it('should wrap "nfl scores" final-pass with <espn_data source="nfl-scores"> XML tags', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'nfl scores',
+      const tool: ToolConfig = {
+        name: 'nfl_scores',
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
         finalOllamaPass: true,
       };
 
-      const prompt = await captureNflFinalPrompt(keyword, 'NFL Scores - Current Week\nChiefs 14 - Ravens 10', 'who is winning?');
+      const prompt = await captureNflFinalPrompt(tool, 'NFL Scores - Current Week\nChiefs 14 - Ravens 10', 'who is winning?');
       expect(prompt).toContain('<espn_data source="nfl-scores">');
       expect(prompt).toContain('</espn_data>');
       expect(prompt).toContain('<external_data>');
@@ -1178,38 +1133,38 @@ describe('ApiRouter', () => {
     });
 
     it('should wrap "nfl news" final-pass with <espn_data source="nfl-news"> XML tags', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'nfl news',
+      const tool: ToolConfig = {
+        name: 'nfl_news',
         api: 'nfl',
         timeout: 60,
         description: 'NFL news',
         finalOllamaPass: true,
       };
 
-      const prompt = await captureNflFinalPrompt(keyword, 'NFL News Headlines\n- Chiefs sign free agent', 'give me the latest');
+      const prompt = await captureNflFinalPrompt(tool, 'NFL News Headlines\n- Chiefs sign free agent', 'give me the latest');
       expect(prompt).toContain('<espn_data source="nfl-news">');
       expect(prompt).toContain('</espn_data>');
       expect(prompt).not.toContain('source="nfl-scores"');
     });
 
     it('should include user question in <current_question> XML block', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'nfl scores',
+      const tool: ToolConfig = {
+        name: 'nfl_scores',
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
         finalOllamaPass: true,
       };
 
-      const prompt = await captureNflFinalPrompt(keyword, 'Some NFL data', 'tell me about the chiefs');
+      const prompt = await captureNflFinalPrompt(tool, 'Some NFL data', 'tell me about the chiefs');
       expect(prompt).toContain('<current_question>');
       expect(prompt).toContain('tell me about the chiefs');
       expect(prompt).toContain('</current_question>');
     });
 
     it('should fall back to NFL result when final pass fails', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'nfl scores',
+      const tool: ToolConfig = {
+        name: 'nfl_scores',
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
@@ -1226,7 +1181,7 @@ describe('ApiRouter', () => {
         error: 'Ollama down',
       });
 
-      const result = await executeRoutedRequest(keyword, 'report', 'testuser');
+      const result = await executeRoutedRequest(tool, 'report', 'testuser');
       expect(result.finalApi).toBe('nfl');
       expect(result.finalResponse.success).toBe(true);
     });
@@ -1241,8 +1196,8 @@ describe('ApiRouter', () => {
     });
 
     it('should call evaluateContextWindow before final Ollama pass', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Weather',
@@ -1273,20 +1228,20 @@ describe('ApiRouter', () => {
         data: { text: 'Nice weather today!' },
       });
 
-      await executeRoutedRequest(keyword, 'weather 45403', 'testuser', conversationHistory);
+      await executeRoutedRequest(tool, 'weather 45403', 'testuser', conversationHistory);
 
       expect(mockEvaluate).toHaveBeenCalledWith(
         conversationHistory,
         'weather 45403',
-        keyword,
+        tool,
         'testuser',
         undefined
       );
     });
 
     it('should not call evaluateContextWindow when no conversation history', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Weather',
@@ -1312,14 +1267,14 @@ describe('ApiRouter', () => {
         data: { text: 'Nice weather today!' },
       });
 
-      await executeRoutedRequest(keyword, 'weather 45403', 'testuser');
+      await executeRoutedRequest(tool, 'weather 45403', 'testuser');
 
       expect(mockEvaluate).not.toHaveBeenCalled();
     });
 
     it('should pass filtered history to final Ollama pass', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Weather',
@@ -1358,14 +1313,14 @@ describe('ApiRouter', () => {
         data: { text: 'Nice weather today!' },
       });
 
-      await executeRoutedRequest(keyword, 'weather 45403', 'testuser', fullHistory);
+      await executeRoutedRequest(tool, 'weather 45403', 'testuser', fullHistory);
 
       // The second mockExecute call (final pass) should receive filtered history via apiManager
       // We verify the evaluator was called with the full history
       expect(mockEvaluate).toHaveBeenCalledWith(
         fullHistory,
         'weather 45403',
-        keyword,
+        tool,
         'testuser',
         undefined
       );
@@ -1381,8 +1336,8 @@ describe('ApiRouter', () => {
     });
 
     it('should not duplicate trigger message when history already contains one', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 120,
         description: 'Weather',
@@ -1417,7 +1372,7 @@ describe('ApiRouter', () => {
         return { success: true, data: { text: 'Beautiful day!' } };
       });
 
-      await executeRoutedRequest(keyword, 'weather in Seattle', 'testuser', historyWithTrigger);
+      await executeRoutedRequest(tool, 'weather in Seattle', 'testuser', historyWithTrigger);
 
       // Inspect the conversation history passed to the final Ollama call
       const callArgs = mockApiExecute.mock.calls[0];
@@ -1431,15 +1386,15 @@ describe('ApiRouter', () => {
     });
 
     it('should append trigger message when history does not already contain one', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 120,
         description: 'Weather',
         finalOllamaPass: true,
       };
 
-      // History WITHOUT trigger message (direct keyword path)
+      // History WITHOUT trigger message (direct tool path)
       const historyWithoutTrigger = [
         { role: 'user' as const, content: 'old question' },
         { role: 'assistant' as const, content: 'old reply' },
@@ -1466,7 +1421,7 @@ describe('ApiRouter', () => {
         return { success: true, data: { text: 'Beautiful day!' } };
       });
 
-      await executeRoutedRequest(keyword, 'weather in Seattle', 'testuser', historyWithoutTrigger);
+      await executeRoutedRequest(tool, 'weather in Seattle', 'testuser', historyWithoutTrigger);
 
       // apiManager should have been called — the reprompt user content includes conversation_history
       // which now has the trigger message appended
@@ -1477,8 +1432,8 @@ describe('ApiRouter', () => {
     });
 
     it('should form trigger message correctly with special characters in content', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 120,
         description: 'Weather',
@@ -1505,7 +1460,7 @@ describe('ApiRouter', () => {
         return { success: true, data: { text: 'Weather' } };
       });
 
-      await executeRoutedRequest(keyword, specialContent, 'user123');
+      await executeRoutedRequest(tool, specialContent, 'user123');
 
       // Verify the trigger message content was properly passed through
       const userContent = mockApiExecute.mock.calls[0][2] as string;
@@ -1524,8 +1479,8 @@ describe('ApiRouter', () => {
     });
 
     it('does not emit routing_decision from apiRouter (consolidated to caller)', async () => {
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather',
@@ -1536,7 +1491,7 @@ describe('ApiRouter', () => {
         data: { text: 'Sunny in Seattle' },
       });
 
-      await executeRoutedRequest(keyword, 'Seattle weather', 'alice');
+      await executeRoutedRequest(tool, 'Seattle weather', 'alice');
 
       expect(activityEvents.emitRoutingDecision).not.toHaveBeenCalled();
     });
@@ -1545,8 +1500,8 @@ describe('ApiRouter', () => {
       (config.getAbilityRetryEnabled as jest.Mock).mockReturnValueOnce(true);
       (config.getAbilityRetryMaxRetries as jest.Mock).mockReturnValueOnce(1);
 
-      const keyword: KeywordConfig = {
-        keyword: 'weather',
+      const tool: ToolConfig = {
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather',
@@ -1563,7 +1518,7 @@ describe('ApiRouter', () => {
       // Retry succeeds
       mockExecute.mockResolvedValueOnce({ success: true, data: { text: 'Sunny' } });
 
-      await executeRoutedRequest(keyword, 'asdf', 'alice');
+      await executeRoutedRequest(tool, 'asdf', 'alice');
 
       // No routing_decision emitted from apiRouter at all
       expect(activityEvents.emitRoutingDecision).not.toHaveBeenCalled();
@@ -1571,8 +1526,8 @@ describe('ApiRouter', () => {
   });
 
   describe('inferAbilityParameters', () => {
-    const weatherKeyword: KeywordConfig = {
-      keyword: 'weather',
+    const weatherTool: ToolConfig = {
+      name: 'weather',
       api: 'accuweather',
       timeout: 60,
       description: 'Get weather',
@@ -1591,7 +1546,7 @@ describe('ApiRouter', () => {
       });
 
       const result = await inferAbilityParameters(
-        weatherKeyword,
+        weatherTool,
         'what is the capital of Thailand?',
         'testuser'
       );
@@ -1607,7 +1562,7 @@ describe('ApiRouter', () => {
       });
 
       const result = await inferAbilityParameters(
-        weatherKeyword,
+        weatherTool,
         'what is the meaning of life?',
         'testuser'
       );
@@ -1622,7 +1577,7 @@ describe('ApiRouter', () => {
       });
 
       const result = await inferAbilityParameters(
-        weatherKeyword,
+        weatherTool,
         'some random question',
         'testuser'
       );
@@ -1637,7 +1592,7 @@ describe('ApiRouter', () => {
       });
 
       const result = await inferAbilityParameters(
-        weatherKeyword,
+        weatherTool,
         'weather in paris',
         'testuser'
       );
@@ -1652,7 +1607,7 @@ describe('ApiRouter', () => {
       });
 
       const result = await inferAbilityParameters(
-        weatherKeyword,
+        weatherTool,
         'what\'s it like in Seattle?',
         'testuser'
       );
@@ -1667,7 +1622,7 @@ describe('ApiRouter', () => {
       });
 
       const result = await inferAbilityParameters(
-        weatherKeyword,
+        weatherTool,
         'capital of thailand',
         'testuser'
       );
@@ -1679,7 +1634,7 @@ describe('ApiRouter', () => {
       mockExecute.mockRejectedValueOnce(new Error('Network error'));
 
       const result = await inferAbilityParameters(
-        weatherKeyword,
+        weatherTool,
         'weather london',
         'testuser'
       );
@@ -1688,8 +1643,8 @@ describe('ApiRouter', () => {
     });
 
     describe('meme inference', () => {
-      const memeKeyword: KeywordConfig = {
-        keyword: 'meme',
+      const memeTool: ToolConfig = {
+        name: 'meme',
         api: 'meme',
         timeout: 60,
         description: 'Create funny meme images from popular templates',
@@ -1701,13 +1656,13 @@ describe('ApiRouter', () => {
         contextFilterMaxDepth: 1,
       };
 
-      it('should include template list in system prompt for meme keyword', async () => {
+      it('should include template list in system prompt for meme tool', async () => {
         mockExecute.mockResolvedValueOnce({
           success: true,
           data: { text: 'drake | top text | bottom text' },
         });
 
-        await inferAbilityParameters(memeKeyword, 'make a drake meme about coding', 'testuser');
+        await inferAbilityParameters(memeTool, 'make a drake meme about coding', 'testuser');
 
         // The execute call passes the system prompt via apiManager; verify it was called
         const _executeCall = mockExecute.mock.calls[0];
@@ -1723,7 +1678,7 @@ describe('ApiRouter', () => {
           data: { text: 'drake | studying | memeing' },
         });
 
-        await inferAbilityParameters(memeKeyword, 'make a meme about studying', 'testuser');
+        await inferAbilityParameters(memeTool, 'make a meme about studying', 'testuser');
 
         const logCalls = (logger.log as jest.Mock).mock.calls.map((c: any[]) => c[2]);
         expect(logCalls.some((msg: string) => msg.includes('MEME-INFERENCE: Full system prompt'))).toBe(true);
@@ -1738,7 +1693,7 @@ describe('ApiRouter', () => {
           data: { text: 'drake | studying for exams | browsing memes' },
         });
 
-        const result = await inferAbilityParameters(memeKeyword, 'make a drake meme', 'testuser');
+        const result = await inferAbilityParameters(memeTool, 'make a drake meme', 'testuser');
 
         expect(result).toBe('drake | studying for exams | browsing memes');
 
@@ -1753,7 +1708,7 @@ describe('ApiRouter', () => {
           data: { text: 'Sure, here you go.\ndrake | studying for exams | scrolling memes' },
         });
 
-        const result = await inferAbilityParameters(memeKeyword, 'make a drake meme', 'testuser');
+        const result = await inferAbilityParameters(memeTool, 'make a drake meme', 'testuser');
         expect(result).toBe('drake | studying for exams | scrolling memes');
       });
 
@@ -1765,7 +1720,7 @@ describe('ApiRouter', () => {
           data: { text: 'NONE' },
         });
 
-        const result = await inferAbilityParameters(memeKeyword, 'hello world', 'testuser');
+        const result = await inferAbilityParameters(memeTool, 'hello world', 'testuser');
 
         expect(result).toBeNull();
 
@@ -1776,8 +1731,8 @@ describe('ApiRouter', () => {
   });
 
   describe('inferAbilityParameters with replyContext', () => {
-    const imagineKeyword: KeywordConfig = {
-      keyword: 'imagine',
+    const imagineTool: ToolConfig = {
+      name: 'imagine',
       api: 'comfyui',
       timeout: 120,
       description: 'Generate image using ComfyUI',
@@ -1800,7 +1755,7 @@ describe('ApiRouter', () => {
 
       const replyContext = 'unseenaudio: What is the craziest thing you can imagine?\nbob: How about a self-aware nebula?';
       const result = await inferAbilityParameters(
-        imagineKeyword,
+        imagineTool,
         'Let\'s imagine our last 3 images together',
         'testuser',
         undefined,
@@ -1827,7 +1782,7 @@ describe('ApiRouter', () => {
       });
 
       const result = await inferAbilityParameters(
-        imagineKeyword,
+        imagineTool,
         'imagine a futuristic cityscape',
         'testuser'
       );
