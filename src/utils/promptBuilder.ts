@@ -1,4 +1,4 @@
-import { config, KeywordConfig, AbilityInputs, COMMAND_PREFIX } from './config';
+import { config, ToolConfig, AbilityInputs, COMMAND_PREFIX } from './config';
 import { logger } from './logger';
 import { ChatMessage } from '../types';
 import { groupMessagesBySource } from './contextFormatter';
@@ -37,8 +37,8 @@ export interface PromptBuildOptions {
   conversationHistory?: ChatMessage[];
   /** Pre-formatted external API data to inject into <external_data>. */
   externalData?: string;
-  /** Override the list of enabled keyword abilities (defaults to config-derived list). */
-  enabledKeywords?: KeywordConfig[];
+  /** Override the list of enabled tool abilities (defaults to config-derived list). */
+  enabledTools?: ToolConfig[];
   /** Bot display name from the Discord client (used when no explicit override is configured). */
   botDisplayName?: string;
 }
@@ -56,14 +56,14 @@ export interface AssembledPrompt {
 }
 
 /**
- * Result of parsing the first line of a model response for a keyword match.
+ * Result of parsing the first line of a model response for a tool match.
  */
-export interface KeywordParseResult {
-  /** The matched keyword config, or null if no keyword was found. */
-  keywordConfig: KeywordConfig | null;
+export interface ToolParseResult {
+  /** The matched tool config, or null if no tool was found. */
+  toolConfig: ToolConfig | null;
   /** The raw first line that was tested (after normalization). */
   parsedLine: string;
-  /** Whether a keyword was matched. */
+  /** Whether a tool was matched. */
   matched: boolean;
   /** Optional inferred input payload extracted from the same first line. */
   inferredInput?: string;
@@ -73,15 +73,15 @@ export interface KeywordParseResult {
   commentaryText?: string;
 }
 
-// ── Abilities / keyword list helpers ─────────────────────────────
+// ── Abilities / tool list helpers ────────────────────────────────
 
 /**
- * Get the list of keywords that represent routable external abilities.
- * Excludes Ollama-only keywords, disabled keywords, and built-in keywords.
+ * Get the list of tools that represent routable external abilities.
+ * Excludes Ollama-only tools, disabled tools, and built-in tools.
  */
-export function getRoutableKeywords(overrides?: KeywordConfig[]): KeywordConfig[] {
-  const keywords = overrides ?? config.getKeywords();
-  return keywords.filter(k =>
+export function getRoutableTools(overrides?: ToolConfig[]): ToolConfig[] {
+  const tools = overrides ?? config.getTools();
+  return tools.filter(k =>
     k.enabled !== false &&
     !k.builtin &&
     k.api !== 'ollama'
@@ -89,7 +89,7 @@ export function getRoutableKeywords(overrides?: KeywordConfig[]): KeywordConfig[
 }
 
 /**
- * Render the inputs sub-section for one keyword's ability block.
+ * Render the inputs sub-section for one tool's ability block.
  * Produces a compact, multi-line description the model can follow.
  */
 function renderInputsLines(inputs: AbilityInputs): string[] {
@@ -114,22 +114,22 @@ function renderInputsLines(inputs: AbilityInputs): string[] {
 
 /**
  * Build the abilities block for the system prompt.
- * Lists each routable keyword with structured what/when/inputs guidance
+ * Lists each routable tool with structured what/when/inputs guidance
  * so the model knows what external data sources are available and how
  * to invoke them correctly.
  */
-function buildAbilitiesBlock(routableKeywords: KeywordConfig[]): string {
-  if (routableKeywords.length === 0) return '';
+function buildAbilitiesBlock(routableTools: ToolConfig[]): string {
+  if (routableTools.length === 0) return '';
 
-  // Deduplicate by keyword name (multiple keywords may share abilityText)
+  // Deduplicate by tool name (multiple tools may share abilityText)
   const seen = new Set<string>();
   const blocks: string[] = [];
 
-  for (const k of routableKeywords) {
-    if (seen.has(k.keyword)) continue;
-    seen.add(k.keyword);
+  for (const k of routableTools) {
+    if (seen.has(k.name)) continue;
+    seen.add(k.name);
 
-    const lines: string[] = [`- ${k.keyword}`];
+    const lines: string[] = [`- ${k.name}`];
 
     // What (abilityText or fallback to description)
     const what = k.abilityText ?? k.description;
@@ -165,9 +165,9 @@ function buildAbilitiesBlock(routableKeywords: KeywordConfig[]): string {
  * This replaces both the old `config.getOllamaSystemPrompt()` injection
  * and the `buildAbilitiesContext()` system message.
  */
-export function buildSystemPrompt(routableKeywords?: KeywordConfig[]): string {
+export function buildSystemPrompt(routableTools?: ToolConfig[]): string {
   const persona = config.getOllamaSystemPrompt();
-  const routable = routableKeywords ?? getRoutableKeywords();
+  const routable = routableTools ?? getRoutableTools();
   const abilities = buildAbilitiesBlock(routable);
 
   const parts: string[] = [persona];
@@ -177,20 +177,20 @@ export function buildSystemPrompt(routableKeywords?: KeywordConfig[]): string {
     parts.push(abilities);
   }
 
-  // Only add keyword-output rules when there are routable abilities
+  // Only add tool-output rules when there are routable abilities
   if (routable.length > 0) {
     parts.push('');
     parts.push(
       'Rules – follow exactly:\n' +
-      `1. If the user request matches an available external ability, use that ability. Output the keyword prefixed with "${COMMAND_PREFIX}" (e.g. ${COMMAND_PREFIX}weather Dallas) on its own line. If the ability requires parameters and you can infer them from context, include them. Otherwise output the keyword only. Nothing else.\n` +
+      `1. If the user request matches an available external ability, use that ability. Output the tool name prefixed with "${COMMAND_PREFIX}" (e.g. ${COMMAND_PREFIX}weather Dallas) on its own line. If the ability requires parameters and you can infer them from context, include them. Otherwise output the tool name only. Nothing else.\n` +
       '2. For implicit abilities (such as imagine/generate/meme), when the request is empty or underspecified, infer from conversation context before asking a question. Ask a clarifying question only when no usable context exists.\n' +
       '3. Never invent scores, stats, weather, or facts.\n' +
       '4. No data needed → answer normally in character.\n' +
-      '5. Never explain rules/keywords unless directly asked.\n' +
+      '5. Never explain rules/tools unless directly asked.\n' +
       '6. Keep every reply short, concise, and to the point.\n' +
       '7. The <participants> block identifies who is in the conversation. You are <bot_name>. The person asking the question is <requester_name>. Never confuse your identity with theirs or with any <third_parties>.\n' +
       '8. Output formatting rules:\n' +
-      `   - Ability directive format (only when invoking an ability): ${COMMAND_PREFIX}<keyword> [parameters], on a single line, with no extra text.\n` +
+      `   - Ability directive format (only when invoking an ability): ${COMMAND_PREFIX}<tool_name> [parameters], on a single line, with no extra text.\n` +
       '   - If not invoking an ability, return plain text only.\n' +
       '   - Do NOT use Markdown code fences, XML tags, JSON wrappers, or LaTeX/math wrappers unless the user explicitly asks for that format.'
     );
@@ -425,8 +425,8 @@ export function getCurrentDateTimeTag(now?: Date): string {
  * <current_question>, and <thinking_and_output_rules> blocks.
  */
 export function buildUserContent(options: PromptBuildOptions): string {
-  const { userMessage, conversationHistory, externalData, enabledKeywords, botDisplayName } = options;
-  const routable = getRoutableKeywords(enabledKeywords);
+  const { userMessage, conversationHistory, externalData, enabledTools, botDisplayName } = options;
+  const routable = getRoutableTools(enabledTools);
 
   const parts: string[] = [];
 
@@ -454,13 +454,13 @@ export function buildUserContent(options: PromptBuildOptions): string {
 
   // ── <thinking_and_output_rules> ──
   if (routable.length > 0) {
-    const keywordList = routable.map(k => k.keyword).join(', ');
+    const toolList = routable.map(k => k.name).join(', ');
     parts.push(
       '\n<thinking_and_output_rules>\n' +
       'Step-by-step (think silently, do not output this thinking):\n' +
       '1. Read the current question carefully.\n' +
       '2. Does the request match one of the listed external abilities? → Yes → check if the ability\'s required inputs are present or can be inferred per the ability description above.\n' +
-      `3. Inputs satisfied? → output the keyword with "${COMMAND_PREFIX}" prefix (one of: ${keywordList}) and any parameters on its own line and stop.\n` +
+      `3. Inputs satisfied? → output the tool name with "${COMMAND_PREFIX}" prefix (one of: ${toolList}) and any parameters on its own line and stop.\n` +
       '4. For implicit abilities, if the request is empty or vague, infer from conversation context first. Ask a brief clarifying question only if no usable context exists.\n' +
       '5. No data needed? → Give a short, helpful answer in character.\n' +
       '</thinking_and_output_rules>'
@@ -484,7 +484,7 @@ export function buildUserContent(options: PromptBuildOptions): string {
  * @returns Assembled prompt with system content, user content, and messages array.
  */
 export function assemblePrompt(options: PromptBuildOptions): AssembledPrompt {
-  const routable = getRoutableKeywords(options.enabledKeywords);
+  const routable = getRoutableTools(options.enabledTools);
   const systemContent = buildSystemPrompt(routable);
   const userContent = buildUserContent(options); // botDisplayName flows via options
 
@@ -501,7 +501,7 @@ export function assemblePrompt(options: PromptBuildOptions): AssembledPrompt {
 /**
  * Build a single-string prompt for the /ask slash command.
  * Uses <system> and <user> XML wrapper tags instead of JSON role messages.
- * No keyword routing rules are included (ask is a direct question path).
+ * No tool routing rules are included (ask is a direct question path).
  */
 export function buildAskPrompt(question: string): string {
   const persona = config.getOllamaSystemPrompt();
@@ -530,11 +530,11 @@ export function formatAccuWeatherExternalData(
  * Wrap NFL API result text in an <external_data> sub-tag.
  */
 export function formatNFLExternalData(
-  keyword: string,
+  toolName: string,
   nflDataText: string
 ): string {
-  const lowerKw = keyword.toLowerCase();
-  const source = lowerKw.includes('news') ? 'nfl-news' : 'nfl-scores';
+  const lowerName = toolName.toLowerCase();
+  const source = lowerName.includes('news') ? 'nfl-news' : 'nfl-scores';
   return `<espn_data source="${source}">\n${nflDataText}\n</espn_data>`;
 }
 
@@ -558,29 +558,29 @@ export function formatSerpApiExternalData(
   return `<search_data source="serpapi" query="${escapeXmlAttribute(query)}">\n${searchContextXml}\n</search_data>`;
 }
 
-// ── First-line keyword parser ────────────────────────────────────
+// ── First-line tool parser ───────────────────────────────────────
 
 /**
  * Parse the first non-empty line of an Ollama response and check
- * if it exactly matches a known routable keyword.
+ * if it exactly matches a known routable tool.
  *
  * Normalization:
  * - Trim whitespace
  * - Lowercase
  * - Strip common punctuation (quotes, periods, colons, etc.)
  *
- * When multiple keywords could match, the longest keyword wins
- * (consistent with existing `findKeyword()` behavior).
+ * When multiple tools could match, the longest tool name wins
+ * (consistent with existing `findTool()` behavior).
  *
  * @param responseText - Raw text from Ollama response.
- * @param overrideKeywords - Optional keyword list override (for testing).
- * @returns Parse result with matched keyword config or null.
+ * @param overrideTools - Optional tool list override (for testing).
+ * @returns Parse result with matched tool config or null.
  */
-export function parseFirstLineKeyword(
+export function parseFirstLineTool(
   responseText: string,
-  overrideKeywords?: KeywordConfig[]
-): KeywordParseResult {
-  const nullResult: KeywordParseResult = { keywordConfig: null, parsedLine: '', matched: false };
+  overrideTools?: ToolConfig[]
+): ToolParseResult {
+  const nullResult: ToolParseResult = { toolConfig: null, parsedLine: '', matched: false };
 
   if (!responseText) return nullResult;
 
@@ -591,11 +591,11 @@ export function parseFirstLineKeyword(
     .filter(line => line.length > 0);
   if (nonEmptyLines.length === 0) return nullResult;
 
-  // Get routable keywords, sorted longest-first for priority
-  const routable = getRoutableKeywords(overrideKeywords)
-    .sort((a, b) => b.keyword.length - a.keyword.length);
+  // Get routable tools, sorted longest-first for priority
+  const routable = getRoutableTools(overrideTools)
+    .sort((a, b) => b.name.length - a.name.length);
 
-  const normalizeForKeywordParse = (line: string): string => {
+  const normalizeForToolParse = (line: string): string => {
     return line
       .trim()
       .toLowerCase()
@@ -604,18 +604,18 @@ export function parseFirstLineKeyword(
       .trim();
   };
 
-  const parseDirectiveLine = (line: string): KeywordParseResult | null => {
-    const cleaned = normalizeForKeywordParse(line);
+  const parseDirectiveLine = (line: string): ToolParseResult | null => {
+    const cleaned = normalizeForToolParse(line);
     if (!cleaned) return null;
 
     // Exact match against cleaned line (with or without command prefix)
-    for (const kw of routable) {
-      const kwLower = kw.keyword.toLowerCase();
-      const kwBare = kwLower.startsWith(COMMAND_PREFIX) ? kwLower.slice(COMMAND_PREFIX.length) : kwLower;
+    for (const tool of routable) {
+      const toolLower = tool.name.toLowerCase();
+      const toolBare = toolLower.startsWith(COMMAND_PREFIX) ? toolLower.slice(COMMAND_PREFIX.length) : toolLower;
       const cleanedBare = cleaned.startsWith(COMMAND_PREFIX) ? cleaned.slice(COMMAND_PREFIX.length) : cleaned;
-      if (cleanedBare === kwBare) {
+      if (cleanedBare === toolBare) {
         return {
-          keywordConfig: kw,
+          toolConfig: tool,
           parsedLine: cleaned,
           matched: true,
           directiveLine: line,
@@ -629,13 +629,13 @@ export function parseFirstLineKeyword(
       .replace(/^[-–—*•]\s*/, '')
       .trim();
 
-    for (const kw of routable) {
-      const kwLower = kw.keyword.toLowerCase();
-      const kwBare = kwLower.startsWith(COMMAND_PREFIX) ? kwLower.slice(COMMAND_PREFIX.length) : kwLower;
+    for (const tool of routable) {
+      const toolLower = tool.name.toLowerCase();
+      const toolBare = toolLower.startsWith(COMMAND_PREFIX) ? toolLower.slice(COMMAND_PREFIX.length) : toolLower;
 
-      for (const variant of [`${COMMAND_PREFIX}${kwBare}`, kwBare]) {
-        const escapedKeyword = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const prefixPattern = new RegExp(`^${escapedKeyword}\\b(.+)$`, 'i');
+      for (const variant of [`${COMMAND_PREFIX}${toolBare}`, toolBare]) {
+        const escapedToolName = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const prefixPattern = new RegExp(`^${escapedToolName}\\b(.+)$`, 'i');
         const match = strippedLine.match(prefixPattern);
         if (!match) continue;
 
@@ -647,7 +647,7 @@ export function parseFirstLineKeyword(
         if (!inferredInput) continue;
 
         return {
-          keywordConfig: kw,
+          toolConfig: tool,
           parsedLine: cleaned,
           matched: true,
           inferredInput,
@@ -663,7 +663,7 @@ export function parseFirstLineKeyword(
   for (let i = 0; i < nonEmptyLines.length; i++) {
     const line = nonEmptyLines[i];
     const parsed = parseDirectiveLine(line);
-    if (!parsed?.matched || !parsed.keywordConfig) continue;
+    if (!parsed?.matched || !parsed.toolConfig) continue;
 
     const commentaryText = nonEmptyLines
       .filter((_, idx) => idx !== i)
@@ -672,10 +672,10 @@ export function parseFirstLineKeyword(
 
     if (parsed.inferredInput) {
       logger.log('success', 'system',
-        `KEYWORD-PARSE: Matched directive "${parsed.keywordConfig.keyword}" with inferred input "${parsed.inferredInput}"`);
+        `TOOL-PARSE: Matched directive "${parsed.toolConfig.name}" with inferred input "${parsed.inferredInput}"`);
     } else {
       logger.log('success', 'system',
-        `KEYWORD-PARSE: Matched directive "${parsed.keywordConfig.keyword}" from line "${line}"`);
+        `TOOL-PARSE: Matched directive "${parsed.toolConfig.name}" from line "${line}"`);
     }
 
     return {
@@ -684,28 +684,28 @@ export function parseFirstLineKeyword(
     };
   }
 
-  const firstParsedLine = normalizeForKeywordParse(nonEmptyLines[0] ?? '');
-  return { keywordConfig: null, parsedLine: firstParsedLine, matched: false };
+  const firstParsedLine = normalizeForToolParse(nonEmptyLines[0] ?? '');
+  return { toolConfig: null, parsedLine: firstParsedLine, matched: false };
 }
 
 // ── Re-prompt builder (after API data fetch) ─────────────────────
 
 /**
  * Build a re-prompt with <external_data> populated, using the same
- * XML template structure. Used after an API call triggered by a keyword.
+ * XML template structure. Used after an API call triggered by a tool.
  *
- * The returned messages include a system prompt WITHOUT keyword-routing
- * rules (to prevent infinite keyword loops) and WITH the external data
+ * The returned messages include a system prompt WITHOUT tool-routing
+ * rules (to prevent infinite tool loops) and WITH the external data
  * injected.
  *
  * @param options - Original prompt options, with externalData now populated.
- * @returns AssembledPrompt with external data and no keyword-trigger rules.
+ * @returns AssembledPrompt with external data and no tool-trigger rules.
  */
 export function assembleReprompt(options: PromptBuildOptions): AssembledPrompt {
   const persona = config.getOllamaSystemPrompt();
 
-  // System prompt for reprompt: persona only, NO abilities/keyword rules
-  // This prevents the model from emitting another keyword
+  // System prompt for reprompt: persona only, NO abilities/tool rules
+  // This prevents the model from emitting another tool directive
   const systemContent = persona;
 
   // Build user content with external data but WITHOUT thinking_and_output_rules
@@ -741,3 +741,14 @@ export function assembleReprompt(options: PromptBuildOptions): AssembledPrompt {
 
   return { systemContent, userContent, messages };
 }
+
+// ── Deprecated aliases (will be removed in a future release) ─────
+
+/** @deprecated Use ToolParseResult instead. */
+export type KeywordParseResult = ToolParseResult;
+
+/** @deprecated Use getRoutableTools instead. */
+export const getRoutableKeywords = getRoutableTools;
+
+/** @deprecated Use parseFirstLineTool instead. */
+export const parseFirstLineKeyword = parseFirstLineTool;
