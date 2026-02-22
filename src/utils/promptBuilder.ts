@@ -103,10 +103,6 @@ function renderInputsLines(inputs: AbilityInputs): string[] {
   if (inputs.optional && inputs.optional.length > 0) {
     lines.push(`    Optional: ${inputs.optional.join(', ')}.`);
   }
-  if (inputs.inferFrom && inputs.inferFrom.length > 0) {
-    const sources = inputs.inferFrom.map(s => s.replace(/_/g, ' ')).join(', ');
-    lines.push(`    Infer from: ${sources}.`);
-  }
   if (inputs.validation) {
     lines.push(`    Validation: ${inputs.validation}`);
   }

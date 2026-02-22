@@ -365,24 +365,6 @@ describe('ConfigWriter', () => {
       ).rejects.toThrow('invalid builtin');
     });
 
-    it('should persist contextFilterEnabled when true', async () => {
-      await configWriter.updateKeywords([{ ...validKeyword, contextFilterEnabled: true }]);
-      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content[0].contextFilterEnabled).toBe(true);
-    });
-
-    it('should not persist contextFilterEnabled when false or omitted', async () => {
-      await configWriter.updateKeywords([{ ...validKeyword, contextFilterEnabled: false }]);
-      const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content[0].contextFilterEnabled).toBeUndefined();
-    });
-
-    it('should reject non-boolean contextFilterEnabled', async () => {
-      await expect(
-        configWriter.updateKeywords([{ ...validKeyword, contextFilterEnabled: 'yes' as any }])
-      ).rejects.toThrow('invalid contextFilterEnabled');
-    });
-
     it('should accept valid contextFilterMinDepth', async () => {
       await configWriter.updateKeywords([
         { ...validKeyword, contextFilterMinDepth: 3 },
@@ -460,13 +442,11 @@ describe('ConfigWriter', () => {
         contextFilterMinDepth: 2,
         contextFilterMaxDepth: 8,
       });
-      expect(content[0].contextFilterEnabled).toBeUndefined();
     });
 
     it('should not persist depth fields when not set', async () => {
       await configWriter.updateKeywords([validKeyword]);
       const content = parseToolsXml(fs.readFileSync(keywordsPath, 'utf-8'));
-      expect(content[0].contextFilterEnabled).toBeUndefined();
       expect(content[0].contextFilterMinDepth).toBeUndefined();
       expect(content[0].contextFilterMaxDepth).toBeUndefined();
     });

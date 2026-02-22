@@ -81,7 +81,7 @@ flowchart TD
     end
 
     subgraph TwoStage["messageHandler.ts — executeWithTwoStageEvaluation()<br/><i>(alternate path — shown for completeness)</i>"]
-        TS1["<code>evaluateContextWindow()</code> — filter history<br/><i>(only when contextFilterEnabled)</i>"]
+        TS1["<code>evaluateContextWindow()</code> — filter history<br/><i>(when CONTEXT_EVAL_ENABLED)</i>"]
         TS2["<code>assemblePrompt()</code><br/>System: persona + abilities + keyword rules<br/>User: XML-tagged prompt with <code>&lt;thinking_and_output_rules&gt;</code>"]
         TS3["<code>requestQueue.execute('ollama', ...)</code><br/>Ollama responds with abilities awareness"]
         TS4{"<code>parseFirstLineKeyword()</code><br/>First line = exact keyword?"}
@@ -213,7 +213,7 @@ The `⏳ Processing...` message is edited in-place with the final weather respon
 | `promptBuilder.ts` | `parseFirstLineKeyword()` | Parses Ollama output for keyword trigger |
 | `apiRouter.ts` | `inferAbilityParameters()` | Extracts API params from natural language (two-stage path) |
 | `keywordClassifier.ts` | `buildAbilitiesContext()` | Generates abilities context for Ollama |
-| `contextEvaluator.ts` | `evaluateContextWindow()` | Filters conversation history for relevance (per-keyword opt-in via `contextFilterEnabled`) |
+| `contextEvaluator.ts` | `evaluateContextWindow()` | Filters conversation history for relevance (global toggle via `CONTEXT_EVAL_ENABLED`) |
 | `responseTransformer.ts` | `extractStageResult()` | Normalizes API responses for stage tracking |
 
 ---

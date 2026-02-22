@@ -62,25 +62,7 @@
     </parameters>
   </tool>
 
-  <!-- Conversation tools -->
-  <tool>
-    <name>ask</name>
-    <api>ollama</api>
-    <timeout>300</timeout>
-    <description>Ask a question using Ollama</description>
-    <enabled>false</enabled>
-    <contextFilterMaxDepth>20</contextFilterMaxDepth>
-  </tool>
 
-  <tool>
-    <name>chat</name>
-    <api>ollama</api>
-    <timeout>300</timeout>
-    <description>Chat with Ollama AI</description>
-    <contextFilterEnabled>true</contextFilterEnabled>
-    <contextFilterMinDepth>1</contextFilterMinDepth>
-    <contextFilterMaxDepth>30</contextFilterMaxDepth>
-  </tool>
 
   <!-- Weather tool -->
   <tool>
@@ -147,15 +129,7 @@
     <allowEmptyContent>true</allowEmptyContent>
   </tool>
 
-  <!-- Analysis tool -->
-  <tool>
-    <name>analyze</name>
-    <api>ollama</api>
-    <timeout>60</timeout>
-    <description>Analyze the context and generate the most relevant assessment based on the context</description>
-    <contextFilterMinDepth>20</contextFilterMinDepth>
-    <contextFilterMaxDepth>20</contextFilterMaxDepth>
-  </tool>
+
 
   <!-- Search tools -->
   <tool>

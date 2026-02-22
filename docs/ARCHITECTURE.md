@@ -36,6 +36,7 @@ src/
     ├── activityEvents.ts # Sanitised in-memory event buffer for activity feed
     ├── activityKeyManager.ts # In-memory rotating key for activity monitor access
     ├── keywordClassifier.ts  # AI-based keyword classification & abilities context builder
+    ├── toolsSchema.ts    # OpenAI-style tool definitions from keyword config (Ollama native tools)
     ├── apiRouter.ts      # Multi-stage API routing pipeline
     └── responseTransformer.ts # Stage result extraction and context building
 
@@ -95,33 +96,43 @@ When generating an OAuth2 invite link, include these **Bot Permissions**:
 
 ## Two-Stage Evaluation & API Routing
 
-The bot uses a two-stage evaluation flow to intelligently route requests. Keywords define available abilities that Ollama can discover and trigger during conversation.
+The bot uses a two-stage evaluation flow to intelligently route requests. Keyword/tool definitions live in the runtime config (e.g. `config/keywords.json` or `config/tools.xml`). **Internal-only** entries (e.g. `help`, `activity_key`) have a tag so they are **not** sent to Ollama as tools; they are used only for direct bypass (e.g. `!help`).
 
-### How It Works
+### Native tools path (when tools are available)
 
-1. **Regex matching** (fast path) — checked first for explicit keywords like `!generate` or `!weather`
-2. **Direct API routing** — if a non-Ollama keyword is matched by regex, the request is sent directly to the primary API, respecting the keyword's own `finalOllamaPass` setting
-3. **Two-stage evaluation** — if an Ollama keyword is matched (e.g., "chat", "ask") or no keyword is matched, the request is sent to Ollama with an abilities context describing available API capabilities. Ollama's response is then checked:
-   - `parseFirstLineKeyword()` checks if the first line of Ollama's response matches an API keyword (with optional inline parameters). When the matched ability has `abilityInputs.required`, `inferAbilityParameters()` extracts the concrete parameter (e.g., resolving "capital of Thailand" → "Bangkok") before routing.
-   - If no keyword directive is found, Ollama's response is returned as direct chat — no fallback classification is performed.
-4. **Final refinement** — model-inferred abilities (from step 3) always pass through a final Ollama call to present API data conversationally. Direct `!keyword` routing respects the keyword's own `finalOllamaPass` setting.
+When the config yields at least one routable tool (enabled, not builtin, api ≠ ollama, not internal-only):
 
-### Keyword Prefix Normalisation
+1. **Tools schema** — `buildOllamaToolsSchema()` converts keyword config into OpenAI-style tool definitions and passes them to Ollama as the `tools` parameter on `/api/chat`.
+2. **Ollama response** — The model may return structured `tool_calls` (max **3** per turn, enforced in code). If it returns only text, that is sent as the chat reply.
+3. **Tool execution** — Each tool call is resolved to a keyword config; arguments are converted to the single content string each API expects. `executeRoutedRequest()` runs without a per-call final pass.
+4. **Single final pass** — All tool results are combined and sent to **one** final Ollama call for conversational refinement, then the reply is sent to the user.
 
 Keywords in `config/tools.xml` may be stored with or without the `!` prefix. The routing engine normalises all keywords to include the prefix before matching, ensuring `!activity_key` matches a config entry stored as `"activity_key"`.
 
-### Example Flows
+### Legacy path (no tools or tools disabled)
 
-- **Simple**: `!generate` → ComfyUI (direct API call)
-- **Weather direct route**: `!weather Seattle` → AccuWeather (shared routed API path)
-- **Two-stage**: User says "is it going to rain?" → no keyword match → Ollama with abilities → response starts with `weather: Seattle` → AccuWeather triggered → Ollama formats result
-- **Two-stage with inference**: User says "what is the capital of Thailand?" → Ollama starts with `weather` → `inferAbilityParameters()` resolves "Bangkok" → AccuWeather called with "Bangkok"
-- **No API match**: User says "tell me a joke" → Ollama with abilities → response has no keyword directive → Ollama response returned directly
+When there are no routable tools:
 
-### Error Handling
+1. **Regex matching** (fast path) — explicit keywords like `!generate` or `!weather` are matched first.
+2. **Direct API routing** — if a non-Ollama keyword is matched by regex, the request goes to the primary API (per-keyword `finalOllamaPass` still applies).
+3. **Two-stage with abilities block** — if an Ollama keyword is matched (e.g. "chat") or no keyword matches, the request is sent to Ollama with a text abilities block. `parseFirstLineKeyword()` checks the first line for an API keyword (with optional inline parameters). If matched, `inferAbilityParameters()` may extract parameters before routing.
+4. **Final refinement** — model-inferred abilities from step 3 go through a final Ollama call. Direct `!keyword` routing respects the keyword's `finalOllamaPass` setting.
 
-- If the final Ollama pass fails, the raw API result is returned
-- If two-stage evaluation finds an API keyword but the API call fails, an error is reported to the user
+### Keyword prefix normalisation
+
+Keywords in config may be stored with or without the `!` prefix. The routing engine normalises before matching, so `!activity_key` matches a config entry stored as `"activity_key"`.
+
+### Example flows
+
+- **Direct**: `!weather Seattle` → AccuWeather
+- **Native tools**: User says "what's the weather in Dallas and generate a sunset image" → Ollama returns two tool_calls → both run → one final pass with combined results
+- **Legacy two-stage**: No tools configured → user says "is it going to rain?" → Ollama with abilities block → first line matches `weather` → AccuWeather → final Ollama pass
+- **Internal-only**: `!help` → handled directly, never sent to Ollama as a tool
+
+### Error handling
+
+- If the final Ollama pass fails, the raw API result is returned.
+- If a tool call or legacy-routed API call fails, an error is reported to the user.
 
 ## Reply Chain Context, Channel Context & DM History
 
@@ -176,15 +187,15 @@ In all cases, context is sent to Ollama using the `/api/chat` endpoint with prop
 - Circular references are detected and traversal stops
 - Bot responses are sent as **plain text** (not embed blocks) for a conversational feel
 
-## Context Evaluation (Per-Keyword Toggle)
+## Context Evaluation (Global)
 
 The bot includes an **Ollama-powered context evaluator** that determines how much conversation history is relevant before including it. This improves response quality when conversations shift topics.
 
-Context evaluation is **opt-in per keyword** via the `contextFilterEnabled` field (or the **Ctx Eval** checkbox in the configurator). When omitted, it defaults to `false` — context evaluation is skipped and the full collected history is passed through. Built-in keywords are unaffected by this setting.
+Context evaluation is controlled by a **global toggle** (`CONTEXT_EVAL_ENABLED`, default `true`). When enabled, it runs for all default-path requests (messages that do not match a direct API keyword). It can use a dedicated model, prompt, and context window size separate from the primary Ollama model. Configure via the "Context Evaluation" section in the configurator or directly in `.env`.
 
 ### How It Works
 
-1. After the reply chain / channel / DM history is collected and collated, the context evaluator sends the messages to Ollama along with the current user prompt — **only when `contextFilterEnabled` is `true` for the matched keyword**.
+1. After the reply chain / channel / DM history is collected and collated, the context evaluator sends the messages to Ollama along with the current user prompt — when `CONTEXT_EVAL_ENABLED` is `true`.
 2. Ollama determines which of the most recent messages are topically relevant. Messages tagged as primary (reply chain / thread) are signaled as higher-importance.
 3. The most recent `contextFilterMinDepth` messages are **always included**, even if off-topic — this guarantees a baseline of context.
 4. Ollama may include up to `contextFilterMaxDepth` messages total if they remain on-topic.
@@ -193,27 +204,26 @@ Context evaluation is **opt-in per keyword** via the `contextFilterEnabled` fiel
 
 Depth is counted from the **newest** message (newest = depth 1), matching the "prioritize newest to oldest" design.
 
-### Per-Keyword Depth Overrides
+### Per-Tool Depth Overrides
 
-These optional fields in `config/tools.xml` override the global defaults for a specific tool:
+These optional fields in `config/tools.xml` override the global depth defaults for a specific tool:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `contextFilterEnabled` | `boolean` | `false` | Enable Ollama context evaluation for this keyword |
 | `contextFilterMinDepth` | `integer` | `1` | Minimum most-recent messages to always include (>= 1) |
 | `contextFilterMaxDepth` | `integer` | Global `REPLY_CHAIN_MAX_DEPTH` | Maximum messages eligible for inclusion (>= 1) |
 
 ### Where the Evaluator Applies
 
-- **Direct Ollama chat** (two-stage evaluation, stage 1) — filters history before the initial Ollama call, only when `contextFilterEnabled` is `true`.
-- **Final Ollama pass** (for non-Ollama API keywords with `finalOllamaPass: true`) — always filters history before the refinement call (unaffected by per-keyword toggle).
+- **Default path** (two-stage tool evaluation, stage 1) — filters history before the initial Ollama call, when `CONTEXT_EVAL_ENABLED` is `true`.
+- **Final Ollama pass** (for non-Ollama API keywords with `finalOllamaPass: true`) — also filters history before the refinement call.
 - If the primary API was already Ollama, the final pass is skipped (no double-filtering).
 
 ### Notes
 
 - **System messages** (abilities context, system prompts) are excluded from depth counting and always preserved at the front of the history.
-- **Persona isolation**: The context evaluator uses its own dedicated system prompt — the global Ollama persona/system prompt is only included in user-facing chat responses, not in internal tool calls.
-- **Performance**: Context evaluation adds one Ollama call per request to determine relevance. This is most beneficial for keywords with long reply chains (e.g., `!chat`, discussion-style keywords). For short, single-turn interactions the overhead is minimal.
+- **Persona isolation**: The context evaluator uses its own dedicated system prompt (`CONTEXT_EVAL_PROMPT`) — the global Ollama persona/system prompt is only included in user-facing chat responses, not in internal evaluation calls.
+- **Performance**: Context evaluation adds one Ollama call per request to determine relevance. This is most beneficial for multi-turn conversations. For short, single-turn interactions the overhead is minimal.
 - **Failure behavior**: If the evaluation call fails or returns an unexpected response, the full unfiltered history is used as a graceful fallback — the bot never drops context silently.
 
 ## API Rate Limiting

@@ -149,7 +149,7 @@ export function parseEvalResponse(
 /**
  * Evaluate the conversation history and return a filtered version.
  *
- * Context evaluation is always applied when there is history to filter.
+ * Context evaluation is only applied when global context evaluation is enabled.
  * System messages (e.g. abilities context) are excluded from evaluation
  * and are NOT returned — callers attach their own system context after
  * this function returns.
@@ -173,6 +173,11 @@ export async function evaluateContextWindow(
   requester: string,
   signal?: AbortSignal
 ): Promise<ChatMessage[]> {
+  // If global context evaluation is disabled, skip evaluation and return history unchanged
+  if (!config.getContextEvalEnabled()) {
+    return conversationHistory;
+  }
+
   // Exclude system messages entirely — they must not be evaluated or returned
   const nonSystemMessages = conversationHistory.filter(m => m.role !== 'system');
 
@@ -220,7 +225,8 @@ export async function evaluateContextWindow(
   }
 
   // ── Call Ollama to evaluate relevance ─────────────────────────
-  const systemPrompt = buildContextEvalPrompt(minDepth, maxDepth);
+  const customPrompt = config.getContextEvalPrompt()?.trim() ?? '';
+  const systemPrompt = customPrompt !== '' ? customPrompt : buildContextEvalPrompt(minDepth, maxDepth);
   const formattedHistory = formatHistoryForEval(candidates);
   const evalPrompt = `Conversation messages (most recent first):\n${formattedHistory}\n\nCurrent user prompt: ${userPrompt}`;
 
@@ -245,10 +251,13 @@ export async function evaluateContextWindow(
         return ollamaClient.generate(
           evalPrompt,
           requester,
-          config.getOllamaModel(),
+          config.getContextEvalModel(),
           [{ role: 'system', content: systemPrompt }],
           combinedSignal,
-          { includeSystemPrompt: false }
+          {
+            includeSystemPrompt: false,
+            contextSize: config.getContextEvalContextSize()
+          }
         );
       }
     );

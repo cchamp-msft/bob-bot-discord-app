@@ -8,6 +8,10 @@ jest.mock('../src/utils/config', () => ({
     getOllamaModel: jest.fn(() => 'llama2'),
     getDefaultTimeout: jest.fn(() => 300),
     getReplyChainMaxDepth: jest.fn(() => 10),
+    getContextEvalEnabled: jest.fn(() => true),
+    getContextEvalModel: jest.fn(() => 'llama2'),
+    getContextEvalPrompt: jest.fn(() => ''),
+    getContextEvalContextSize: jest.fn(() => 2048),
   },
 }));
 
@@ -45,6 +49,7 @@ jest.mock('../src/utils/activityEvents', () => ({
 import { evaluateContextWindow, buildContextEvalPrompt, parseEvalResponse, formatHistoryForEval, extractJsonArray } from '../src/utils/contextEvaluator';
 import { ollamaClient } from '../src/api/ollamaClient';
 import { requestQueue } from '../src/utils/requestQueue';
+import { config } from '../src/utils/config';
 import { ChatMessage } from '../src/types';
 import { KeywordConfig } from '../src/utils/config';
 
@@ -54,10 +59,10 @@ const mockExecute = requestQueue.execute as jest.MockedFunction<typeof requestQu
 // Helper to build a simple keyword config
 function makeKeyword(overrides: Partial<KeywordConfig> = {}): KeywordConfig {
   return {
-    keyword: 'chat',
+    keyword: '__default__',
     api: 'ollama',
     timeout: 300,
-    description: 'Chat',
+    description: 'Default chat via Ollama',
     ...overrides,
   };
 }
@@ -73,6 +78,7 @@ function makeHistory(count: number): ChatMessage[] {
 describe('ContextEvaluator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(config).getContextEvalEnabled.mockReturnValue(true);
     // By default, make requestQueue.execute invoke the executor callback
     mockExecute.mockImplementation((_api, _requester, _keyword, _timeout, executor) =>
       (executor as any)(new AbortController().signal)
@@ -196,9 +202,9 @@ describe('ContextEvaluator', () => {
   });
 
   describe('evaluateContextWindow', () => {
-    it('should evaluate even when deprecated contextFilterEnabled is false', async () => {
+    it('should evaluate when global context evaluation is enabled', async () => {
       const history = makeHistory(5);
-      const kw = makeKeyword({ contextFilterEnabled: false });
+      const kw = makeKeyword();
 
       mockGenerate.mockResolvedValue({
         success: true,
@@ -211,19 +217,16 @@ describe('ContextEvaluator', () => {
       expect(result).toHaveLength(3);
     });
 
-    it('should evaluate even when deprecated contextFilterEnabled is undefined', async () => {
+    it('should skip evaluation when global context evaluation is disabled', async () => {
+      jest.mocked(config).getContextEvalEnabled.mockReturnValue(false);
+
       const history = makeHistory(5);
       const kw = makeKeyword();
 
-      mockGenerate.mockResolvedValue({
-        success: true,
-        data: { text: '[1, 2]' },
-      });
-
       const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
 
-      expect(mockExecute).toHaveBeenCalled();
-      expect(result).toHaveLength(2);
+      expect(mockExecute).not.toHaveBeenCalled();
+      expect(result).toHaveLength(5);
     });
 
     it('should return empty array for empty history', async () => {
@@ -277,7 +280,7 @@ describe('ContextEvaluator', () => {
       await evaluateContextWindow(history, 'test prompt', kw, 'user1');
 
       expect(activityEvents.emitContextDecision).toHaveBeenCalledWith(
-        2, 6, 'chat', [1, 3]
+        2, 6, '__default__', [1, 3]
       );
     });
 

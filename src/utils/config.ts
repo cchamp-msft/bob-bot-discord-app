@@ -36,7 +36,7 @@ normalizeEscapedEnvVars();
  */
 export const COMMAND_PREFIX = '!';
 
-/** Structured guidance for how a keyword's inputs are inferred and validated. */
+/** Structured guidance for how a keyword's inputs are inferred and validated. All context is available by default. */
 export interface AbilityInputs {
   /** How inputs are provided: 'implicit' (inferred from context), 'explicit' (user must provide), 'mixed' (some inferred, some required). */
   mode: 'implicit' | 'explicit' | 'mixed';
@@ -44,7 +44,7 @@ export interface AbilityInputs {
   required?: string[];
   /** Optional input descriptions. */
   optional?: string[];
-  /** Allowed inference sources (e.g., "reply_target", "current_message", "recent_user_message"). */
+  /** Comma-separated source names to infer inputs from (e.g. "user_message, conversation_history"). */
   inferFrom?: string[];
   /** Plain-language validation constraints (e.g., "date must be YYYY-MM-DD or YYYYMMDD"). */
   validation?: string;
@@ -85,9 +85,6 @@ export interface KeywordConfig {
   /** OpenAI-style parameter definitions for the XML tools format.
    *  Stored for faithful round-trip when writing back to tools.xml. */
   parameters?: Record<string, ToolParameter>;
-  /** When true, the two-stage Ollama context evaluation is applied before building the prompt.
-   *  Defaults to false when omitted. Built-in keywords are unaffected. */
-  contextFilterEnabled?: boolean;
   /** Minimum number of most-recent context messages to always include (depth counted from newest). Must be >= 1. Defaults to 1. */
   contextFilterMinDepth?: number;
   /** Maximum number of context messages eligible for inclusion (depth counted from newest). Defaults to global reply-chain max depth. */
@@ -529,6 +526,78 @@ class Config {
     return process.env.ERROR_MESSAGE || "I'm experiencing technical difficulties. Please try again later.";
   }
 
+  /**
+   * Whether global context evaluation is enabled.
+   * When false, the bot will skip context filtering and send all messages to Ollama.
+   * Default: true.
+   */
+  getContextEvalEnabled(): boolean {
+    return process.env.CONTEXT_EVAL_ENABLED !== 'false';
+  }
+
+  /**
+   * Ollama model used for context evaluation.
+   * Falls back to the default OLLAMA_MODEL if not set.
+   */
+  getContextEvalModel(): string {
+    return process.env.CONTEXT_EVAL_MODEL || this.getOllamaModel();
+  }
+
+  /**
+   * System prompt used for context evaluation.
+   * Default is the built-in prompt from contextEvaluator.ts.
+   */
+  getContextEvalPrompt(): string {
+    const val = process.env.CONTEXT_EVAL_PROMPT;
+    if (val === undefined) {
+      return 'You are a context relevance evaluator. Your job is to determine which recent conversation messages are relevant to the current user prompt.\n\nYou will be given a list of conversation messages (numbered from most recent to oldest) and the current user prompt.\nDetermine which messages should be included as context for responding to the user.\n\nRules:\n- You MUST always include at least indices 1 through 20 (the most recent messages).\n- You may include up to 30 message(s) total.\n- Prioritize newer messages over older ones — only include older messages when clearly relevant.\n- Messages tagged [reply] or [thread] are from a direct reply chain or thread and are generally more relevant than [channel] messages.\n- If messages vary topics too greatly, prefer the most recent topic.\n- You may select non-contiguous messages (e.g. 1, 3, 5) if only specific older messages are relevant.\n- Respond with ONLY a JSON array of integer indices — e.g. [1, 2, 4].\n- Do not include any explanation, punctuation, or extra text outside of the JSON array.';
+    }
+    return val;
+  }
+
+  /**
+   * Ollama context window size (num_ctx) for context evaluation.
+   * Default: 2048, range: 256-131072.
+   */
+  getContextEvalContextSize(): number {
+    const raw = this.parseIntEnv('CONTEXT_EVAL_CONTEXT_SIZE', 2048);
+    return Math.max(256, Math.min(raw, 131072));
+  }
+
+  /**
+   * Ollama model used for tool evaluation.
+   * Falls back to the default OLLAMA_MODEL if not set.
+   */
+  getOllamaToolModel(): string {
+    return process.env.OLLAMA_TOOL_MODEL || this.getOllamaModel();
+  }
+
+  /**
+   * Optional system prompt appended during tool evaluation.
+   * Empty by default — existing prompt assembly is used as-is.
+   */
+  getOllamaToolPrompt(): string {
+    return process.env.OLLAMA_TOOL_PROMPT ?? '';
+  }
+
+  /**
+   * Ollama context window size (num_ctx) for tool evaluation.
+   * Default: 4096, range: 256-131072.
+   */
+  getOllamaToolContextSize(): number {
+    const raw = this.parseIntEnv('OLLAMA_TOOL_CONTEXT_SIZE', 4096);
+    return Math.max(256, Math.min(raw, 131072));
+  }
+
+  /**
+   * Ollama context window size (num_ctx) for the final response pass.
+   * Default: 4096, range: 256-131072.
+   */
+  getOllamaFinalPassContextSize(): number {
+    const raw = this.parseIntEnv('OLLAMA_FINAL_PASS_CONTEXT_SIZE', 4096);
+    return Math.max(256, Math.min(raw, 131072));
+  }
+
 
 
   getErrorRateLimitMinutes(): number {
@@ -601,24 +670,6 @@ class Config {
    */
   getDebugLogging(): boolean {
     return process.env.DEBUG_LOGGING === 'true';
-  }
-
-  /**
-   * Whether detailed ability logging is explicitly configured via env.
-   * Does NOT account for DEBUG_LOGGING override.
-   * Used by PublicConfig/configurator so the UI reflects the raw env value.
-   */
-  getAbilityLoggingConfigured(): boolean {
-    return process.env.ABILITY_LOGGING_DETAILED === 'true';
-  }
-
-  /**
-   * Whether detailed ability logging is effectively enabled.
-   * True when either ABILITY_LOGGING_DETAILED or DEBUG_LOGGING is on.
-   * Use this when deciding whether to log abilities content at runtime.
-   */
-  getAbilityLoggingDetailed(): boolean {
-    return this.getAbilityLoggingConfigured() || this.getDebugLogging();
   }
 
   /**
@@ -859,7 +910,6 @@ class Config {
     const prevImageResponseIncludeEmbed = this.getImageResponseIncludeEmbed();
     const prevOllamaFinalPassModel = this.getOllamaFinalPassModel();
     const prevDebugLogging = this.getDebugLogging();
-    const prevAbilityLogging = this.getAbilityLoggingConfigured();
     const prevNflLoggingLevel = this.getNflLoggingLevel();
     const prevNflEndpoint = this.getNflEndpoint();
     const prevNflEnabled = this.getNflEnabled();
@@ -941,7 +991,6 @@ class Config {
     if (this.getImageResponseIncludeEmbed() !== prevImageResponseIncludeEmbed) reloaded.push('IMAGE_RESPONSE_INCLUDE_EMBED');
     if (this.getOllamaFinalPassModel() !== prevOllamaFinalPassModel) reloaded.push('OLLAMA_FINAL_PASS_MODEL');
     if (this.getDebugLogging() !== prevDebugLogging) reloaded.push('DEBUG_LOGGING');
-    if (this.getAbilityLoggingConfigured() !== prevAbilityLogging) reloaded.push('ABILITY_LOGGING_DETAILED');
     if (this.getNflLoggingLevel() !== prevNflLoggingLevel) reloaded.push('NFL_LOGGING_LEVEL');
     if (this.getNflEndpoint() !== prevNflEndpoint) reloaded.push('NFL_BASE_URL');
     if (this.getNflEnabled() !== prevNflEnabled) reloaded.push('NFL_ENABLED');
@@ -1062,10 +1111,13 @@ class Config {
         maxTokens: this.getReplyChainMaxTokens(),
         imageMaxDepth: this.getReplyChainImageMaxDepth(),
       },
-      debugLogging: this.getDebugLogging(),
-      abilityLogging: {
-        detailed: this.getAbilityLoggingConfigured(),
+      contextEval: {
+        enabled: this.getContextEvalEnabled(),
+        model: this.getContextEvalModel(),
+        contextSize: this.getContextEvalContextSize(),
+        prompt: this.getContextEvalPrompt(),
       },
+      debugLogging: this.getDebugLogging(),
       nflLogging: {
         level: this.getNflLoggingLevel(),
       },

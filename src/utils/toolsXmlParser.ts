@@ -114,8 +114,19 @@ function parseToolElement(raw: Record<string, unknown>, index: number): KeywordC
   }
 
   // Context filter fields
-  if (raw.contextFilterEnabled !== undefined) {
-    kw.contextFilterEnabled = parseBool(raw.contextFilterEnabled, `tool "${name}" <contextFilterEnabled>`);
+  if (raw.contextFilterMinDepth !== undefined) {
+    const v = Number(raw.contextFilterMinDepth);
+    if (isNaN(v) || v < 1 || !Number.isInteger(v)) {
+      throw new Error(`tools.xml: tool "${name}" has invalid <contextFilterMinDepth> — must be a positive integer (>= 1)`);
+    }
+    kw.contextFilterMinDepth = v;
+  }
+  if (raw.contextFilterMaxDepth !== undefined) {
+    const v = Number(raw.contextFilterMaxDepth);
+    if (isNaN(v) || !Number.isInteger(v)) {
+      throw new Error(`tools.xml: tool "${name}" has invalid <contextFilterMaxDepth> — must be a positive integer (>= 1)`);
+    }
+    kw.contextFilterMaxDepth = v;
   }
   if (raw.contextFilterMinDepth !== undefined) {
     const v = Number(raw.contextFilterMinDepth);

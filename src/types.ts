@@ -426,10 +426,13 @@ export interface PublicConfig {
     maxTokens: number;
     imageMaxDepth: number;
   };
-  debugLogging: boolean;
-  abilityLogging: {
-    detailed: boolean;
+  contextEval: {
+    enabled: boolean;
+    model: string;
+    contextSize: number;
+    prompt: string;
   };
+  debugLogging: boolean;
   nflLogging: {
     level: number;
   };

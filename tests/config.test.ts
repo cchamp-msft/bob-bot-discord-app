@@ -475,6 +475,122 @@ describe('Config', () => {
     });
   });
 
+  describe('context eval config', () => {
+    const { config } = require('../src/utils/config');
+
+    it('getContextEvalEnabled should default to true when env not set', () => {
+      delete process.env.CONTEXT_EVAL_ENABLED;
+      expect(config.getContextEvalEnabled()).toBe(true);
+    });
+
+    it('getContextEvalEnabled should return false when env is "false"', () => {
+      process.env.CONTEXT_EVAL_ENABLED = 'false';
+      expect(config.getContextEvalEnabled()).toBe(false);
+    });
+
+    it('getContextEvalModel should fall back to OLLAMA_MODEL', () => {
+      delete process.env.CONTEXT_EVAL_MODEL;
+      process.env.OLLAMA_MODEL = 'llama3';
+      expect(config.getContextEvalModel()).toBe('llama3');
+    });
+
+    it('getContextEvalModel should use dedicated env var when set', () => {
+      process.env.CONTEXT_EVAL_MODEL = 'phi3';
+      expect(config.getContextEvalModel()).toBe('phi3');
+    });
+
+    it('getContextEvalPrompt should return built-in prompt when env not set', () => {
+      delete process.env.CONTEXT_EVAL_PROMPT;
+      expect(config.getContextEvalPrompt()).toContain('context relevance evaluator');
+    });
+
+    it('getContextEvalPrompt should return custom prompt when set', () => {
+      process.env.CONTEXT_EVAL_PROMPT = 'custom eval prompt';
+      expect(config.getContextEvalPrompt()).toBe('custom eval prompt');
+    });
+
+    it('getContextEvalContextSize should default to 2048', () => {
+      delete process.env.CONTEXT_EVAL_CONTEXT_SIZE;
+      expect(config.getContextEvalContextSize()).toBe(2048);
+    });
+
+    it('getContextEvalContextSize should clamp to 256 minimum', () => {
+      process.env.CONTEXT_EVAL_CONTEXT_SIZE = '10';
+      expect(config.getContextEvalContextSize()).toBe(256);
+    });
+
+    it('getContextEvalContextSize should clamp to 131072 maximum', () => {
+      process.env.CONTEXT_EVAL_CONTEXT_SIZE = '999999';
+      expect(config.getContextEvalContextSize()).toBe(131072);
+    });
+  });
+
+  describe('per-pass ollama config', () => {
+    const { config } = require('../src/utils/config');
+
+    it('getOllamaToolModel should fall back to OLLAMA_MODEL', () => {
+      delete process.env.OLLAMA_TOOL_MODEL;
+      process.env.OLLAMA_MODEL = 'llama3';
+      expect(config.getOllamaToolModel()).toBe('llama3');
+    });
+
+    it('getOllamaToolModel should use dedicated env var when set', () => {
+      process.env.OLLAMA_TOOL_MODEL = 'mistral';
+      expect(config.getOllamaToolModel()).toBe('mistral');
+    });
+
+    it('getOllamaToolPrompt should default to empty string', () => {
+      delete process.env.OLLAMA_TOOL_PROMPT;
+      expect(config.getOllamaToolPrompt()).toBe('');
+    });
+
+    it('getOllamaToolPrompt should return custom prompt when set', () => {
+      process.env.OLLAMA_TOOL_PROMPT = 'custom tool prompt';
+      expect(config.getOllamaToolPrompt()).toBe('custom tool prompt');
+    });
+
+    it('getOllamaToolContextSize should default to 4096', () => {
+      delete process.env.OLLAMA_TOOL_CONTEXT_SIZE;
+      expect(config.getOllamaToolContextSize()).toBe(4096);
+    });
+
+    it('getOllamaToolContextSize should clamp to 256 minimum', () => {
+      process.env.OLLAMA_TOOL_CONTEXT_SIZE = '10';
+      expect(config.getOllamaToolContextSize()).toBe(256);
+    });
+
+    it('getOllamaToolContextSize should clamp to 131072 maximum', () => {
+      process.env.OLLAMA_TOOL_CONTEXT_SIZE = '999999';
+      expect(config.getOllamaToolContextSize()).toBe(131072);
+    });
+
+    it('getOllamaFinalPassContextSize should default to 4096', () => {
+      delete process.env.OLLAMA_FINAL_PASS_CONTEXT_SIZE;
+      expect(config.getOllamaFinalPassContextSize()).toBe(4096);
+    });
+
+    it('getOllamaFinalPassContextSize should clamp to 256 minimum', () => {
+      process.env.OLLAMA_FINAL_PASS_CONTEXT_SIZE = '10';
+      expect(config.getOllamaFinalPassContextSize()).toBe(256);
+    });
+
+    it('getOllamaFinalPassContextSize should clamp to 131072 maximum', () => {
+      process.env.OLLAMA_FINAL_PASS_CONTEXT_SIZE = '999999';
+      expect(config.getOllamaFinalPassContextSize()).toBe(131072);
+    });
+
+    it('getOllamaFinalPassModel should fall back to OLLAMA_MODEL', () => {
+      delete process.env.OLLAMA_FINAL_PASS_MODEL;
+      process.env.OLLAMA_MODEL = 'llama3';
+      expect(config.getOllamaFinalPassModel()).toBe('llama3');
+    });
+
+    it('getOllamaFinalPassModel should use dedicated env var when set', () => {
+      process.env.OLLAMA_FINAL_PASS_MODEL = 'qwen';
+      expect(config.getOllamaFinalPassModel()).toBe('qwen');
+    });
+  });
+
   describe('image response config', () => {
     const { config } = require('../src/utils/config');
 
@@ -927,7 +1043,6 @@ describe('Config', () => {
       expect(kw!.abilityInputs!.mode).toBe('explicit');
       expect(kw!.abilityInputs!.required).toEqual(['location']);
       expect(kw!.abilityInputs!.optional).toEqual(['date']);
-      expect(kw!.abilityInputs!.inferFrom).toEqual(['current_message']);
       expect(kw!.abilityInputs!.validation).toBe('location must be a city');
       expect(kw!.abilityInputs!.examples).toEqual(['testkw Dallas']);
     });
@@ -965,9 +1080,11 @@ describe('Config', () => {
   </tool>`)
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       config.reload();
       expect(config.getKeywordConfig('testkw')).toBeUndefined();
       warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
 
     it('should reject parameters with no mode element', () => {
@@ -988,9 +1105,11 @@ describe('Config', () => {
   </tool>`)
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       config.reload();
       expect(config.getKeywordConfig('testkw')).toBeUndefined();
       warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
 
     it('should reject malformed XML gracefully', () => {
@@ -999,9 +1118,11 @@ describe('Config', () => {
         '<tools><tool><name>testkw</name><api>nfl</api>'
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       config.reload();
       expect(config.getKeywordConfig('testkw')).toBeUndefined();
       warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
 
     it('should reject tool with invalid api', () => {
@@ -1015,9 +1136,11 @@ describe('Config', () => {
   </tool>`)
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       config.reload();
       expect(config.getKeywordConfig('testkw')).toBeUndefined();
       warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
   });
 

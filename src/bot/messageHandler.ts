@@ -11,10 +11,11 @@ import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpA
 import { fileHandler } from '../utils/fileHandler';
 import { ChatMessage, NFLResponse, MemeResponse } from '../types';
 import { chunkText } from '../utils/chunkText';
-import { executeRoutedRequest, inferAbilityParameters } from '../utils/apiRouter';
+import { executeRoutedRequest, inferAbilityParameters, formatApiResultAsExternalData } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
-import { assemblePrompt, parseFirstLineKeyword } from '../utils/promptBuilder';
+import { assemblePrompt, assembleReprompt, parseFirstLineKeyword } from '../utils/promptBuilder';
 import type { KeywordParseResult } from '../utils/promptBuilder';
+import { buildOllamaToolsSchema, resolveToolNameToKeyword, toolArgumentsToContent } from '../utils/toolsSchema';
 import { activityEvents } from '../utils/activityEvents';
 import { activityKeyManager } from '../utils/activityKeyManager';
 
@@ -388,9 +389,8 @@ class MessageHandler {
     const apiKeywordMatched = keywordMatched && keywordConfig!.api !== 'ollama';
 
     if (!keywordConfig) {
-      const configuredChat = this.findEnabledKeywordByName('chat');
-      keywordConfig = configuredChat ?? {
-        keyword: 'chat',
+      keywordConfig = {
+        keyword: '__default__',
         api: 'ollama',
         timeout: config.getDefaultTimeout(),
         description: 'Default chat via Ollama',
@@ -539,7 +539,8 @@ class MessageHandler {
           routedResult.finalApi,
           message,
           requester,
-          isDM
+          isDM,
+          routedResult.mediaSource
         );
       } else {
         // ── Ollama path: chat with abilities context, then second evaluation ──
@@ -1136,9 +1137,9 @@ class MessageHandler {
     const timeout = keywordConfig.timeout || config.getDefaultTimeout();
 
     // Apply context filter (Ollama-based relevance evaluation) before building the prompt,
-    // only when the keyword has contextFilterEnabled set to true.
+    // only when global context evaluation is enabled.
     let filteredHistory = conversationHistory;
-    if (keywordConfig.contextFilterEnabled && conversationHistory.length > 0) {
+    if (config.getContextEvalEnabled() && conversationHistory.length > 0) {
       const preFilterCount = conversationHistory.filter(m => m.role !== 'system').length;
       logger.log('success', 'system',
         `TWO-STAGE: Context before eval: ${conversationHistory.length} total (${preFilterCount} non-system)`);
@@ -1150,9 +1151,9 @@ class MessageHandler {
       );
       logger.log('success', 'system',
         `TWO-STAGE: Context after eval: ${filteredHistory.length} messages (system messages excluded)`);
-    } else if (!keywordConfig.contextFilterEnabled && conversationHistory.length > 0) {
+    } else if (!config.getContextEvalEnabled() && conversationHistory.length > 0) {
       logger.log('success', 'system',
-        `TWO-STAGE: Context eval skipped (contextFilterEnabled is off for "${keywordConfig.keyword}")`);
+        `TWO-STAGE: Context eval skipped (global CONTEXT_EVAL_ENABLED is off)`);
     }
 
     // Append the triggering message to context so the model knows who is asking.
@@ -1162,29 +1163,28 @@ class MessageHandler {
       { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true },
     ];
 
-    // Build the XML-tagged prompt with abilities context
+    // Native tools path: when tools are available, use Ollama tool_calls (max 3) and one final pass.
+    const tools = buildOllamaToolsSchema(config.getKeywords());
+    const useToolsPath = tools.length > 0;
+
     const assembled = assemblePrompt({
       userMessage: content,
       conversationHistory: filteredHistory,
       botDisplayName,
+      ...(useToolsPath ? { enabledKeywords: [] } : {}),
     });
 
-    // Log abilities summary
-    const abilityCount = (assembled.systemContent.match(/^- /gm) || []).length;
-    if (abilityCount > 0) {
-      if (config.getAbilityLoggingDetailed()) {
-        logger.log('success', 'system', `TWO-STAGE: Abilities context passed to model:\n${assembled.systemContent}`);
+    if (!useToolsPath) {
+      const abilityCount = (assembled.systemContent.match(/^- /gm) || []).length;
+      if (abilityCount > 0) {
+        logger.log('success', 'system', `TWO-STAGE: Legacy path — ${abilityCount} ability/abilities in prompt`);
       } else {
-        logger.log('success', 'system', `TWO-STAGE: ${abilityCount} ability/abilities passed to model`);
+        logger.log('success', 'system', 'TWO-STAGE: No abilities configured — standard Ollama chat');
       }
     } else {
-      logger.log('success', 'system', 'TWO-STAGE: No abilities configured — standard Ollama chat');
+      logger.log('success', 'system', `TWO-STAGE: Native tools mode — ${tools.length} tool(s), max 3 calls per turn`);
     }
 
-    // Stage 1: Call Ollama with the XML-tagged prompt.
-    // System content from assemblePrompt replaces the global persona;
-    // includeSystemPrompt: false prevents OllamaClient from duplicating it.
-    // When image payloads are present, they are forwarded to the vision model.
     const ollamaResult = await requestQueue.execute(
       'ollama',
       requester,
@@ -1196,12 +1196,14 @@ class MessageHandler {
           requester,
           assembled.userContent,
           timeout,
-          undefined,
+          config.getOllamaToolModel(),
           [{ role: 'system', content: assembled.systemContent }],
           signal,
           undefined,
           {
             includeSystemPrompt: false,
+            contextSize: config.getOllamaToolContextSize(),
+            ...(useToolsPath ? { tools } : {}),
             ...(imagePayloads.length > 0 ? { images: imagePayloads } : {}),
           }
         )
@@ -1212,9 +1214,85 @@ class MessageHandler {
       return;
     }
 
+    // Tools path: handle structured tool_calls (already trimmed to MAX_TOOL_CALLS by client).
+    if (useToolsPath && ollamaResult.data?.tool_calls && ollamaResult.data.tool_calls.length > 0) {
+      const toolCalls = ollamaResult.data.tool_calls;
+      const externalDataParts: string[] = [];
+      const keywords = config.getKeywords();
+
+      for (const tc of toolCalls) {
+        const kwConfig = resolveToolNameToKeyword(tc.function.name, keywords);
+        if (!kwConfig) {
+          logger.logWarn('system', `TWO-STAGE: Unknown tool name "${tc.function.name}" — skipping`);
+          continue;
+        }
+        const args = typeof tc.function.arguments === 'object' && tc.function.arguments !== null
+          ? (tc.function.arguments as Record<string, unknown>)
+          : {};
+        const contentStr = toolArgumentsToContent(kwConfig, args);
+        activityEvents.emitRoutingDecision(kwConfig.api, kwConfig.keyword, 'tool-call');
+
+        const apiResult = await executeRoutedRequest(
+          { ...kwConfig, finalOllamaPass: false },
+          contentStr,
+          requester,
+          filteredHistory.length > 0 ? filteredHistory : undefined,
+          botDisplayName,
+          undefined
+        );
+        const part = formatApiResultAsExternalData(kwConfig, apiResult.finalResponse, contentStr);
+        externalDataParts.push(part);
+      }
+
+      if (externalDataParts.length === 0) {
+        await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
+        return;
+      }
+
+      const combinedExternalData = externalDataParts.join('\n\n');
+      const reprompt = assembleReprompt({
+        userMessage: content,
+        conversationHistory: filteredHistory,
+        externalData: combinedExternalData,
+        botDisplayName,
+      });
+      const finalPassPrompt = config.getOllamaFinalPassPrompt();
+      const finalSystemContent = finalPassPrompt
+        ? `${reprompt.systemContent}\n\n${finalPassPrompt}`
+        : reprompt.systemContent;
+
+      const finalResult = await requestQueue.execute(
+        'ollama',
+        requester,
+        'tools:final',
+        timeout,
+        (sig) =>
+          apiManager.executeRequest(
+            'ollama',
+            requester,
+            reprompt.userContent,
+            timeout,
+            config.getOllamaFinalPassModel() ?? undefined,
+            [{ role: 'system', content: finalSystemContent }],
+            sig,
+            undefined,
+            { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize() }
+          )
+      ) as OllamaResponse;
+
+      await this.dispatchResponse(finalResult, 'ollama', sourceMessage, requester, isDM);
+      return;
+    }
+
+    // Tools path with no tool_calls: direct chat reply.
+    if (useToolsPath) {
+      await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
+      return;
+    }
+
     const ollamaText = ollamaResult.data?.text;
 
-    // Stage 2a: Parse first line for an exact keyword match (primary routing signal)
+    // Legacy: parse first line for keyword match (when not using native tools).
     if (ollamaText) {
       const parseResult = parseFirstLineKeyword(ollamaText);
 
@@ -1233,9 +1311,7 @@ class MessageHandler {
         const abilityInputs = parseResult.keywordConfig.abilityInputs;
         const isImplicitOrMixed =
           !!abilityInputs &&
-          (abilityInputs.mode === 'implicit' || abilityInputs.mode === 'mixed') &&
-          Array.isArray(abilityInputs.inferFrom) &&
-          abilityInputs.inferFrom.length > 0;
+          (abilityInputs.mode === 'implicit' || abilityInputs.mode === 'mixed');
 
         // For implicit/mixed abilities the first-stage model often returns a
         // rich, context-aware prompt inline (parseResult.inferredInput).
@@ -1310,7 +1386,8 @@ class MessageHandler {
           apiResult.finalApi,
           sourceMessage,
           requester,
-          isDM
+          isDM,
+          apiResult.mediaSource
         );
         return;
       }
@@ -1350,7 +1427,8 @@ class MessageHandler {
             imageResult.finalApi,
             sourceMessage,
             requester,
-            isDM
+            isDM,
+            imageResult.mediaSource
           );
           return;
         }
@@ -1386,7 +1464,8 @@ class MessageHandler {
             memeResult.finalApi,
             sourceMessage,
             requester,
-            isDM
+            isDM,
+            memeResult.mediaSource
           );
           return;
         }
@@ -1410,7 +1489,8 @@ class MessageHandler {
     api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme',
     sourceMessage: Message,
     requester: string,
-    isDM: boolean
+    isDM: boolean,
+    mediaSource?: ComfyUIResponse
   ): Promise<void> {
     if (!response.success) {
       const errorDetail = response.error ?? 'Unknown API error';
@@ -1428,7 +1508,7 @@ class MessageHandler {
     } else if (api === 'meme') {
       await this.handleMemeResponse(response as MemeResponse, sourceMessage, requester, isDM);
     } else {
-      await this.handleOllamaResponse(response as OllamaResponse, sourceMessage, requester, isDM);
+      await this.handleOllamaResponse(response as OllamaResponse, sourceMessage, requester, isDM, mediaSource);
     }
   }
 
@@ -1508,37 +1588,21 @@ class MessageHandler {
     return replyText;
   }
 
-  private async handleComfyUIResponse(
-    apiResult: ComfyUIResponse,
-    sourceMessage: Message,
+  /**
+   * Download and save ComfyUI media files, returning attachments and metadata.
+   * Shared between handleComfyUIResponse and handleOllamaResponse (when mediaSource is present).
+   */
+  private async collectComfyUIMedia(
+    comfyResult: ComfyUIResponse,
     requester: string,
-    _isDM: boolean
-  ): Promise<void> {
-    const images = apiResult.data?.images || [];
-    const videos = apiResult.data?.videos || [];
-    const totalOutputs = images.length + videos.length;
-
-    if (totalOutputs === 0) {
-      await sourceMessage.reply('No images or videos were generated.');
-      return;
-    }
-
-    const includeEmbed = config.getImageResponseIncludeEmbed();
-
-    let embed: EmbedBuilder | undefined;
-    if (includeEmbed) {
-      embed = new EmbedBuilder()
-        .setColor('#00AA00')
-        .setTitle('ComfyUI Generation Complete')
-        .setTimestamp();
-    }
-
-    // Process each output — collect attachable files
+    embed?: EmbedBuilder
+  ): Promise<{ attachments: { attachment: Buffer; name: string }[]; savedFilePaths: string[]; savedCount: number; imageCount: number; videoCount: number }> {
+    const images = comfyResult.data?.images || [];
+    const videos = comfyResult.data?.videos || [];
     let savedCount = 0;
     const attachments: { attachment: Buffer; name: string }[] = [];
     const savedFilePaths: string[] = [];
 
-    // Derive file extension from a ComfyUI /view URL's filename query param, with a fallback.
     const extensionFromUrl = (url: string, fallback: string): string => {
       try {
         const filename = new URL(url).searchParams.get('filename') || '';
@@ -1548,7 +1612,6 @@ class MessageHandler {
       return fallback;
     };
 
-    // Helper to process a batch of output URLs with matching description/extension
     const processOutputs = async (urls: string[], description: string, defaultExtension: string, label: string) => {
       for (let i = 0; i < urls.length; i++) {
         const extension = extensionFromUrl(urls[i], defaultExtension);
@@ -1579,6 +1642,36 @@ class MessageHandler {
 
     await processOutputs(images, 'generated_image', 'png', 'Image');
     await processOutputs(videos, 'generated_video', 'mp4', 'Video');
+
+    return { attachments, savedFilePaths, savedCount, imageCount: images.length, videoCount: videos.length };
+  }
+
+  private async handleComfyUIResponse(
+    apiResult: ComfyUIResponse,
+    sourceMessage: Message,
+    requester: string,
+    _isDM: boolean
+  ): Promise<void> {
+    const images = apiResult.data?.images || [];
+    const videos = apiResult.data?.videos || [];
+    const totalOutputs = images.length + videos.length;
+
+    if (totalOutputs === 0) {
+      await sourceMessage.reply('No images or videos were generated.');
+      return;
+    }
+
+    const includeEmbed = config.getImageResponseIncludeEmbed();
+
+    let embed: EmbedBuilder | undefined;
+    if (includeEmbed) {
+      embed = new EmbedBuilder()
+        .setColor('#00AA00')
+        .setTitle('ComfyUI Generation Complete')
+        .setTimestamp();
+    }
+
+    const { attachments, savedFilePaths, savedCount } = await this.collectComfyUIMedia(apiResult, requester, embed);
 
     if (savedCount === 0) {
       await sourceMessage.reply('Files were generated but could not be saved or displayed.');
@@ -1619,13 +1712,69 @@ class MessageHandler {
     logger.logReply(requester, `ComfyUI response sent: ${parts.join(', ')}`);
   }
 
+  /** Regex to strip generated-image URL lines injected by the final Ollama pass. */
+  private static readonly GENERATED_MEDIA_LINE_RE = /\[Generated \d+ (?:image|video)\(s\):[^\]]*\]\n?/g;
+
   private async handleOllamaResponse(
     apiResult: OllamaResponse,
     sourceMessage: Message,
     requester: string,
-    isDM: boolean
+    isDM: boolean,
+    mediaSource?: ComfyUIResponse
   ): Promise<void> {
-    const text = apiResult.data?.text || 'No response generated.';
+    let text = apiResult.data?.text || 'No response generated.';
+
+    // When a ComfyUI media source is carried through, download/save files and attach them
+    if (mediaSource) {
+      const totalOutputs = (mediaSource.data?.images?.length || 0) + (mediaSource.data?.videos?.length || 0);
+      if (totalOutputs > 0) {
+        // Strip URL lines that Ollama echoed from the external data
+        text = text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim();
+
+        const { attachments, savedFilePaths, savedCount, imageCount, videoCount } =
+          await this.collectComfyUIMedia(mediaSource, requester);
+
+        if (savedCount > 0) {
+          const maxPerMessage = config.getMaxAttachments();
+          const firstBatch = attachments.slice(0, maxPerMessage);
+
+          // Split text into Discord-safe chunks
+          const chunks = chunkText(text || 'Here are your results:');
+
+          // Send first chunk with first batch of file attachments
+          await sourceMessage.reply({
+            content: chunks[0],
+            embeds: [],
+            ...(firstBatch.length > 0 ? { files: firstBatch } : {}),
+          });
+
+          // Send remaining text chunks
+          for (let i = 1; i < chunks.length; i++) {
+            if ('send' in sourceMessage.channel) {
+              await sourceMessage.channel.send(chunks[i]);
+            }
+          }
+
+          // Send remaining attachments as follow-up messages in batches
+          for (let i = maxPerMessage; i < attachments.length; i += maxPerMessage) {
+            const batch = attachments.slice(i, i + maxPerMessage);
+            if ('send' in sourceMessage.channel) {
+              await sourceMessage.channel.send({ content: '📎 Additional files', files: batch });
+            } else {
+              logger.logError(requester, `Cannot send overflow attachments: channel does not support send`);
+            }
+          }
+
+          activityEvents.emitBotImageReply(totalOutputs, savedFilePaths);
+
+          const parts: string[] = [];
+          if (imageCount > 0) parts.push(`${imageCount} image(s)`);
+          if (videoCount > 0) parts.push(`${videoCount} video(s)`);
+          logger.logReply(requester, `Ollama+ComfyUI response sent: ${text.length} chars text, ${parts.join(', ')}`);
+          return;
+        }
+      }
+    }
 
     // Split into Discord-safe chunks (newline-aware)
     const chunks = chunkText(text);

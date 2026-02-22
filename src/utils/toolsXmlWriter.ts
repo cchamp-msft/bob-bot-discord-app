@@ -57,7 +57,6 @@ function buildToolObject(kw: KeywordConfig): Record<string, unknown> {
   if (kw.finalOllamaPass !== undefined) obj.finalOllamaPass = kw.finalOllamaPass;
 
   // Context filter
-  if (kw.contextFilterEnabled === true) obj.contextFilterEnabled = true;
   if (kw.contextFilterMinDepth !== undefined) obj.contextFilterMinDepth = kw.contextFilterMinDepth;
   if (kw.contextFilterMaxDepth !== undefined) obj.contextFilterMaxDepth = kw.contextFilterMaxDepth;
 

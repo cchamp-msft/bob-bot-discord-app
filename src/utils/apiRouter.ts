@@ -264,7 +264,6 @@ function renderAbilityInputsForPrompt(keywordConfig: KeywordConfig): string {
     parts.push(`Inputs mode: ${i.mode}`);
     if (i.required?.length) parts.push(`Required inputs: ${i.required.join(', ')}`);
     if (i.optional?.length) parts.push(`Optional inputs: ${i.optional.join(', ')}`);
-    if (i.inferFrom?.length) parts.push(`Infer from: ${i.inferFrom.join(', ')}`);
     if (i.validation) parts.push(`Validation: ${i.validation}`);
     if (i.examples?.length) parts.push(`Examples: ${i.examples.join(' | ')}`);
   }
@@ -316,6 +315,47 @@ export interface RoutedResult {
   finalApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
   /** Intermediate stage results (for debugging/logging). */
   stages: StageResult[];
+  /** When finalOllamaPass refines a ComfyUI result, the original media response for attachment. */
+  mediaSource?: ComfyUIResponse;
+}
+
+/**
+ * Format a single API result as <external_data> XML for use in a final Ollama pass.
+ * Used when combining multiple tool results into one final pass.
+ */
+export function formatApiResultAsExternalData(
+  keywordConfig: KeywordConfig,
+  primaryResult: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse,
+  queryContent?: string
+): string {
+  const primaryExtracted = extractStageResult(keywordConfig.api, primaryResult);
+  if (keywordConfig.api === 'accuweather') {
+    const awResponse = primaryResult as AccuWeatherResponse;
+    const locationName = awResponse.data?.location
+      ? `${awResponse.data.location.LocalizedName}, ${awResponse.data.location.AdministrativeArea.ID}, ${awResponse.data.location.Country.LocalizedName}`
+      : 'Unknown location';
+    const aiContext = accuweatherClient.formatWeatherContextForAI(
+      locationName,
+      awResponse.data?.current ?? null,
+      awResponse.data?.forecast ?? null
+    );
+    return formatAccuWeatherExternalData(locationName, aiContext);
+  }
+  if (keywordConfig.api === 'nfl') {
+    const nflResponse = primaryResult as NFLResponse;
+    const nflData = nflResponse.data?.text ?? 'No NFL data available.';
+    return formatNFLExternalData(keywordConfig.keyword, nflData);
+  }
+  if (keywordConfig.api === 'serpapi') {
+    const serpResponse = primaryResult as SerpApiResponse;
+    const rawData = serpResponse.data?.raw;
+    const searchContext = rawData
+      ? serpApiClient.formatSearchContextForAI(rawData as Parameters<typeof serpApiClient.formatSearchContextForAI>[0], queryContent ?? '')
+      : serpResponse.data?.text ?? 'No search data available.';
+    return formatSerpApiExternalData(queryContent ?? '', searchContext);
+  }
+  const genericText = primaryExtracted.text ?? 'No data available.';
+  return formatGenericExternalData(keywordConfig.api, genericText);
 }
 
 /**
@@ -565,7 +605,7 @@ export async function executeRoutedRequest(
           [{ role: 'system', content: finalSystemContent }],
           sig,
           undefined,
-          { includeSystemPrompt: false }
+          { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize() }
         ),
       signal
     ) as OllamaResponse;
@@ -579,7 +619,8 @@ export async function executeRoutedRequest(
     }
 
     logger.log('success', 'system', 'API-ROUTING: Final Ollama pass complete');
-    return { finalResponse: finalResult, finalApi: 'ollama', stages };
+    const mediaSource = keywordConfig.api === 'comfyui' ? primaryResult as ComfyUIResponse : undefined;
+    return { finalResponse: finalResult, finalApi: 'ollama', stages, mediaSource };
   }
 
   return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };

@@ -7,6 +7,7 @@ jest.mock('../src/utils/config', () => ({
   config: {
     getOllamaModel: jest.fn(() => 'llama2'),
     getOllamaFinalPassModel: jest.fn(() => 'llama2'),
+    getOllamaFinalPassContextSize: jest.fn(() => 2048),
     getOllamaSystemPrompt: jest.fn(() => 'You are Bob. Rude but helpful Discord bot.'),
     getDefaultTimeout: jest.fn(() => 300),
     getAccuWeatherEndpoint: jest.fn(() => 'https://dataservice.accuweather.com'),
@@ -1694,7 +1695,6 @@ describe('ApiRouter', () => {
         description: 'Create funny meme images from popular templates',
         abilityInputs: {
           mode: 'implicit',
-          inferFrom: ['current_message', 'reply_target'],
           validation: 'Output must be: templateName | top text | bottom text.',
           examples: ['meme drake | studying for exams | browsing memes'],
         },
@@ -1783,7 +1783,6 @@ describe('ApiRouter', () => {
       description: 'Generate image using ComfyUI',
       abilityInputs: {
         mode: 'implicit',
-        inferFrom: ['reply_target', 'current_message'],
         validation: 'Use the reply target text if present; otherwise summarize the context.',
       },
     };

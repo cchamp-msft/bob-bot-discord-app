@@ -18,7 +18,10 @@ export interface ClassificationResult {
  * Instructs Ollama to analyze user intent and return only the matching keyword.
  */
 function buildClassificationPrompt(keywords: KeywordConfig[]): string {
-  const keywordList = keywords
+  // Filter out Ollama-only keywords to avoid confusion during classification
+  const filteredKeywords = keywords.filter(k => k.api !== 'ollama' || k.builtin === true);
+  
+  const keywordList = filteredKeywords
     .map((k) => `- "${k.keyword}": ${k.description}`)
     .join('\n');
 

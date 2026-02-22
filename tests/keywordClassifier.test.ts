@@ -249,7 +249,7 @@ describe('KeywordClassifier', () => {
     it('should include all keyword descriptions', () => {
       const keywords = [
         { keyword: 'generate', api: 'comfyui' as const, timeout: 300, description: 'Generate image' },
-        { keyword: 'chat', api: 'ollama' as const, timeout: 300, description: 'Chat with AI' },
+        { keyword: 'chat', api: 'ollama' as const, timeout: 300, description: 'Chat with AI', builtin: true },
       ];
 
       const prompt = buildClassificationPrompt(keywords);
