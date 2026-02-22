@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { KeywordConfig, COMMAND_PREFIX } from './config';
+import { ToolConfig, COMMAND_PREFIX } from './config';
 import { isUIFormat, convertUIToAPIFormat } from '../api/comfyuiClient';
 import { buildToolsXml } from './toolsXmlWriter';
 
@@ -10,14 +10,14 @@ interface EnvUpdate {
 
 class ConfigWriter {
   private envPath = path.join(__dirname, '../../.env');
-  private get keywordsPath(): string {
+  private get toolsPath(): string {
     const envPath = process.env.TOOLS_CONFIG_PATH;
     if (envPath) {
       return path.resolve(path.join(__dirname, '../..'), envPath);
     }
     return path.join(__dirname, '../../config/tools.xml');
   }
-  private defaultKeywordsPath = path.join(__dirname, '../../config/tools.default.xml');
+  private defaultToolsPath = path.join(__dirname, '../../config/tools.default.xml');
   private configDir = path.join(__dirname, '../../.config');
   private workflowPath = path.join(__dirname, '../../.config/comfyui-workflow.json');
 
@@ -172,139 +172,139 @@ class ConfigWriter {
   /**
    * Validate and update tools.xml
    */
-  async updateKeywords(keywords: KeywordConfig[]): Promise<void> {
+  async updateTools(tools: ToolConfig[]): Promise<void> {
     try {
-      // Validate keywords array
-      if (!Array.isArray(keywords)) {
-        throw new Error('keywords must be an array');
+      // Validate tools array
+      if (!Array.isArray(tools)) {
+        throw new Error('tools must be an array');
       }
 
       // Check for duplicates
-      const keywordNames = new Set<string>();
-      for (let i = 0; i < keywords.length; i++) {
-        const entry = keywords[i];
+      const toolNames = new Set<string>();
+      for (let i = 0; i < tools.length; i++) {
+        const entry = tools[i];
 
         // Guard against null/undefined/non-object entries
         if (!entry || typeof entry !== 'object') {
-          throw new Error(`Invalid keyword entry at index ${i} — expected object with "keyword" field`);
+          throw new Error(`Invalid tool entry at index ${i} — expected object with "name" field`);
         }
 
-        // Validate using same rules as Config.loadKeywords()
-        if (!entry.keyword || typeof entry.keyword !== 'string') {
-          throw new Error(`Invalid keyword entry at index ${i} — missing "keyword" string`);
+        // Validate using same rules as Config.loadTools()
+        if (!entry.name || typeof entry.name !== 'string') {
+          throw new Error(`Invalid tool entry at index ${i} — missing "name" string`);
         }
 
-        const normalized = entry.keyword.toLowerCase().trim();
-        if (keywordNames.has(normalized)) {
-          throw new Error(`Duplicate keyword: "${entry.keyword}"`);
+        const normalized = entry.name.toLowerCase().trim();
+        if (toolNames.has(normalized)) {
+          throw new Error(`Duplicate tool: "${entry.name}"`);
         }
-        keywordNames.add(normalized);
+        toolNames.add(normalized);
 
         if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather' && entry.api !== 'nfl' && entry.api !== 'serpapi' && entry.api !== 'meme') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", "nfl", "serpapi", or "meme"`);
+          throw new Error(`Tool "${entry.name}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", "nfl", "serpapi", or "meme"`);
         }
         if (typeof entry.timeout !== 'number' || entry.timeout <= 0) {
-          throw new Error(`Keyword "${entry.keyword}" has invalid timeout — must be a positive number`);
+          throw new Error(`Tool "${entry.name}" has invalid timeout — must be a positive number`);
         }
         if (!entry.description || typeof entry.description !== 'string') {
-          throw new Error(`Keyword "${entry.keyword}" missing description`);
+          throw new Error(`Tool "${entry.name}" missing description`);
         }
 
-        // Validate optional routing fields (must match Config.loadKeywords rules)
+        // Validate optional routing fields (must match Config.loadTools rules)
         if (entry.abilityText !== undefined && typeof entry.abilityText !== 'string') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid abilityText — must be a string`);
+          throw new Error(`Tool "${entry.name}" has invalid abilityText — must be a string`);
         }
         if (entry.abilityWhen !== undefined && typeof entry.abilityWhen !== 'string') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid abilityWhen — must be a string`);
+          throw new Error(`Tool "${entry.name}" has invalid abilityWhen — must be a string`);
         }
         if (entry.abilityInputs !== undefined) {
           const ai: Record<string, unknown> = entry.abilityInputs as unknown as Record<string, unknown>;
           if (typeof ai !== 'object' || ai === null || Array.isArray(ai)) {
-            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs — must be an object`);
+            throw new Error(`Tool "${entry.name}" has invalid abilityInputs — must be an object`);
           }
           const mode = ai.mode;
           const validModes = ['implicit', 'explicit', 'mixed'];
           if (!validModes.includes(mode as string)) {
-            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.mode "${mode}" — must be "implicit", "explicit", or "mixed"`);
+            throw new Error(`Tool "${entry.name}" has invalid abilityInputs.mode "${mode}" — must be "implicit", "explicit", or "mixed"`);
           }
           const validateStringArray = (val: unknown) => Array.isArray(val) && val.every(s => typeof s === 'string');
           if (ai.required !== undefined && !validateStringArray(ai.required)) {
-            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.required — must be an array of strings`);
+            throw new Error(`Tool "${entry.name}" has invalid abilityInputs.required — must be an array of strings`);
           }
           if (ai.optional !== undefined && !validateStringArray(ai.optional)) {
-            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.optional — must be an array of strings`);
+            throw new Error(`Tool "${entry.name}" has invalid abilityInputs.optional — must be an array of strings`);
           }
           if (ai.validation !== undefined && typeof ai.validation !== 'string') {
-            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.validation — must be a string`);
+            throw new Error(`Tool "${entry.name}" has invalid abilityInputs.validation — must be a string`);
           }
           if (ai.examples !== undefined && !validateStringArray(ai.examples)) {
-            throw new Error(`Keyword "${entry.keyword}" has invalid abilityInputs.examples — must be an array of strings`);
+            throw new Error(`Tool "${entry.name}" has invalid abilityInputs.examples — must be an array of strings`);
           }
         }
         if (entry.finalOllamaPass !== undefined && typeof entry.finalOllamaPass !== 'boolean') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid finalOllamaPass — must be a boolean`);
+          throw new Error(`Tool "${entry.name}" has invalid finalOllamaPass — must be a boolean`);
         }
         if (entry.allowEmptyContent !== undefined && typeof entry.allowEmptyContent !== 'boolean') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid allowEmptyContent — must be a boolean`);
+          throw new Error(`Tool "${entry.name}" has invalid allowEmptyContent — must be a boolean`);
         }
         if (entry.enabled !== undefined && typeof entry.enabled !== 'boolean') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid enabled — must be a boolean`);
+          throw new Error(`Tool "${entry.name}" has invalid enabled — must be a boolean`);
         }
         if (entry.retry !== undefined) {
-          const r: KeywordConfig['retry'] = entry.retry;
+          const r: ToolConfig['retry'] = entry.retry;
           if (typeof r !== 'object' || r === null || Array.isArray(r)) {
-            throw new Error(`Keyword "${entry.keyword}" has invalid retry — must be an object`);
+            throw new Error(`Tool "${entry.name}" has invalid retry — must be an object`);
           }
           if (r.enabled !== undefined && typeof r.enabled !== 'boolean') {
-            throw new Error(`Keyword "${entry.keyword}" has invalid retry.enabled — must be a boolean`);
+            throw new Error(`Tool "${entry.name}" has invalid retry.enabled — must be a boolean`);
           }
           if (r.maxRetries !== undefined) {
             if (typeof r.maxRetries !== 'number' || !Number.isInteger(r.maxRetries) || r.maxRetries < 0 || r.maxRetries > 10) {
-              throw new Error(`Keyword "${entry.keyword}" has invalid retry.maxRetries — must be an integer between 0 and 10`);
+              throw new Error(`Tool "${entry.name}" has invalid retry.maxRetries — must be an integer between 0 and 10`);
             }
           }
           if (r.model !== undefined && typeof r.model !== 'string') {
-            throw new Error(`Keyword "${entry.keyword}" has invalid retry.model — must be a string`);
+            throw new Error(`Tool "${entry.name}" has invalid retry.model — must be a string`);
           }
           if (r.prompt !== undefined && typeof r.prompt !== 'string') {
-            throw new Error(`Keyword "${entry.keyword}" has invalid retry.prompt — must be a string`);
+            throw new Error(`Tool "${entry.name}" has invalid retry.prompt — must be a string`);
           }
         }
         if (entry.builtin !== undefined && typeof entry.builtin !== 'boolean') {
-          throw new Error(`Keyword "${entry.keyword}" has invalid builtin — must be a boolean`);
+          throw new Error(`Tool "${entry.name}" has invalid builtin — must be a boolean`);
         }
         if (entry.contextFilterMinDepth !== undefined) {
           if (typeof entry.contextFilterMinDepth !== 'number' || entry.contextFilterMinDepth < 1 || !Number.isInteger(entry.contextFilterMinDepth)) {
-            throw new Error(`Keyword "${entry.keyword}" has invalid contextFilterMinDepth — must be a positive integer (>= 1)`);
+            throw new Error(`Tool "${entry.name}" has invalid contextFilterMinDepth — must be a positive integer (>= 1)`);
           }
         }
         if (entry.contextFilterMaxDepth !== undefined) {
           if (typeof entry.contextFilterMaxDepth !== 'number' || entry.contextFilterMaxDepth < 1 || !Number.isInteger(entry.contextFilterMaxDepth)) {
-            throw new Error(`Keyword "${entry.keyword}" has invalid contextFilterMaxDepth — must be a positive integer (>= 1)`);
+            throw new Error(`Tool "${entry.name}" has invalid contextFilterMaxDepth — must be a positive integer (>= 1)`);
           }
         }
         if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMaxDepth !== undefined) {
           if (entry.contextFilterMinDepth > entry.contextFilterMaxDepth) {
-            throw new Error(`Keyword "${entry.keyword}" has contextFilterMinDepth (${entry.contextFilterMinDepth}) greater than contextFilterMaxDepth (${entry.contextFilterMaxDepth})`);
+            throw new Error(`Tool "${entry.name}" has contextFilterMinDepth (${entry.contextFilterMinDepth}) greater than contextFilterMaxDepth (${entry.contextFilterMaxDepth})`);
           }
         }
       }
 
-      // Enforce: custom "help" keyword is only allowed when the built-in help keyword is disabled
-      const helpKeyword = `${COMMAND_PREFIX}help`;
-      const builtinHelp = keywords.find(k => k.builtin && k.keyword.toLowerCase() === helpKeyword);
+      // Enforce: custom "help" tool is only allowed when the built-in help tool is disabled
+      const helpTool = `${COMMAND_PREFIX}help`;
+      const builtinHelp = tools.find(k => k.builtin && k.name.toLowerCase() === helpTool);
       const builtinHelpEnabled = builtinHelp ? builtinHelp.enabled !== false : false;
       if (builtinHelpEnabled) {
-        const customHelpIndex = keywords.findIndex(k => !k.builtin && k.keyword.toLowerCase() === helpKeyword);
+        const customHelpIndex = tools.findIndex(k => !k.builtin && k.name.toLowerCase() === helpTool);
         if (customHelpIndex !== -1) {
-          throw new Error('Cannot save a custom "help" keyword while the built-in help keyword is enabled — disable the built-in help keyword first');
+          throw new Error('Cannot save a custom "help" tool while the built-in help tool is enabled — disable the built-in help tool first');
         }
       }
 
-      // Strip unknown/deprecated fields and build clean keyword objects
-      const cleanKeywords: KeywordConfig[] = keywords.map(entry => {
-        const clean: KeywordConfig = {
-          keyword: entry.keyword,
+      // Strip unknown/deprecated fields and build clean tool objects
+      const cleanTools: ToolConfig[] = tools.map(entry => {
+        const clean: ToolConfig = {
+          name: entry.name,
           api: entry.api,
           timeout: entry.timeout,
           description: entry.description,
@@ -319,7 +319,7 @@ class ConfigWriter {
         if (entry.retry) {
           // Whitelist known retry keys to prevent config drift from unknown properties.
           const r = entry.retry;
-          const cleanRetry: KeywordConfig['retry'] = {};
+          const cleanRetry: ToolConfig['retry'] = {};
           if (r.enabled !== undefined) cleanRetry.enabled = r.enabled;
           if (r.maxRetries !== undefined) cleanRetry.maxRetries = r.maxRetries;
           if (r.model !== undefined) cleanRetry.model = r.model;
@@ -333,9 +333,9 @@ class ConfigWriter {
       });
 
       // Write to file as XML
-      const xmlContent = buildToolsXml(cleanKeywords);
+      const xmlContent = buildToolsXml(cleanTools);
       fs.writeFileSync(
-        this.keywordsPath,
+        this.toolsPath,
         xmlContent,
         'utf-8'
       );

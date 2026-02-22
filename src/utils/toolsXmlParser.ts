@@ -1,5 +1,5 @@
 import { XMLParser } from 'fast-xml-parser';
-import { KeywordConfig, AbilityInputs } from './config';
+import { ToolConfig, AbilityInputs } from './config';
 
 /**
  * Reserved element names within <parameters> that are NOT named tool parameters.
@@ -9,7 +9,7 @@ const RESERVED_PARAM_KEYS = new Set(['mode', 'inferFrom', 'validation', 'example
 
 /**
  * Represents a single named parameter in the OpenAI-style XML format.
- * Stored on KeywordConfig.parameters for faithful XML round-trip.
+ * Stored on ToolConfig.parameters for faithful XML round-trip.
  */
 export interface ToolParameter {
   type: string;
@@ -18,15 +18,15 @@ export interface ToolParameter {
 }
 
 /**
- * Parse an XML tools configuration string into an array of KeywordConfig objects.
+ * Parse an XML tools configuration string into an array of ToolConfig objects.
  *
- * The XML format uses `<tool>` elements with `<name>` instead of `keyword`,
+ * The XML format uses `<tool>` elements with `<name>`,
  * `<parameters>` with OpenAI-style named children instead of `abilityInputs`,
  * and `<description>` serving double duty as both description and abilityText.
  *
  * @throws Error if the XML is malformed or missing required fields
  */
-export function parseToolsXml(xmlContent: string): KeywordConfig[] {
+export function parseToolsXml(xmlContent: string): ToolConfig[] {
   const parser = new XMLParser({
     ignoreAttributes: false,
     // Preserve tag value types — booleans and numbers should not auto-convert
@@ -62,9 +62,9 @@ export function parseToolsXml(xmlContent: string): KeywordConfig[] {
 }
 
 /**
- * Parse a single <tool> element into a KeywordConfig.
+ * Parse a single <tool> element into a ToolConfig.
  */
-function parseToolElement(raw: Record<string, unknown>, index: number): KeywordConfig {
+function parseToolElement(raw: Record<string, unknown>, index: number): ToolConfig {
   // Required fields
   const name = raw.name;
   if (!name || typeof name !== 'string') {
@@ -87,9 +87,9 @@ function parseToolElement(raw: Record<string, unknown>, index: number): KeywordC
     throw new Error(`tools.xml: tool "${name}" is missing <description>`);
   }
 
-  const kw: KeywordConfig = {
-    keyword: String(name),
-    api: api as KeywordConfig['api'],
+  const tc: ToolConfig = {
+    name: String(name),
+    api: api as ToolConfig['api'],
     timeout,
     description: String(description),
     // description doubles as abilityText for model-facing prompts
@@ -98,19 +98,19 @@ function parseToolElement(raw: Record<string, unknown>, index: number): KeywordC
 
   // Optional simple fields
   if (raw.abilityWhen !== undefined) {
-    kw.abilityWhen = String(raw.abilityWhen);
+    tc.abilityWhen = String(raw.abilityWhen);
   }
   if (raw.finalOllamaPass !== undefined) {
-    kw.finalOllamaPass = parseBool(raw.finalOllamaPass, `tool "${name}" <finalOllamaPass>`);
+    tc.finalOllamaPass = parseBool(raw.finalOllamaPass, `tool "${name}" <finalOllamaPass>`);
   }
   if (raw.allowEmptyContent !== undefined) {
-    kw.allowEmptyContent = parseBool(raw.allowEmptyContent, `tool "${name}" <allowEmptyContent>`);
+    tc.allowEmptyContent = parseBool(raw.allowEmptyContent, `tool "${name}" <allowEmptyContent>`);
   }
   if (raw.enabled !== undefined) {
-    kw.enabled = parseBool(raw.enabled, `tool "${name}" <enabled>`);
+    tc.enabled = parseBool(raw.enabled, `tool "${name}" <enabled>`);
   }
   if (raw.builtin !== undefined) {
-    kw.builtin = parseBool(raw.builtin, `tool "${name}" <builtin>`);
+    tc.builtin = parseBool(raw.builtin, `tool "${name}" <builtin>`);
   }
 
   // Context filter fields
@@ -119,28 +119,28 @@ function parseToolElement(raw: Record<string, unknown>, index: number): KeywordC
     if (isNaN(v) || v < 1 || !Number.isInteger(v)) {
       throw new Error(`tools.xml: tool "${name}" has invalid <contextFilterMinDepth> — must be a positive integer (>= 1)`);
     }
-    kw.contextFilterMinDepth = v;
+    tc.contextFilterMinDepth = v;
   }
   if (raw.contextFilterMaxDepth !== undefined) {
     const v = Number(raw.contextFilterMaxDepth);
     if (isNaN(v) || !Number.isInteger(v)) {
       throw new Error(`tools.xml: tool "${name}" has invalid <contextFilterMaxDepth> — must be a positive integer (>= 1)`);
     }
-    kw.contextFilterMaxDepth = v;
+    tc.contextFilterMaxDepth = v;
   }
   if (raw.contextFilterMinDepth !== undefined) {
     const v = Number(raw.contextFilterMinDepth);
     if (isNaN(v) || v < 1 || !Number.isInteger(v)) {
       throw new Error(`tools.xml: tool "${name}" has invalid <contextFilterMinDepth> — must be a positive integer (>= 1)`);
     }
-    kw.contextFilterMinDepth = v;
+    tc.contextFilterMinDepth = v;
   }
   if (raw.contextFilterMaxDepth !== undefined) {
     const v = Number(raw.contextFilterMaxDepth);
     if (isNaN(v) || !Number.isInteger(v)) {
       throw new Error(`tools.xml: tool "${name}" has invalid <contextFilterMaxDepth> — must be an integer`);
     }
-    kw.contextFilterMaxDepth = v;
+    tc.contextFilterMaxDepth = v;
   }
 
   // Retry block
@@ -149,7 +149,7 @@ function parseToolElement(raw: Record<string, unknown>, index: number): KeywordC
     if (typeof r !== 'object' || r === null) {
       throw new Error(`tools.xml: tool "${name}" has invalid <retry> — must contain child elements`);
     }
-    const retry: KeywordConfig['retry'] = {};
+    const retry: ToolConfig['retry'] = {};
     if (r.enabled !== undefined) retry.enabled = parseBool(r.enabled, `tool "${name}" <retry><enabled>`);
     if (r.maxRetries !== undefined) {
       const v = Number(r.maxRetries);
@@ -160,7 +160,7 @@ function parseToolElement(raw: Record<string, unknown>, index: number): KeywordC
     }
     if (r.model !== undefined) retry.model = String(r.model);
     if (r.prompt !== undefined) retry.prompt = String(r.prompt);
-    kw.retry = retry;
+    tc.retry = retry;
   }
 
   // Parameters → abilityInputs mapping
@@ -169,11 +169,11 @@ function parseToolElement(raw: Record<string, unknown>, index: number): KeywordC
       raw.parameters as Record<string, unknown>,
       name as string,
     );
-    kw.abilityInputs = abilityInputs;
-    kw.parameters = parameters;
+    tc.abilityInputs = abilityInputs;
+    tc.parameters = parameters;
   }
 
-  return kw;
+  return tc;
 }
 
 /**

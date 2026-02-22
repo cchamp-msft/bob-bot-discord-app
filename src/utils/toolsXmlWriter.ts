@@ -1,5 +1,5 @@
 import { XMLBuilder } from 'fast-xml-parser';
-import { KeywordConfig, AbilityInputs } from './config';
+import { ToolConfig, AbilityInputs } from './config';
 import type { ToolParameter } from './toolsXmlParser';
 
 /**
@@ -8,65 +8,65 @@ import type { ToolParameter } from './toolsXmlParser';
 const _RESERVED_PARAM_KEYS = new Set(['mode', 'inferFrom', 'validation', 'examples']);
 
 /**
- * Build an XML string from an array of KeywordConfig objects.
+ * Build an XML string from an array of ToolConfig objects.
  *
  * Produces well-formed, indented XML matching the tools.default.xml schema:
- * - `keyword` → `<name>`
+ * - `name` → `<name>`
  * - `abilityInputs` + `parameters` → `<parameters>` (OpenAI-style)
  * - `description` → `<description>` (also serves as abilityText)
  *
  * @returns A complete XML document string with `<?xml?>` declaration.
  */
-export function buildToolsXml(keywords: KeywordConfig[]): string {
-  const toolElements = keywords.map(buildToolObject);
+export function buildToolsXml(tools: ToolConfig[]): string {
+  const toolElements = tools.map(buildToolObject);
   return renderXml({ tools: { tool: toolElements } });
 }
 
 /**
- * Convert a single KeywordConfig to the plain-object representation
+ * Convert a single ToolConfig to the plain-object representation
  * that XMLBuilder serialises into a `<tool>` element.
  *
  * Field ordering follows the canonical tools.default.xml layout:
  * name, api, timeout, description, builtin, enabled, allowEmptyContent,
  * abilityWhen, parameters, finalOllamaPass, contextFilter*, retry.
  */
-function buildToolObject(kw: KeywordConfig): Record<string, unknown> {
+function buildToolObject(tc: ToolConfig): Record<string, unknown> {
   const obj: Record<string, unknown> = {};
 
   // Required fields
-  obj.name = kw.keyword;
-  obj.api = kw.api;
-  obj.timeout = kw.timeout;
-  obj.description = kw.description;
+  obj.name = tc.name;
+  obj.api = tc.api;
+  obj.timeout = tc.timeout;
+  obj.description = tc.description;
 
   // Optional flags — written only when meaningful (not default)
-  if (kw.builtin) obj.builtin = true;
-  if (kw.enabled === false) obj.enabled = false;
-  if (kw.allowEmptyContent !== undefined) obj.allowEmptyContent = kw.allowEmptyContent;
+  if (tc.builtin) obj.builtin = true;
+  if (tc.enabled === false) obj.enabled = false;
+  if (tc.allowEmptyContent !== undefined) obj.allowEmptyContent = tc.allowEmptyContent;
 
   // Ability / model-facing
-  if (kw.abilityWhen) obj.abilityWhen = kw.abilityWhen;
+  if (tc.abilityWhen) obj.abilityWhen = tc.abilityWhen;
 
   // Parameters (prefer stored ToolParameter map for faithful round-trip,
   // fall back to reconstructing from abilityInputs).
-  if (kw.parameters || kw.abilityInputs) {
-    obj.parameters = buildParametersObject(kw.abilityInputs, kw.parameters);
+  if (tc.parameters || tc.abilityInputs) {
+    obj.parameters = buildParametersObject(tc.abilityInputs, tc.parameters);
   }
 
   // Routing
-  if (kw.finalOllamaPass !== undefined) obj.finalOllamaPass = kw.finalOllamaPass;
+  if (tc.finalOllamaPass !== undefined) obj.finalOllamaPass = tc.finalOllamaPass;
 
   // Context filter
-  if (kw.contextFilterMinDepth !== undefined) obj.contextFilterMinDepth = kw.contextFilterMinDepth;
-  if (kw.contextFilterMaxDepth !== undefined) obj.contextFilterMaxDepth = kw.contextFilterMaxDepth;
+  if (tc.contextFilterMinDepth !== undefined) obj.contextFilterMinDepth = tc.contextFilterMinDepth;
+  if (tc.contextFilterMaxDepth !== undefined) obj.contextFilterMaxDepth = tc.contextFilterMaxDepth;
 
   // Retry
-  if (kw.retry) {
+  if (tc.retry) {
     const r: Record<string, unknown> = {};
-    if (kw.retry.enabled !== undefined) r.enabled = kw.retry.enabled;
-    if (kw.retry.maxRetries !== undefined) r.maxRetries = kw.retry.maxRetries;
-    if (kw.retry.model !== undefined) r.model = kw.retry.model;
-    if (kw.retry.prompt !== undefined) r.prompt = kw.retry.prompt;
+    if (tc.retry.enabled !== undefined) r.enabled = tc.retry.enabled;
+    if (tc.retry.maxRetries !== undefined) r.maxRetries = tc.retry.maxRetries;
+    if (tc.retry.model !== undefined) r.model = tc.retry.model;
+    if (tc.retry.prompt !== undefined) r.prompt = tc.retry.prompt;
     if (Object.keys(r).length > 0) obj.retry = r;
   }
 

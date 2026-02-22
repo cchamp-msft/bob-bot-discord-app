@@ -46,7 +46,7 @@
     <api>comfyui</api>
     <timeout>600</timeout>
     <description>Generate image using ComfyUI</description>
-    <abilityWhen>User wants an image generated using an alternate keyword.</abilityWhen>
+    <abilityWhen>User wants an image generated using an alternate tool name.</abilityWhen>
     <parameters>
       <mode>implicit</mode>
       <prompt>
@@ -90,7 +90,7 @@
 
   <!-- NFL tools -->
   <tool>
-    <name>nfl scores</name>
+    <name>nfl_scores</name>
     <api>nfl</api>
     <timeout>30</timeout>
     <description>Get current NFL game scores. Optionally provide a date (YYYYMMDD or YYYY-MM-DD) to look up scores for a specific date; otherwise returns the most recent scoreboard.</description>
@@ -110,10 +110,10 @@
   </tool>
 
   <tool>
-    <name>nfl news</name>
+    <name>nfl_news</name>
     <api>nfl</api>
     <timeout>30</timeout>
-    <description>Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl news chiefs').</description>
+    <description>Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl_news chiefs').</description>
     <abilityWhen>User asks about NFL news or headlines.</abilityWhen>
     <parameters>
       <mode>mixed</mode>
@@ -133,7 +133,7 @@
 
   <!-- Search tools -->
   <tool>
-    <name>search</name>
+    <name>web_search</name>
     <api>serpapi</api>
     <timeout>60</timeout>
     <description>Search the web for current information using Google</description>
@@ -148,30 +148,12 @@
       <inferFrom>current_message</inferFrom>
       <validation>Query should be a concise search term or question suitable for a web search engine.</validation>
       <examples>
-        <example>search latest TypeScript release</example>
-        <example>search Super Bowl winner 2026</example>
+        <example>web_search latest TypeScript release</example>
+        <example>web_search Super Bowl winner 2026</example>
       </examples>
     </parameters>
     <finalOllamaPass>true</finalOllamaPass>
     <contextFilterMaxDepth>1</contextFilterMaxDepth>
-  </tool>
-
-  <tool>
-    <name>second opinion</name>
-    <api>serpapi</api>
-    <timeout>60</timeout>
-    <description>Get a second opinion by searching the web using Google</description>
-    <abilityWhen>User wants to verify or cross-check information with a web search.</abilityWhen>
-    <parameters>
-      <mode>explicit</mode>
-      <query>
-        <type>string</type>
-        <description>The claim or topic the user wants verified via web search</description>
-        <required>true</required>
-      </query>
-      <inferFrom>current_message</inferFrom>
-      <validation>Query should capture the claim or topic the user wants verified.</validation>
-    </parameters>
   </tool>
 
   <!-- Meme tools -->
