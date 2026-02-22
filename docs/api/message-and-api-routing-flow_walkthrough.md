@@ -70,7 +70,7 @@ Key Functions by File
 | `promptBuilder.ts` | `parseFirstLineKeyword()` | Parses Ollama output for keyword trigger |
 | `apiRouter.ts` | `inferAbilityParameters()` | Extracts API params from natural language (two-stage path) |
 | `keywordClassifier.ts` | `buildAbilitiesContext()` | Generates abilities context for Ollama |
-| `contextEvaluator.ts` | `evaluateContextWindow()` | Filters conversation history for relevance (per-keyword opt-in via `contextFilterEnabled`) |
+| `contextEvaluator.ts` | `evaluateContextWindow()` | Filters conversation history for relevance (global toggle via `CONTEXT_EVAL_ENABLED`) |
 | `responseTransformer.ts` | `extractStageResult()` | Normalizes API responses for stage tracking |
 
 * * * * *

@@ -187,15 +187,15 @@ In all cases, context is sent to Ollama using the `/api/chat` endpoint with prop
 - Circular references are detected and traversal stops
 - Bot responses are sent as **plain text** (not embed blocks) for a conversational feel
 
-## Context Evaluation (Per-Keyword Toggle)
+## Context Evaluation (Global)
 
 The bot includes an **Ollama-powered context evaluator** that determines how much conversation history is relevant before including it. This improves response quality when conversations shift topics.
 
-Context evaluation is **opt-in per keyword** via the `contextFilterEnabled` field (or the **Ctx Eval** checkbox in the configurator). When omitted, it defaults to `false` — context evaluation is skipped and the full collected history is passed through. Built-in keywords are unaffected by this setting.
+Context evaluation is controlled by a **global toggle** (`CONTEXT_EVAL_ENABLED`, default `true`). When enabled, it runs for all default-path requests (messages that do not match a direct API keyword). It can use a dedicated model, prompt, and context window size separate from the primary Ollama model. Configure via the "Context Evaluation" section in the configurator or directly in `.env`.
 
 ### How It Works
 
-1. After the reply chain / channel / DM history is collected and collated, the context evaluator sends the messages to Ollama along with the current user prompt — **only when `contextFilterEnabled` is `true` for the matched keyword**.
+1. After the reply chain / channel / DM history is collected and collated, the context evaluator sends the messages to Ollama along with the current user prompt — when `CONTEXT_EVAL_ENABLED` is `true`.
 2. Ollama determines which of the most recent messages are topically relevant. Messages tagged as primary (reply chain / thread) are signaled as higher-importance.
 3. The most recent `contextFilterMinDepth` messages are **always included**, even if off-topic — this guarantees a baseline of context.
 4. Ollama may include up to `contextFilterMaxDepth` messages total if they remain on-topic.
@@ -204,27 +204,26 @@ Context evaluation is **opt-in per keyword** via the `contextFilterEnabled` fiel
 
 Depth is counted from the **newest** message (newest = depth 1), matching the "prioritize newest to oldest" design.
 
-### Per-Keyword Depth Overrides
+### Per-Tool Depth Overrides
 
-These optional fields in `config/tools.xml` override the global defaults for a specific tool:
+These optional fields in `config/tools.xml` override the global depth defaults for a specific tool:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `contextFilterEnabled` | `boolean` | `false` | Enable Ollama context evaluation for this keyword |
 | `contextFilterMinDepth` | `integer` | `1` | Minimum most-recent messages to always include (>= 1) |
 | `contextFilterMaxDepth` | `integer` | Global `REPLY_CHAIN_MAX_DEPTH` | Maximum messages eligible for inclusion (>= 1) |
 
 ### Where the Evaluator Applies
 
-- **Direct Ollama chat** (two-stage evaluation, stage 1) — filters history before the initial Ollama call, only when `contextFilterEnabled` is `true`.
-- **Final Ollama pass** (for non-Ollama API keywords with `finalOllamaPass: true`) — always filters history before the refinement call (unaffected by per-keyword toggle).
+- **Default path** (two-stage tool evaluation, stage 1) — filters history before the initial Ollama call, when `CONTEXT_EVAL_ENABLED` is `true`.
+- **Final Ollama pass** (for non-Ollama API keywords with `finalOllamaPass: true`) — also filters history before the refinement call.
 - If the primary API was already Ollama, the final pass is skipped (no double-filtering).
 
 ### Notes
 
 - **System messages** (abilities context, system prompts) are excluded from depth counting and always preserved at the front of the history.
-- **Persona isolation**: The context evaluator uses its own dedicated system prompt — the global Ollama persona/system prompt is only included in user-facing chat responses, not in internal tool calls.
-- **Performance**: Context evaluation adds one Ollama call per request to determine relevance. This is most beneficial for keywords with long reply chains (e.g., `!chat`, discussion-style keywords). For short, single-turn interactions the overhead is minimal.
+- **Persona isolation**: The context evaluator uses its own dedicated system prompt (`CONTEXT_EVAL_PROMPT`) — the global Ollama persona/system prompt is only included in user-facing chat responses, not in internal evaluation calls.
+- **Performance**: Context evaluation adds one Ollama call per request to determine relevance. This is most beneficial for multi-turn conversations. For short, single-turn interactions the overhead is minimal.
 - **Failure behavior**: If the evaluation call fails or returns an unexpected response, the full unfiltered history is used as a graceful fallback — the bot never drops context silently.
 
 ## API Rate Limiting

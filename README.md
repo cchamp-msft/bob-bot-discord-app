@@ -71,7 +71,7 @@ outputs/                  # Generated files and logs
 **@mentions:**
 ```
 @BobBot !generate a beautiful sunset landscape
-@BobBot !ask what is the meaning of life?
+@BobBot what is the meaning of life?
 @BobBot !weather Seattle
 @BobBot !nfl scores
 @BobBot !search latest AI news

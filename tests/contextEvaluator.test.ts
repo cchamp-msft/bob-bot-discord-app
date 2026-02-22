@@ -59,10 +59,10 @@ const mockExecute = requestQueue.execute as jest.MockedFunction<typeof requestQu
 // Helper to build a simple keyword config
 function makeKeyword(overrides: Partial<KeywordConfig> = {}): KeywordConfig {
   return {
-    keyword: 'chat',
+    keyword: '__default__',
     api: 'ollama',
     timeout: 300,
-    description: 'Chat',
+    description: 'Default chat via Ollama',
     ...overrides,
   };
 }
@@ -280,7 +280,7 @@ describe('ContextEvaluator', () => {
       await evaluateContextWindow(history, 'test prompt', kw, 'user1');
 
       expect(activityEvents.emitContextDecision).toHaveBeenCalledWith(
-        2, 6, 'chat', [1, 3]
+        2, 6, '__default__', [1, 3]
       );
     });
 

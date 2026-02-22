@@ -556,11 +556,12 @@ class Config {
   }
 
   /**
-   * Maximum number of messages to consider for context evaluation.
+   * Ollama context window size (num_ctx) for context evaluation.
    * Default: 2048, range: 256-131072.
    */
   getContextEvalContextSize(): number {
-    return this.parseIntEnv('CONTEXT_EVAL_CONTEXT_SIZE', 2048);
+    const raw = this.parseIntEnv('CONTEXT_EVAL_CONTEXT_SIZE', 2048);
+    return Math.max(256, Math.min(raw, 131072));
   }
 
   /**
@@ -572,31 +573,29 @@ class Config {
   }
 
   /**
-   * System prompt used for tool evaluation.
-   * Default is the built-in prompt from contextEvaluator.ts.
+   * Optional system prompt appended during tool evaluation.
+   * Empty by default — existing prompt assembly is used as-is.
    */
   getOllamaToolPrompt(): string {
-    const val = process.env.OLLAMA_TOOL_PROMPT;
-    if (val === undefined) {
-      return 'You are a helpful assistant. Analyze the user message and determine what API to use. If you are unsure, respond with a concise explanation and suggest the best next step.';
-    }
-    return val;
+    return process.env.OLLAMA_TOOL_PROMPT ?? '';
   }
 
   /**
-   * Maximum number of messages to consider for tool evaluation.
-   * Default: 2048, range: 256-131072.
+   * Ollama context window size (num_ctx) for tool evaluation.
+   * Default: 4096, range: 256-131072.
    */
   getOllamaToolContextSize(): number {
-    return this.parseIntEnv('OLLAMA_TOOL_CONTEXT_SIZE', 2048);
+    const raw = this.parseIntEnv('OLLAMA_TOOL_CONTEXT_SIZE', 4096);
+    return Math.max(256, Math.min(raw, 131072));
   }
 
   /**
-   * Maximum number of messages to consider for final Ollama pass.
-   * Default: 2048, range: 256-131072.
+   * Ollama context window size (num_ctx) for the final response pass.
+   * Default: 4096, range: 256-131072.
    */
   getOllamaFinalPassContextSize(): number {
-    return this.parseIntEnv('OLLAMA_FINAL_PASS_CONTEXT_SIZE', 2048);
+    const raw = this.parseIntEnv('OLLAMA_FINAL_PASS_CONTEXT_SIZE', 4096);
+    return Math.max(256, Math.min(raw, 131072));
   }
 
 
