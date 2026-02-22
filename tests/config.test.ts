@@ -1,5 +1,5 @@
 /**
- * Config tests — exercises keyword loading, env parsing,
+ * Config tests — exercises tool loading, env parsing,
  * reload detection, and public config generation.
  * Does NOT connect to Discord.
  */
@@ -21,14 +21,14 @@ describe('Config', () => {
   let tempDir: string;
   let configDir: string;
   let envPath: string;
-  let keywordsPath: string;
+  let toolsPath: string;
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'config-test-'));
     configDir = path.join(tempDir, 'config');
     fs.mkdirSync(configDir, { recursive: true });
     envPath = path.join(tempDir, '.env');
-    keywordsPath = path.join(configDir, 'tools.xml');
+    toolsPath = path.join(configDir, 'tools.xml');
   });
 
   afterEach(() => {
@@ -42,8 +42,8 @@ describe('Config', () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  function writeKeywords(keywords: any[]) {
-    fs.writeFileSync(keywordsPath, buildToolsXml(keywords as any));
+  function writeTools(tools: any[]) {
+    fs.writeFileSync(toolsPath, buildToolsXml(tools as any));
   }
 
   /** Build minimal raw XML document for validation tests. */
@@ -308,8 +308,8 @@ describe('Config', () => {
       expect(pub).toHaveProperty('apis');
       expect(pub).toHaveProperty('http');
       expect(pub).toHaveProperty('limits');
-      expect(pub).toHaveProperty('keywords');
-      expect(pub).toHaveProperty('defaultKeywords');
+      expect(pub).toHaveProperty('tools');
+      expect(pub).toHaveProperty('defaultTools');
       expect(pub).toHaveProperty('replyChain');
       expect(pub).toHaveProperty('imageResponse');
     });
@@ -647,20 +647,20 @@ describe('Config', () => {
     });
   });
 
-  describe('getKeywordConfig', () => {
+  describe('getToolConfig', () => {
     const { config } = require('../src/utils/config');
 
-    it('should find keyword case-insensitively', () => {
+    it('should find tool case-insensitively', () => {
       // The runtime tools.xml (copied from tools.default.xml) should have "generate"
-      const kw = config.getKeywordConfig('GENERATE');
+      const kw = config.getToolConfig('GENERATE');
       if (kw) {
-        expect(kw.keyword.toLowerCase()).toBe('generate');
+        expect(kw.name.toLowerCase()).toBe('generate');
       }
-      // If no keywords loaded, this test is a no-op (still valid)
+      // If no tools loaded, this test is a no-op (still valid)
     });
 
-    it('should return undefined for unknown keyword', () => {
-      const kw = config.getKeywordConfig('nonexistent_keyword_xyz');
+    it('should return undefined for unknown tool', () => {
+      const kw = config.getToolConfig('nonexistent_tool_xyz');
       expect(kw).toBeUndefined();
     });
   });
@@ -707,20 +707,20 @@ describe('Config', () => {
       const runtimeContent = fs.readFileSync(runtimePath, 'utf-8');
       expect(runtimeContent).toEqual(defaultContent);
 
-      // Keywords should be loaded
-      expect(config.getKeywords().length).toBeGreaterThan(0);
+      // Tools should be loaded
+      expect(config.getTools().length).toBeGreaterThan(0);
     });
 
     it('should not overwrite existing runtime tools.xml', () => {
       // Write a custom runtime file
       fs.writeFileSync(runtimePath, buildToolsXml([
-        { keyword: 'customonly', api: 'ollama', timeout: 30, description: 'Custom' },
+        { name: 'customonly', api: 'ollama', timeout: 30, description: 'Custom' },
       ] as any));
 
       config.reload();
 
-      // Should load the custom keyword, not the defaults
-      expect(config.getKeywordConfig('customonly')).toBeDefined();
+      // Should load the custom tool, not the defaults
+      expect(config.getToolConfig('customonly')).toBeDefined();
     });
 
     it('should skip copy-from-default when TOOLS_CONFIG_PATH is set', () => {
@@ -730,19 +730,19 @@ describe('Config', () => {
       }
 
       // Point to a custom path
-      writeKeywords([
-        { keyword: 'envpath', api: 'ollama', timeout: 30, description: 'From env path' },
+      writeTools([
+        { name: 'envpath', api: 'ollama', timeout: 30, description: 'From env path' },
       ]);
-      process.env.TOOLS_CONFIG_PATH = keywordsPath;
+      process.env.TOOLS_CONFIG_PATH = toolsPath;
 
       config.reload();
 
       // Runtime tools.xml should NOT have been created (env path used instead)
       expect(fs.existsSync(runtimePath)).toBe(false);
-      expect(config.getKeywordConfig('envpath')).toBeDefined();
+      expect(config.getToolConfig('envpath')).toBeDefined();
     });
 
-    it('should fall back to empty keywords when neither runtime nor default file exists', () => {
+    it('should fall back to empty tools when neither runtime nor default file exists', () => {
       // Remove the runtime file
       if (fs.existsSync(runtimePath)) {
         fs.unlinkSync(runtimePath);
@@ -756,7 +756,7 @@ describe('Config', () => {
 
       try {
         config.reload();
-        expect(config.getKeywords()).toEqual([]);
+        expect(config.getTools()).toEqual([]);
       } finally {
         // Restore the default file
         fs.renameSync(backupPath, defaultPath);
@@ -765,24 +765,24 @@ describe('Config', () => {
     });
   });
 
-  describe('getDefaultKeywords', () => {
+  describe('getDefaultTools', () => {
     const { config } = require('../src/utils/config');
 
-    it('should return an array of keywords from tools.default.xml', () => {
-      const defaults = config.getDefaultKeywords();
+    it('should return an array of tools from tools.default.xml', () => {
+      const defaults = config.getDefaultTools();
       expect(Array.isArray(defaults)).toBe(true);
       expect(defaults.length).toBeGreaterThan(0);
     });
 
-    it('should include the activity_key built-in keyword', () => {
-      const defaults = config.getDefaultKeywords();
-      const ak = defaults.find((k: any) => k.keyword === 'activity_key');
+    it('should include the activity_key built-in tool', () => {
+      const defaults = config.getDefaultTools();
+      const ak = defaults.find((k: any) => k.name === 'activity_key');
       expect(ak).toBeDefined();
       expect(ak.builtin).toBe(true);
     });
   });
 
-  describe('default keyword self-heal', () => {
+  describe('default tool self-heal', () => {
     const { config } = require('../src/utils/config');
     const runtimePath = path.join(__dirname, '../config/tools.xml');
     let savedRuntime: string | null = null;
@@ -804,80 +804,80 @@ describe('Config', () => {
       config.reload();
     });
 
-    it('should merge missing built-in keywords from defaults into runtime config', () => {
+    it('should merge missing built-in tools from defaults into runtime config', () => {
       // Write a runtime config WITHOUT activity_key
       fs.writeFileSync(runtimePath, buildToolsXml([
-        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
-        { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat' },
+        { name: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+        { name: 'chat', api: 'ollama', timeout: 300, description: 'Chat' },
       ] as any));
       config.reload();
 
       // activity_key should be merged from defaults
-      const ak = config.getKeywordConfig('activity_key');
+      const ak = config.getToolConfig('activity_key');
       expect(ak).toBeDefined();
       expect(ak!.builtin).toBe(true);
     });
 
-    it('should merge missing non-built-in keywords from defaults into runtime config', () => {
+    it('should merge missing non-built-in tools from defaults into runtime config', () => {
       // Write a runtime config without meme_templates
       fs.writeFileSync(runtimePath, buildToolsXml([
-        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
-        { keyword: 'meme', api: 'meme', timeout: 60, description: 'Create meme images' },
+        { name: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+        { name: 'meme', api: 'meme', timeout: 60, description: 'Create meme images' },
       ] as any));
       config.reload();
 
-      const mt = config.getKeywordConfig('meme_templates');
+      const mt = config.getToolConfig('meme_templates');
       expect(mt).toBeDefined();
       expect(mt!.api).toBe('meme');
       expect(mt!.allowEmptyContent).toBe(true);
     });
 
-    it('should not duplicate already-present built-in keywords', () => {
+    it('should not duplicate already-present built-in tools', () => {
       // Write a runtime config WITH activity_key already present
       fs.writeFileSync(runtimePath, buildToolsXml([
-        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
-        { keyword: 'activity_key', api: 'ollama', timeout: 10, description: 'Key', builtin: true },
+        { name: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+        { name: 'activity_key', api: 'ollama', timeout: 10, description: 'Key', builtin: true },
       ] as any));
       config.reload();
 
-      const matches = config.getKeywords().filter((k: any) => k.keyword.toLowerCase() === 'activity_key');
+      const matches = config.getTools().filter((k: any) => k.name.toLowerCase() === 'activity_key');
       expect(matches).toHaveLength(1);
     });
 
-    it('should not backfill optional fields on existing keywords', () => {
+    it('should not backfill optional fields on existing tools', () => {
       // Write a runtime config with help that does NOT have allowEmptyContent.
-      // Existing keyword entries should remain unchanged.
+      // Existing tool entries should remain unchanged.
       fs.writeFileSync(runtimePath, buildToolsXml([
-        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+        { name: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
       ] as any));
       config.reload();
 
-      const helpKw = config.getKeywordConfig('help');
+      const helpKw = config.getToolConfig('help');
       expect(helpKw).toBeDefined();
       expect(helpKw!.allowEmptyContent).toBeUndefined();
     });
 
-    it('should not overwrite existing allowEmptyContent on built-in keyword', () => {
+    it('should not overwrite existing allowEmptyContent on built-in tool', () => {
       // Write a runtime config with help that explicitly has allowEmptyContent: false
       fs.writeFileSync(runtimePath, buildToolsXml([
-        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true, allowEmptyContent: false },
+        { name: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true, allowEmptyContent: false },
       ] as any));
       config.reload();
 
-      const helpKw = config.getKeywordConfig('help');
+      const helpKw = config.getToolConfig('help');
       expect(helpKw).toBeDefined();
       // Existing value is preserved
       expect(helpKw!.allowEmptyContent).toBe(false);
     });
 
-    it('should keep existing keyword unchanged while still adding missing defaults', () => {
+    it('should keep existing tool unchanged while still adding missing defaults', () => {
       fs.writeFileSync(runtimePath, buildToolsXml([
-        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Custom help', builtin: true },
+        { name: 'help', api: 'ollama', timeout: 120, description: 'Custom help', builtin: true },
       ] as any));
       config.reload();
 
-      const helpKw = config.getKeywordConfig('help');
-      const activityKeyKw = config.getKeywordConfig('activity_key');
+      const helpKw = config.getToolConfig('help');
+      const activityKeyKw = config.getToolConfig('activity_key');
       expect(helpKw).toBeDefined();
       expect(helpKw!.description).toBe('Custom help');
       expect(activityKeyKw).toBeDefined();
@@ -886,7 +886,7 @@ describe('Config', () => {
     it('should preserve runtime values for fields that also exist in defaults', () => {
       fs.writeFileSync(runtimePath, buildToolsXml([
         {
-          keyword: 'help',
+          name: 'help',
           api: 'ollama',
           timeout: 120,
           description: 'Help',
@@ -896,7 +896,7 @@ describe('Config', () => {
       ] as any));
       config.reload();
 
-      const helpKw = config.getKeywordConfig('help');
+      const helpKw = config.getToolConfig('help');
       expect(helpKw).toBeDefined();
       // Existing values are retained even when defaults define the same field.
       expect(helpKw!.allowEmptyContent).toBe(false);
@@ -904,54 +904,54 @@ describe('Config', () => {
       expect(helpKw!.abilityText).toBe('Help');
     });
 
-    it('should not backfill multiple missing fields on an existing keyword', () => {
-      // Existing keywords are kept as-is; only truly missing keywords are added.
+    it('should not backfill multiple missing fields on an existing tool', () => {
+      // Existing tools are kept as-is; only truly missing tools are added.
       fs.writeFileSync(runtimePath, buildToolsXml([
-        { keyword: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
+        { name: 'help', api: 'ollama', timeout: 120, description: 'Help', builtin: true },
       ] as any));
       config.reload();
 
-      const helpKw = config.getKeywordConfig('help');
+      const helpKw = config.getToolConfig('help');
       expect(helpKw).toBeDefined();
       expect(helpKw!.allowEmptyContent).toBeUndefined();
     });
   });
 
-  describe('getPublicConfig includes defaultKeywords', () => {
+  describe('getPublicConfig includes defaultTools', () => {
     const { config } = require('../src/utils/config');
 
-    it('should include defaultKeywords array in public config', () => {
+    it('should include defaultTools array in public config', () => {
       const pub = config.getPublicConfig();
-      expect(pub).toHaveProperty('defaultKeywords');
-      expect(Array.isArray(pub.defaultKeywords)).toBe(true);
-      expect(pub.defaultKeywords.length).toBeGreaterThan(0);
+      expect(pub).toHaveProperty('defaultTools');
+      expect(Array.isArray(pub.defaultTools)).toBe(true);
+      expect(pub.defaultTools.length).toBeGreaterThan(0);
     });
   });
 
   describe('TOOLS_CONFIG_PATH support', () => {
     const { config } = require('../src/utils/config');
 
-    it('reload should read keywords from TOOLS_CONFIG_PATH when set', () => {
-      writeKeywords([
+    it('reload should read tools from TOOLS_CONFIG_PATH when set', () => {
+      writeTools([
         {
-          keyword: 'envkw',
+          name: 'envkw',
           api: 'ollama',
           timeout: 30,
           description: 'Loaded from env path',
         },
       ]);
 
-      process.env.TOOLS_CONFIG_PATH = keywordsPath;
+      process.env.TOOLS_CONFIG_PATH = toolsPath;
 
       try {
         const result = config.reload();
-        expect(result.reloaded).toContain('keywords');
+        expect(result.reloaded).toContain('tools');
 
-        const loaded = config.getKeywordConfig('envkw');
+        const loaded = config.getToolConfig('envkw');
         expect(loaded).toBeDefined();
         expect(loaded!.description).toBe('Loaded from env path');
-        // Default sync merges ALL keywords from defaults, so 'generate' is present
-        expect(config.getKeywordConfig('generate')).toBeDefined();
+        // Default sync merges ALL tools from defaults, so 'generate' is present
+        expect(config.getToolConfig('generate')).toBeDefined();
       } finally {
         delete process.env.TOOLS_CONFIG_PATH;
         config.reload();
@@ -985,7 +985,7 @@ describe('Config', () => {
   </tool>`)
       );
       config.reload();
-      const kw = config.getKeywordConfig('testkw');
+      const kw = config.getToolConfig('testkw');
       expect(kw).toBeDefined();
       expect(kw!.abilityWhen).toBe('User asks for test data');
     });
@@ -1003,7 +1003,7 @@ describe('Config', () => {
   </tool>`)
       );
       config.reload();
-      const kw = config.getKeywordConfig('testkw');
+      const kw = config.getToolConfig('testkw');
       expect(kw).toBeDefined();
       expect(kw!.abilityWhen).toBe('42');
     });
@@ -1037,7 +1037,7 @@ describe('Config', () => {
   </tool>`)
       );
       config.reload();
-      const kw = config.getKeywordConfig('testkw');
+      const kw = config.getToolConfig('testkw');
       expect(kw).toBeDefined();
       expect(kw!.abilityInputs).toBeDefined();
       expect(kw!.abilityInputs!.mode).toBe('explicit');
@@ -1061,7 +1061,7 @@ describe('Config', () => {
   </tool>`)
       );
       config.reload();
-      const kw = config.getKeywordConfig('testkw');
+      const kw = config.getToolConfig('testkw');
       expect(kw).toBeDefined();
       expect(kw!.abilityInputs!.mode).toBe('implicit');
     });
@@ -1082,7 +1082,7 @@ describe('Config', () => {
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       config.reload();
-      expect(config.getKeywordConfig('testkw')).toBeUndefined();
+      expect(config.getToolConfig('testkw')).toBeUndefined();
       warnSpy.mockRestore();
       errorSpy.mockRestore();
     });
@@ -1107,7 +1107,7 @@ describe('Config', () => {
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       config.reload();
-      expect(config.getKeywordConfig('testkw')).toBeUndefined();
+      expect(config.getToolConfig('testkw')).toBeUndefined();
       warnSpy.mockRestore();
       errorSpy.mockRestore();
     });
@@ -1120,7 +1120,7 @@ describe('Config', () => {
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       config.reload();
-      expect(config.getKeywordConfig('testkw')).toBeUndefined();
+      expect(config.getToolConfig('testkw')).toBeUndefined();
       warnSpy.mockRestore();
       errorSpy.mockRestore();
     });
@@ -1138,7 +1138,7 @@ describe('Config', () => {
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       config.reload();
-      expect(config.getKeywordConfig('testkw')).toBeUndefined();
+      expect(config.getToolConfig('testkw')).toBeUndefined();
       warnSpy.mockRestore();
       errorSpy.mockRestore();
     });
@@ -1174,7 +1174,7 @@ describe('Config', () => {
 
       config.reload();
 
-      const kw = config.getKeywordConfig('testdepth');
+      const kw = config.getToolConfig('testdepth');
       expect(kw).toBeDefined();
       expect(kw!.contextFilterMaxDepth).toBeUndefined();
       expect(warnSpy).toHaveBeenCalledWith(
@@ -1198,7 +1198,7 @@ describe('Config', () => {
 
       config.reload();
 
-      const kw = config.getKeywordConfig('testdepth');
+      const kw = config.getToolConfig('testdepth');
       expect(kw).toBeDefined();
       expect(kw!.contextFilterMaxDepth).toBe(3);
     });
