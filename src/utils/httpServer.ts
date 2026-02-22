@@ -425,7 +425,7 @@ class HttpServer {
 
     // POST save config changes
     this.app.post('/api/config/save', ...adminGuard, safeHandler(async (req, res) => {
-      const { env, keywords } = req.body;
+      const { env, tools } = req.body;
         const messages: string[] = [];
 
         // Update .env values if provided
@@ -442,10 +442,10 @@ class HttpServer {
         }
 
         // Update tools config if provided
-        if (keywords && Array.isArray(keywords)) {
-          await configWriter.updateKeywords(keywords);
-          messages.push(`Updated tools config: ${keywords.length} tool(s)`);
-          logger.log('success', 'configurator', `Config saved — ${keywords.length} tool(s) written to tools config`);
+        if (tools && Array.isArray(tools)) {
+          await configWriter.updateTools(tools);
+          messages.push(`Updated tools config: ${tools.length} tool(s)`);
+          logger.log('success', 'configurator', `Config saved — ${tools.length} tool(s) written to tools config`);
         }
 
         // Hot-reload config

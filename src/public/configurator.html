@@ -391,7 +391,7 @@
   .actions-bar .msg.ok { color: var(--ok); }
   .actions-bar .msg.err { color: var(--err); }
 
-  /* Keywords table */
+  /* Tools table */
   .kw-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
   .kw-table th {
     text-align: left;
@@ -422,7 +422,7 @@
     margin-left: 4px;
     vertical-align: middle;
   }
-  /* Keyword detail rows (expandable) */
+  /* Tool detail rows (expandable) */
   .kw-details-row { display: none; }
   .kw-details-row.open { display: table-row; }
   .kw-details-row td { padding: 6px 8px 10px; }
@@ -473,7 +473,7 @@
     border-radius: 3px;
   }
   .kw-expand-btn:hover { color: var(--text); background: var(--surface2); }
-  /* Visual separator between keyword entry groups (main row + detail row) */
+  /* Visual separator between tool entry groups (main row + detail row) */
   .kw-table tr.kw-separator-top > td {
     border-top: 1px solid var(--border);
   }
@@ -737,7 +737,7 @@
             <button class="btn-sm" style="margin-left:8px;font-size:0.85em;vertical-align:middle" onclick="resetSystemPrompt()">Reset to Default</button>
           </label>
           <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
-            When set, this prompt is included as the system message in all conversational Ollama responses, shaping the bot's tone and personality. Internal AI processes (keyword routing, context evaluation) always skip this prompt. Leave empty to send no system message — the model responds based on its training defaults.
+            When set, this prompt is included as the system message in all conversational Ollama responses, shaping the bot's tone and personality. Internal AI processes (tool routing, context evaluation) always skip this prompt. Leave empty to send no system message — the model responds based on its training defaults.
           </p>
           <textarea id="ollama_system_prompt" data-env="OLLAMA_SYSTEM_PROMPT" rows="4" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9em;font-family:inherit;resize:vertical" placeholder="You are a helpful Discord bot assistant. Be friendly and helpful by default, but match the user's tone when appropriate—if someone is being snarky or playful, feel free to respond in kind. Always prioritize being useful and respectful."></textarea>
         </div>
@@ -745,10 +745,10 @@
         <div class="field">
           <label>
             Final Pass Model
-            <span class="note">used when Final Pass is enabled on a keyword — falls back to default model above</span>
+            <span class="note">used when Final Pass is enabled on a tool — falls back to default model above</span>
           </label>
           <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
-            When a keyword has <strong>Final Pass</strong> checked, the API result is refined through Ollama using this model.
+            When a tool has <strong>Final Pass</strong> checked, the API result is refined through Ollama using this model.
             Click <strong>Test</strong> above to populate the model list. Leave empty to use the default Ollama model.
           </p>
           <select id="ollama_final_pass_model" data-env="OLLAMA_FINAL_PASS_MODEL" onchange="markDirty()">
@@ -787,7 +787,7 @@
           <input type="text" id="accuweather_default_location" data-env="ACCUWEATHER_DEFAULT_LOCATION" placeholder="e.g. New York, 90210, or 349727">
         </div>
         <div class="field">
-          <label>Default Weather Type <span class="note">what data to fetch when the weather keyword is used</span></label>
+          <label>Default Weather Type <span class="note">what data to fetch when the weather tool is used</span></label>
           <select id="accuweather_default_weather_type" data-env="ACCUWEATHER_DEFAULT_WEATHER_TYPE">
             <option value="full">Full (conditions + forecast)</option>
             <option value="current">Current conditions only</option>
@@ -808,7 +808,7 @@
       <div class="body">
         <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
           Powered by ESPN's public API — no API key required.
-          Provides live NFL scores and news. Use keywords <code style="color:var(--accent)">!nfl scores</code> (optionally with a date like <code style="color:var(--accent)">!nfl scores 20260208</code>) or <code style="color:var(--accent)">!nfl news</code> (optionally with a filter like <code style="color:var(--accent)">!nfl news draft</code>).
+          Provides live NFL scores and news. Use tools <code style="color:var(--accent)">!nfl scores</code> (optionally with a date like <code style="color:var(--accent)">!nfl scores 20260208</code>) or <code style="color:var(--accent)">!nfl news</code> (optionally with a filter like <code style="color:var(--accent)">!nfl news draft</code>).
         </p>
         <div class="field">
           <label>Enabled</label>
@@ -840,7 +840,7 @@
         <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
           Powered by <a href="https://memegen.link" target="_blank" style="color:var(--accent)">memegen.link</a> — free, no API key required.
           Templates are cached locally and refreshed every 7 days.
-          Use keyword <code style="color:var(--accent)">!meme</code>.
+          Use tool <code style="color:var(--accent)">!meme</code>.
         </p>
         <div class="field">
           <label>Enabled</label>
@@ -867,7 +867,7 @@
         <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
           Get a free API key at <a href="https://serpapi.com/" target="_blank" style="color:var(--accent)">serpapi.com</a>.
           Provides Google Search results including AI Overview, Knowledge Graph, and organic results.
-          Use keywords <code style="color:var(--accent)">!search</code> or <code style="color:var(--accent)">!second opinion</code>.
+          Use tools <code style="color:var(--accent)">!search</code> or <code style="color:var(--accent)">!second opinion</code>.
         </p>
         <div class="field">
           <label>API Key <span class="note">write-only — never displayed</span></label>
@@ -1025,7 +1025,7 @@
       <h2 onclick="toggleSection(this)">Context Evaluation</h2>
       <div class="body">
         <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
-          When enabled, the bot uses Ollama to filter collected conversation history to the messages most relevant to the current prompt before building the two-stage (abilities) prompt. This is a <strong>global</strong> setting; per-keyword Ctx Eval has been removed.
+          When enabled, the bot uses Ollama to filter collected conversation history to the messages most relevant to the current prompt before building the two-stage (abilities) prompt. This is a <strong>global</strong> setting; per-tool Ctx Eval has been removed.
         </p>
         <div class="field-row">
           <div class="field narrow">
@@ -1064,7 +1064,7 @@
         </p>
         <pre class="mermaid" style="background:transparent;text-align:center">
 flowchart LR
-    A["📨 Message"] --> B{"!api\nkeyword?"}
+    A["📨 Message"] --> B{"!api\ntool?"}
     B -->|Yes| D["⚡ Route to API"]
     B -->|No| CF["🔍 Context Filter\n(if enabled)"]
     CF --> C["🧠 Ollama Chat\n(with abilities)"]
@@ -1082,27 +1082,27 @@ flowchart LR
         </pre>
       </div>
     </section>
-    <!-- Keywords Section -->
+    <!-- Tools Section -->
     <section>
-      <h2 class="open" onclick="toggleSection(this)">Keywords → API Routing</h2>
+      <h2 class="open" onclick="toggleSection(this)">Tools → API Routing</h2>
       <div class="body open">
         <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
-          Map @mention keywords to APIs. Keywords must start with <code>!</code> (e.g. <code>!weather</code>).
-          When <strong>Ability</strong> is checked, the keyword's description is included
-          as context so Ollama can suggest using that API even when the keyword isn't typed explicitly.
+          Map @mention tools to APIs. Tools must start with <code>!</code> (e.g. <code>!weather</code>).
+          When <strong>Ability</strong> is checked, the tool's description is included
+          as context so Ollama can suggest using that API even when the tool isn't typed explicitly.
           Tool results are sent through Ollama for one final conversational pass when using native tools.
         </p>
         <table class="kw-table">
           <thead>
             <tr>
-              <th style="text-align:center" title="Enable or disable this keyword">On</th>
-              <th>Keyword</th>
+              <th style="text-align:center" title="Enable or disable this tool">On</th>
+              <th>Tool Name</th>
               <th>API</th>
               <th title="Request timeout in seconds">Timeout (s)</th>
               <th title="Human-readable description; used as ability context when Ability is checked">Description</th>
-              <th title="When checked, this keyword's description is included in Ollama's abilities context so it can suggest using this API without the keyword being typed" style="text-align:center">Ability ℹ️</th>
-              <!-- Removed per-keyword Ctx Eval column -->
-              <th title="Per-keyword min/max depth overrides for Ollama context evaluation" style="text-align:center">Ctx Depth ℹ️</th>
+              <th title="When checked, this tool's description is included in Ollama's abilities context so it can suggest using this API without the tool being typed" style="text-align:center">Ability ℹ️</th>
+              <!-- Removed per-tool Ctx Eval column -->
+              <th title="Per-tool min/max depth overrides for Ollama context evaluation" style="text-align:center">Ctx Depth ℹ️</th>
               <th></th>
               <th></th>
             </tr>
@@ -1110,10 +1110,10 @@ flowchart LR
           <tbody id="kwBody"></tbody>
         </table>
         <div style="margin-top:10px">
-          <button class="btn-secondary btn-sm" onclick="addKeywordRow()">+ Add Keyword</button>
+          <button class="btn-secondary btn-sm" onclick="addToolRow()">+ Add Tool</button>
           <button class="btn-secondary btn-sm" id="syncDefaultsBtn" style="margin-left:8px;display:none" onclick="syncMissingDefaults()">+ Add Missing Defaults</button>
           <button class="btn-secondary btn-sm" style="margin-left:8px" onclick="downloadToolsXml()">Download XML</button>
-          <button class="btn-secondary btn-sm" style="margin-left:8px" onclick="restoreDefaultKeywords()">Restore Defaults</button>
+          <button class="btn-secondary btn-sm" style="margin-left:8px" onclick="restoreDefaultTools()">Restore Defaults</button>
           <span id="syncDefaultsInfo" style="font-size:0.75em;color:var(--text-dim);margin-left:8px"></span>
         </div>
       </div>
@@ -1463,11 +1463,11 @@ flowchart LR
       document.getElementById('discord_token').placeholder =
         cfg.discord.tokenConfigured ? 'Token configured ✓ — paste new value to change' : 'Paste Discord bot token here';
 
-      // Populate keywords
-      renderKeywords(cfg.keywords);
+      // Populate tools
+      renderTools(cfg.tools);
 
-      // Check for missing default keywords and show sync button if needed
-      checkMissingDefaults(cfg.keywords, cfg.defaultKeywords || []);
+      // Check for missing default tools and show sync button if needed
+      checkMissingDefaults(cfg.tools, cfg.defaultTools || []);
 
       // Apply server-side theme preference
       if (cfg.configuratorTheme) {
@@ -1489,16 +1489,16 @@ flowchart LR
     }
   }
 
-  // ── Keywords table ─────────────────────────────────
-  function renderKeywords(keywords) {
+  // ── Tools table ─────────────────────────────────
+  function renderTools(tools) {
     const tbody = document.getElementById('kwBody');
     tbody.innerHTML = '';
-    for (const kw of keywords) {
-      addKeywordRow(kw);
+    for (const kw of tools) {
+      addToolRow(kw);
     }
   }
 
-  function addKeywordRow(kw = null) {
+  function addToolRow(kw = null) {
     const tbody = document.getElementById('kwBody');
     const tr = document.createElement('tr');
     const isBuiltin = !!kw?.builtin;
@@ -1510,8 +1510,8 @@ flowchart LR
     const ai = kw?.abilityInputs || {};
     const retry = kw?.retry || {};
     tr.innerHTML = `
-      <td style="text-align:center"><input type="checkbox" class="kw-enabled" ${isEnabled ? 'checked' : ''} title="${isBuiltin ? 'Enable or disable this built-in keyword' : 'Enable or disable this keyword'}"></td>
-      <td><input type="text" class="kw-keyword" value="${esc(kw?.keyword || '')}" placeholder="!keyword">${isBuiltin ? '<span class="kw-builtin-badge">built-in</span>' : ''}</td>
+      <td style="text-align:center"><input type="checkbox" class="kw-enabled" ${isEnabled ? 'checked' : ''} title="${isBuiltin ? 'Enable or disable this built-in tool' : 'Enable or disable this tool'}"></td>
+      <td><input type="text" class="kw-keyword" value="${esc(kw?.name || '')}" placeholder="!tool">${isBuiltin ? '<span class="kw-builtin-badge">built-in</span>' : ''}</td>
       <td><select class="kw-api">
         <option value="comfyui" ${kw?.api === 'comfyui' ? 'selected' : ''}>comfyui</option>
         <option value="ollama" ${kw?.api === 'ollama' ? 'selected' : ''}>ollama</option>
@@ -1522,15 +1522,15 @@ flowchart LR
       </select></td>
       <td><input type="number" class="kw-timeout" value="${kw?.timeout || 300}" style="width:70px"></td>
       <td><input type="text" class="kw-desc" value="${esc(kw?.description || '')}" placeholder="description"></td>
-      <td style="text-align:center"><input type="checkbox" class="kw-ability" ${kw?.abilityText ? 'checked' : ''} title="Include this keyword as an ability in Ollama context"></td>
-      <!-- Removed per-keyword Ctx Eval checkbox -->
+      <td style="text-align:center"><input type="checkbox" class="kw-ability" ${kw?.abilityText ? 'checked' : ''} title="Include this tool as an ability in Ollama context"></td>
+      <!-- Removed per-tool Ctx Eval checkbox -->
       <td style="text-align:center">
         <span class="kw-ctx-depth kw-ctx-depth-stacked">
           <span class="kw-ctx-row"><span class="kw-ctx-label">Min</span> <input type="number" class="kw-ctxMin" value="${kw?.contextFilterMinDepth ?? ''}" min="1" style="width:50px" title="Min depth — always included (default: 1)" placeholder="1"></span>
           <span class="kw-ctx-row"><span class="kw-ctx-label">Max</span> <input type="number" class="kw-ctxMax" value="${kw?.contextFilterMaxDepth ?? ''}" min="1" style="width:50px" title="Max depth — max messages eligible (default: global reply chain max)" placeholder="auto"></span>
         </span>
       </td>
-      <td>${isBuiltin ? '' : '<button class="btn-danger btn-sm" onclick="removeKeywordRow(this)">✕</button>'}</td>
+      <td>${isBuiltin ? '' : '<button class="btn-danger btn-sm" onclick="removeToolRow(this)">✕</button>'}</td>
       <td><button class="kw-expand-btn" title="Show/hide advanced fields" onclick="toggleKwDetails(this)">▸</button></td>
     `;
 
@@ -1623,7 +1623,7 @@ flowchart LR
     tr._detailRow = detailTr;
     detailTr._mainRow = tr;
 
-    // Add visual separator between keyword entries (skip the first row)
+    // Add visual separator between tool entries (skip the first row)
     if (tbody.children.length > 0) {
       tr.classList.add('kw-separator-top');
     }
@@ -1640,7 +1640,7 @@ flowchart LR
     btn.textContent = isOpen ? '▾' : '▸';
   }
 
-  function removeKeywordRow(btn) {
+  function removeToolRow(btn) {
     const mainRow = btn.closest('tr');
     const detailRow = mainRow._detailRow;
     if (detailRow) detailRow.remove();
@@ -1649,17 +1649,17 @@ flowchart LR
   }
 
   // ── Missing defaults detection / sync ──────────────
-  let _cachedDefaultKeywords = [];
+  let _cachedDefaultTools = [];
 
-  function checkMissingDefaults(currentKeywords, defaultKeywords) {
-    _cachedDefaultKeywords = defaultKeywords || [];
-    const currentKeys = new Set(currentKeywords.map(k => k.keyword.toLowerCase()));
-    const missing = _cachedDefaultKeywords.filter(d => !currentKeys.has(d.keyword.toLowerCase()));
+  function checkMissingDefaults(currentTools, defaultTools) {
+    _cachedDefaultTools = defaultTools || [];
+    const currentKeys = new Set(currentTools.map(k => k.name.toLowerCase()));
+    const missing = _cachedDefaultTools.filter(d => !currentKeys.has(d.name.toLowerCase()));
     const btn = document.getElementById('syncDefaultsBtn');
     const info = document.getElementById('syncDefaultsInfo');
     if (missing.length > 0) {
       btn.style.display = '';
-      info.textContent = `${missing.length} keyword(s) in defaults not in your config: ${missing.map(m => m.keyword).join(', ')}`;
+      info.textContent = `${missing.length} tool(s) in defaults not in your config: ${missing.map(m => m.name).join(', ')}`;
     } else {
       btn.style.display = 'none';
       info.textContent = '';
@@ -1667,27 +1667,27 @@ flowchart LR
   }
 
   function syncMissingDefaults() {
-    const currentKeywords = collectKeywords();
-    const currentKeys = new Set(currentKeywords.map(k => k.keyword.toLowerCase()));
-    const missing = _cachedDefaultKeywords.filter(d => !currentKeys.has(d.keyword.toLowerCase()));
+    const currentTools = collectTools();
+    const currentKeys = new Set(currentTools.map(k => k.name.toLowerCase()));
+    const missing = _cachedDefaultTools.filter(d => !currentKeys.has(d.name.toLowerCase()));
     for (const kw of missing) {
-      addKeywordRow(kw);
+      addToolRow(kw);
     }
     markDirty();
     const btn = document.getElementById('syncDefaultsBtn');
     const info = document.getElementById('syncDefaultsInfo');
     btn.style.display = 'none';
-    info.textContent = `Added ${missing.length} keyword(s) — save to persist`;
+    info.textContent = `Added ${missing.length} tool(s) — save to persist`;
     info.style.color = 'var(--ok)';
-    conLog(`[${new Date().toISOString()}] Synced ${missing.length} missing default keyword(s): ${missing.map(m => m.keyword).join(', ')}`, 'ok');
+    conLog(`[${new Date().toISOString()}] Synced ${missing.length} missing default tool(s): ${missing.map(m => m.name).join(', ')}`, 'ok');
   }
 
   function downloadToolsXml() {
-    const keywords = collectKeywords();
+    const tools = collectTools();
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<tools>\n';
-    for (const kw of keywords) {
+    for (const kw of tools) {
       xml += '  <tool>\n';
-      xml += `    <name>${escXml(kw.keyword)}</name>\n`;
+      xml += `    <name>${escXml(kw.name)}</name>\n`;
       xml += `    <api>${escXml(kw.api)}</api>\n`;
       xml += `    <timeout>${kw.timeout}</timeout>\n`;
       if (kw.description) xml += `    <description>${escXml(kw.description)}</description>\n`;
@@ -1745,41 +1745,41 @@ flowchart LR
     conLog(`[${new Date().toISOString()}] Downloaded tools.xml from configurator table`, 'ok');
   }
 
-  function restoreDefaultKeywords() {
-    if (!_cachedDefaultKeywords || _cachedDefaultKeywords.length === 0) {
+  function restoreDefaultTools() {
+    if (!_cachedDefaultTools || _cachedDefaultTools.length === 0) {
       conLog(`[${new Date().toISOString()}] Restore defaults failed: no defaults available`, 'warn');
       return;
     }
 
-    if (!confirm('Replace current keyword rows with defaults? This updates the table now; click Save Changes to persist.')) {
+    if (!confirm('Replace current tool rows with defaults? This updates the table now; click Save Changes to persist.')) {
       return;
     }
 
     // Deep clone defaults to avoid mutating cached source objects.
-    const restored = JSON.parse(JSON.stringify(_cachedDefaultKeywords));
-    renderKeywords(restored);
-    checkMissingDefaults(restored, _cachedDefaultKeywords);
+    const restored = JSON.parse(JSON.stringify(_cachedDefaultTools));
+    renderTools(restored);
+    checkMissingDefaults(restored, _cachedDefaultTools);
     markDirty();
 
     const info = document.getElementById('syncDefaultsInfo');
-    info.textContent = `Restored ${restored.length} default keyword(s) — save to persist`;
+    info.textContent = `Restored ${restored.length} default tool(s) — save to persist`;
     info.style.color = 'var(--ok)';
-    conLog(`[${new Date().toISOString()}] Restored keyword table from defaults (${restored.length} entries)`, 'ok');
+    conLog(`[${new Date().toISOString()}] Restored tool table from defaults (${restored.length} entries)`, 'ok');
   }
 
-  function collectKeywords() {
+  function collectTools() {
     const rows = document.querySelectorAll('#kwBody tr:not(.kw-details-row)');
-    const keywords = [];
+    const tools = [];
     for (const row of rows) {
-      const keyword = row.querySelector('.kw-keyword')?.value?.trim();
-      if (!keyword) continue;
+      const name = row.querySelector('.kw-keyword')?.value?.trim();
+      if (!name) continue;
       const isBuiltin = row.dataset.builtin === '1';
       const isEnabled = row.querySelector('.kw-enabled').checked;
       const entry = {
-        keyword,
+        name,
         api: row.querySelector('.kw-api').value,
         timeout: parseInt(row.querySelector('.kw-timeout').value, 10) || 300,
-        description: row.querySelector('.kw-desc').value.trim() || keyword,
+        description: row.querySelector('.kw-desc').value.trim() || name,
       };
 
       // Main row fields
@@ -1846,9 +1846,9 @@ flowchart LR
         if (isAbility) entry.abilityText = entry.description;
       }
 
-      keywords.push(entry);
+      tools.push(entry);
     }
-    return keywords;
+    return tools;
   }
 
   // ── Save ───────────────────────────────────────────
@@ -1901,13 +1901,13 @@ flowchart LR
       // Include current theme preference
       env['CONFIGURATOR_THEME'] = _getCurrentTheme();
 
-      // Collect keywords
-      const keywords = collectKeywords();
+      // Collect tools
+      const tools = collectTools();
 
       const res = await fetch('/api/config/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ env, keywords }),
+        body: JSON.stringify({ env, tools }),
       });
 
       const result = await res.json();
