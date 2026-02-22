@@ -1,14 +1,14 @@
 /**
- * PromptBuilder tests — exercises XML context assembly, first-line keyword
+ * PromptBuilder tests — exercises XML context assembly, first-line tool
  * parsing, reprompt building, and /ask prompt construction.
  * Uses mocked config; no real Ollama instance required.
  */
 
 jest.mock('../src/utils/config', () => ({
   config: {
-    getKeywords: jest.fn(() => [
+    getTools: jest.fn(() => [
       {
-        keyword: 'weather',
+        name: 'weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather details including current conditions and forecast',
@@ -22,13 +22,13 @@ jest.mock('../src/utils/config', () => ({
         },
       },
       {
-        keyword: 'nfl',
+        name: 'nfl',
         api: 'nfl',
         timeout: 30,
         description: 'Generic NFL lookup',
       },
       {
-        keyword: 'nfl scores',
+        name: 'nfl_scores',
         api: 'nfl',
         timeout: 60,
         description: 'Get NFL game information',
@@ -42,14 +42,14 @@ jest.mock('../src/utils/config', () => ({
         finalOllamaPass: true,
       },
       {
-        keyword: 'nfl news',
+        name: 'nfl_news',
         api: 'nfl',
         timeout: 30,
         description: 'Get current NFL news headlines',
         abilityText: 'Get current NFL news headlines',
       },
       {
-        keyword: 'generate',
+        name: 'generate',
         api: 'comfyui',
         timeout: 600,
         description: 'Generate image using ComfyUI',
@@ -62,23 +62,23 @@ jest.mock('../src/utils/config', () => ({
         },
       },
       {
-        keyword: 'chat',
+        name: 'chat',
         api: 'ollama',
         timeout: 300,
         description: 'Chat with Ollama AI',
       },
       {
-        keyword: 'help',
+        name: 'help',
         api: 'ollama',
         timeout: 30,
-        description: 'Show available keywords',
+        description: 'Show available tools',
         builtin: true,
       },
       {
-        keyword: 'disabled_kw',
+        name: 'disabled_tool',
         api: 'nfl',
         timeout: 30,
-        description: 'A disabled keyword',
+        description: 'A disabled tool',
         enabled: false,
       },
     ]),
@@ -100,13 +100,13 @@ jest.mock('../src/utils/logger', () => ({
 }));
 
 import {
-  getRoutableKeywords,
+  getRoutableTools,
   buildSystemPrompt,
   buildUserContent,
   assemblePrompt,
   assembleReprompt,
   buildAskPrompt,
-  parseFirstLineKeyword,
+  parseFirstLineTool,
   inferBotName,
   formatAccuWeatherExternalData,
   formatNFLExternalData,
@@ -123,33 +123,33 @@ describe('PromptBuilder', () => {
     jest.clearAllMocks();
   });
 
-  // ── getRoutableKeywords ────────────────────────────────────────
+  // ── getRoutableTools ────────────────────────────────────────
 
-  describe('getRoutableKeywords', () => {
-    it('should exclude ollama-only, builtin, disabled, and search keywords', () => {
-      const routable = getRoutableKeywords();
-      const names = routable.map(k => k.keyword);
+  describe('getRoutableTools', () => {
+    it('should exclude ollama-only, builtin, disabled, and search tools', () => {
+      const routable = getRoutableTools();
+      const names = routable.map(k => k.name);
 
-      // Included: weather, nfl, nfl scores, nfl news, generate
+      // Included: weather, nfl, nfl_scores, nfl_news, generate
       expect(names).toContain('weather');
       expect(names).toContain('nfl');
-      expect(names).toContain('nfl scores');
-      expect(names).toContain('nfl news');
+      expect(names).toContain('nfl_scores');
+      expect(names).toContain('nfl_news');
       expect(names).toContain('generate');
 
-      // Excluded: chat (ollama), help (builtin), disabled_kw (enabled: false)
+      // Excluded: chat (ollama), help (builtin), disabled_tool (enabled: false)
       expect(names).not.toContain('chat');
       expect(names).not.toContain('help');
-      expect(names).not.toContain('disabled_kw');
+      expect(names).not.toContain('disabled_tool');
     });
 
-    it('should respect override keyword list', () => {
+    it('should respect override tool list', () => {
       const overrides = [
-        { keyword: 'custom', api: 'nfl' as const, timeout: 30, description: 'test' },
+        { name: 'custom', api: 'nfl' as const, timeout: 30, description: 'test' },
       ];
-      const routable = getRoutableKeywords(overrides);
+      const routable = getRoutableTools(overrides);
       expect(routable).toHaveLength(1);
-      expect(routable[0].keyword).toBe('custom');
+      expect(routable[0].name).toBe('custom');
     });
   });
 
@@ -192,7 +192,7 @@ describe('PromptBuilder', () => {
 
       expect(prompt).toContain('You are Bob');
       expect(prompt).toContain('Available external abilities');
-      // Structured format: keyword, What, When, Inputs
+      // Structured format: tool name, What, When, Inputs
       expect(prompt).toContain('- weather');
       expect(prompt).toContain('  What: Weather details including current conditions and forecast.');
       expect(prompt).toContain('  When: User asks about weather.');
@@ -201,7 +201,7 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('Rules – follow exactly');
     });
 
-    it('should render implicit inputs for generate keyword', () => {
+    it('should render implicit inputs for generate tool', () => {
       const prompt = buildSystemPrompt();
 
       expect(prompt).toContain('- generate');
@@ -211,20 +211,20 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('    Validation: Use the reply target text if present;');
     });
 
-    it('should render mixed inputs with optional params for nfl scores', () => {
+    it('should render mixed inputs with optional params for nfl_scores', () => {
       const prompt = buildSystemPrompt();
 
-      expect(prompt).toContain('- nfl scores');
+      expect(prompt).toContain('- nfl_scores');
       expect(prompt).toContain('  Inputs: Mixed.');
       expect(prompt).toContain('    Optional: date.');
       expect(prompt).toContain('    Validation:');
     });
 
-    it('should render default explicit fallback for keywords without abilityInputs', () => {
+    it('should render default explicit fallback for tools without abilityInputs', () => {
       const prompt = buildSystemPrompt();
 
-      // nfl news has no abilityInputs — should get default fallback
-      expect(prompt).toContain('- nfl news');
+      // nfl_news has no abilityInputs — should get default fallback
+      expect(prompt).toContain('- nfl_news');
       expect(prompt).toContain('    Use the user\'s current message content as input.');
     });
 
@@ -246,7 +246,7 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('    Validation: Must be a city name or postal code.');
     });
 
-    it('should skip abilities and rules when no routable keywords', () => {
+    it('should skip abilities and rules when no routable tools', () => {
       const prompt = buildSystemPrompt([]);
 
       expect(prompt).toContain('You are Bob');
@@ -328,15 +328,15 @@ describe('PromptBuilder', () => {
       expect(content).toContain('<message role="user" speaker="user" speaker_type="third_party">Hi</message>');
     });
 
-    it('should list keyword names in thinking_and_output_rules', () => {
+    it('should list tool names in thinking_and_output_rules', () => {
       const content = buildUserContent({
         userMessage: 'test',
       });
 
       expect(content).toContain('weather');
       expect(content).toContain('nfl');
-      expect(content).toContain('nfl scores');
-      expect(content).toContain('nfl news');
+      expect(content).toContain('nfl_scores');
+      expect(content).toContain('nfl_news');
     });
 
     it('should include clarification steps in thinking_and_output_rules', () => {
@@ -560,7 +560,7 @@ describe('PromptBuilder', () => {
       expect(result.userContent).not.toContain('<thinking_and_output_rules>');
     });
 
-    it('should use persona-only system prompt (no abilities or keyword rules)', () => {
+    it('should use persona-only system prompt (no abilities or tool rules)', () => {
       const result = assembleReprompt({
         userMessage: 'Score?',
         externalData: 'test data',
@@ -588,7 +588,7 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('</user>');
     });
 
-    it('should NOT include abilities or keyword routing rules', () => {
+    it('should NOT include abilities or tool routing rules', () => {
       const prompt = buildAskPrompt('Hello');
 
       expect(prompt).not.toContain('Available external abilities');
@@ -596,137 +596,137 @@ describe('PromptBuilder', () => {
     });
   });
 
-  // ── parseFirstLineKeyword ──────────────────────────────────────
+  // ── parseFirstLineTool ──────────────────────────────────────
 
-  describe('parseFirstLineKeyword', () => {
-    it('should match exact keyword on first line', () => {
-      const result = parseFirstLineKeyword('nfl scores');
+  describe('parseFirstLineTool', () => {
+    it('should match exact tool on first line', () => {
+      const result = parseFirstLineTool('nfl_scores');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('nfl scores');
+      expect(result.toolConfig?.name).toBe('nfl_scores');
     });
 
-    it('should match keyword with trailing whitespace', () => {
-      const result = parseFirstLineKeyword('  weather  ');
+    it('should match tool with trailing whitespace', () => {
+      const result = parseFirstLineTool('  weather  ');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('weather');
+      expect(result.toolConfig?.name).toBe('weather');
     });
 
-    it('should match keyword with trailing punctuation', () => {
-      const result = parseFirstLineKeyword('nfl scores.');
+    it('should match tool with trailing punctuation', () => {
+      const result = parseFirstLineTool('nfl_scores.');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('nfl scores');
+      expect(result.toolConfig?.name).toBe('nfl_scores');
     });
 
-    it('should match keyword case-insensitively', () => {
-      const result = parseFirstLineKeyword('NFL SCORES');
+    it('should match tool case-insensitively', () => {
+      const result = parseFirstLineTool('NFL_SCORES');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('nfl scores');
+      expect(result.toolConfig?.name).toBe('nfl_scores');
     });
 
-    it('should take only first line when keyword + junk after', () => {
-      const result = parseFirstLineKeyword('nfl scores\nlol why ask me');
+    it('should take only first line when tool + junk after', () => {
+      const result = parseFirstLineTool('nfl_scores\nlol why ask me');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('nfl scores');
+      expect(result.toolConfig?.name).toBe('nfl_scores');
     });
 
     it('should match directive on a later line when first line is commentary', () => {
-      const result = parseFirstLineKeyword('Sure, I can do that.\nweather: alien city skyline');
+      const result = parseFirstLineTool('Sure, I can do that.\nweather: alien city skyline');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('weather');
+      expect(result.toolConfig?.name).toBe('weather');
       expect(result.inferredInput).toBe('alien city skyline');
       expect(result.commentaryText).toBe('Sure, I can do that.');
     });
 
     it('should keep remaining lines as commentary when directive line is in the middle', () => {
-      const result = parseFirstLineKeyword('Quick thought first.\nweather: Seattle\nI can also add a forecast.');
+      const result = parseFirstLineTool('Quick thought first.\nweather: Seattle\nI can also add a forecast.');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('weather');
+      expect(result.toolConfig?.name).toBe('weather');
       expect(result.inferredInput).toBe('Seattle');
       expect(result.commentaryText).toBe('Quick thought first.\nI can also add a forecast.');
     });
 
-    it('should prefer longest keyword match (nfl scores over nfl)', () => {
-      const result = parseFirstLineKeyword('nfl scores');
+    it('should prefer longest tool name match (nfl_scores over nfl)', () => {
+      const result = parseFirstLineTool('nfl_scores');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('nfl scores');
+      expect(result.toolConfig?.name).toBe('nfl_scores');
     });
 
     it('should NOT match if first line is a normal sentence', () => {
-      const result = parseFirstLineKeyword('Lmao you still don\'t know?');
+      const result = parseFirstLineTool('Lmao you still don\'t know?');
       expect(result.matched).toBe(false);
-      expect(result.keywordConfig).toBeNull();
+      expect(result.toolConfig).toBeNull();
     });
 
-    it('should NOT match ollama-only keywords', () => {
-      const result = parseFirstLineKeyword('chat');
-      expect(result.matched).toBe(false);
-    });
-
-    it('should NOT match disabled keywords', () => {
-      const result = parseFirstLineKeyword('disabled_kw');
+    it('should NOT match ollama-only tools', () => {
+      const result = parseFirstLineTool('chat');
       expect(result.matched).toBe(false);
     });
 
-    it('should NOT match builtin keywords', () => {
-      const result = parseFirstLineKeyword('help');
+    it('should NOT match disabled tools', () => {
+      const result = parseFirstLineTool('disabled_tool');
+      expect(result.matched).toBe(false);
+    });
+
+    it('should NOT match builtin tools', () => {
+      const result = parseFirstLineTool('help');
       expect(result.matched).toBe(false);
     });
 
     it('should return null result for empty input', () => {
-      const result = parseFirstLineKeyword('');
+      const result = parseFirstLineTool('');
       expect(result.matched).toBe(false);
-      expect(result.keywordConfig).toBeNull();
+      expect(result.toolConfig).toBeNull();
     });
 
     it('should return null result for whitespace-only input', () => {
-      const result = parseFirstLineKeyword('   \n\n  ');
+      const result = parseFirstLineTool('   \n\n  ');
       expect(result.matched).toBe(false);
     });
 
-    it('should handle keyword wrapped in quotes', () => {
-      const result = parseFirstLineKeyword('"weather"');
+    it('should handle tool name wrapped in quotes', () => {
+      const result = parseFirstLineTool('"weather"');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('weather');
+      expect(result.toolConfig?.name).toBe('weather');
     });
 
-    it('should support override keywords for testing', () => {
+    it('should support override tools for testing', () => {
       const overrides = [
-        { keyword: 'custom-api', api: 'nfl' as const, timeout: 30, description: 'test' },
+        { name: 'custom-api', api: 'nfl' as const, timeout: 30, description: 'test' },
       ];
-      const result = parseFirstLineKeyword('custom-api', overrides);
+      const result = parseFirstLineTool('custom-api', overrides);
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('custom-api');
+      expect(result.toolConfig?.name).toBe('custom-api');
     });
 
-    it('should match keyword preceded by a dash bullet marker', () => {
-      const result = parseFirstLineKeyword('- nfl scores');
+    it('should match tool name preceded by a dash bullet marker', () => {
+      const result = parseFirstLineTool('- nfl_scores');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('nfl scores');
+      expect(result.toolConfig?.name).toBe('nfl_scores');
     });
 
-    it('should match keyword preceded by an asterisk bullet marker', () => {
-      const result = parseFirstLineKeyword('* weather');
+    it('should match tool name preceded by an asterisk bullet marker', () => {
+      const result = parseFirstLineTool('* weather');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('weather');
+      expect(result.toolConfig?.name).toBe('weather');
     });
 
-    it('should match keyword preceded by a bullet character', () => {
-      const result = parseFirstLineKeyword('\u2022 nfl news');
+    it('should match tool name preceded by a bullet character', () => {
+      const result = parseFirstLineTool('\u2022 nfl_news');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('nfl news');
+      expect(result.toolConfig?.name).toBe('nfl_news');
     });
 
     it('should extract inferred input from colon-delimited first line', () => {
-      const result = parseFirstLineKeyword('weather: Seattle, WA');
+      const result = parseFirstLineTool('weather: Seattle, WA');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('weather');
+      expect(result.toolConfig?.name).toBe('weather');
       expect(result.inferredInput).toBe('Seattle, WA');
     });
 
     it('should extract inferred input from whitespace-delimited first line', () => {
-      const result = parseFirstLineKeyword('nfl scores 2026-02-16');
+      const result = parseFirstLineTool('nfl_scores 2026-02-16');
       expect(result.matched).toBe(true);
-      expect(result.keywordConfig?.keyword).toBe('nfl scores');
+      expect(result.toolConfig?.name).toBe('nfl_scores');
       expect(result.inferredInput).toBe('2026-02-16');
     });
   });
@@ -743,13 +743,13 @@ describe('PromptBuilder', () => {
   });
 
   describe('formatNFLExternalData', () => {
-    it('should use "nfl-scores" source for scores keywords', () => {
-      const result = formatNFLExternalData('nfl scores', 'Chiefs 38 \u2013 Seahawks 31');
+    it('should use "nfl-scores" source for scores tool names', () => {
+      const result = formatNFLExternalData('nfl_scores', 'Chiefs 38 – Seahawks 31');
       expect(result).toContain('source="nfl-scores"');
     });
 
-    it('should use "nfl-news" source for news keywords', () => {
-      const result = formatNFLExternalData('nfl news', 'Top headlines...');
+    it('should use "nfl-news" source for news tool names', () => {
+      const result = formatNFLExternalData('nfl_news', 'Top headlines...');
       expect(result).toContain('source="nfl-news"');
     });
   });

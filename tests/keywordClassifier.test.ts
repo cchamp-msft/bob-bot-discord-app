@@ -1,14 +1,14 @@
 /**
- * KeywordClassifier tests — exercises AI-based keyword classification
+ * KeywordClassifier tests — exercises AI-based tool classification
  * fallback logic. Uses mocked Ollama client; no real Ollama instance required.
  */
 
 jest.mock('../src/utils/config', () => ({
   config: {
-    getKeywords: jest.fn(() => [
-      { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Generate image using ComfyUI' },
-      { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat with Ollama AI' },
-      { keyword: 'ask', api: 'ollama', timeout: 300, description: 'Ask a question using Ollama' },
+    getTools: jest.fn(() => [
+      { name: 'generate', api: 'comfyui', timeout: 300, description: 'Generate image using ComfyUI' },
+      { name: 'chat', api: 'ollama', timeout: 300, description: 'Chat with Ollama AI' },
+      { name: 'ask', api: 'ollama', timeout: 300, description: 'Ask a question using Ollama' },
     ]),
     getOllamaModel: jest.fn(() => 'llama2'),
     getDefaultTimeout: jest.fn(() => 300),
@@ -55,7 +55,7 @@ describe('KeywordClassifier', () => {
   });
 
   describe('classifyIntent', () => {
-    it('should return matched keyword config when Ollama identifies a keyword', async () => {
+    it('should return matched tool config when Ollama identifies a tool', async () => {
       mockGenerate.mockResolvedValue({
         success: true,
         data: { text: 'generate' },
@@ -64,9 +64,9 @@ describe('KeywordClassifier', () => {
       const result = await classifyIntent('can you draw a sunset for me?', 'testuser');
 
       expect(result.wasClassified).toBe(true);
-      expect(result.keywordConfig).not.toBeNull();
-      expect(result.keywordConfig!.keyword).toBe('generate');
-      expect(result.keywordConfig!.api).toBe('comfyui');
+      expect(result.toolConfig).not.toBeNull();
+      expect(result.toolConfig!.name).toBe('generate');
+      expect(result.toolConfig!.api).toBe('comfyui');
     });
 
     it('should return null when Ollama responds with NONE', async () => {
@@ -78,10 +78,10 @@ describe('KeywordClassifier', () => {
       const result = await classifyIntent('what is the weather like?', 'testuser');
 
       expect(result.wasClassified).toBe(true);
-      expect(result.keywordConfig).toBeNull();
+      expect(result.toolConfig).toBeNull();
     });
 
-    it('should handle case-insensitive keyword matching', async () => {
+    it('should handle case-insensitive tool matching', async () => {
       mockGenerate.mockResolvedValue({
         success: true,
         data: { text: 'GENERATE' },
@@ -89,8 +89,8 @@ describe('KeywordClassifier', () => {
 
       const result = await classifyIntent('make me a picture', 'testuser');
 
-      expect(result.keywordConfig).not.toBeNull();
-      expect(result.keywordConfig!.keyword).toBe('generate');
+      expect(result.toolConfig).not.toBeNull();
+      expect(result.toolConfig!.name).toBe('generate');
     });
 
     it('should strip punctuation from Ollama response', async () => {
@@ -101,11 +101,11 @@ describe('KeywordClassifier', () => {
 
       const result = await classifyIntent('hello there', 'testuser');
 
-      expect(result.keywordConfig).not.toBeNull();
-      expect(result.keywordConfig!.keyword).toBe('chat');
+      expect(result.toolConfig).not.toBeNull();
+      expect(result.toolConfig!.name).toBe('chat');
     });
 
-    it('should return null for unrecognized keyword from Ollama', async () => {
+    it('should return null for unrecognized tool from Ollama', async () => {
       mockGenerate.mockResolvedValue({
         success: true,
         data: { text: 'unknown_keyword' },
@@ -114,7 +114,7 @@ describe('KeywordClassifier', () => {
       const result = await classifyIntent('do something weird', 'testuser');
 
       expect(result.wasClassified).toBe(true);
-      expect(result.keywordConfig).toBeNull();
+      expect(result.toolConfig).toBeNull();
     });
 
     it('should return wasClassified=false when Ollama fails', async () => {
@@ -126,7 +126,7 @@ describe('KeywordClassifier', () => {
       const result = await classifyIntent('hello', 'testuser');
 
       expect(result.wasClassified).toBe(false);
-      expect(result.keywordConfig).toBeNull();
+      expect(result.toolConfig).toBeNull();
     });
 
     it('should return wasClassified=false when Ollama returns no text', async () => {
@@ -138,7 +138,7 @@ describe('KeywordClassifier', () => {
       const result = await classifyIntent('hello', 'testuser');
 
       expect(result.wasClassified).toBe(false);
-      expect(result.keywordConfig).toBeNull();
+      expect(result.toolConfig).toBeNull();
     });
 
     it('should return wasClassified=false when Ollama throws', async () => {
@@ -147,16 +147,16 @@ describe('KeywordClassifier', () => {
       const result = await classifyIntent('hello', 'testuser');
 
       expect(result.wasClassified).toBe(false);
-      expect(result.keywordConfig).toBeNull();
+      expect(result.toolConfig).toBeNull();
     });
 
-    it('should skip classification when no keywords are configured', async () => {
-      (config.getKeywords as jest.Mock).mockReturnValueOnce([]);
+    it('should skip classification when no tools are configured', async () => {
+      (config.getTools as jest.Mock).mockReturnValueOnce([]);
 
       const result = await classifyIntent('hello', 'testuser');
 
       expect(result.wasClassified).toBe(false);
-      expect(result.keywordConfig).toBeNull();
+      expect(result.toolConfig).toBeNull();
       expect(mockGenerate).not.toHaveBeenCalled();
     });
 
@@ -175,7 +175,7 @@ describe('KeywordClassifier', () => {
         expect.arrayContaining([
           expect.objectContaining({
             role: 'system',
-            content: expect.stringContaining('keyword classifier'),
+            content: expect.stringContaining('tool classifier'),
           }),
         ]),
         expect.anything(), // queue signal or caller signal
@@ -240,69 +240,69 @@ describe('KeywordClassifier', () => {
 
       const result = await classifyIntent('hello', 'testuser');
 
-      // After trim and clean, empty string won't match any keyword
-      expect(result.keywordConfig).toBeNull();
+      // After trim and clean, empty string won't match any tool
+      expect(result.toolConfig).toBeNull();
     });
   });
 
   describe('buildClassificationPrompt', () => {
-    it('should include all keyword descriptions', () => {
-      const keywords = [
-        { keyword: 'generate', api: 'comfyui' as const, timeout: 300, description: 'Generate image' },
-        { keyword: 'chat', api: 'ollama' as const, timeout: 300, description: 'Chat with AI', builtin: true },
+    it('should include all tool descriptions', () => {
+      const tools = [
+        { name: 'generate', api: 'comfyui' as const, timeout: 300, description: 'Generate image' },
+        { name: 'chat', api: 'ollama' as const, timeout: 300, description: 'Chat with AI', builtin: true },
       ];
 
-      const prompt = buildClassificationPrompt(keywords);
+      const prompt = buildClassificationPrompt(tools);
 
       expect(prompt).toContain('"generate": Generate image');
       expect(prompt).toContain('"chat": Chat with AI');
       expect(prompt).toContain('NONE');
-      expect(prompt).toContain('keyword classifier');
+      expect(prompt).toContain('tool classifier');
     });
 
     it('should produce a prompt that instructs single-word response', () => {
-      const keywords = [
-        { keyword: 'test', api: 'ollama' as const, timeout: 300, description: 'Test keyword' },
+      const tools = [
+        { name: 'test', api: 'ollama' as const, timeout: 300, description: 'Test tool' },
       ];
 
-      const prompt = buildClassificationPrompt(keywords);
+      const prompt = buildClassificationPrompt(tools);
 
-      expect(prompt).toContain('ONLY the keyword value');
+      expect(prompt).toContain('ONLY the tool name');
       expect(prompt).toContain('no explanation');
     });
   });
 
   describe('buildAbilitiesContext', () => {
-    it('should return empty string when no keywords have abilityText', () => {
-      (config.getKeywords as jest.Mock).mockReturnValueOnce([
-        { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat' },
-        { keyword: 'ask', api: 'ollama', timeout: 300, description: 'Ask' },
+    it('should return empty string when no tools have abilityText', () => {
+      (config.getTools as jest.Mock).mockReturnValueOnce([
+        { name: 'chat', api: 'ollama', timeout: 300, description: 'Chat' },
+        { name: 'ask', api: 'ollama', timeout: 300, description: 'Ask' },
       ]);
 
       const context = buildAbilitiesContext();
       expect(context).toBe('');
     });
 
-    it('should include abilities from keywords with abilityText', () => {
-      (config.getKeywords as jest.Mock).mockReturnValueOnce([
-        { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Gen image', abilityText: 'generate images from text descriptions' },
-        { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Get weather', abilityText: 'check weather for any location' },
-        { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat' },
+    it('should include abilities from tools with abilityText', () => {
+      (config.getTools as jest.Mock).mockReturnValueOnce([
+        { name: 'generate', api: 'comfyui', timeout: 300, description: 'Gen image', abilityText: 'generate images from text descriptions' },
+        { name: 'weather', api: 'accuweather', timeout: 60, description: 'Get weather', abilityText: 'check weather for any location' },
+        { name: 'chat', api: 'ollama', timeout: 300, description: 'Chat' },
       ]);
 
       const context = buildAbilitiesContext();
 
       expect(context).toContain('generate images from text descriptions');
-      expect(context).toContain('keyword: "generate"');
+      expect(context).toContain('tool: "generate"');
       expect(context).toContain('check weather for any location');
-      expect(context).toContain('keyword: "weather"');
+      expect(context).toContain('tool: "weather"');
       expect(context).toContain('You have access to the following abilities');
     });
 
-    it('should exclude ollama keywords even if they have abilityText', () => {
-      (config.getKeywords as jest.Mock).mockReturnValueOnce([
-        { keyword: 'chat', api: 'ollama', timeout: 300, description: 'Chat', abilityText: 'chat with AI' },
-        { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Gen', abilityText: 'generate images' },
+    it('should exclude ollama tools even if they have abilityText', () => {
+      (config.getTools as jest.Mock).mockReturnValueOnce([
+        { name: 'chat', api: 'ollama', timeout: 300, description: 'Chat', abilityText: 'chat with AI' },
+        { name: 'generate', api: 'comfyui', timeout: 300, description: 'Gen', abilityText: 'generate images' },
       ]);
 
       const context = buildAbilitiesContext();
@@ -312,29 +312,29 @@ describe('KeywordClassifier', () => {
     });
 
     it('should deduplicate abilities with identical text', () => {
-      (config.getKeywords as jest.Mock).mockReturnValueOnce([
-        { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Gen 1', abilityText: 'generate images from text descriptions' },
-        { keyword: 'imagine', api: 'comfyui', timeout: 300, description: 'Gen 2', abilityText: 'generate images from text descriptions' },
+      (config.getTools as jest.Mock).mockReturnValueOnce([
+        { name: 'generate', api: 'comfyui', timeout: 300, description: 'Gen 1', abilityText: 'generate images from text descriptions' },
+        { name: 'imagine', api: 'comfyui', timeout: 300, description: 'Gen 2', abilityText: 'generate images from text descriptions' },
       ]);
 
       const context = buildAbilitiesContext();
 
-      // Each unique ability should appear only once (by full line including keyword)
+      // Each unique ability should appear only once (by full line including tool)
       const lines = context.split('\n').filter(l => l.startsWith('- '));
-      expect(lines).toHaveLength(2); // "generate" and "imagine" have different keyword names
+      expect(lines).toHaveLength(2); // "generate" and "imagine" have different tool names
     });
 
-    it('should return empty string when no keywords are configured', () => {
-      (config.getKeywords as jest.Mock).mockReturnValueOnce([]);
+    it('should return empty string when no tools are configured', () => {
+      (config.getTools as jest.Mock).mockReturnValueOnce([]);
 
       const context = buildAbilitiesContext();
       expect(context).toBe('');
     });
 
-    it('should exclude disabled keywords from abilities context', () => {
-      (config.getKeywords as jest.Mock).mockReturnValueOnce([
-        { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Gen', abilityText: 'generate images', enabled: false },
-        { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Weather', abilityText: 'check weather' },
+    it('should exclude disabled tools from abilities context', () => {
+      (config.getTools as jest.Mock).mockReturnValueOnce([
+        { name: 'generate', api: 'comfyui', timeout: 300, description: 'Gen', abilityText: 'generate images', enabled: false },
+        { name: 'weather', api: 'accuweather', timeout: 60, description: 'Weather', abilityText: 'check weather' },
       ]);
 
       const context = buildAbilitiesContext();
@@ -343,23 +343,23 @@ describe('KeywordClassifier', () => {
       expect(context).not.toContain('generate images');
     });
 
-    it('should return empty when all keywords with abilityText are disabled', () => {
-      (config.getKeywords as jest.Mock).mockReturnValueOnce([
-        { keyword: 'generate', api: 'comfyui', timeout: 300, description: 'Gen', abilityText: 'generate images', enabled: false },
+    it('should return empty when all tools with abilityText are disabled', () => {
+      (config.getTools as jest.Mock).mockReturnValueOnce([
+        { name: 'generate', api: 'comfyui', timeout: 300, description: 'Gen', abilityText: 'generate images', enabled: false },
       ]);
 
       const context = buildAbilitiesContext();
       expect(context).toBe('');
     });
 
-    it('should include instruction to state keyword on its own line', () => {
-      (config.getKeywords as jest.Mock).mockReturnValueOnce([
-        { keyword: 'weather', api: 'accuweather', timeout: 60, description: 'Weather', abilityText: 'check weather' },
+    it('should include instruction to state tool name on its own line', () => {
+      (config.getTools as jest.Mock).mockReturnValueOnce([
+        { name: 'weather', api: 'accuweather', timeout: 60, description: 'Weather', abilityText: 'check weather' },
       ]);
 
       const context = buildAbilitiesContext();
 
-      expect(context).toContain('include ONLY the keyword on its own line');
+      expect(context).toContain('include ONLY the tool name on its own line');
       expect(context).toContain('Do not fabricate data');
     });
   });
