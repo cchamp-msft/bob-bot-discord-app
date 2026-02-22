@@ -804,28 +804,28 @@ describe('NFLClient', () => {
   describe('handleRequest', () => {
     it('should return error when NFL is disabled', async () => {
       (config.getNflEnabled as jest.Mock).mockReturnValueOnce(false);
-      const result = await nflClient.handleRequest('', 'nfl scores');
+      const result = await nflClient.handleRequest('', 'nfl_scores');
       expect(result.success).toBe(false);
       expect(result.error).toContain('disabled');
     });
 
-    it('should dispatch "nfl scores" to all scores', async () => {
+    it('should dispatch "nfl_scores" to all scores', async () => {
       const response = makeESPNScoreboard([scheduledEvent(), finalEvent()]);
       mockInstance.get.mockResolvedValueOnce({ data: response });
 
-      const result = await nflClient.handleRequest('', 'nfl scores');
+      const result = await nflClient.handleRequest('', 'nfl_scores');
       expect(result.success).toBe(true);
       expect(result.data?.text).toContain('NFL Scores');
       expect(result.data?.games).toHaveLength(2);
     });
 
-    it('should dispatch "nfl news" keyword', async () => {
+    it('should dispatch "nfl_news" tool', async () => {
       const articles = Array.from({ length: 15 }, (_, i) =>
         makeNewsArticle({ headline: `Story ${i + 1}` })
       );
       mockInstance.get.mockResolvedValueOnce({ data: { articles } });
 
-      const result = await nflClient.handleRequest('', 'nfl news');
+      const result = await nflClient.handleRequest('', 'nfl_news');
       expect(result.success).toBe(true);
       expect(result.data?.text).toContain('📰 **NFL News**');
       // Default (no filter) returns first 5
@@ -840,7 +840,7 @@ describe('NFLClient', () => {
       ];
       mockInstance.get.mockResolvedValueOnce({ data: { articles } });
 
-      const result = await nflClient.handleRequest('nfl news chiefs', 'nfl news');
+      const result = await nflClient.handleRequest('nfl news chiefs', 'nfl_news');
       expect(result.success).toBe(true);
       expect(result.data?.text).toContain('Chiefs Win Big');
       expect(result.data?.text).toContain('Chiefs Draft Picks');
@@ -854,22 +854,22 @@ describe('NFLClient', () => {
       ];
       mockInstance.get.mockResolvedValueOnce({ data: { articles } });
 
-      const result = await nflClient.handleRequest('nfl news seahawks', 'nfl news');
+      const result = await nflClient.handleRequest('nfl news seahawks', 'nfl_news');
       expect(result.success).toBe(true);
       expect(result.data?.text).toContain('No NFL news articles matching');
       expect(result.data?.text).toContain('seahawks');
     });
 
-    it('should return unknown keyword error for removed keywords', async () => {
+    it('should return unknown tool error for unrecognized tool names', async () => {
       const result = await nflClient.handleRequest('', 'nfl');
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Unknown NFL keyword');
+      expect(result.error).toContain('Unknown NFL tool');
     });
 
     it('should handle API errors gracefully', async () => {
       mockInstance.get.mockRejectedValueOnce(new Error('API down'));
 
-      const result = await nflClient.handleRequest('', 'nfl scores');
+      const result = await nflClient.handleRequest('', 'nfl_scores');
       // Should still succeed since empty array is returned from fetchScoreboard
       expect(result.success).toBe(true);
     });
@@ -879,7 +879,7 @@ describe('NFLClient', () => {
       const response = makeESPNScoreboard([scheduledEvent()]);
       mockInstance.get.mockResolvedValueOnce({ data: response });
 
-      await nflClient.handleRequest('', 'nfl scores', controller.signal);
+      await nflClient.handleRequest('', 'nfl_scores', controller.signal);
 
       for (const call of mockInstance.get.mock.calls) {
         const axiosConfig = call[1];
@@ -892,7 +892,7 @@ describe('NFLClient', () => {
       const abortError = new DOMException('The operation was aborted', 'AbortError');
       mockInstance.get.mockRejectedValueOnce(abortError);
 
-      const result = await nflClient.handleRequest('', 'nfl scores');
+      const result = await nflClient.handleRequest('', 'nfl_scores');
       expect(result.success).toBe(false);
       expect(result.error).toContain('cancelled');
     });
@@ -903,7 +903,7 @@ describe('NFLClient', () => {
 
       mockInstance.get.mockRejectedValue(new DOMException('The operation was aborted', 'AbortError'));
 
-      const result = await nflClient.handleRequest('', 'nfl scores', controller.signal);
+      const result = await nflClient.handleRequest('', 'nfl_scores', controller.signal);
       expect(result.success).toBe(false);
       expect(result.error).toContain('cancelled');
     });
@@ -915,7 +915,7 @@ describe('NFLClient', () => {
 
       mockInstance.get.mockRejectedValue(canceledError);
 
-      const result = await nflClient.handleRequest('', 'nfl scores');
+      const result = await nflClient.handleRequest('', 'nfl_scores');
       expect(result.success).toBe(false);
       expect(result.error).toContain('cancelled');
     });
@@ -923,7 +923,7 @@ describe('NFLClient', () => {
     it('should still swallow non-abort API errors in fetch helpers', async () => {
       mockInstance.get.mockRejectedValueOnce(new Error('Server error'));
 
-      const result = await nflClient.handleRequest('', 'nfl scores');
+      const result = await nflClient.handleRequest('', 'nfl_scores');
       expect(result.success).toBe(true);
       expect(result.data?.text).toContain('No NFL games');
     });
@@ -932,17 +932,17 @@ describe('NFLClient', () => {
       const response = makeESPNScoreboard([finalEvent()]);
       mockInstance.get.mockResolvedValueOnce({ data: response });
 
-      const result = await nflClient.handleRequest('', 'nfl scores');
+      const result = await nflClient.handleRequest('', 'nfl_scores');
       expect(result.success).toBe(true);
       expect(result.data?.text).toContain('Tip:');
       expect(result.data?.text).toContain('nfl scores 20260208');
     });
 
-    it('should dispatch "nfl scores" with YYYYMMDD date param', async () => {
+    it('should dispatch "nfl_scores" with YYYYMMDD date param', async () => {
       const response = makeESPNScoreboard([finalEvent()]);
       mockInstance.get.mockResolvedValueOnce({ data: response });
 
-      const result = await nflClient.handleRequest('20260208', 'nfl scores');
+      const result = await nflClient.handleRequest('20260208', 'nfl_scores');
       expect(result.success).toBe(true);
       expect(result.data?.text).toContain('2026-02-08');
       expect(mockInstance.get).toHaveBeenCalledWith('/scoreboard', {
@@ -951,11 +951,11 @@ describe('NFLClient', () => {
       });
     });
 
-    it('should dispatch "nfl scores" with YYYY-MM-DD date param', async () => {
+    it('should dispatch "nfl_scores" with YYYY-MM-DD date param', async () => {
       const response = makeESPNScoreboard([finalEvent()]);
       mockInstance.get.mockResolvedValueOnce({ data: response });
 
-      const result = await nflClient.handleRequest('2026-02-08', 'nfl scores');
+      const result = await nflClient.handleRequest('2026-02-08', 'nfl_scores');
       expect(result.success).toBe(true);
       expect(result.data?.text).toContain('2026-02-08');
       expect(mockInstance.get).toHaveBeenCalledWith('/scoreboard', {
@@ -1001,7 +1001,7 @@ describe('NFLClient', () => {
       error.response = { status: 401 };
       mockInstance.get.mockRejectedValueOnce(error);
 
-      const result = await nflClient.handleRequest('', 'nfl scores');
+      const result = await nflClient.handleRequest('', 'nfl_scores');
 
       expect(logger.logError).toHaveBeenCalledWith(
         'nfl',
@@ -1016,7 +1016,7 @@ describe('NFLClient', () => {
       error.response = { status: 401 };
       mockInstance.get.mockRejectedValueOnce(error);
 
-      const result = await nflClient.handleRequest('', 'nfl news');
+      const result = await nflClient.handleRequest('', 'nfl_news');
 
       expect(logger.logError).toHaveBeenCalledWith(
         'nfl',
@@ -1036,7 +1036,7 @@ describe('NFLClient', () => {
       const response = makeESPNScoreboard([finalEvent()]);
       mockInstance.get.mockResolvedValueOnce({ data: response });
 
-      await nflClient.handleRequest('', 'nfl scores');
+      await nflClient.handleRequest('', 'nfl_scores');
 
       const logCalls = (logger.log as jest.Mock).mock.calls
         .filter((c: string[]) => c[2]?.startsWith('NFL:'));

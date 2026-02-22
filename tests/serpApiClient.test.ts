@@ -181,7 +181,7 @@ describe('SerpApiClient', () => {
     it('should return formatted search results for a valid query', async () => {
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
 
-      const result = await serpApiClient.handleRequest('what is TypeScript', 'search');
+      const result = await serpApiClient.handleRequest('what is TypeScript', 'web_search');
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
@@ -191,14 +191,14 @@ describe('SerpApiClient', () => {
     });
 
     it('should return error when query is empty', async () => {
-      const result = await serpApiClient.handleRequest('', 'search');
+      const result = await serpApiClient.handleRequest('', 'web_search');
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('No search query');
     });
 
     it('should return error when query is only whitespace', async () => {
-      const result = await serpApiClient.handleRequest('   ', 'search');
+      const result = await serpApiClient.handleRequest('   ', 'web_search');
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('No search query');
@@ -207,7 +207,7 @@ describe('SerpApiClient', () => {
     it('should return error when API key is not configured', async () => {
       (config.getSerpApiKey as jest.Mock).mockReturnValueOnce('');
 
-      const result = await serpApiClient.handleRequest('test', 'search');
+      const result = await serpApiClient.handleRequest('test', 'web_search');
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not configured');
@@ -216,7 +216,7 @@ describe('SerpApiClient', () => {
     it('should handle API errors gracefully', async () => {
       mockInstance.get.mockRejectedValueOnce(new Error('Network error'));
 
-      const result = await serpApiClient.handleRequest('test', 'search');
+      const result = await serpApiClient.handleRequest('test', 'web_search');
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Network error');
@@ -225,7 +225,7 @@ describe('SerpApiClient', () => {
     it('should pass correct parameters including locale to SerpAPI', async () => {
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
 
-      await serpApiClient.handleRequest('my query', 'search');
+      await serpApiClient.handleRequest('my query', 'web_search');
 
       expect(mockInstance.get).toHaveBeenCalledWith('/search', {
         params: {
@@ -244,7 +244,7 @@ describe('SerpApiClient', () => {
       (config.getSerpApiLocation as jest.Mock).mockReturnValueOnce('Austin,Texas');
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
 
-      await serpApiClient.handleRequest('my query', 'search');
+      await serpApiClient.handleRequest('my query', 'web_search');
 
       expect(mockInstance.get).toHaveBeenCalledWith('/search', {
         params: {
@@ -265,7 +265,7 @@ describe('SerpApiClient', () => {
       (config.getSerpApiGl as jest.Mock).mockReturnValueOnce('');
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
 
-      await serpApiClient.handleRequest('my query', 'search');
+      await serpApiClient.handleRequest('my query', 'web_search');
 
       const params = mockInstance.get.mock.calls[0][1].params;
       expect(params).not.toHaveProperty('hl');
@@ -276,7 +276,7 @@ describe('SerpApiClient', () => {
       (config.getSerpApiLocation as jest.Mock).mockReturnValueOnce('');
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
 
-      await serpApiClient.handleRequest('my query', 'search');
+      await serpApiClient.handleRequest('my query', 'web_search');
 
       const params = mockInstance.get.mock.calls[0][1].params;
       expect(params).not.toHaveProperty('location');
@@ -286,7 +286,7 @@ describe('SerpApiClient', () => {
       const controller = new AbortController();
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
 
-      await serpApiClient.handleRequest('test query', 'search', controller.signal);
+      await serpApiClient.handleRequest('test query', 'web_search', controller.signal);
 
       expect(mockInstance.get).toHaveBeenCalledWith('/search', expect.objectContaining({
         signal: controller.signal,
@@ -314,7 +314,7 @@ describe('SerpApiClient', () => {
         .mockResolvedValueOnce({ status: 200, data: searchDataWithToken })
         .mockResolvedValueOnce({ status: 200, data: fullOverview });
 
-      const result = await serpApiClient.handleRequest('test', 'search');
+      const result = await serpApiClient.handleRequest('test', 'web_search');
 
       expect(mockInstance.get).toHaveBeenCalledTimes(2);
       // Second call should be the AI overview follow-up
@@ -337,7 +337,7 @@ describe('SerpApiClient', () => {
         .mockResolvedValueOnce({ status: 200, data: searchDataWithToken })
         .mockRejectedValueOnce(new Error('Token expired'));
 
-      const result = await serpApiClient.handleRequest('test', 'search');
+      const result = await serpApiClient.handleRequest('test', 'web_search');
 
       expect(result.success).toBe(true);
       // Should still contain the inline overview since follow-up failed gracefully
@@ -513,273 +513,6 @@ describe('SerpApiClient', () => {
     });
   });
 
-  // ── formatAIOverviewOnly ───────────────────────────────────────
-
-  describe('formatAIOverviewOnly', () => {
-    it('should return only the AI Overview section without sources', () => {
-      const text = serpApiClient.formatAIOverviewOnly(sampleSearchResponse as any, 'what is TypeScript');
-
-      expect(text).toContain('🔎 **Second opinion for:**');
-      expect(text).toContain('🤖 **Google AI Overview:**');
-      expect(text).toContain('TypeScript is a superset of JavaScript');
-      // Sources are omitted from second opinion — users can use "find content"
-      expect(text).not.toContain('📚 **Sources:**');
-      // Should NOT contain organic results or other sections
-      expect(text).not.toContain('📋 **Direct Answer:**');
-      expect(text).not.toContain('📖 **');
-      expect(text).not.toContain('📄 **Top Results:**');
-    });
-
-    it('should return a helpful fallback when no AI Overview is available', () => {
-      const text = serpApiClient.formatAIOverviewOnly(minimalSearchResponse as any, 'obscure query');
-
-      expect(text).toContain('🔎 **Second opinion for:**');
-      expect(text).toContain('⚠️ Google did not return an AI Overview');
-      expect(text).toContain('search');
-      expect(text).toContain('find content');
-    });
-
-    it('should handle empty AI overview text_blocks', () => {
-      const data = {
-        search_metadata: { status: 'Success' },
-        ai_overview: { text_blocks: [] },
-        organic_results: [{ position: 1, title: 'Test', link: 'https://example.com' }],
-      };
-
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
-
-      expect(text).toContain('⚠️ Google did not return an AI Overview');
-    });
-
-    it('should handle AI Overview without references', () => {
-      const data = {
-        search_metadata: { status: 'Success' },
-        ai_overview: {
-          text_blocks: [{ type: 'paragraph', snippet: 'Some overview text.' }],
-        },
-      };
-
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
-
-      expect(text).toContain('🤖 **Google AI Overview:**');
-      expect(text).toContain('Some overview text.');
-      expect(text).not.toContain('📚 **Sources:**');
-    });
-
-    it('should surface ai_overview.error in fallback message', () => {
-      const data = {
-        search_metadata: { status: 'Success' },
-        ai_overview: {
-          error: 'Content policy restriction',
-        },
-      };
-
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'restricted query');
-
-      expect(text).toContain('⚠️ Google AI Overview returned an error: Content policy restriction');
-      expect(text).not.toContain('SERPAPI_HL');
-      expect(text).not.toContain('🤖 **Google AI Overview:**');
-    });
-
-    it('should show generic fallback without locale guidance when no overview and no error', () => {
-      const text = serpApiClient.formatAIOverviewOnly(minimalSearchResponse as any, 'obscure');
-
-      expect(text).toContain('⚠️ Google did not return an AI Overview');
-      expect(text).not.toContain('SERPAPI_HL');
-      expect(text).not.toContain('SERPAPI_GL');
-      expect(text).toContain('search');
-      expect(text).toContain('find content');
-    });
-
-    it('should NOT render generic blocks (recipes, questions) — AI overview only', () => {
-      const text = serpApiClient.formatAIOverviewOnly(recipeSearchResponse as any, 'chuck roast');
-
-      // No AI overview exists, so should show fallback — NOT recipe/question blocks
-      expect(text).not.toContain('📦 **Recipes Results:**');
-      expect(text).not.toContain('📦 **Related Questions:**');
-      expect(text).toContain('⚠️ Google did not return an AI Overview');
-    });
-
-    it('should NOT render unknown blocks generically', () => {
-      const text = serpApiClient.formatAIOverviewOnly(responseWithUnhandledBlocks as any, 'test');
-
-      expect(text).not.toContain('📦 **Top Stories:**');
-      expect(text).not.toContain('📦 **Local Results:**');
-      expect(text).toContain('⚠️ Google did not return an AI Overview');
-    });
-
-    it('should exclude organic_results from second opinion output', () => {
-      const text = serpApiClient.formatAIOverviewOnly(responseWithUnhandledBlocks as any, 'test');
-
-      expect(text).not.toContain('📄 **Top Results:**');
-      expect(text).not.toContain('Organic Results');
-    });
-
-    it('should find embedded AI overview in knowledge_graph', () => {
-      const data = {
-        search_metadata: { status: 'Success' },
-        knowledge_graph: {
-          types: {
-            subtitle: 'What are the different types?',
-            ai_overview: {
-              text_blocks: [
-                { type: 'paragraph', snippet: 'There are several types to consider.' },
-                { type: 'list', list: [{ snippet: 'Type A' }, { snippet: 'Type B' }] },
-              ],
-              references: [
-                { title: 'Source One', link: 'https://example.com/one' },
-              ],
-            },
-          },
-        },
-      };
-
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'types of things');
-
-      expect(text).toContain('🔎 **Second opinion for:**');
-      expect(text).toContain('🤖 **AI Overview** — *What are the different types?*');
-      expect(text).toContain('There are several types to consider.');
-      expect(text).toContain('Type A');
-      // Sources are omitted from second opinion
-      expect(text).not.toContain('📚 **Sources:**');
-      expect(text).not.toContain('⚠️ Google did not return an AI Overview');
-    });
-
-    it('should find multiple embedded AI overviews across topics', () => {
-      const data = {
-        search_metadata: { status: 'Success' },
-        knowledge_graph: {
-          topic_a: {
-            subtitle: 'Question about A?',
-            ai_overview: {
-              text_blocks: [{ type: 'paragraph', snippet: 'Answer about A.' }],
-              references: [],
-            },
-          },
-          topic_b: {
-            subtitle: 'Question about B?',
-            ai_overview: {
-              text_blocks: [{ type: 'paragraph', snippet: 'Answer about B.' }],
-              references: [{ title: 'B Source', link: 'https://example.com/b' }],
-            },
-          },
-        },
-      };
-
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'multi topic');
-
-      expect(text).toContain('🤖 **AI Overview** — *Question about A?*');
-      expect(text).toContain('Answer about A.');
-      expect(text).toContain('🤖 **AI Overview** — *Question about B?*');
-      expect(text).toContain('Answer about B.');
-      expect(text).not.toContain('⚠️ Google did not return an AI Overview');
-    });
-
-    it('should prefer top-level AI overview over embedded when both exist', () => {
-      const data = {
-        search_metadata: { status: 'Success' },
-        ai_overview: {
-          text_blocks: [{ type: 'paragraph', snippet: 'Top-level overview.' }],
-          references: [],
-        },
-        knowledge_graph: {
-          types: {
-            subtitle: 'What are the types?',
-            ai_overview: {
-              text_blocks: [{ type: 'paragraph', snippet: 'Embedded overview.' }],
-              references: [],
-            },
-          },
-        },
-      };
-
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
-
-      expect(text).toContain('🤖 **Google AI Overview:**');
-      expect(text).toContain('Top-level overview.');
-      // Should NOT render embedded when top-level is present
-      expect(text).not.toContain('Embedded overview.');
-    });
-
-    it('should show fallback when embedded ai_overview has empty text_blocks', () => {
-      const data = {
-        search_metadata: { status: 'Success' },
-        knowledge_graph: {
-          types: {
-            subtitle: 'Some question?',
-            ai_overview: {
-              text_blocks: [],
-              references: [],
-            },
-          },
-        },
-      };
-
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
-
-      expect(text).toContain('⚠️ Google did not return an AI Overview');
-    });
-  });
-
-  // ── formatContentSearch ───────────────────────────────────────
-
-  describe('formatContentSearch', () => {
-    it('should format content with answer box, knowledge graph, and organic results', () => {
-      const text = serpApiClient.formatContentSearch(sampleSearchResponse as any, 'what is TypeScript');
-
-      expect(text).toContain('🔍 **Content found for:**');
-      expect(text).toContain('📋 **Direct Answer:**');
-      expect(text).toContain('TypeScript is a strongly typed programming language');
-      expect(text).toContain('📖 **TypeScript**');
-      expect(text).toContain('📄 **Top Results:**');
-      expect(text).toContain('[TypeScript: JavaScript With Syntax For Types]');
-      // Should NOT contain AI Overview — that's second opinion's domain
-      expect(text).not.toContain('🤖 **AI Overview:**');
-      expect(text).not.toContain('🤖 **Google AI Overview:**');
-    });
-
-    it('should render generic blocks (recipes, related questions)', () => {
-      const text = serpApiClient.formatContentSearch(recipeSearchResponse as any, 'chuck roast');
-
-      expect(text).toContain('📦 **Recipes Results:**');
-      expect(text).toContain('[Oven Braised Chuck Roast]');
-      expect(text).toContain('📦 **Related Questions:**');
-      expect(text).toContain('How long should a chuck roast cook?');
-      expect(text).toContain('📄 **Top Results:**');
-    });
-
-    it('should render unknown blocks generically', () => {
-      const text = serpApiClient.formatContentSearch(responseWithUnhandledBlocks as any, 'test');
-
-      expect(text).toContain('📦 **Top Stories:**');
-      expect(text).toContain('Breaking News');
-      expect(text).toContain('📦 **Local Results:**');
-      expect(text).toContain('📄 **Top Results:**');
-    });
-
-    it('should silently skip noise keys', () => {
-      const text = serpApiClient.formatContentSearch(responseWithSkippedKeys as any, 'test');
-
-      expect(text).not.toContain('Immersive Products');
-      expect(text).not.toContain('Refine Search');
-      expect(text).not.toContain('Pagination');
-    });
-
-    it('should return fallback when no content is found', () => {
-      const text = serpApiClient.formatContentSearch(emptySearchResponse as any, 'nothing');
-
-      expect(text).toContain('No content found for "nothing".');
-    });
-
-    it('should handle results with only organic results', () => {
-      const text = serpApiClient.formatContentSearch(minimalSearchResponse as any, 'obscure query');
-
-      expect(text).toContain('🔍 **Content found for:**');
-      expect(text).toContain('📄 **Top Results:**');
-      expect(text).toContain('[Some Result]');
-    });
-  });
-
   // ── findEmbeddedAIOverviews ────────────────────────────────────
 
   describe('findEmbeddedAIOverviews', () => {
@@ -919,199 +652,6 @@ describe('SerpApiClient', () => {
 
       expect(results).toHaveLength(1);
       expect(results[0].subtitle).toBeUndefined();
-    });
-  });
-
-  // ── handleRequest with "second opinion" keyword ───────────────
-
-  describe('handleRequest - second opinion keyword', () => {
-    it('should use AI-Overview-only formatting for "second opinion" keyword', async () => {
-      mockInstance.get.mockResolvedValueOnce({ status: 200, data: { ...sampleSearchResponse, organic_results: [...sampleSearchResponse.organic_results] } });
-
-      const result = await serpApiClient.handleRequest('what is TypeScript', 'second opinion');
-
-      expect(result.success).toBe(true);
-      expect(result.data!.text).toContain('🔎 **Second opinion for:**');
-      expect(result.data!.text).toContain('🤖 **Google AI Overview:**');
-      expect(result.data!.text).not.toContain('📄 **Top Results:**');
-    });
-
-    it('should return fallback message when no AI Overview for "second opinion"', async () => {
-      mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
-
-      const result = await serpApiClient.handleRequest('obscure topic', 'second opinion');
-
-      expect(result.success).toBe(true);
-      expect(result.data!.text).toContain('⚠️ Google did not return an AI Overview');
-    });
-
-    it('should use full formatting for "search" keyword', async () => {
-      mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
-
-      const result = await serpApiClient.handleRequest('what is TypeScript', 'search');
-
-      expect(result.success).toBe(true);
-      expect(result.data!.text).toContain('🔎 **Search results for:**');
-      expect(result.data!.text).toContain('📄 **Top Results:**');
-    });
-
-    it('should merge full AI Overview via page_token and format as AI-Overview-only for "second opinion"', async () => {
-      const searchDataWithToken = {
-        ...minimalSearchResponse,
-        ai_overview: {
-          text_blocks: [{ snippet: 'Inline overview' }],
-          page_token: 'token_for_second_opinion',
-        },
-      };
-      const fullOverview = {
-        ai_overview: {
-          text_blocks: [
-            { type: 'paragraph', snippet: 'Full AI Overview from follow-up.' },
-          ],
-          references: [{ title: 'Source', link: 'https://source.example.com' }],
-        },
-      };
-      mockInstance.get
-        .mockResolvedValueOnce({ status: 200, data: searchDataWithToken })
-        .mockResolvedValueOnce({ status: 200, data: fullOverview });
-
-      const result = await serpApiClient.handleRequest('test topic', 'second opinion');
-
-      expect(mockInstance.get).toHaveBeenCalledTimes(2);
-      expect(mockInstance.get).toHaveBeenNthCalledWith(2, '/search', expect.objectContaining({
-        params: expect.objectContaining({ engine: 'google_ai_overview', page_token: 'token_for_second_opinion' }),
-      }));
-      expect(result.success).toBe(true);
-      expect(result.data!.text).toContain('🔎 **Second opinion for:**');
-      expect(result.data!.text).toContain('Full AI Overview from follow-up.');
-      // Sources are omitted from second opinion
-      expect(result.data!.text).not.toContain('📚 **Sources:**');
-      // Should NOT contain organic/answer-box content
-      expect(result.data!.text).not.toContain('📄 **Top Results:**');
-    });
-
-    it('should show AI Overview error message when ai_overview.error is present', async () => {
-      const errorOverviewResponse = {
-        search_metadata: { status: 'Success' },
-        search_parameters: { q: 'restricted topic' },
-        ai_overview: {
-          error: 'AI Overview is not available for this query.',
-        },
-        organic_results: [
-          { position: 1, title: 'Result', link: 'https://example.com', snippet: 'A snippet.' },
-        ],
-      };
-      mockInstance.get.mockResolvedValueOnce({ status: 200, data: errorOverviewResponse });
-
-      const result = await serpApiClient.handleRequest('restricted topic', 'second opinion');
-
-      expect(result.success).toBe(true);
-      expect(result.data!.text).toContain('⚠️ Google AI Overview returned an error');
-      expect(result.data!.text).toContain('AI Overview is not available for this query.');
-      expect(result.data!.text).not.toContain('SERPAPI_HL');
-      expect(result.data!.text).not.toContain('SERPAPI_GL');
-    });
-
-    it('should not include locale guidance in fallback when no AI Overview is available', async () => {
-      mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
-
-      const result = await serpApiClient.handleRequest('obscure topic', 'second opinion');
-
-      expect(result.success).toBe(true);
-      expect(result.data!.text).not.toContain('SERPAPI_HL');
-      expect(result.data!.text).not.toContain('SERPAPI_GL');
-    });
-
-    it('should find embedded AI overview for "second opinion" when top-level is absent', async () => {
-      const dataWithEmbedded = {
-        search_metadata: { status: 'Success' },
-        search_parameters: { q: 'best lasagna' },
-        knowledge_graph: {
-          types: {
-            subtitle: 'What are the different types of lasagna?',
-            ai_overview: {
-              text_blocks: [
-                { type: 'paragraph', snippet: 'Lasagna types vary significantly by region.' },
-              ],
-              references: [
-                { title: 'Serious Eats', link: 'https://www.seriouseats.com/lasagna' },
-              ],
-            },
-          },
-        },
-        organic_results: [
-          { position: 1, title: 'Easy Lasagna', link: 'https://example.com/lasagna' },
-        ],
-      };
-      mockInstance.get.mockResolvedValueOnce({ status: 200, data: dataWithEmbedded });
-
-      const result = await serpApiClient.handleRequest('best lasagna', 'second opinion');
-
-      expect(result.success).toBe(true);
-      expect(result.data!.text).toContain('🤖 **AI Overview** — *What are the different types of lasagna?*');
-      expect(result.data!.text).toContain('Lasagna types vary significantly by region.');
-      // Sources are omitted from second opinion
-      expect(result.data!.text).not.toContain('📚 **Sources:**');
-      // Should NOT contain organic results or generic blocks
-      expect(result.data!.text).not.toContain('📄 **Top Results:**');
-      expect(result.data!.text).not.toContain('⚠️ Google did not return an AI Overview');
-      // organic_results should be stripped from raw data
-      expect((result.data!.raw as Record<string, unknown>).organic_results).toBeUndefined();
-    });
-    it('should request num=1 organic results for "second opinion"', async () => {
-      mockInstance.get.mockResolvedValueOnce({ status: 200, data: { ...sampleSearchResponse, organic_results: [...sampleSearchResponse.organic_results] } });
-
-      await serpApiClient.handleRequest('test topic', 'second opinion');
-
-      expect(mockInstance.get).toHaveBeenCalledWith('/search', expect.objectContaining({
-        params: expect.objectContaining({ num: 1 }),
-      }));
-    });
-
-    it('should strip organic_results from raw data for "second opinion"', async () => {
-      mockInstance.get.mockResolvedValueOnce({ status: 200, data: { ...sampleSearchResponse, organic_results: [...sampleSearchResponse.organic_results] } });
-
-      const result = await serpApiClient.handleRequest('test topic', 'second opinion');
-
-      expect(result.success).toBe(true);
-      expect((result.data!.raw as Record<string, unknown>).organic_results).toBeUndefined();
-    });
-  });
-
-  // ── handleRequest with "find content" keyword ──────────────────
-
-  describe('handleRequest - find content keyword', () => {
-    it('should use content search formatting for "find content" keyword', async () => {
-      mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
-
-      const result = await serpApiClient.handleRequest('what is TypeScript', 'find content');
-
-      expect(result.success).toBe(true);
-      expect(result.data!.text).toContain('🔍 **Content found for:**');
-      expect(result.data!.text).toContain('📋 **Direct Answer:**');
-      expect(result.data!.text).toContain('📄 **Top Results:**');
-      expect(result.data!.text).not.toContain('🤖 **AI Overview:**');
-      expect(result.data!.text).not.toContain('🤖 **Google AI Overview:**');
-    });
-
-    it('should return content with recipes and organic results for "find content"', async () => {
-      mockInstance.get.mockResolvedValueOnce({ status: 200, data: recipeSearchResponse });
-
-      const result = await serpApiClient.handleRequest('chuck roast', 'find content');
-
-      expect(result.success).toBe(true);
-      expect(result.data!.text).toContain('🔍 **Content found for:**');
-      expect(result.data!.text).toContain('📦 **Recipes Results:**');
-      expect(result.data!.text).toContain('📄 **Top Results:**');
-    });
-
-    it('should return fallback for empty results with "find content"', async () => {
-      mockInstance.get.mockResolvedValueOnce({ status: 200, data: emptySearchResponse });
-
-      const result = await serpApiClient.handleRequest('nothing', 'find content');
-
-      expect(result.success).toBe(true);
-      expect(result.data!.text).toContain('No content found for "nothing".');
     });
   });
 
@@ -1279,7 +819,7 @@ describe('SerpApiClient', () => {
         organic_results: [],
       };
 
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+      const text = serpApiClient.formatSearchText(data as any, 'test');
       expect(text).toContain('Top level summary.');
       expect(text).toContain('Expanded detail paragraph.');
       expect(text).toContain('Expanded list item 1');
@@ -1308,7 +848,7 @@ describe('SerpApiClient', () => {
         organic_results: [],
       };
 
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+      const text = serpApiClient.formatSearchText(data as any, 'test');
       expect(text).toContain('Speed — Very fast');
       expect(text).toContain('Size — Compact');
       // Header row should be skipped
@@ -1332,7 +872,7 @@ describe('SerpApiClient', () => {
         organic_results: [],
       };
 
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+      const text = serpApiClient.formatSearchText(data as any, 'test');
       expect(text).toContain('CellA — CellB');
     });
 
@@ -1361,7 +901,7 @@ describe('SerpApiClient', () => {
         organic_results: [],
       };
 
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+      const text = serpApiClient.formatSearchText(data as any, 'test');
       expect(text).toContain('Comparing devices.');
       expect(text).toContain('Resolution: 12 MP vs 48 MP');
       expect(text).toContain('Zoom: 2x vs 5x');
@@ -1389,7 +929,7 @@ describe('SerpApiClient', () => {
         organic_results: [],
       };
 
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+      const text = serpApiClient.formatSearchText(data as any, 'test');
       expect(text).toContain('Parent item');
       expect(text).toContain('Nested child A');
       expect(text).toContain('Nested child B');
@@ -1407,7 +947,7 @@ describe('SerpApiClient', () => {
         organic_results: [],
       };
 
-      const text = serpApiClient.formatAIOverviewOnly(data as any, 'test');
+      const text = serpApiClient.formatSearchText(data as any, 'test');
       expect(text).toContain('Section title');
       expect(text).toContain('Body text.');
     });
@@ -1420,7 +960,7 @@ describe('SerpApiClient', () => {
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
       const { logger: mockLogger } = require('../src/utils/logger');
 
-      await serpApiClient.handleRequest('test query', 'search');
+      await serpApiClient.handleRequest('test query', 'web_search');
 
       // logDebugLazy should have been called for request params
       expect(mockLogger.logDebugLazy).toHaveBeenCalled();
@@ -1440,7 +980,7 @@ describe('SerpApiClient', () => {
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
       const { logger: mockLogger } = require('../src/utils/logger');
 
-      await serpApiClient.handleRequest('test query', 'search');
+      await serpApiClient.handleRequest('test query', 'web_search');
 
       const calls = mockLogger.logDebugLazy.mock.calls;
       const responseCall = calls.find((c: any[]) => {
@@ -1460,7 +1000,7 @@ describe('SerpApiClient', () => {
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleSearchResponse });
       const { logger: mockLogger } = require('../src/utils/logger');
 
-      await serpApiClient.handleRequest('test query', 'search');
+      await serpApiClient.handleRequest('test query', 'web_search');
 
       const calls = mockLogger.logDebugLazy.mock.calls;
       const rawCall = calls.find((c: any[]) => {
@@ -1497,7 +1037,7 @@ describe('SerpApiClient', () => {
         .mockResolvedValueOnce({ status: 200, data: fullOverview });
       const { logger: mockLogger } = require('../src/utils/logger');
 
-      await serpApiClient.handleRequest('test', 'second opinion');
+      await serpApiClient.handleRequest('test', 'web_search');
 
       // Should have follow-up debug log
       expect(mockLogger.logDebug).toHaveBeenCalledWith(
@@ -1520,7 +1060,7 @@ describe('SerpApiClient', () => {
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: minimalSearchResponse });
       const { logger: mockLogger } = require('../src/utils/logger');
 
-      await serpApiClient.handleRequest('test', 'search');
+      await serpApiClient.handleRequest('test', 'web_search');
 
       const calls = mockLogger.logDebugLazy.mock.calls;
       const requestCall = calls.find((c: any[]) => {
