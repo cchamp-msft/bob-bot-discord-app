@@ -872,40 +872,40 @@ export class NFLClient {
   // ── High-level request handler ────────────────────────────────
 
   /**
-   * Handle an NFL keyword request.
-   * Dispatches to the appropriate method based on the keyword and content.
+   * Handle an NFL tool request.
+   * Dispatches to the appropriate method based on the tool name and content.
    *
-   * @param content - User's message content (after keyword stripping)
-   * @param keyword - The matched keyword ("nfl scores" or "nfl news")
+   * @param content - User's message content (after tool name stripping)
+   * @param toolName - The matched tool name ("nfl_scores" or "nfl_news")
    * @returns Formatted NFL response
    */
-  async handleRequest(content: string, keyword: string, signal?: AbortSignal): Promise<NFLResponse> {
+  async handleRequest(content: string, toolName: string, signal?: AbortSignal): Promise<NFLResponse> {
     if (!config.getNflEnabled()) {
       return { success: false, error: 'NFL features are currently disabled.' };
     }
 
-    const lowerKeyword = keyword.toLowerCase();
+    const lowerToolName = toolName.toLowerCase();
     const logLevel = config.getNflLoggingLevel();
 
     if (logLevel >= 0) {
-      logger.log('success', 'nfl', `NFL: handleRequest keyword=[${keyword}] content=[${content.length > 80 ? content.substring(0, 80) + '...' : content}]`);
+      logger.log('success', 'nfl', `NFL: handleRequest toolName=[${toolName}] content=[${content.length > 80 ? content.substring(0, 80) + '...' : content}]`);
     }
 
     // DEBUG: log full request content
     if (content.length > 80) {
-      logger.logDebug('nfl', `NFL-REQUEST [full]: keyword=[${keyword}] content=[${content}]`);
+      logger.logDebug('nfl', `NFL-REQUEST [full]: toolName=[${toolName}] content=[${content}]`);
     }
 
     try {
-      if (lowerKeyword === 'nfl scores') {
+      if (lowerToolName === 'nfl_scores') {
         return await this.handleAllScores(content, signal);
       }
 
-      if (lowerKeyword === 'nfl news') {
+      if (lowerToolName === 'nfl_news') {
         return await this.handleNews(content, signal);
       }
 
-      return { success: false, error: `Unknown NFL keyword: ${keyword}` };
+      return { success: false, error: `Unknown NFL tool: ${toolName}` };
     } catch (error) {
       if (isAbortError(error)) {
         return { success: false, error: 'NFL request was cancelled or timed out. Please try again.' };
@@ -953,7 +953,7 @@ export class NFLClient {
       text += '\n\n_Tip: specify a date for historical scores, e.g. `nfl scores 20260208` or `nfl scores 2026-02-08`._';
     }
 
-    this.logResponsePayload('nfl scores', text);
+    this.logResponsePayload('nfl_scores', text);
     return { success: true, data: { text, games } };
   }
 
@@ -980,7 +980,7 @@ export class NFLClient {
     }
 
     const text = this.formatNews(filtered);
-    this.logResponsePayload('nfl news', text);
+    this.logResponsePayload('nfl_news', text);
     return { success: true, data: { text, articles: filtered } };
   }
 
@@ -1017,21 +1017,21 @@ export class NFLClient {
    *   Level 2: full payload
    *   DEBUG_LOGGING=true overrides to full payload.
    */
-  private logResponsePayload(keyword: string, text: string): void {
+  private logResponsePayload(toolName: string, text: string): void {
     const logLevel = config.getNflLoggingLevel();
     const debugOverride = config.getDebugLogging();
 
     if (!debugOverride && logLevel <= 0) {
-      logger.log('success', 'nfl', `NFL: [${keyword}] response — ${text.length} chars`);
+      logger.log('success', 'nfl', `NFL: [${toolName}] response — ${text.length} chars`);
       return;
     }
     if (!debugOverride && logLevel === 1) {
       const preview = text.length > 200 ? text.substring(0, 200) + '...' : text;
-      logger.log('success', 'nfl', `NFL: [${keyword}] response (${text.length} chars): ${preview}`);
+      logger.log('success', 'nfl', `NFL: [${toolName}] response (${text.length} chars): ${preview}`);
       return;
     }
     // Level 2 or DEBUG override — full payload
-    logger.log('success', 'nfl', `NFL: [${keyword}] response (${text.length} chars):\n${text}`);
+    logger.log('success', 'nfl', `NFL: [${toolName}] response (${text.length} chars):\n${text}`);
   }
 }
 

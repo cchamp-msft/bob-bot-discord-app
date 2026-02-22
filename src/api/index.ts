@@ -33,8 +33,8 @@ class ApiManager {
     signal?: AbortSignal,
     accuweatherMode?: 'current' | 'forecast' | 'full',
     ollamaOptions?: OllamaRequestOptions,
-    /** NFL keyword — required when api is 'nfl'. */
-    nflKeyword?: string
+    /** Tool name — required when api is 'nfl'. */
+    toolName?: string
   ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse> {
     if (api === 'comfyui') {
       return await comfyuiClient.generateImage(data, requester, signal, _timeout);
@@ -42,11 +42,11 @@ class ApiManager {
       const mode = accuweatherMode ?? config.getAccuWeatherDefaultWeatherType();
       return await accuweatherClient.getWeather(data, requester, mode);
     } else if (api === 'nfl') {
-      return await nflClient.handleRequest(data, nflKeyword || 'nfl scores', signal);
+      return await nflClient.handleRequest(data, toolName || 'nfl_scores', signal);
     } else if (api === 'serpapi') {
-      return await serpApiClient.handleRequest(data, nflKeyword || 'search', signal);
+      return await serpApiClient.handleRequest(data, toolName || 'web_search', signal);
     } else if (api === 'meme') {
-      return await memeClient.handleRequest(data, nflKeyword || 'meme', signal);
+      return await memeClient.handleRequest(data, toolName || 'meme', signal);
     } else if (api === 'external') {
       // Stub for future external API integrations
       throw new Error('External API routing is not yet implemented');
