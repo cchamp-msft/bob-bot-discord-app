@@ -190,11 +190,11 @@ describe('ActivityEventStore', () => {
       ['serpapi', 'search the web'],
       ['ollama', 'think about that'],
     ])('generates correct narrative for %s', (api, expected) => {
-      const ev = activityEvents.emitRoutingDecision(api, 'test-keyword');
+      const ev = activityEvents.emitRoutingDecision(api, 'test-tool');
       expect(ev.type).toBe('routing_decision');
       expect(ev.narrative).toContain(expected);
       expect(ev.metadata.api).toBe(api);
-      expect(ev.metadata.keyword).toBe('test-keyword');
+      expect(ev.metadata.keyword).toBe('test-tool');
     });
 
     it('includes stage metadata when provided', () => {
@@ -207,15 +207,15 @@ describe('ActivityEventStore', () => {
       expect(ev.narrative).toContain('use unknown-api');
     });
 
-    it('suppresses duplicate routing for same api+keyword within dedupe window', () => {
-      const first = activityEvents.emitRoutingDecision('comfyui', 'imagine', 'keyword');
+    it('suppresses duplicate routing for same api+tool within dedupe window', () => {
+      const first = activityEvents.emitRoutingDecision('comfyui', 'imagine', 'tool');
       const second = activityEvents.emitRoutingDecision('comfyui', 'imagine', 'api-route');
       // Second call returns the same event — no new entry created
       expect(second.id).toBe(first.id);
       expect(activityEvents.size).toBe(1);
     });
 
-    it('allows routing for different api+keyword', () => {
+    it('allows routing for different api+tool', () => {
       activityEvents.emitRoutingDecision('comfyui', 'imagine');
       activityEvents.emitRoutingDecision('accuweather', 'weather');
       expect(activityEvents.size).toBe(2);

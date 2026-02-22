@@ -79,7 +79,7 @@ jest.mock('../src/utils/configWriter', () => ({
   configWriter: {
     saveWorkflow: jest.fn(),
     updateEnv: mockUpdateEnv,
-    updateKeywords: jest.fn(),
+    updateTools: jest.fn(),
     deleteWorkflow: mockDeleteWorkflow,
   },
 }));

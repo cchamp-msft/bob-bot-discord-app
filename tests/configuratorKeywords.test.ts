@@ -1,9 +1,9 @@
 /**
- * Configurator — Keywords view UI behaviour tests.
+ * Configurator — Tools view UI behaviour tests.
  *
  * These tests parse the raw configurator.html source to verify that:
- * 1. Keyword detail rows are collapsed by default (no auto-open).
- * 2. Visual separators exist between keyword entry groups.
+ * 1. Tool detail rows are collapsed by default (no auto-open).
+ * 2. Visual separators exist between tool entry groups.
  * 3. Ctx Depth Min/Max are rendered as two stacked rows.
  */
 
@@ -30,7 +30,7 @@ function extractScript(): string {
 
 // ── Detail rows: collapsed by default ─────────────────────────
 
-describe('Keywords — detail rows collapsed by default', () => {
+describe('Tools — detail rows collapsed by default', () => {
   const script = extractScript();
 
   it('does NOT auto-add the "open" class to detail rows based on hasDetails', () => {
@@ -61,7 +61,7 @@ describe('Keywords — detail rows collapsed by default', () => {
 
 // ── Visual separators between keyword entries ──────────────────
 
-describe('Keywords — visual separators', () => {
+describe('Tools — visual separators', () => {
   const css = extractStyle();
   const script = extractScript();
 
@@ -70,7 +70,7 @@ describe('Keywords — visual separators', () => {
     expect(css).toMatch(/\.kw-separator-top[\s\S]*?border-top/);
   });
 
-  it('addKeywordRow applies the separator class to non-first rows', () => {
+  it('addToolRow applies the separator class to non-first rows', () => {
     // The script must add the separator class when tbody already has children
     expect(script).toContain('kw-separator-top');
     expect(script).toMatch(/tbody\.children\.length\s*>\s*0/);
@@ -79,7 +79,7 @@ describe('Keywords — visual separators', () => {
 
 // ── Ctx Depth Min/Max: two-row stacked layout ─────────────────
 
-describe('Keywords — Ctx Depth two-row layout', () => {
+describe('Tools — Ctx Depth two-row layout', () => {
   const script = extractScript();
   const css = extractStyle();
 
@@ -106,7 +106,7 @@ describe('Keywords — Ctx Depth two-row layout', () => {
 
 // ── Keywords toolbar actions ─────────────────────────────────
 
-describe('Keywords — toolbar actions', () => {
+describe('Tools — toolbar actions', () => {
   const script = extractScript();
 
   it('renders Download XML and Restore Defaults buttons in keywords section', () => {
@@ -119,8 +119,8 @@ describe('Keywords — toolbar actions', () => {
     expect(script).toContain("a.download = 'tools.xml'");
   });
 
-  it('defines restoreDefaultKeywords handler', () => {
-    expect(script).toContain('function restoreDefaultKeywords()');
-    expect(script).toContain('renderKeywords(restored)');
+  it('defines restoreDefaultTools handler', () => {
+    expect(script).toContain('function restoreDefaultTools()');
+    expect(script).toContain('renderTools(restored)');
   });
 });

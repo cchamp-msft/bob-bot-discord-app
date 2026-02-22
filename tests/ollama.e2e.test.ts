@@ -230,7 +230,7 @@ describe('Context evaluation prompt', () => {
 });
 
 // ===========================================================================
-// 3. Tools / keyword classification prompt
+// 3. Tools / tool classification prompt
 // ===========================================================================
 
 describe('Tools prompt (native tool calling)', () => {
@@ -273,7 +273,7 @@ describe('Tools prompt (native tool calling)', () => {
     {
       type: 'function' as const,
       function: {
-        name: 'search',
+        name: 'web_search',
         description: 'Search the web for current information using Google',
         parameters: {
           type: 'object' as const,
@@ -389,7 +389,7 @@ describe('Final pass prompt', () => {
   ].join('\n');
 
   const sampleExternalData = [
-    '<external_data source="nfl" keyword="nfl scores">',
+    '<external_data source="nfl" keyword="nfl_scores">',
     'NFL Scores for Week 10:',
     'Kansas City Chiefs 27 - Buffalo Bills 24 (Final)',
     'Dallas Cowboys 14 - Philadelphia Eagles 31 (Final)',
