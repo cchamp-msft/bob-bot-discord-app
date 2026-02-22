@@ -603,7 +603,7 @@ export async function executeRoutedRequest(
           [{ role: 'system', content: finalSystemContent }],
           sig,
           undefined,
-          { includeSystemPrompt: false }
+          { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize() }
         ),
       signal
     ) as OllamaResponse;

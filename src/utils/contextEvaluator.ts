@@ -225,7 +225,8 @@ export async function evaluateContextWindow(
   }
 
   // ── Call Ollama to evaluate relevance ─────────────────────────
-  const systemPrompt = buildContextEvalPrompt(minDepth, maxDepth);
+  const customPrompt = config.getContextEvalPrompt()?.trim() ?? '';
+  const systemPrompt = customPrompt !== '' ? customPrompt : buildContextEvalPrompt(minDepth, maxDepth);
   const formattedHistory = formatHistoryForEval(candidates);
   const evalPrompt = `Conversation messages (most recent first):\n${formattedHistory}\n\nCurrent user prompt: ${userPrompt}`;
 

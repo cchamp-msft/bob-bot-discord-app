@@ -426,6 +426,12 @@ export interface PublicConfig {
     maxTokens: number;
     imageMaxDepth: number;
   };
+  contextEval: {
+    enabled: boolean;
+    model: string;
+    contextSize: number;
+    prompt: string;
+  };
   debugLogging: boolean;
   nflLogging: {
     level: number;

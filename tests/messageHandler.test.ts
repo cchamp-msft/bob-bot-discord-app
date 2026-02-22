@@ -35,6 +35,10 @@ jest.mock('../src/utils/config', () => ({
     getKeywordConfig: jest.fn(),
     getDefaultTimeout: jest.fn(() => 300),
     getReplyChainEnabled: jest.fn(() => true),
+    getContextEvalEnabled: jest.fn(() => true),
+    getOllamaToolModel: jest.fn(() => 'llama2'),
+    getOllamaToolContextSize: jest.fn(() => 2048),
+    getOllamaFinalPassContextSize: jest.fn(() => 2048),
     getReplyChainMaxDepth: jest.fn(() => 10),
     getReplyChainMaxTokens: jest.fn(() => 16000),
     getMaxAttachments: jest.fn(() => 10),
@@ -2324,13 +2328,13 @@ describe('MessageHandler two-stage evaluation', () => {
     );
 
     // apiManager.executeRequest should have been called with system content
-    // from the assembled prompt, and includeSystemPrompt: false
+    // from the assembled prompt, includeSystemPrompt: false, and contextSize
     expect(apiManager.executeRequest).toHaveBeenCalledWith(
       'ollama',
       'testuser',
       expect.stringContaining('<current_question>'),
       expect.any(Number),
-      undefined,
+      expect.any(String),
       expect.arrayContaining([
         expect.objectContaining({
           role: 'system',
@@ -2339,7 +2343,7 @@ describe('MessageHandler two-stage evaluation', () => {
       ]),
       expect.anything(),
       undefined,
-      { includeSystemPrompt: false }
+      expect.objectContaining({ includeSystemPrompt: false, contextSize: expect.any(Number) })
     );
   });
 });
@@ -2676,7 +2680,6 @@ describe('MessageHandler — Context Evaluation integration', () => {
     api: 'ollama' as const,
     timeout: 300,
     description: 'Chat',
-    contextFilterEnabled: true,
     contextFilterMinDepth: 1,
     contextFilterMaxDepth: 5,
   };
@@ -2711,6 +2714,7 @@ describe('MessageHandler — Context Evaluation integration', () => {
     jest.clearAllMocks();
     (config.getKeywords as jest.Mock).mockReturnValue([ctxEvalKw]);
     (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
+    (config.getContextEvalEnabled as jest.Mock).mockReturnValue(true);
     mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
   });
 
@@ -2800,22 +2804,12 @@ describe('MessageHandler — Context Evaluation integration', () => {
     expect(mockEvaluate).toHaveBeenCalled();
   });
 
-  it('should skip evaluateContextWindow when contextFilterEnabled is false', async () => {
+  it('should skip evaluateContextWindow when global context evaluation is disabled', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const { classifyIntent } = require('../src/utils/keywordClassifier');
     const { parseFirstLineKeyword } = require('../src/utils/promptBuilder');
 
-    // Override with keyword that has contextFilterEnabled omitted (defaults to false)
-    const noEvalKw = {
-      keyword: '!weather',
-      api: 'accuweather' as const,
-      timeout: 60,
-      description: 'Weather',
-      contextFilterMinDepth: 1,
-      contextFilterMaxDepth: 5,
-      // contextFilterEnabled intentionally omitted → defaults to false
-    };
-    (config.getKeywords as jest.Mock).mockReturnValue([noEvalKw]);
+    (config.getContextEvalEnabled as jest.Mock).mockReturnValue(false);
 
     classifyIntent.mockResolvedValue({ keywordConfig: null, wasClassified: false });
     parseFirstLineKeyword.mockReturnValue({ keywordConfig: null, parsedLine: '', matched: false });
@@ -2827,7 +2821,6 @@ describe('MessageHandler — Context Evaluation integration', () => {
 
     const msg = createMentionedMsg('<@bot-123> hello there');
 
-    // Channel has prior messages
     const channelHistory = new Map([
       ['ch-1', {
         id: 'ch-1',
@@ -2841,7 +2834,6 @@ describe('MessageHandler — Context Evaluation integration', () => {
 
     await messageHandler.handleMessage(msg as any);
 
-    // contextFilterEnabled is off → evaluator should NOT be called even with history
     expect(mockEvaluate).not.toHaveBeenCalled();
   });
 });
@@ -3150,7 +3142,6 @@ describe('MessageHandler guild context — maxContextDepth = min(keyword, global
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
-      contextFilterEnabled: true,
       contextFilterMaxDepth: 5,
     };
     (config.getKeywords as jest.Mock).mockReturnValue([kw]);
@@ -3231,6 +3222,7 @@ describe('MessageHandler thread source promotion', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
+    (config.getContextEvalEnabled as jest.Mock).mockReturnValue(true);
     (config.getReplyChainMaxDepth as jest.Mock).mockReturnValue(30);
     (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
   });
@@ -3241,7 +3233,6 @@ describe('MessageHandler thread source promotion', () => {
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
-      contextFilterEnabled: true,
     };
     (config.getKeywords as jest.Mock).mockReturnValue([kw]);
 
@@ -3322,7 +3313,6 @@ describe('MessageHandler thread source promotion', () => {
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
-      contextFilterEnabled: true,
     };
     (config.getKeywords as jest.Mock).mockReturnValue([kw]);
 

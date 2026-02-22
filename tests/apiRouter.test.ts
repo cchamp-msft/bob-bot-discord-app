@@ -7,6 +7,7 @@ jest.mock('../src/utils/config', () => ({
   config: {
     getOllamaModel: jest.fn(() => 'llama2'),
     getOllamaFinalPassModel: jest.fn(() => 'llama2'),
+    getOllamaFinalPassContextSize: jest.fn(() => 2048),
     getOllamaSystemPrompt: jest.fn(() => 'You are Bob. Rude but helpful Discord bot.'),
     getDefaultTimeout: jest.fn(() => 300),
     getAccuWeatherEndpoint: jest.fn(() => 'https://dataservice.accuweather.com'),

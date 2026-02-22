@@ -8,6 +8,10 @@ jest.mock('../src/utils/config', () => ({
     getOllamaModel: jest.fn(() => 'llama2'),
     getDefaultTimeout: jest.fn(() => 300),
     getReplyChainMaxDepth: jest.fn(() => 10),
+    getContextEvalEnabled: jest.fn(() => true),
+    getContextEvalModel: jest.fn(() => 'llama2'),
+    getContextEvalPrompt: jest.fn(() => ''),
+    getContextEvalContextSize: jest.fn(() => 2048),
   },
 }));
 
@@ -45,6 +49,7 @@ jest.mock('../src/utils/activityEvents', () => ({
 import { evaluateContextWindow, buildContextEvalPrompt, parseEvalResponse, formatHistoryForEval, extractJsonArray } from '../src/utils/contextEvaluator';
 import { ollamaClient } from '../src/api/ollamaClient';
 import { requestQueue } from '../src/utils/requestQueue';
+import { config } from '../src/utils/config';
 import { ChatMessage } from '../src/types';
 import { KeywordConfig } from '../src/utils/config';
 
@@ -73,6 +78,7 @@ function makeHistory(count: number): ChatMessage[] {
 describe('ContextEvaluator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(config).getContextEvalEnabled.mockReturnValue(true);
     // By default, make requestQueue.execute invoke the executor callback
     mockExecute.mockImplementation((_api, _requester, _keyword, _timeout, executor) =>
       (executor as any)(new AbortController().signal)
@@ -197,16 +203,6 @@ describe('ContextEvaluator', () => {
 
   describe('evaluateContextWindow', () => {
     it('should evaluate when global context evaluation is enabled', async () => {
-      // Mock the global config to return true for context evaluation enabled
-      jest.mock('../src/utils/config', () => ({
-        config: {
-          getContextEvalEnabled: jest.fn(() => true),
-          getOllamaModel: jest.fn(() => 'llama2'),
-          getDefaultTimeout: jest.fn(() => 300),
-          getReplyChainMaxDepth: jest.fn(() => 10),
-        },
-      }));
-
       const history = makeHistory(5);
       const kw = makeKeyword();
 
@@ -222,20 +218,11 @@ describe('ContextEvaluator', () => {
     });
 
     it('should skip evaluation when global context evaluation is disabled', async () => {
-      // Mock the global config to return false for context evaluation enabled
-      jest.mock('../src/utils/config', () => ({
-        config: {
-          getContextEvalEnabled: jest.fn(() => false),
-          getOllamaModel: jest.fn(() => 'llama2'),
-          getDefaultTimeout: jest.fn(() => 300),
-          getReplyChainMaxDepth: jest.fn(() => 10),
-        },
-      }));
+      jest.mocked(config).getContextEvalEnabled.mockReturnValue(false);
 
       const history = makeHistory(5);
       const kw = makeKeyword();
 
-      // When context eval is disabled, it should return all history without calling Ollama
       const result = await evaluateContextWindow(history, 'hello', kw, 'user1');
 
       expect(mockExecute).not.toHaveBeenCalled();

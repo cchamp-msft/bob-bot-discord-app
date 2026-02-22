@@ -268,8 +268,9 @@ class OllamaClient {
       if (options?.tools && options.tools.length > 0) {
         requestBody.tools = options.tools;
       }
-      if (options?.contextSize) {
+      if (options?.contextSize !== undefined) {
         requestBody.options = {
+          ...((requestBody.options as Record<string, unknown>) ?? {}),
           num_ctx: options.contextSize,
         };
       }

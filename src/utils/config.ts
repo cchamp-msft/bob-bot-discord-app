@@ -1112,6 +1112,12 @@ class Config {
         maxTokens: this.getReplyChainMaxTokens(),
         imageMaxDepth: this.getReplyChainImageMaxDepth(),
       },
+      contextEval: {
+        enabled: this.getContextEvalEnabled(),
+        model: this.getContextEvalModel(),
+        contextSize: this.getContextEvalContextSize(),
+        prompt: this.getContextEvalPrompt(),
+      },
       debugLogging: this.getDebugLogging(),
       nflLogging: {
         level: this.getNflLoggingLevel(),

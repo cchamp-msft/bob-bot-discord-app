@@ -18,6 +18,8 @@ export interface OllamaRequestOptions {
   images?: string[];
   /** Tools (OpenAI schema) for native tool calling. */
   tools?: OllamaTool[];
+  /** num_ctx for this request (Ollama context window size). */
+  contextSize?: number;
 }
 
 class ApiManager {

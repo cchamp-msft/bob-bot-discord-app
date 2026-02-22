@@ -1195,12 +1195,13 @@ class MessageHandler {
           requester,
           assembled.userContent,
           timeout,
-          undefined,
+          config.getOllamaToolModel(),
           [{ role: 'system', content: assembled.systemContent }],
           signal,
           undefined,
           {
             includeSystemPrompt: false,
+            contextSize: config.getOllamaToolContextSize(),
             ...(useToolsPath ? { tools } : {}),
             ...(imagePayloads.length > 0 ? { images: imagePayloads } : {}),
           }
@@ -1274,7 +1275,7 @@ class MessageHandler {
             [{ role: 'system', content: finalSystemContent }],
             sig,
             undefined,
-            { includeSystemPrompt: false }
+            { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize() }
           )
       ) as OllamaResponse;
 
