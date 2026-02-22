@@ -7,14 +7,14 @@ File: `discordManager.ts` → `messageHandler.ts`
 
 The Discord.js `messageCreate` event fires and calls `messageHandler.handleMessage(message)`.
 
-### 2\. Content Extraction & Keyword Matching
+### 2\. Content Extraction & Tool Matching
 
-File: `messageHandler.ts`
+File: `messageHandler.ts`
 
 -   The `@mention` is stripped → `content = "!weather Seattle"`
--   `findKeyword()` matches `"!weather"` at the start of the message
--   `keywordConfig` = `{ keyword: '!weather', api: 'accuweather', timeout: 60 }`
--   Since `api !== 'ollama'` → `apiKeywordMatched = true` → takes the direct API routing path
+-   `findTool()` matches `"!weather"` at the start of the message
+-   `toolConfig` = `{ name: '!weather', api: 'accuweather', timeout: 60 }`
+-   Since `api !== 'ollama'` → `apiToolMatched = true` → takes the direct API routing path
 
 ### 3\. API Router --- Primary Request
 
@@ -36,9 +36,9 @@ Since `finalOllamaPass: true` and the primary API was `accuweather` (not `o
 -   `evaluateContextWindow()` --- filters conversation history for relevance
 -   `formatAccuWeatherExternalData()` --- wraps weather data in `<accuweather_data>` XML tags
 -   `assembleReprompt()` --- builds the final prompt with:
-    -   System: persona only (NO abilities/keyword rules --- prevents infinite loops)
+    -   System: persona only (NO abilities/tool rules --- prevents infinite loops)
     -   User: `<conversation_history>` + `<external_data>` + `<current_question>`
--   If `finalOllamaPass` is enabled on a keyword, Ollama can refine the API result conversationally
+-   If `finalOllamaPass` is enabled on a tool, Ollama can refine the API result conversationally
 
 ### 5\. Response Dispatch
 
@@ -61,13 +61,13 @@ Key Functions by File
 | --- | --- | --- |
 | `discordManager.ts` | `client.on('messageCreate')` | Entry point --- Discord event listener |
 | `messageHandler.ts` | `handleMessage()` | Orchestrator --- routing decision |
-| `messageHandler.ts` | `findKeyword()` | Regex keyword matching (longest-first) |
-| `messageHandler.ts` | `executeWithTwoStageEvaluation()` | Fallback path when no keyword matches |
+| `messageHandler.ts` | `findTool()` | Regex tool matching (longest-first) |
+| `messageHandler.ts` | `executeWithTwoStageEvaluation()` | Fallback path when no tool matches |
 | `messageHandler.ts` | `dispatchResponse()` | Routes final result to correct handler |
 | `apiRouter.ts` | `executeRoutedRequest()` | Executes primary API + optional final pass |
 | `promptBuilder.ts` | `assemblePrompt()` | Builds XML prompt WITH abilities context |
 | `promptBuilder.ts` | `assembleReprompt()` | Builds XML prompt WITHOUT abilities (final pass) |
-| `promptBuilder.ts` | `parseFirstLineKeyword()` | Parses Ollama output for keyword trigger |
+| `promptBuilder.ts` | `parseFirstLineTool()` | Parses Ollama output for tool trigger |
 | `apiRouter.ts` | `inferAbilityParameters()` | Extracts API params from natural language (two-stage path) |
 | `keywordClassifier.ts` | `buildAbilitiesContext()` | Generates abilities context for Ollama |
 | `contextEvaluator.ts` | `evaluateContextWindow()` | Filters conversation history for relevance (global toggle via `CONTEXT_EVAL_ENABLED`) |
@@ -83,8 +83,8 @@ Example Flows (Summary)
 | `!weather Seattle` | Regex match → AccuWeather API → Discord reply |
 | `!generate a sunset` | Regex match → ComfyUI API → Discord reply (images) |
 | `!weather 45403` | Regex match → AccuWeather API → Discord reply (raw data) |
-| `is it going to rain?` | No regex match → Two-stage: Ollama w/ abilities → keyword detected → AccuWeather → Final pass → Discord reply |
-| `tell me a joke` | No regex match → Two-stage: Ollama w/ abilities → no keyword → Ollama response returned directly |
-| `!nfl scores` | Regex match → NFL API → Final Ollama pass → Discord reply |
-| `!search latest news` | Regex match → SerpAPI → Final Ollama pass → Discord reply |
+| `is it going to rain?` | No regex match → Two-stage: Ollama w/ abilities → tool detected → AccuWeather → Final pass → Discord reply |
+| `tell me a joke` | No regex match → Two-stage: Ollama w/ abilities → no tool → Ollama response returned directly |
+| `!nfl_scores` | Regex match → NFL API → Final Ollama pass → Discord reply |
+| `!web_search latest news` | Regex match → SerpAPI → Final Ollama pass → Discord reply |
 | `!meme surprised pikachu` | Regex match → Meme API → Discord reply (image) |

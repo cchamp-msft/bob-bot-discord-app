@@ -1,6 +1,6 @@
 # Message & API Routing Flow
 
-This document illustrates the complete message and API routing flow in bob-bot-discord-app, using the **`@BobBot !weather Seattle`** prompt as a concrete example. This keyword touches an ability and routes through AccuWeather using the shared API path.
+This document illustrates the complete message and API routing flow in bob-bot-discord-app, using the **`@BobBot !weather Seattle`** prompt as a concrete example. This tool touches an ability and routes through AccuWeather using the shared API path.
 
 ---
 
@@ -19,22 +19,22 @@ flowchart TD
     subgraph MessageHandler["messageHandler.ts — handleMessage()"]
         C["Strip @mention → content = <b>'!weather Seattle'</b>"]
         D["Collect conversation history<br/><code>collectReplyChain()</code> or <code>collectDmHistory()</code>"]
-        E{"<b>findKeyword(content)</b><br/>Regex match at start of message?<br/><i>sorted longest-first</i>"}
+        E{"<b>findTool(content)</b><br/>Regex match at start of message?<br/><i>sorted longest-first</i>"}
 
         E1["✅ Match: <b>'!weather'</b><br/><code>api: 'accuweather'</code>"]
         E2["❌ No regex match<br/><i>(would enter two-stage path)</i>"]
 
-        F{"<code>apiKeywordMatched?</code><br/>keywordConfig.api !== 'ollama'?"}
+        F{"<code>apiToolMatched?</code><br/>toolConfig.api !== 'ollama'?"}
         G["✅ Yes — <b>Direct API routing path</b>"]
         H["❌ No — <b>Two-stage evaluation path</b><br/><code>executeWithTwoStageEvaluation()</code>"]
 
-        I["Strip keyword from content<br/><code>stripKeyword()</code><br/>content = <b>'Seattle'</b>"]
+        I["Strip tool name from content<br/><code>stripToolName()</code><br/>content = <b>'Seattle'</b>"]
         J["Reply: ⏳ Processing your request..."]
     end
 
     subgraph APIRouter["apiRouter.ts — executeRoutedRequest()"]
-        K["Receive: keywordConfig, content, requester, history"]
-        L["Check: <code>needsFinalPass = keywordConfig.finalOllamaPass</code><br/>→ <b>false</b> (default weather route)"]
+        K["Receive: toolConfig, content, requester, history"]
+        L["Check: <code>needsFinalPass = toolConfig.finalOllamaPass</code><br/>→ <b>false</b> (default weather route)"]
 
         subgraph PrimaryAPI["Stage 1: Primary API Request"]
             M["<code>requestQueue.execute('accuweather', ...)</code>"]
@@ -55,9 +55,9 @@ flowchart TD
         subgraph FinalPass["Stage 2: Final Ollama Refinement Pass"]
             S["<code>evaluateContextWindow()</code><br/>Filter conversation history for relevance"]
             T["Build <code>&lt;external_data&gt;</code> block:<br/><code>formatAccuWeatherExternalData(location, data)</code><br/>→ <code>&lt;accuweather_data source='weather' location='Seattle'&gt;</code>"]
-            U["<code>assembleReprompt()</code><br/>System: persona only <i>(NO abilities/keyword rules)</i><br/>User: <code>&lt;conversation_history&gt;</code> + <code>&lt;external_data&gt;</code> + <code>&lt;current_question&gt;</code>"]
+            U["<code>assembleReprompt()</code><br/>System: persona only <i>(NO abilities/tool rules)</i><br/>User: <code>&lt;conversation_history&gt;</code> + <code>&lt;external_data&gt;</code> + <code>&lt;current_question&gt;</code>"]
             V["<code>requestQueue.execute('ollama', ...)</code><br/>→ <code>apiManager.executeRequest('ollama', ...)</code><br/>model = OLLAMA_FINAL_PASS_MODEL or default"]
-            W["(Optional) Ollama final-pass refinement<br/>when enabled on a keyword"]
+            W["(Optional) Ollama final-pass refinement<br/>when enabled on a tool"]
         end
 
         X["Return <b>RoutedResult</b><br/><code>{ finalResponse, finalApi: 'ollama', stages }</code>"]
@@ -82,14 +82,14 @@ flowchart TD
 
     subgraph TwoStage["messageHandler.ts — executeWithTwoStageEvaluation()<br/><i>(alternate path — shown for completeness)</i>"]
         TS1["<code>evaluateContextWindow()</code> — filter history<br/><i>(when CONTEXT_EVAL_ENABLED)</i>"]
-        TS2["<code>assemblePrompt()</code><br/>System: persona + abilities + keyword rules<br/>User: XML-tagged prompt with <code>&lt;thinking_and_output_rules&gt;</code>"]
+        TS2["<code>assemblePrompt()</code><br/>System: persona + abilities + tool rules<br/>User: XML-tagged prompt with <code>&lt;thinking_and_output_rules&gt;</code>"]
         TS3["<code>requestQueue.execute('ollama', ...)</code><br/>Ollama responds with abilities awareness"]
-        TS4{"<code>parseFirstLineKeyword()</code><br/>First line = exact keyword?"}
-        TS5["✅ Keyword found"]
+        TS4{"<code>parseFirstLineTool()</code><br/>First line = exact tool?"}
+        TS5["✅ Tool found"]
         TS5a{"Required params<br/>missing?"}
         TS5b["<code>inferAbilityParameters()</code><br/>Ollama extracts params from natural language"]
         TS5c["<code>executeRoutedRequest()</code><br/><i>(forced finalOllamaPass = true)</i>"]
-        TS9["❌ No keyword → return Ollama response as direct chat"]
+        TS9["❌ No tool → return Ollama response as direct chat"]
     end
 
     A --> B --> C --> D --> E
@@ -157,13 +157,13 @@ flowchart TD
 
 The Discord.js `messageCreate` event fires and calls `messageHandler.handleMessage(message)`.
 
-### 2. Content Extraction & Keyword Matching
+### 2. Content Extraction & Tool Matching
 **File:** `messageHandler.ts`
 
 - The `@mention` is stripped → `content = "!weather Seattle"`
-- `findKeyword()` matches **`"!weather"`** at the start of the message
-- `keywordConfig` = `{ keyword: '!weather', api: 'accuweather', timeout: 60 }`
-- Since `api !== 'ollama'` → `apiKeywordMatched = true` → takes the **direct API routing path**
+- `findTool()` matches **`"!weather"`** at the start of the message
+- `toolConfig` = `{ name: '!weather', api: 'accuweather', timeout: 60 }`
+- Since `api !== 'ollama'` → `apiToolMatched = true` → takes the **direct API routing path**
 
 ### 3. API Router — Primary Request
 **File:** `apiRouter.ts`
@@ -182,9 +182,9 @@ Since `finalOllamaPass: true` and the primary API was `accuweather` (not `ollama
 - **`evaluateContextWindow()`** — filters conversation history for relevance
 - **`formatAccuWeatherExternalData()`** — wraps weather data in `<accuweather_data>` XML tags
 - **`assembleReprompt()`** — builds the final prompt with:
-  - **System**: persona only (NO abilities/keyword rules — prevents infinite loops)
+  - **System**: persona only (NO abilities/tool rules — prevents infinite loops)
   - **User**: `<conversation_history>` + `<external_data>` + `<current_question>`
-- If `finalOllamaPass` is enabled on a keyword, Ollama can refine the API result conversationally
+- If `finalOllamaPass` is enabled on a tool, Ollama can refine the API result conversationally
 
 ### 5. Response Dispatch
 **File:** `messageHandler.ts`
@@ -204,13 +204,13 @@ The `⏳ Processing...` message is edited in-place with the final weather respon
 |------|----------|------|
 | `discordManager.ts` | `client.on('messageCreate')` | Entry point — Discord event listener |
 | `messageHandler.ts` | `handleMessage()` | Orchestrator — routing decision |
-| `messageHandler.ts` | `findKeyword()` | Regex keyword matching (longest-first) |
-| `messageHandler.ts` | `executeWithTwoStageEvaluation()` | Fallback path when no keyword matches |
+| `messageHandler.ts` | `findTool()` | Regex tool matching (longest-first) |
+| `messageHandler.ts` | `executeWithTwoStageEvaluation()` | Fallback path when no tool matches |
 | `messageHandler.ts` | `dispatchResponse()` | Routes final result to correct handler |
 | `apiRouter.ts` | `executeRoutedRequest()` | Executes primary API + optional final pass |
 | `promptBuilder.ts` | `assemblePrompt()` | Builds XML prompt WITH abilities context |
 | `promptBuilder.ts` | `assembleReprompt()` | Builds XML prompt WITHOUT abilities (final pass) |
-| `promptBuilder.ts` | `parseFirstLineKeyword()` | Parses Ollama output for keyword trigger |
+| `promptBuilder.ts` | `parseFirstLineTool()` | Parses Ollama output for tool trigger |
 | `apiRouter.ts` | `inferAbilityParameters()` | Extracts API params from natural language (two-stage path) |
 | `keywordClassifier.ts` | `buildAbilitiesContext()` | Generates abilities context for Ollama |
 | `contextEvaluator.ts` | `evaluateContextWindow()` | Filters conversation history for relevance (global toggle via `CONTEXT_EVAL_ENABLED`) |
@@ -225,8 +225,8 @@ The `⏳ Processing...` message is edited in-place with the final weather respon
 | **`!weather Seattle`** | Regex match → AccuWeather API → Discord reply |
 | **`!generate a sunset`** | Regex match → ComfyUI API → Discord reply (images) |
 | **`!weather 45403`** | Regex match → AccuWeather API → Discord reply (raw data) |
-| **`is it going to rain?`** | No regex match → Two-stage: Ollama w/ abilities → keyword detected → AccuWeather → Final pass → Discord reply |
-| **`tell me a joke`** | No regex match → Two-stage: Ollama w/ abilities → no keyword → Ollama response returned directly |
-| **`!nfl scores`** | Regex match → NFL API → Final Ollama pass → Discord reply |
-| **`!search latest news`** | Regex match → SerpAPI → Final Ollama pass → Discord reply |
+| **`is it going to rain?`** | No regex match → Two-stage: Ollama w/ abilities → tool detected → AccuWeather → Final pass → Discord reply |
+| **`tell me a joke`** | No regex match → Two-stage: Ollama w/ abilities → no tool → Ollama response returned directly |
+| **`!nfl_scores`** | Regex match → NFL API → Final Ollama pass → Discord reply |
+| **`!web_search latest news`** | Regex match → SerpAPI → Final Ollama pass → Discord reply |
 | **`!meme surprised pikachu`** | Regex match → Meme API → Discord reply (image) |

@@ -176,24 +176,24 @@ Two NFL keywords are configured in `config/tools.default.xml`:
 
 | Keyword | Behavior |
 |---------|----------|
-| `!nfl scores` | Lists all games for the current week. Supports date lookups: `!nfl scores 20260208` or `!nfl scores 2026-02-08` |
-| `!nfl news` | Shows the latest NFL news headlines. Supports keyword filtering: `!nfl news chiefs` |
+| `!nfl_scores` | Lists all games for the current week. Supports date lookups: `!nfl_scores 20260208` or `!nfl_scores 2026-02-08` |
+| `!nfl_news` | Shows the latest NFL news headlines. Supports search term filtering: `!nfl_news chiefs` |
 
 Both keywords have `allowEmptyContent: true`, so they work without additional text.
 
 ### Date-Based Score Lookups
 
 Use `YYYYMMDD` or `YYYY-MM-DD` format to look up scores for a specific date:
-- `!nfl scores 20260208` — scores for games on February 8, 2026
-- `!nfl scores 2026-02-08` — same, with dashes
+- `!nfl_scores 20260208` — scores for games on February 8, 2026
+- `!nfl_scores 2026-02-08` — same, with dashes
 
 When no date is provided, the current week's scoreboard is shown.
 
 ### News Filtering
 
-Add a search term after `!nfl news` to filter articles by headline or description:
-- `!nfl news chiefs` — only articles mentioning "chiefs"
-- `!nfl news trade` — only articles mentioning "trade"
+Add a search term after `!nfl_news` to filter articles by headline or description:
+- `!nfl_news chiefs` — only articles mentioning "chiefs"
+- `!nfl_news trade` — only articles mentioning "trade"
 
 Without a filter, the 5 most recent articles are shown.
 
@@ -221,12 +221,11 @@ The bot integrates with [SerpAPI](https://serpapi.com) for Google Search results
 
 ### Keywords
 
-Two SerpAPI keywords are configured:
+A SerpAPI tool is configured:
 
 | Keyword | Behavior |
 |---------|----------|
-| `!search <query>` | Full Google Search results (organic results, snippets, etc.) |
-| `!second opinion <query>` | AI Overview only (Google's AI-generated summary) |
+| `!web_search <query>` | Full Google Search results (organic results, snippets, etc.) |
 
 ### AI Overview Availability
 
@@ -243,14 +242,8 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for AI Overview troubleshooting tip
 
 **Full search**:
 ```
-@BobBot !search latest AI news
-@BobBot !search best restaurants in Seattle
-```
-
-**AI Overview only**:
-```
-@BobBot !second opinion on quantum computing
-@BobBot !second opinion what is machine learning
+@BobBot !web_search latest AI news
+@BobBot !web_search best restaurants in Seattle
 ```
 
 ## Meme (memegen.link) Configuration

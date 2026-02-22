@@ -10,7 +10,7 @@ This guide helps you resolve common issues with Bob Bot.
 - [ComfyUI Issues](#comfyui-issues)
 - [Configurator Access Issues](#configurator-access-issues)
 - [Configuration Issues](#configuration-issues)
-- [SerpAPI / AI Overview Issues](#serpapi--ai-overview-issues)
+- [SerpAPI / Web Search Issues](#serpapi--web-search-issues)
 - [Reverse Proxy / SSL Issues](#reverse-proxy--ssl-issues)
 
 ## Discord Connection Issues
@@ -98,7 +98,7 @@ This guide helps you resolve common issues with Bob Bot.
 **Solutions**:
 
 **Hot-reload (no restart needed)**:
-- API endpoints & keywords: Use configurator's "Save Changes" button
+- API endpoints & tools: Use configurator's "Save Changes" button
 - Discord token: Save, then stop and re-start the bot from the configurator
 - Check the configurator's status console for reload confirmation
 
@@ -110,38 +110,17 @@ This guide helps you resolve common issues with Bob Bot.
 
 After changing any restart-required setting, stop the process and run `npm run dev` or `npm start` again.
 
-## SerpAPI / AI Overview Issues
+## SerpAPI / Web Search Issues
 
-### AI Overview ("!second opinion") not working
+### Web search not returning results
 
-**Symptoms**: `!second opinion` queries don't return AI Overview summaries.
+**Symptoms**: `!web_search` queries don't return results.
 
-**Enable debug logging**:
-
-Set `DEBUG_LOGGING=true` in your `.env` file to see detailed request/response diagnostics.
-
-**Debug log markers**:
-- `SERPAPI REQUEST:` — Shows request parameters (`engine`, `q`, `hl`, `gl`, `location`)
-- `SERPAPI RESPONSE:` — Shows response classification (`page_token`, `inline(N blocks)`, `error`, `empty`, or `absent`)
-- `AIO-FOLLOWUP REQUEST:` — Second request for AI Overview when `page_token` is present
-- `AIO-FOLLOWUP RESPONSE:` — AI Overview follow-up response
-
-**Common causes of missing AI Overviews**:
-
-1. **Locale mismatch** — AI Overview is mainly available for English with certain countries
-   - **Solution**: Set `SERPAPI_HL=en` and `SERPAPI_GL=us` in your `.env`
-   - Optional: Set `SERPAPI_LOCATION=United States` to improve coverage
-
-2. **Niche or policy-restricted queries** — Google may not generate AI Overview for certain topics
-   - This is expected upstream behavior, not a configuration issue
-
-3. **Token expiry** — The `page_token` expires within ~1 minute
-   - If the bot or SerpAPI is slow, the follow-up may return no data
-
-**Distinguishing upstream unavailability from config issues**:
-- If `ai_overview=absent` consistently across many common queries (`"what is TypeScript"`, `"weather in New York"`), the issue is likely locale configuration
-- If only niche or ambiguous queries return `absent`, that is expected upstream behavior
-- If logs show `ai_overview=error: …`, the error message indicates a policy or rate-limit issue
+**Solutions**:
+- Verify `SERPAPI_API_KEY` is set correctly in your `.env` file
+- Set `DEBUG_LOGGING=true` to see detailed request/response diagnostics
+- Check `SERPAPI_HL` and `SERPAPI_GL` locale settings — some results vary by region
+- Look for `SERPAPI REQUEST:` and `SERPAPI RESPONSE:` markers in debug logs
 
 ## Reverse Proxy / SSL Issues
 

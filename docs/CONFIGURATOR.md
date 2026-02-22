@@ -57,7 +57,7 @@ Events are written as sanitized first-person narratives (e.g. *"Someone wants my
 - **Two-Server Architecture**: Configurator runs on localhost:3000 (secure), outputs server on 0.0.0.0:3003 (public, for Discord image fetching)
 - **Limits**: Set file size threshold, default timeout, and max attachments per message
 - **Message Flow Overview**: Interactive Mermaid diagram showing the bot's message processing pipeline
-- **Keywords Management**: Add/edit/remove keyword→API mappings with custom timeouts
+- **Tools Management**: Add/edit/remove tool→API mappings with custom timeouts
 - **Status Console**: Real-time log view tailing today's log file, showing all events (startup, requests, errors, config changes) with color-coded levels
 
 ## Hot-Reload vs Restart Required
@@ -76,7 +76,7 @@ Events are written as sanitized first-person narratives (e.g. *"Someone wants my
 - File size threshold
 - Default timeout
 - Max attachments per message
-- Keywords (entire list)
+- Tools (entire list)
 - Discord token and client ID (stop and re-start the bot from configurator)
 
 **Restart Required:**

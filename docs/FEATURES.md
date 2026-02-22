@@ -20,27 +20,27 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 ### External APIs
 - ✅ AccuWeather integration for real-time weather data (current conditions + 5-day forecast)
 - ✅ **NFL game data** — live scores and news via ESPN, with optional date-based lookups and news filtering
-- ✅ **Web search** — Google Search via SerpAPI with AI Overview support; `!search` returns full results, `!second opinion` returns only Google's AI Overview (AI Overview availability is locale-dependent — configure `SERPAPI_HL`/`SERPAPI_GL`; optional `SERPAPI_LOCATION` can further improve coverage)
+- ✅ **Web search** — Google Search via SerpAPI with AI Overview support; `!web_search` returns Google search results with AI Overview summaries (AI Overview availability is locale-dependent — configure `SERPAPI_HL`/`SERPAPI_GL`; optional `SERPAPI_LOCATION` can further improve coverage)
 - ✅ **Meme generation** — create meme images from popular templates via [memegen.link](https://memegen.link); `!meme` with template name and text lines, and `!meme_templates` to list template IDs; templates cached locally and refreshed every 7 days
 
 ## Advanced Features
 
 ### Request Processing & Routing
 - ✅ Serial request processing with max 1 concurrent per API
-- ✅ Configurable per-keyword timeouts (default: 300s)
-- ✅ **Two-stage evaluation** — Ollama responses are checked for first-line keyword directives, enabling automatic ability routing without a fallback classifier
+- ✅ Configurable per-tool timeouts (default: 300s)
+- ✅ **Two-stage evaluation** — Ollama responses are checked for first-line tool directives, enabling automatic ability routing without a fallback classifier
 - ✅ **Rate-limited error messages** — configurable user-facing error messages with minimum interval
 
 ### Context & Conversation Management
 - ✅ **Reply chain context** — traverses Discord reply threads to provide conversation history to Ollama
-- ✅ **Image prompt cleanup** — routing keywords are stripped from prompts before submission to ComfyUI
-- ✅ **Reply-based image generation** — replying to a message with an image keyword combines the quoted content with the user's prompt
+- ✅ **Image prompt cleanup** — routing tool names are stripped from prompts before submission to ComfyUI
+- ✅ **Reply-based image generation** — replying to a message with an image tool combines the quoted content with the user's prompt
 - ✅ **Conversational responses** — Ollama replies use plain text instead of embed blocks for a natural feel
 
 ### Configuration & Management
 - ✅ **Web-based configurator** — localhost-only SPA for managing all settings
 - ✅ **Discord start/stop controls** — manage bot connection from the configurator
-- ✅ **Hot-reload support** — API endpoints and keywords reload without restart
+- ✅ **Hot-reload support** — API endpoints and tools reload without restart
 - ✅ **Graceful shutdown** — cleans up Discord, HTTP server, and WebSocket connections on SIGINT/SIGTERM
 
 ## File Handling & Output
@@ -62,7 +62,7 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 - ✅ **Global final-pass model** — configurable Ollama model for all final-pass refinements
 - ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
 - ✅ **Ability parameter inference** — when two-stage evaluation detects an API keyword with required inputs, Ollama infers concrete parameters from user context before routing (e.g., resolving "capital of Thailand" → "Bangkok" for weather)
-- ✅ **NFL commands** — `!nfl scores` (current or date-specific) and `!nfl news` (with optional keyword filter)
+- ✅ **NFL commands** — `!nfl_scores` (current or date-specific) and `!nfl_news` (with optional search term filter)
 
 ## Monitoring & Privacy
 

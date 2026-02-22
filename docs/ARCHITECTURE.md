@@ -35,8 +35,8 @@ src/
     ├── outputsServer.ts  # Express HTTP server for output file serving (public)
     ├── activityEvents.ts # Sanitised in-memory event buffer for activity feed
     ├── activityKeyManager.ts # In-memory rotating key for activity monitor access
-    ├── keywordClassifier.ts  # AI-based keyword classification & abilities context builder
-    ├── toolsSchema.ts    # OpenAI-style tool definitions from keyword config (Ollama native tools)
+    ├── keywordClassifier.ts  # AI-based tool classification & abilities context builder
+    ├── toolsSchema.ts    # OpenAI-style tool definitions from tool config (Ollama native tools)
     ├── apiRouter.ts      # Multi-stage API routing pipeline
     └── responseTransformer.ts # Stage result extraction and context building
 
@@ -96,31 +96,31 @@ When generating an OAuth2 invite link, include these **Bot Permissions**:
 
 ## Two-Stage Evaluation & API Routing
 
-The bot uses a two-stage evaluation flow to intelligently route requests. Keyword/tool definitions live in the runtime config (e.g. `config/keywords.json` or `config/tools.xml`). **Internal-only** entries (e.g. `help`, `activity_key`) have a tag so they are **not** sent to Ollama as tools; they are used only for direct bypass (e.g. `!help`).
+The bot uses a two-stage evaluation flow to intelligently route requests. Tool definitions live in the runtime config (`config/tools.xml`). **Internal-only** entries (e.g. `help`, `activity_key`) have a tag so they are **not** sent to Ollama as tools; they are used only for direct bypass (e.g. `!help`).
 
 ### Native tools path (when tools are available)
 
 When the config yields at least one routable tool (enabled, not builtin, api ≠ ollama, not internal-only):
 
-1. **Tools schema** — `buildOllamaToolsSchema()` converts keyword config into OpenAI-style tool definitions and passes them to Ollama as the `tools` parameter on `/api/chat`.
+1. **Tools schema** — `buildOllamaToolsSchema()` converts tool config into OpenAI-style tool definitions and passes them to Ollama as the `tools` parameter on `/api/chat`.
 2. **Ollama response** — The model may return structured `tool_calls` (max **3** per turn, enforced in code). If it returns only text, that is sent as the chat reply.
-3. **Tool execution** — Each tool call is resolved to a keyword config; arguments are converted to the single content string each API expects. `executeRoutedRequest()` runs without a per-call final pass.
+3. **Tool execution** — Each tool call is resolved to a tool config; arguments are converted to the single content string each API expects. `executeRoutedRequest()` runs without a per-call final pass.
 4. **Single final pass** — All tool results are combined and sent to **one** final Ollama call for conversational refinement, then the reply is sent to the user.
 
-Keywords in `config/tools.xml` may be stored with or without the `!` prefix. The routing engine normalises all keywords to include the prefix before matching, ensuring `!activity_key` matches a config entry stored as `"activity_key"`.
+Tools in `config/tools.xml` may be stored with or without the `!` prefix. The routing engine normalises all tool names to include the prefix before matching, ensuring `!activity_key` matches a config entry stored as `"activity_key"`.
 
 ### Legacy path (no tools or tools disabled)
 
 When there are no routable tools:
 
-1. **Regex matching** (fast path) — explicit keywords like `!generate` or `!weather` are matched first.
-2. **Direct API routing** — if a non-Ollama keyword is matched by regex, the request goes to the primary API (per-keyword `finalOllamaPass` still applies).
-3. **Two-stage with abilities block** — if an Ollama keyword is matched (e.g. "chat") or no keyword matches, the request is sent to Ollama with a text abilities block. `parseFirstLineKeyword()` checks the first line for an API keyword (with optional inline parameters). If matched, `inferAbilityParameters()` may extract parameters before routing.
-4. **Final refinement** — model-inferred abilities from step 3 go through a final Ollama call. Direct `!keyword` routing respects the keyword's `finalOllamaPass` setting.
+1. **Regex matching** (fast path) — explicit tools like `!generate` or `!weather` are matched first.
+2. **Direct API routing** — if a non-Ollama tool is matched by regex, the request goes to the primary API (per-tool `finalOllamaPass` still applies).
+3. **Two-stage with abilities block** — if an Ollama tool is matched (e.g. "chat") or no tool matches, the request is sent to Ollama with a text abilities block. `parseFirstLineKeyword()` checks the first line for an API tool (with optional inline parameters). If matched, `inferAbilityParameters()` may extract parameters before routing.
+4. **Final refinement** — model-inferred abilities from step 3 go through a final Ollama call. Direct `!tool` routing respects the tool's `finalOllamaPass` setting.
 
-### Keyword prefix normalisation
+### Tool prefix normalisation
 
-Keywords in config may be stored with or without the `!` prefix. The routing engine normalises before matching, so `!activity_key` matches a config entry stored as `"activity_key"`.
+Tools in config may be stored with or without the `!` prefix. The routing engine normalises before matching, so `!activity_key` matches a config entry stored as `"activity_key"`.
 
 ### Example flows
 
@@ -182,7 +182,7 @@ In all cases, context is sent to Ollama using the `/api/chat` endpoint with prop
 - **DMs** automatically include recent DM channel messages as context (same depth/token limits apply, tagged as `dm`, no guild channel-context feature)
 - **Other bots** are excluded from context history by default — set `ALLOW_BOT_INTERACTIONS=true` to include them and allow the bot to respond to other bots' messages
 - **ComfyUI** image generation uses single-level reply context — the replied-to message content is prepended to the prompt
-- Routing keywords (e.g., `!generate`, `!imagine`) are stripped from the prompt before submission to the image model
+- Routing tool names (e.g., `!generate`, `!imagine`) are stripped from the prompt before submission to the image model
 - Deleted or inaccessible messages in the chain are skipped gracefully
 - Circular references are detected and traversal stops
 - Bot responses are sent as **plain text** (not embed blocks) for a conversational feel
@@ -216,7 +216,7 @@ These optional fields in `config/tools.xml` override the global depth defaults f
 ### Where the Evaluator Applies
 
 - **Default path** (two-stage tool evaluation, stage 1) — filters history before the initial Ollama call, when `CONTEXT_EVAL_ENABLED` is `true`.
-- **Final Ollama pass** (for non-Ollama API keywords with `finalOllamaPass: true`) — also filters history before the refinement call.
+- **Final Ollama pass** (for non-Ollama API tools with `finalOllamaPass: true`) — also filters history before the refinement call.
 - If the primary API was already Ollama, the final pass is skipped (no double-filtering).
 
 ### Notes
@@ -268,7 +268,7 @@ System logs use consistent prefixes to identify their source:
 
 | Prefix | Source | Description |
 |--------|--------|-------------|
-| `KEYWORD:` | messageHandler | Keyword matching results |
+| `KEYWORD:` | messageHandler | Tool matching results |
 | `TWO-STAGE:` | messageHandler | Two-stage Ollama evaluation flow |
 | `REPLY-CHAIN:` | messageHandler | Reply chain traversal |
 | `DM-HISTORY:` | messageHandler | DM history collection |
@@ -294,6 +294,6 @@ Debug log lines are tagged with `[debug]` level and `DEBUG:` prefix for easy fil
 
 ## Next Steps
 
-- **[Advanced Features](ADVANCED.md)** — Keyword configuration, ability logging, final-pass model
+- **[Advanced Features](ADVANCED.md)** — Tool configuration, ability logging, final-pass model
 - **[API Integration](API_INTEGRATION.md)** — Detailed API configuration
 - **[Usage Guide](USAGE.md)** — How to use the bot

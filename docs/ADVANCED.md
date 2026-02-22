@@ -10,14 +10,14 @@ Tools define how the bot routes requests to different APIs. They can be configur
 
 | XML Element | Type | Description |
 |-------------|------|-------------|
-| `<name>` | `string` | **Required.** The trigger word or phrase (maps to internal keyword). |
+| `<name>` | `string` | **Required.** The trigger word or phrase (maps to internal tool). |
 | `<api>` | `string` | **Required.** Target API: `comfyui`, `ollama`, `accuweather`, `nfl`, `serpapi`, or `meme`. |
 | `<timeout>` | `number` | **Required.** Request timeout in seconds. |
 | `<description>` | `string` | **Required.** Human-readable description (also used as model-facing ability text). |
 | `<abilityWhen>` | `string` | Model-facing guidance on when to choose this ability (e.g. "User asks about weather."). |
 | `<parameters>` | `element` | OpenAI-style parameter definitions. See sub-fields below. |
 | `<finalOllamaPass>` | `boolean` | Pass the API result through Ollama for conversational refinement using the global final-pass model. |
-| `<allowEmptyContent>` | `boolean` | When `true`, the keyword works without additional user text (e.g. `!nfl scores` alone). |
+| `<allowEmptyContent>` | `boolean` | When `true`, the tool works without additional user text (e.g. `!nfl_scores` alone). |
 | `<enabled>` | `boolean` | Whether the tool is active (default: `true`). |
 | `<builtin>` | `boolean` | Built-in tools cannot be edited or deleted — only toggled on/off. |
 | `<retry>` | `element` | Per-tool retry override. Child elements: `<enabled>`, `<maxRetries>` (0-10), `<model>`, `<prompt>`. |
@@ -132,7 +132,7 @@ If not set, the default `OLLAMA_MODEL` is used for final-pass refinements.
 
 ## Native tools (Ollama tool_calls)
 
-When the keyword config defines at least one routable tool (enabled, not builtin, api ≠ ollama), the bot uses **Ollama native tools**: the `tools` parameter is sent to `/api/chat`, and the model may return structured `tool_calls`. Up to **3** tool calls per turn are executed; then a **single** final Ollama pass combines all results for the reply. Internal-only keywords (`help`, `activity_key`) are never sent to Ollama as tools; they are handled by direct bypass (e.g. `!help`).
+When the tool config defines at least one routable tool (enabled, not builtin, api ≠ ollama), the bot uses **Ollama native tools**: the `tools` parameter is sent to `/api/chat`, and the model may return structured `tool_calls`. Up to **3** tool calls per turn are executed; then a **single** final Ollama pass combines all results for the reply. Internal-only tools (`help`, `activity_key`) are never sent to Ollama as tools; they are handled by direct bypass (e.g. `!help`).
 
 ## Context Evaluation
 
@@ -140,7 +140,7 @@ Context evaluation uses Ollama to filter conversation history before including i
 
 ### Global Configuration
 
-Context evaluation is controlled by **global** environment variables (or the configurator's "Context Evaluation" section). It applies to all default-path (no direct keyword match) requests.
+Context evaluation is controlled by **global** environment variables (or the configurator's "Context Evaluation" section). It applies to all default-path (no direct tool match) requests.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -250,7 +250,7 @@ Configure how files are handled and served:
 
 ## Request Queue Configuration
 
-Configure per-keyword timeouts in `config/tools.xml`:
+Configure per-tool timeouts in `config/tools.xml`:
 
 ```xml
 <tool>
@@ -291,7 +291,7 @@ npm run test:watch
 
 ### Test Coverage
 
-- **config.test.ts** — Environment parsing, public config, keyword routing
+- **config.test.ts** — Environment parsing, public config, tool routing
 - **configWriter.test.ts** — .env persistence, tools.xml validation
 - **fileHandler.test.ts** — File saving, sanitization, path generation
 - **logger.test.ts** — Log formatting, level mapping, console output

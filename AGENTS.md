@@ -21,7 +21,7 @@ This file contains development guidelines, build commands, and coding standards 
 npm test -- tests/config.test.ts
 
 # Run tests matching pattern
-npm test -- --testNamePattern="should load keywords"
+npm test -- --testNamePattern="should load tools"
 
 # Run tests for specific functionality
 npm test -- --testPathPattern="config"
@@ -99,7 +99,7 @@ describe('Config', () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('should load keywords from file', () => {
+  it('should load tools from file', () => {
     // test implementation
   });
 });

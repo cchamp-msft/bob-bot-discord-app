@@ -1,6 +1,6 @@
 # Bob Bot - Discord AI Integration
 
-A Discord bot that monitors @mentions and DMs, routes keyword-matched requests to ComfyUI, Ollama, AccuWeather, ESPN NFL, SerpAPI (Google Search), and Memegen (meme images) APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
+A Discord bot that monitors @mentions and DMs, routes tool-matched requests to ComfyUI, Ollama, AccuWeather, ESPN NFL, SerpAPI (Google Search), and Memegen (meme images) APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
 
 ## Features
 
@@ -73,8 +73,8 @@ outputs/                  # Generated files and logs
 @BobBot !generate a beautiful sunset landscape
 @BobBot what is the meaning of life?
 @BobBot !weather Seattle
-@BobBot !nfl scores
-@BobBot !search latest AI news
+@BobBot !nfl_scores
+@BobBot !web_search latest AI news
 @BobBot !meme success kid | finished all my tasks | on a Monday
 @BobBot !meme_templates
 ```
@@ -94,7 +94,7 @@ The bot includes a **localhost-only web configurator** for easy management:
 
 1. Start the bot: `npm run dev`
 2. Open: **http://localhost:3000/configurator**
-3. Configure Discord token, API endpoints, and keywords
+3. Configure Discord token, API endpoints, and tools
 4. Test connections and start the bot
 
 Most settings support hot-reload (no restart required).
@@ -123,7 +123,7 @@ npm run test:watch
 - **[API Integration](docs/API_INTEGRATION.md)** — Configure ComfyUI, Ollama, AccuWeather, NFL, SerpAPI, Meme
 - **[Web Configurator](docs/CONFIGURATOR.md)** — Web UI, activity feed, reverse proxy setup
 - **[Architecture](docs/ARCHITECTURE.md)** — Technical details, routing, context management
-- **[Advanced Features](docs/ADVANCED.md)** — Keyword configuration, context evaluation, debugging
+- **[Advanced Features](docs/ADVANCED.md)** — Tool configuration, context evaluation, debugging
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** — Fix common issues
 
 ## Contributing

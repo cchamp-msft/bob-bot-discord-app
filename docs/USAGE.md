@@ -6,17 +6,16 @@ This guide shows you how to use Bob Bot to interact with AI, generate images, ge
 
 ### @mentions
 
-Mention the bot with a keyword and prompt:
+Mention the bot with a tool name and prompt:
 ```
 @BobBot !generate a beautiful sunset landscape
 @BobBot !ask what is the meaning of life?
 @BobBot !weather in Seattle
-@BobBot !nfl scores
-@BobBot !nfl scores 20260208
-@BobBot !nfl news
-@BobBot !nfl news chiefs
-@BobBot !search what is the weather like today
-@BobBot !second opinion on climate change
+@BobBot !nfl_scores
+@BobBot !nfl_scores 20260208
+@BobBot !nfl_news
+@BobBot !nfl_news chiefs
+@BobBot !web_search what is the weather like today
 @BobBot !meme success kid | finished all my tasks | on a Monday
 @BobBot !meme_templates
 ```
@@ -37,26 +36,25 @@ Use slash commands for ephemeral responses (visible only to you):
 /weather location: 90210
 ```
 
-## Keywords and Routing
+## Tools and Routing
 
-The bot uses keywords prefixed with `!` to route requests to different APIs:
+The bot uses tool names prefixed with `!` to route requests to different APIs. To call a tool, prefix the tool name with `!` and provide it as the first word to the bot. Example: `!web_search pickled eggs`
 
-| Keyword | API | Example |
+| Tool | API | Example |
 |---------|-----|---------|
 | `!generate`, `!draw`, `!image` | ComfyUI | `@BobBot !generate a sunset` |
 | `!ask`, `!tell me`, `!what` | Ollama | `@BobBot !ask what is recursion?` |
 | `!weather` | AccuWeather | `@BobBot !weather Seattle` |
-| `!nfl scores`, `!nfl news` | ESPN NFL | `@BobBot !nfl scores` |
-| `!search` | SerpAPI | `@BobBot !search latest AI news` |
-| `!second opinion` | SerpAPI (AI Overview only) | `@BobBot !second opinion on quantum computing` |
+| `!nfl_scores`, `!nfl_news` | ESPN NFL | `@BobBot !nfl_scores` |
+| `!web_search` | SerpAPI | `@BobBot !web_search latest AI news` |
 | `!meme` | Memegen | `@BobBot !meme success kid \| finished all my tasks \| on a Monday` |
 | `!meme_templates` | Memegen | `@BobBot !meme_templates` |
 
 Use `!meme` to generate an image.
 Use `!meme_templates` (plural) to list template IDs.
-`!meme_template` (singular) is not a configured keyword.
+`!meme_template` (singular) is not a configured tool.
 
-Keywords are configurable via the web configurator. See [ADVANCED.md](ADVANCED.md) for keyword configuration details.
+Tools are configurable via the web configurator. See [ADVANCED.md](ADVANCED.md) for tool configuration details.
 
 ## Conversation Context
 
@@ -79,9 +77,9 @@ Context features are configurable. See [ADVANCED.md](ADVANCED.md) for details on
 Bob Bot uses a two-stage evaluation system:
 
 1. **First stage**: Your message is sent to Ollama with an abilities context describing available API capabilities
-2. **Keyword check**: Ollama's response is checked for a first-line keyword directive (e.g., `weather: Seattle`). If found, the corresponding API is triggered automatically and the result is presented conversationally.
+2. **Tool check**: Ollama's response is checked for a first-line tool directive (e.g., `weather: Seattle`). If found, the corresponding API is triggered automatically and the result is presented conversationally.
 
-If Ollama does not include a keyword directive, the response is returned as a normal chat reply — no fallback classification is performed.
+If Ollama does not include a tool directive, the response is returned as a normal chat reply — no fallback classification is performed.
 
 This enables automatic ability routing. For example:
 - You ask: `@BobBot what's the weather like in Seattle?`
@@ -115,7 +113,7 @@ The bot uses ComfyUI for AI image generation.
 @BobBot !draw a cyberpunk city at night
 ```
 
-**Reply-based generation**: Reply to a message with an image keyword to combine the quoted content with your prompt:
+**Reply-based generation**: Reply to a message with an image tool to combine the quoted content with your prompt:
 ```
 [Original message: "I love mountains"]
 [Your reply]: @BobBot !generate this
@@ -130,7 +128,7 @@ See [API_INTEGRATION.md](API_INTEGRATION.md) for detailed ComfyUI configuration 
 
 The bot provides real-time weather data via AccuWeather.
 
-**Keyword-based queries** (require location):
+**Tool-based queries** (require location):
 ```
 @BobBot !weather Seattle
 @BobBot !weather 90210
@@ -156,16 +154,16 @@ The bot provides NFL game scores and news via ESPN's public API.
 
 **Scores**:
 ```
-@BobBot !nfl scores                # Current week
-@BobBot !nfl scores 20260208       # Specific date (YYYYMMDD)
-@BobBot !nfl scores 2026-02-08     # Specific date (YYYY-MM-DD)
+@BobBot !nfl_scores                # Current week
+@BobBot !nfl_scores 20260208       # Specific date (YYYYMMDD)
+@BobBot !nfl_scores 2026-02-08     # Specific date (YYYY-MM-DD)
 ```
 
 **News**:
 ```
-@BobBot !nfl news                  # Latest 5 articles
-@BobBot !nfl news chiefs           # Filter by keyword
-@BobBot !nfl news trade            # Filter by keyword
+@BobBot !nfl_news                  # Latest 5 articles
+@BobBot !nfl_news chiefs           # Filter by search term
+@BobBot !nfl_news trade            # Filter by search term
 ```
 
 No API key required — ESPN provides public access.
@@ -178,14 +176,8 @@ The bot provides web search via Google Search through SerpAPI.
 
 **Full search results**:
 ```
-@BobBot !search latest AI news
-@BobBot !search best restaurants in Seattle
-```
-
-**AI Overview only** (Google's AI-generated summary):
-```
-@BobBot !second opinion on quantum computing
-@BobBot !second opinion what is machine learning
+@BobBot !web_search latest AI news
+@BobBot !web_search best restaurants in Seattle
 ```
 
 > **Note**: AI Overview availability is locale-dependent. Configure `SERPAPI_HL` (language) and `SERPAPI_GL` (country) for best results. Optional `SERPAPI_LOCATION` can further improve coverage.
@@ -208,6 +200,6 @@ See [CONFIGURATOR.md](CONFIGURATOR.md) for details on the activity feed.
 ## Next Steps
 
 - **[API Integration Guide](API_INTEGRATION.md)** — Detailed API configuration
-- **[Advanced Features](ADVANCED.md)** — Context evaluation, ability logging, keyword configuration
+- **[Advanced Features](ADVANCED.md)** — Context evaluation, ability logging, tool configuration
 - **[Architecture](ARCHITECTURE.md)** — How the bot works internally
 - **[Troubleshooting](TROUBLESHOOTING.md)** — Fix common issues
