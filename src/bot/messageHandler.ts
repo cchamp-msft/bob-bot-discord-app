@@ -4,7 +4,7 @@ import {
   ChannelType,
 } from 'discord.js';
 import axios from 'axios';
-import { config, KeywordConfig, COMMAND_PREFIX } from '../utils/config';
+import { config, ToolConfig, COMMAND_PREFIX } from '../utils/config';
 import { logger } from '../utils/logger';
 import { requestQueue } from '../utils/requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
@@ -13,9 +13,9 @@ import { ChatMessage, NFLResponse, MemeResponse } from '../types';
 import { chunkText } from '../utils/chunkText';
 import { executeRoutedRequest, inferAbilityParameters, formatApiResultAsExternalData } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
-import { assemblePrompt, assembleReprompt, parseFirstLineKeyword } from '../utils/promptBuilder';
-import type { KeywordParseResult } from '../utils/promptBuilder';
-import { buildOllamaToolsSchema, resolveToolNameToKeyword, toolArgumentsToContent } from '../utils/toolsSchema';
+import { assemblePrompt, assembleReprompt, parseFirstLineTool } from '../utils/promptBuilder';
+import type { ToolParseResult } from '../utils/promptBuilder';
+import { buildOllamaToolsSchema, resolveToolNameToTool, toolArgumentsToContent } from '../utils/toolsSchema';
 import { activityEvents } from '../utils/activityEvents';
 import { activityKeyManager } from '../utils/activityKeyManager';
 
@@ -34,12 +34,12 @@ class MessageHandler {
   private static readonly WORKING_EMOJI = '⏳';
 
   /**
-   * Compare a keyword value (from config — may or may not include the
-   * command prefix) against a bare keyword name like 'activity_key'.
+   * Compare a tool name (from config — may or may not include the
+   * command prefix) against a bare tool name like 'activity_key'.
    */
-  private keywordIs(keyword: string, name: string): boolean {
-    const kw = keyword.toLowerCase().trim();
-    const bare = kw.startsWith(COMMAND_PREFIX) ? kw.slice(COMMAND_PREFIX.length) : kw;
+  private toolNameIs(toolName: string, name: string): boolean {
+    const tn = toolName.toLowerCase().trim();
+    const bare = tn.startsWith(COMMAND_PREFIX) ? tn.slice(COMMAND_PREFIX.length) : tn;
     return bare === name.toLowerCase().trim();
   }
   private static readonly ERROR_EMOJI = '❌';
@@ -132,8 +132,8 @@ class MessageHandler {
     return content.replace(/^[^:\n]{1,64}:\s+/, '').trim();
   }
 
-  private isKeywordOnlyInvocation(content: string, keyword: string): boolean {
-    const normalizedKeyword = keyword
+  private isToolNameOnlyInvocation(content: string, toolName: string): boolean {
+    const normalizedToolName = toolName
       .toLowerCase()
       .trim()
       .replace(/^!+/, '');
@@ -145,7 +145,7 @@ class MessageHandler {
       .replace(/[!?.,:;]+$/g, '')
       .trim();
 
-    return normalizedContent === normalizedKeyword;
+    return normalizedContent === normalizedToolName;
   }
 
   private deriveImagePromptFromContext(content: string, history: ChatMessage[]): string | null {
@@ -195,7 +195,7 @@ class MessageHandler {
     return null;
   }
 
-  private shouldForceFinalOllamaPassForApi(api: KeywordConfig['api']): boolean {
+  private shouldForceFinalOllamaPassForApi(api: ToolConfig['api']): boolean {
     // Keep raw media-style API outputs (image URLs/files) intact.
     // Force conversational final-pass only for text-oriented data APIs.
     return api === 'accuweather' || api === 'nfl' || api === 'serpapi';
@@ -206,17 +206,17 @@ class MessageHandler {
   }
 
   private buildDirectiveCommentary(
-    parseResult: KeywordParseResult,
+    parseResult: ToolParseResult,
     routedInput: string
   ): string | null {
     const commentary = parseResult.commentaryText?.trim();
-    if (!commentary || !parseResult.keywordConfig) return null;
+    if (!commentary || !parseResult.toolConfig) return null;
 
-    const kwLower = parseResult.keywordConfig.keyword.toLowerCase().trim();
-    const kwBare = kwLower.startsWith(COMMAND_PREFIX)
-      ? kwLower.slice(COMMAND_PREFIX.length)
-      : kwLower;
-    const kwEscaped = this.escapeRegExp(kwBare);
+    const tnLower = parseResult.toolConfig.name.toLowerCase().trim();
+    const tnBare = tnLower.startsWith(COMMAND_PREFIX)
+      ? tnLower.slice(COMMAND_PREFIX.length)
+      : tnLower;
+    const tnEscaped = this.escapeRegExp(tnBare);
 
     const lines = commentary
       .split(/\r?\n/)
@@ -225,12 +225,12 @@ class MessageHandler {
       .map((line) => {
         // Replace explicit command-style invocations inline.
         const withBangReplaced = line.replace(
-          new RegExp(`(^|\\s)!${kwEscaped}\\b(?:\\s*[:|;,=\\-–—>]+\\s*|\\s+)`, 'ig'),
+          new RegExp(`(^|\\s)!${tnEscaped}\\b(?:\\s*[:|;,=\\-–—>]+\\s*|\\s+)`, 'ig'),
           `$1${routedInput} `
         );
 
         // Replace start-of-line bare directive form (e.g. "imagine: ...")
-        const bareLeadingPattern = new RegExp(`^${kwEscaped}\\b(?:\\s*[:|;,=\\-–—>]+\\s*|\\s+)`, 'i');
+        const bareLeadingPattern = new RegExp(`^${tnEscaped}\\b(?:\\s*[:|;,=\\-–—>]+\\s*|\\s+)`, 'i');
         return withBangReplaced.replace(bareLeadingPattern, `${routedInput} `).trim();
       })
       .filter(line => line.length > 0);
@@ -257,10 +257,10 @@ class MessageHandler {
     logger.logReply(requester, `Two-stage commentary sent: ${text.length} characters`, text);
   }
 
-  private findEnabledKeywordByName(name: string): KeywordConfig | undefined {
+  private findEnabledToolByName(name: string): ToolConfig | undefined {
     return config
-      .getKeywords()
-      .find(k => k.enabled !== false && this.keywordIs(k.keyword, name));
+      .getTools()
+      .find(k => k.enabled !== false && this.toolNameIs(k.name, name));
   }
 
   async handleMessage(message: Message): Promise<void> {
@@ -365,32 +365,32 @@ class MessageHandler {
         : `What do you see in these ${imagePayloads.length} images?`;
     }
 
-    // Find matching keyword at message start — only matches !prefixed commands.
+    // Find matching tool at message start — only matches !prefixed commands.
     // Messages without the command prefix go through two-stage Ollama evaluation.
-    let keywordConfig = this.findKeyword(content);
-    const keywordMatched = keywordConfig !== undefined;
+    let toolConfig = this.findTool(content);
+    const toolMatched = toolConfig !== undefined;
     const startsWithCommandPrefix = content.trim().startsWith(COMMAND_PREFIX);
 
     // Emit activity event with cleaned message content (no usernames or IDs).
     // Suppress for standalone activity_key requests — those should not appear
     // in the public activity feed.
-    const isActivityKey = keywordMatched && this.keywordIs(keywordConfig!.keyword, 'activity_key');
+    const isActivityKey = toolMatched && this.toolNameIs(toolConfig!.name, 'activity_key');
     if (!isActivityKey) {
       activityEvents.emitMessageReceived(isDM, content);
     }
 
-    if (keywordConfig) {
-      logger.log('success', 'system', `KEYWORD: Matched "${keywordConfig.keyword}" at message start`);
+    if (toolConfig) {
+      logger.log('success', 'system', `TOOL: Matched "${toolConfig.name}" at message start`);
     } else {
-      logger.log('success', 'system', `KEYWORD: No first-word match, deferring to two-stage evaluation`);
+      logger.log('success', 'system', `TOOL: No first-word match, deferring to two-stage evaluation`);
     }
 
-    // Track whether a non-Ollama API keyword was matched (determines execution path)
-    const apiKeywordMatched = keywordMatched && keywordConfig!.api !== 'ollama';
+    // Track whether a non-Ollama API tool was matched (determines execution path)
+    const apiToolMatched = toolMatched && toolConfig!.api !== 'ollama';
 
-    if (!keywordConfig) {
-      keywordConfig = {
-        keyword: '__default__',
+    if (!toolConfig) {
+      toolConfig = {
+        name: '__default__',
         api: 'ollama',
         timeout: config.getDefaultTimeout(),
         description: 'Default chat via Ollama',
@@ -398,30 +398,30 @@ class MessageHandler {
       logger.logDefault(requester, content);
     }
 
-    // Strip the routing keyword only when it was explicitly matched at the start.
+    // Strip the routing tool name only when it was explicitly matched at the start.
     // The default "chat" fallback should NOT strip — it would mutate free-form content.
-    if (keywordMatched) {
-      content = this.stripKeyword(content, keywordConfig.keyword);
+    if (toolMatched) {
+      content = this.stripToolName(content, toolConfig.name);
     }
 
     // For image generation replies, combine quoted message content with the user's reply text.
-    // Done before the empty-prompt check so that reply-only-keyword messages (e.g. replying
+    // Done before the empty-prompt check so that reply-only-tool messages (e.g. replying
     // "generate" to a message) still work — the quoted content fills the prompt.
-    if (keywordConfig.api === 'comfyui' && message.reference) {
+    if (toolConfig.api === 'comfyui' && message.reference) {
       content = await this.buildImagePromptFromReply(message, content);
     }
 
     if (!content) {
-      // Some keywords (e.g. "nfl scores", "nfl news") work without extra content.
-      // For those, use the keyword itself as the content so the request proceeds.
-      const keywordAllowsEmpty = keywordConfig.allowEmptyContent === true;
+      // Some tools (e.g. "nfl_scores", "nfl_news") work without extra content.
+      // For those, use the tool name itself as the content so the request proceeds.
+      const toolAllowsEmpty = toolConfig.allowEmptyContent === true;
 
-      if (keywordAllowsEmpty) {
-        content = keywordConfig.keyword;
+      if (toolAllowsEmpty) {
+        content = toolConfig.name;
       } else {
-        logger.logIgnored(requester, 'Empty message after keyword removal');
+        logger.logIgnored(requester, 'Empty message after tool name removal');
         await message.reply(
-          'Please include a prompt or question after the keyword!'
+          'Please include a prompt or question after the tool name!'
         );
         return;
       }
@@ -429,7 +429,7 @@ class MessageHandler {
 
     // Route standalone "!help" — short-circuit with a direct help response.
     // No model call needed; the help text is deterministic.
-    if (keywordMatched && this.keywordIs(keywordConfig.keyword, 'help')) {
+    if (toolMatched && this.toolNameIs(toolConfig.name, 'help')) {
       const reply = this.buildHelpResponse();
       await message.reply(reply);
       logger.log('success', 'system', `HELP: Direct help response sent to ${requester}`);
@@ -439,7 +439,7 @@ class MessageHandler {
     // Route standalone "!activity_key" — issue a new rotating key and DM it
     // back to the user. This short-circuits before Ollama/API routing since
     // no model interaction is needed.
-    if (keywordMatched && this.keywordIs(keywordConfig.keyword, 'activity_key')) {
+    if (toolMatched && this.toolNameIs(toolConfig.name, 'activity_key')) {
       const key = activityKeyManager.issueKey();
       const ttl = config.getActivityKeyTtl();
       const sessionMaxTime = config.getActivitySessionMaxTime();
@@ -477,9 +477,9 @@ class MessageHandler {
         conversationHistory = await this.collectDmHistory(message);
       } else {
         // Guild: collect reply chain + channel history
-        const keywordMax = keywordConfig.contextFilterMaxDepth ?? config.getReplyChainMaxDepth();
+        const toolMax = toolConfig.contextFilterMaxDepth ?? config.getReplyChainMaxDepth();
         const globalMax = config.getReplyChainMaxDepth();
-        const maxContextDepth = Math.min(keywordMax, globalMax);
+        const maxContextDepth = Math.min(toolMax, globalMax);
         const maxTotalChars = config.getReplyChainMaxTokens();
 
         let replyChain: ChatMessage[] = [];
@@ -511,23 +511,23 @@ class MessageHandler {
     // Log the request
     logger.logRequest(
       requester,
-      `[${keywordConfig.keyword}] ${content}`
+      `[${toolConfig.name}] ${content}`
     );
 
     await this.addWorkingReaction(message);
 
     try {
-      if (apiKeywordMatched) {
-        // ── API keyword path: execute API with optional final Ollama pass ──
+      if (apiToolMatched) {
+        // ── API tool path: execute API with optional final Ollama pass ──
         // Append the triggering message so the model always knows who is asking.
         const historyWithTrigger: ChatMessage[] = [
           ...conversationHistory,
           { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true },
         ];
-        activityEvents.emitRoutingDecision(keywordConfig.api, keywordConfig.keyword, 'keyword');
+        activityEvents.emitRoutingDecision(toolConfig.api, toolConfig.name, 'keyword');
 
         const routedResult = await executeRoutedRequest(
-          keywordConfig,
+          toolConfig,
           content,
           requester,
           historyWithTrigger,
@@ -546,13 +546,13 @@ class MessageHandler {
         // ── Ollama path: chat with abilities context, then second evaluation ──
         await this.executeWithTwoStageEvaluation(
           content,
-          keywordConfig,
+          toolConfig,
           message,
           requester,
           conversationHistory,
           isDM,
           botDisplayName,
-          startsWithCommandPrefix && !keywordMatched,
+          startsWithCommandPrefix && !toolMatched,
           imagePayloads
         );
       }
@@ -979,48 +979,48 @@ class MessageHandler {
   }
 
   /**
-   * Match a keyword only when the message starts with the command prefix (!).
-   * Keywords are sorted longest-first so multi-word keywords like
-   * "!nfl scores" take priority over shorter overlaps.
-   * Disabled keywords (enabled === false) are skipped.
+   * Match a tool only when the message starts with the command prefix (!).
+   * Tools are sorted longest-first so multi-word tool names like
+   * "!nfl_scores" take priority over shorter overlaps.
+   * Disabled tools (enabled === false) are skipped.
    *
    * Messages without the command prefix are NOT matched here — they are
    * routed through the two-stage Ollama evaluation for inference-first
    * parameter extraction.
    */
-  private findKeyword(content: string): KeywordConfig | undefined {
+  private findTool(content: string): ToolConfig | undefined {
     const lowerContent = content.toLowerCase().trim();
 
     // Only match if the message starts with the command prefix
     if (!lowerContent.startsWith(COMMAND_PREFIX)) return undefined;
 
-    // Sort longest keyword first so more specific multi-word keywords win.
-    const sorted = [...config.getKeywords()]
+    // Sort longest tool name first so more specific multi-word names win.
+    const sorted = [...config.getTools()]
       .filter((k) => k.enabled !== false)
       .sort(
-        (a, b) => b.keyword.length - a.keyword.length
+        (a, b) => b.name.length - a.name.length
       );
     return sorted.find((k) => {
-      const rawKeyword = k.keyword.toLowerCase().trim();
-      if (!rawKeyword) return false;
+      const rawName = k.name.toLowerCase().trim();
+      if (!rawName) return false;
 
-      // Normalize: ensure keyword includes the command prefix for matching
-      const keyword = rawKeyword.startsWith(COMMAND_PREFIX)
-        ? rawKeyword
-        : `${COMMAND_PREFIX}${rawKeyword}`;
+      // Normalize: ensure tool name includes the command prefix for matching
+      const toolName = rawName.startsWith(COMMAND_PREFIX)
+        ? rawName
+        : `${COMMAND_PREFIX}${rawName}`;
 
       // Built-in !help is intentionally standalone-only.
-      if (this.keywordIs(rawKeyword, 'help')) {
+      if (this.toolNameIs(rawName, 'help')) {
         return lowerContent === `${COMMAND_PREFIX}help`;
       }
 
       // Built-in !activity_key is standalone-only, same as help.
-      if (this.keywordIs(rawKeyword, 'activity_key')) {
+      if (this.toolNameIs(rawName, 'activity_key')) {
         return lowerContent === `${COMMAND_PREFIX}activity_key`;
       }
 
-      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      // Anchor to START of message + word boundary after keyword
+      const escaped = toolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Anchor to START of message + word boundary after tool name
       const pattern = new RegExp(`^${escaped}\\b`, 'i');
       return pattern.test(lowerContent);
     });
@@ -1117,15 +1117,15 @@ class MessageHandler {
   /**
    * Execute the Ollama evaluation flow:
    * 1. Build XML-tagged prompt with abilities context and conversation history
-   * 2. Call Ollama — model outputs either a keyword-only line or a normal answer
-   * 3. Parse the first non-empty line for an exact keyword match
-   * 4. If keyword matched → route to API via executeRoutedRequest
+   * 2. Call Ollama — model outputs either a tool-only line or a normal answer
+   * 3. Parse the first non-empty line for an exact tool match
+   * 4. If tool matched → route to API via executeRoutedRequest
    *    (always with final Ollama pass so result is presented conversationally)
-   * 5. If no keyword matched → return Ollama's response as direct chat
+   * 5. If no tool matched → return Ollama's response as direct chat
    */
   private async executeWithTwoStageEvaluation(
     content: string,
-    keywordConfig: KeywordConfig,
+    toolConfig: ToolConfig,
     sourceMessage: Message,
     requester: string,
     conversationHistory: ChatMessage[],
@@ -1134,7 +1134,7 @@ class MessageHandler {
     strictNoApiRoutingFromInference: boolean = false,
     imagePayloads: string[] = []
   ): Promise<void> {
-    const timeout = keywordConfig.timeout || config.getDefaultTimeout();
+    const timeout = toolConfig.timeout || config.getDefaultTimeout();
 
     // Apply context filter (Ollama-based relevance evaluation) before building the prompt,
     // only when global context evaluation is enabled.
@@ -1146,7 +1146,7 @@ class MessageHandler {
       filteredHistory = await evaluateContextWindow(
         conversationHistory,
         content,
-        keywordConfig,
+        toolConfig,
         requester
       );
       logger.log('success', 'system',
@@ -1164,14 +1164,14 @@ class MessageHandler {
     ];
 
     // Native tools path: when tools are available, use Ollama tool_calls (max 3) and one final pass.
-    const tools = buildOllamaToolsSchema(config.getKeywords());
+    const tools = buildOllamaToolsSchema(config.getTools());
     const useToolsPath = tools.length > 0;
 
     const assembled = assemblePrompt({
       userMessage: content,
       conversationHistory: filteredHistory,
       botDisplayName,
-      ...(useToolsPath ? { enabledKeywords: [] } : {}),
+      ...(useToolsPath ? { enabledTools: [] } : {}),
     });
 
     if (!useToolsPath) {
@@ -1188,7 +1188,7 @@ class MessageHandler {
     const ollamaResult = await requestQueue.execute(
       'ollama',
       requester,
-      keywordConfig.keyword,
+      toolConfig.name,
       timeout,
       (signal) =>
         apiManager.executeRequest(
@@ -1218,29 +1218,29 @@ class MessageHandler {
     if (useToolsPath && ollamaResult.data?.tool_calls && ollamaResult.data.tool_calls.length > 0) {
       const toolCalls = ollamaResult.data.tool_calls;
       const externalDataParts: string[] = [];
-      const keywords = config.getKeywords();
+      const configuredTools = config.getTools();
 
       for (const tc of toolCalls) {
-        const kwConfig = resolveToolNameToKeyword(tc.function.name, keywords);
-        if (!kwConfig) {
+        const resolvedTool = resolveToolNameToTool(tc.function.name, configuredTools);
+        if (!resolvedTool) {
           logger.logWarn('system', `TWO-STAGE: Unknown tool name "${tc.function.name}" — skipping`);
           continue;
         }
         const args = typeof tc.function.arguments === 'object' && tc.function.arguments !== null
           ? (tc.function.arguments as Record<string, unknown>)
           : {};
-        const contentStr = toolArgumentsToContent(kwConfig, args);
-        activityEvents.emitRoutingDecision(kwConfig.api, kwConfig.keyword, 'tool-call');
+        const contentStr = toolArgumentsToContent(resolvedTool, args);
+        activityEvents.emitRoutingDecision(resolvedTool.api, resolvedTool.name, 'tool-call');
 
         const apiResult = await executeRoutedRequest(
-          { ...kwConfig, finalOllamaPass: false },
+          { ...resolvedTool, finalOllamaPass: false },
           contentStr,
           requester,
           filteredHistory.length > 0 ? filteredHistory : undefined,
           botDisplayName,
           undefined
         );
-        const part = formatApiResultAsExternalData(kwConfig, apiResult.finalResponse, contentStr);
+        const part = formatApiResultAsExternalData(resolvedTool, apiResult.finalResponse, contentStr);
         externalDataParts.push(part);
       }
 
@@ -1292,14 +1292,14 @@ class MessageHandler {
 
     const ollamaText = ollamaResult.data?.text;
 
-    // Legacy: parse first line for keyword match (when not using native tools).
+    // Legacy: parse first line for tool match (when not using native tools).
     if (ollamaText) {
-      const parseResult = parseFirstLineKeyword(ollamaText);
+      const parseResult = parseFirstLineTool(ollamaText);
 
-      if (parseResult.matched && parseResult.keywordConfig) {
+      if (parseResult.matched && parseResult.toolConfig) {
         if (strictNoApiRoutingFromInference) {
           logger.logWarn('system',
-            `TWO-STAGE: Ignoring inferred keyword "${parseResult.keywordConfig.keyword}" because input was an unknown command-style message`);
+            `TWO-STAGE: Ignoring inferred tool "${parseResult.toolConfig.name}" because input was an unknown command-style message`);
           await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
           return;
         }
@@ -1308,7 +1308,7 @@ class MessageHandler {
           ? parseResult.inferredInput
           : content;
 
-        const abilityInputs = parseResult.keywordConfig.abilityInputs;
+        const abilityInputs = parseResult.toolConfig.abilityInputs;
         const isImplicitOrMixed =
           !!abilityInputs &&
           (abilityInputs.mode === 'implicit' || abilityInputs.mode === 'mixed');
@@ -1326,14 +1326,14 @@ class MessageHandler {
           // conversation context the model already saw.
           routedInput = parseResult.inferredInput!.trim();
           logger.log('success', 'system',
-            `TWO-STAGE: Using first-stage inline input for "${parseResult.keywordConfig.keyword}"`);
+            `TWO-STAGE: Using first-stage inline input for "${parseResult.toolConfig.name}"`);
         }
 
-        // When the model matched a keyword but no inline params were provided,
-        // and the keyword has required inputs, use Ollama to infer parameters
+        // When the model matched a tool but no inline params were provided,
+        // and the tool has required inputs, use Ollama to infer parameters
         // from the user's natural language message (enriched with reply context).
-        const hasRequiredInputs = parseResult.keywordConfig.abilityInputs?.required &&
-          parseResult.keywordConfig.abilityInputs.required.length > 0;
+        const hasRequiredInputs = parseResult.toolConfig.abilityInputs?.required &&
+          parseResult.toolConfig.abilityInputs.required.length > 0;
         const needsInference = hasRequiredInputs
           ? (!hasInlineInput)
           : (isImplicitOrMixed && !hasInlineInput);
@@ -1344,20 +1344,20 @@ class MessageHandler {
             .map(m => m.content)
             .join('\n')
             .trim() || undefined;
-          const inferred = await inferAbilityParameters(parseResult.keywordConfig, content, requester, undefined, replyContext);
+          const inferred = await inferAbilityParameters(parseResult.toolConfig, content, requester, undefined, replyContext);
           if (inferred) {
             routedInput = inferred;
             logger.log('success', 'system',
-              `TWO-STAGE: Inferred parameter "${inferred}" for "${parseResult.keywordConfig.keyword}"`);
+              `TWO-STAGE: Inferred parameter "${inferred}" for "${parseResult.toolConfig.name}"`);
           } else {
             logger.logWarn('system',
-              `TWO-STAGE: Could not infer parameter for "${parseResult.keywordConfig.keyword}" — using original content`);
+              `TWO-STAGE: Could not infer parameter for "${parseResult.toolConfig.name}" — using original content`);
           }
         }
 
         logger.log('success', 'system',
-          `TWO-STAGE: First-line keyword match "${parseResult.keywordConfig.keyword}" — executing ${parseResult.keywordConfig.api} API`);
-        activityEvents.emitRoutingDecision(parseResult.keywordConfig.api, parseResult.keywordConfig.keyword, 'two-stage-parse');
+          `TWO-STAGE: First-line tool match "${parseResult.toolConfig.name}" — executing ${parseResult.toolConfig.api} API`);
+        activityEvents.emitRoutingDecision(parseResult.toolConfig.api, parseResult.toolConfig.name, 'two-stage-parse');
 
         // DISABLED: commentary prelude causes double-reply for routed requests.
         // const commentaryPrelude = this.buildDirectiveCommentary(parseResult, routedInput);
@@ -1369,8 +1369,8 @@ class MessageHandler {
         // For media APIs (e.g., meme/comfyui), keep raw API output so
         // Discord receives image URLs/files directly.
         const inferredConfig = {
-          ...parseResult.keywordConfig,
-          finalOllamaPass: this.shouldForceFinalOllamaPassForApi(parseResult.keywordConfig.api),
+          ...parseResult.toolConfig,
+          finalOllamaPass: this.shouldForceFinalOllamaPassForApi(parseResult.toolConfig.api),
         };
 
         const apiResult = await executeRoutedRequest(
@@ -1400,20 +1400,20 @@ class MessageHandler {
     // first-line directive formatting for natural-language image requests.
     if (!strictNoApiRoutingFromInference && this.isLikelyImageRequest(content)) {
       const normalized = content.toLowerCase();
-      const imagineKeywordConfig = this.findEnabledKeywordByName('imagine');
-      const generateKeywordConfig = this.findEnabledKeywordByName('generate');
+      const imagineToolConfig = this.findEnabledToolByName('imagine');
+      const generateToolConfig = this.findEnabledToolByName('generate');
 
-      const imageKeywordConfig = normalized.includes('imagine')
-        ? (imagineKeywordConfig ?? generateKeywordConfig)
-        : (generateKeywordConfig ?? imagineKeywordConfig);
+      const imageToolConfig = normalized.includes('imagine')
+        ? (imagineToolConfig ?? generateToolConfig)
+        : (generateToolConfig ?? imagineToolConfig);
 
-      if (imageKeywordConfig && imageKeywordConfig.api === 'comfyui') {
+      if (imageToolConfig && imageToolConfig.api === 'comfyui') {
         const inferredPrompt = this.deriveImagePromptFromContext(content, filteredHistory);
         if (inferredPrompt) {
           logger.log('success', 'system',
-            `TWO-STAGE: Image fallback inference succeeded for "${imageKeywordConfig.keyword}" — executing comfyui API`);
+            `TWO-STAGE: Image fallback inference succeeded for "${imageToolConfig.name}" — executing comfyui API`);
 
-          const imageConfig = { ...imageKeywordConfig, finalOllamaPass: false };
+          const imageConfig = { ...imageToolConfig, finalOllamaPass: false };
           const imageResult = await executeRoutedRequest(
             imageConfig,
             inferredPrompt,
@@ -1434,7 +1434,7 @@ class MessageHandler {
         }
 
         logger.logWarn('system',
-          `TWO-STAGE: Image fallback could not infer a concrete prompt for "${imageKeywordConfig.keyword}"; returning direct chat response`);
+          `TWO-STAGE: Image fallback could not infer a concrete prompt for "${imageToolConfig.name}"; returning direct chat response`);
       }
     }
 
@@ -1443,14 +1443,14 @@ class MessageHandler {
     // to the meme API. This avoids brittle dependency on strict first-line
     // directive formatting for natural-language meme requests.
     if (!strictNoApiRoutingFromInference && this.isLikelyMemeRequest(content)) {
-      const memeKeywordConfig = this.findEnabledKeywordByName('meme');
-      if (memeKeywordConfig && memeKeywordConfig.api === 'meme') {
-        const inferred = await inferAbilityParameters(memeKeywordConfig, content, requester);
+      const memeToolConfig = this.findEnabledToolByName('meme');
+      if (memeToolConfig && memeToolConfig.api === 'meme') {
+        const inferred = await inferAbilityParameters(memeToolConfig, content, requester);
         if (inferred) {
           logger.log('success', 'system',
             'TWO-STAGE: Meme fallback inference succeeded — executing meme API');
 
-          const memeConfig = { ...memeKeywordConfig, finalOllamaPass: false };
+          const memeConfig = { ...memeToolConfig, finalOllamaPass: false };
           const memeResult = await executeRoutedRequest(
             memeConfig,
             inferred,
@@ -1475,7 +1475,7 @@ class MessageHandler {
       }
     }
 
-    // No ability keyword detected — return Ollama's response as direct chat
+    // No ability tool detected — return Ollama's response as direct chat
     logger.log('success', 'system', 'TWO-STAGE: No ability directive in Ollama response — returning as direct chat');
     await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
   }
@@ -1513,26 +1513,26 @@ class MessageHandler {
   }
 
   /**
-   * Build a user-facing help response listing all available commands
+   * Build a user-facing help response listing all available tools
    * and how to use them.
    */
   buildHelpResponse(): string {
-    const keywords = config
-      .getKeywords()
-      .filter(k => k.enabled !== false && !this.keywordIs(k.keyword, 'help'));
+    const availableTools = config
+      .getTools()
+      .filter(k => k.enabled !== false && !this.toolNameIs(k.name, 'help'));
 
-    const capabilityLines = keywords.length > 0
-      ? keywords.map(k => {
-          const bare = k.keyword.startsWith(COMMAND_PREFIX)
-            ? k.keyword.slice(COMMAND_PREFIX.length)
-            : k.keyword;
+    const capabilityLines = availableTools.length > 0
+      ? availableTools.map(k => {
+          const bare = k.name.startsWith(COMMAND_PREFIX)
+            ? k.name.slice(COMMAND_PREFIX.length)
+            : k.name;
           return `• \`${COMMAND_PREFIX}${bare}\` — ${k.description}`;
         }).join('\n')
-      : 'No commands are currently configured.';
+      : 'No tools are currently configured.';
 
     return [
-      `**Available Commands**`,
-      `All commands start with \`${COMMAND_PREFIX}\` (e.g. \`${COMMAND_PREFIX}weather Dallas\`).`,
+      `**Available Tools**`,
+      `To call a tool, prefix the tool name with \`${COMMAND_PREFIX}\` and provide it as the first word to the bot. Example: \`${COMMAND_PREFIX}web_search pickled eggs\``,
       'You can also describe what you need in natural language and the bot will infer the right action.',
       '',
       capabilityLines,
@@ -1540,14 +1540,14 @@ class MessageHandler {
   }
 
   /**
-   * Remove the first occurrence of the routing keyword (including prefix)
+   * Remove the first occurrence of the routing tool name (including prefix)
    * from the content. Preserves surrounding whitespace and trims the result.
    */
-  stripKeyword(content: string, keyword: string): string {
-    // Normalize keyword to include command prefix for stripping !-prefixed content
-    const kwLower = keyword.toLowerCase().trim();
-    const matchKeyword = kwLower.startsWith(COMMAND_PREFIX) ? keyword : `${COMMAND_PREFIX}${keyword}`;
-    const escaped = matchKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  stripToolName(content: string, toolName: string): string {
+    // Normalize tool name to include command prefix for stripping !-prefixed content
+    const tnLower = toolName.toLowerCase().trim();
+    const matchToolName = tnLower.startsWith(COMMAND_PREFIX) ? toolName : `${COMMAND_PREFIX}${toolName}`;
+    const escaped = matchToolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pattern = new RegExp(`^${escaped}\\b\\s*`, 'i');
     return content.replace(pattern, '').trim();
   }
