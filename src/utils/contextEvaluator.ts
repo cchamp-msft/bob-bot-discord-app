@@ -1,4 +1,4 @@
-import { config, KeywordConfig } from './config';
+import { config, ToolConfig } from './config';
 import { logger } from './logger';
 import { ollamaClient, OllamaResponse } from '../api/ollamaClient';
 import { requestQueue } from './requestQueue';
@@ -161,7 +161,7 @@ export function parseEvalResponse(
  *
  * @param conversationHistory - Collected history, oldest-to-newest.
  * @param userPrompt - The current user message content.
- * @param keywordConfig - The keyword config (may have context filter settings).
+ * @param toolConfig - The tool config (may have context filter settings).
  * @param requester - Username for logging / queue attribution.
  * @param signal - Optional abort signal for timeout coordination.
  * @returns Filtered conversation history (oldest-to-newest), system messages excluded.
@@ -169,7 +169,7 @@ export function parseEvalResponse(
 export async function evaluateContextWindow(
   conversationHistory: ChatMessage[],
   userPrompt: string,
-  keywordConfig: KeywordConfig,
+  toolConfig: ToolConfig,
   requester: string,
   signal?: AbortSignal
 ): Promise<ChatMessage[]> {
@@ -185,8 +185,8 @@ export async function evaluateContextWindow(
     return [];
   }
 
-  const minDepth = keywordConfig.contextFilterMinDepth ?? 1;
-  const maxDepth = keywordConfig.contextFilterMaxDepth ?? config.getReplyChainMaxDepth();
+  const minDepth = toolConfig.contextFilterMinDepth ?? 1;
+  const maxDepth = toolConfig.contextFilterMaxDepth ?? config.getReplyChainMaxDepth();
 
   // If history is already within minDepth, no filtering needed
   if (nonSystemMessages.length <= minDepth) {
@@ -232,7 +232,7 @@ export async function evaluateContextWindow(
 
   try {
     logger.log('success', 'system',
-      `CONTEXT-EVAL: Evaluating ${candidates.length} messages (min=${minDepth}, max=${maxDepth}) for keyword "${keywordConfig.keyword}"`);
+      `CONTEXT-EVAL: Evaluating ${candidates.length} messages (min=${minDepth}, max=${maxDepth}) for tool "${toolConfig.name}"`);
 
     // DEBUG: log full context-eval prompt
     logger.logDebug('system', `CONTEXT-EVAL [system prompt]: ${systemPrompt}`);
@@ -242,7 +242,7 @@ export async function evaluateContextWindow(
       'ollama',
       requester,
       '__ctx_eval__',
-      keywordConfig.timeout ?? config.getDefaultTimeout(),
+      toolConfig.timeout ?? config.getDefaultTimeout(),
       (queueSignal) => {
         const combinedSignal = signal
           ? AbortSignal.any([signal, queueSignal])
@@ -284,7 +284,7 @@ export async function evaluateContextWindow(
     activityEvents.emitContextDecision(
       indices.length,
       candidates.length,
-      keywordConfig.keyword,
+      toolConfig.name,
       indices
     );
 

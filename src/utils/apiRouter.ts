@@ -1,4 +1,4 @@
-import { config, KeywordConfig } from './config';
+import { config, ToolConfig } from './config';
 import { logger } from './logger';
 import { requestQueue } from './requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
@@ -30,7 +30,7 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function extractInferenceLine(raw: string, keywordConfig: KeywordConfig): string {
+function extractInferenceLine(raw: string, keywordConfig: ToolConfig): string {
   const lines = raw
     .split(/\r?\n/)
     .map(line => line.trim())
@@ -38,7 +38,7 @@ function extractInferenceLine(raw: string, keywordConfig: KeywordConfig): string
 
   if (lines.length === 0) return '';
 
-  const kwLower = keywordConfig.keyword.toLowerCase().trim();
+  const kwLower = keywordConfig.name.toLowerCase().trim();
   const kwBare = kwLower.startsWith('!') ? kwLower.slice(1) : kwLower;
   const kwEscaped = escapeRegExp(kwBare);
 
@@ -86,13 +86,13 @@ function shouldRetryAbility(result: { success: boolean }): boolean {
  * For the meme ability, the prompt includes the full list of available
  * meme templates so the model can select an appropriate template id.
  */
-function buildInferenceSystemPrompt(keywordConfig: KeywordConfig): string {
+function buildInferenceSystemPrompt(keywordConfig: ToolConfig): string {
   if (keywordConfig.api === 'accuweather') {
     return [
       'You extract a location from the user\u2019s message for a weather API.',
       '',
       'Rules \u2014 follow exactly:',
-      '1) Output ONLY the location string. No explanations, no prefixes, no keywords.',
+      '1) Output ONLY the location string. No explanations, no prefixes, no tools.',
       '2) If the user references a place indirectly (e.g. "capital of Thailand"), resolve it to the concrete name (e.g. "Bangkok").',
       '3) Prefer: "City, Region, Country" format. A zip code is acceptable if the user provided one.',
       '4) If no location can be inferred at all, output exactly: NONE',
@@ -136,7 +136,7 @@ function buildInferenceSystemPrompt(keywordConfig: KeywordConfig): string {
  * When replyContext is provided it is included so the model can resolve
  * references to earlier conversation (e.g. "imagine that" in a reply chain).
  */
-function buildInferenceUserPrompt(keywordConfig: KeywordConfig, content: string, replyContext?: string): string {
+function buildInferenceUserPrompt(keywordConfig: ToolConfig, content: string, replyContext?: string): string {
   const extractionLine = keywordConfig.api === 'meme'
     ? 'Extract meme parameters and output ONLY: templateId | top text | bottom text'
     : 'Extract the required parameter from the user message above. Output ONLY the value.';
@@ -164,16 +164,16 @@ function buildInferenceUserPrompt(keywordConfig: KeywordConfig, content: string,
 /**
  * Infer ability parameters from user content using Ollama.
  *
- * When the two-stage fallback classifier matches a keyword but no inline
+ * When the two-stage fallback classifier matches a tool but no inline
  * parameters were provided, this function asks Ollama to extract the
  * required inputs from the user\u2019s original message based on the
- * keyword\u2019s ability metadata.
+ * tool\u2019s ability metadata.
  *
  * @returns The inferred parameter string, or null if inference failed or
  *          the model could not extract a meaningful value.
  */
 export async function inferAbilityParameters(
-  keywordConfig: KeywordConfig,
+  keywordConfig: ToolConfig,
   content: string,
   requester: string,
   signal?: AbortSignal,
@@ -184,7 +184,7 @@ export async function inferAbilityParameters(
   const retryModel = keywordConfig.retry?.model || config.getAbilityRetryModel();
 
   logger.log('success', 'system',
-    `INFER-PARAMS: Inferring parameters for "${keywordConfig.keyword}" from user content`);
+    `INFER-PARAMS: Inferring parameters for "${keywordConfig.name}" from user content`);
 
   // Enhanced logging for meme inference
   if (keywordConfig.api === 'meme' && config.getMemeLoggingDebug()) {
@@ -198,7 +198,7 @@ export async function inferAbilityParameters(
     const result = await requestQueue.execute(
       'ollama',
       requester,
-      `${keywordConfig.keyword}:infer-params`,
+      `${keywordConfig.name}:infer-params`,
       keywordConfig.timeout || config.getDefaultTimeout(),
       (queueSignal) => {
         const combinedSignal = signal
@@ -221,7 +221,7 @@ export async function inferAbilityParameters(
 
     if (!result.success || !result.data?.text) {
       logger.logWarn('system',
-        `INFER-PARAMS: Inference failed for "${keywordConfig.keyword}": ${result.error ?? 'no response'}`);
+        `INFER-PARAMS: Inference failed for "${keywordConfig.name}": ${result.error ?? 'no response'}`);
       return null;
     }
 
@@ -230,12 +230,12 @@ export async function inferAbilityParameters(
 
     if (!inferred || inferred.toLowerCase() === 'none') {
       logger.log('success', 'system',
-        `INFER-PARAMS: Could not infer parameters for "${keywordConfig.keyword}" — model returned NONE`);
+        `INFER-PARAMS: Could not infer parameters for "${keywordConfig.name}" — model returned NONE`);
       return null;
     }
 
     logger.log('success', 'system',
-      `INFER-PARAMS: Inferred "${inferred}" for "${keywordConfig.keyword}"`);
+      `INFER-PARAMS: Inferred "${inferred}" for "${keywordConfig.name}"`);
 
     // Enhanced logging for meme inference — full output only when enabled
     if (keywordConfig.api === 'meme' && config.getMemeLoggingDebug()) {
@@ -248,14 +248,14 @@ export async function inferAbilityParameters(
     return inferred;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    logger.logError('system', `INFER-PARAMS: Inference error for "${keywordConfig.keyword}": ${msg}`);
+    logger.logError('system', `INFER-PARAMS: Inference error for "${keywordConfig.name}": ${msg}`);
     return null;
   }
 }
 
-function renderAbilityInputsForPrompt(keywordConfig: KeywordConfig): string {
+function renderAbilityInputsForPrompt(keywordConfig: ToolConfig): string {
   const parts: string[] = [];
-  parts.push(`Ability keyword: ${keywordConfig.keyword}`);
+  parts.push(`Ability tool: ${keywordConfig.name}`);
   parts.push(`Ability api: ${keywordConfig.api}`);
   parts.push(`Ability description: ${keywordConfig.abilityText ?? keywordConfig.description}`);
   if (keywordConfig.abilityWhen) parts.push(`When: ${keywordConfig.abilityWhen}`);
@@ -270,7 +270,7 @@ function renderAbilityInputsForPrompt(keywordConfig: KeywordConfig): string {
   return parts.join('\n');
 }
 
-function buildRetrySystemPrompt(keywordConfig: KeywordConfig): string {
+function buildRetrySystemPrompt(keywordConfig: ToolConfig): string {
   return [
     `You refine parameters for an external ability (${keywordConfig.api}) so it can succeed.`,
     'Rules — follow exactly:',
@@ -280,17 +280,17 @@ function buildRetrySystemPrompt(keywordConfig: KeywordConfig): string {
 }
 
 function buildRetryUserPrompt(args: {
-  keywordConfig: KeywordConfig;
+  keywordConfig: ToolConfig;
   originalContent: string;
   lastAttemptContent: string;
   error: string;
 }): string {
   const { keywordConfig, originalContent, lastAttemptContent, error } = args;
 
-  // Allow per-keyword prompt override, else use global prompt as a tail instruction.
+  // Allow per-tool prompt override, else use global prompt as a tail instruction.
   const globalTail = config.getAbilityRetryPrompt();
-  const keywordTail = keywordConfig.retry?.prompt;
-  const tail = (keywordTail && keywordTail.trim().length > 0) ? keywordTail : globalTail;
+  const toolTail = keywordConfig.retry?.prompt;
+  const tail = (toolTail && toolTail.trim().length > 0) ? toolTail : globalTail;
 
   return [
     '<ability_context>',
@@ -324,7 +324,7 @@ export interface RoutedResult {
  * Used when combining multiple tool results into one final pass.
  */
 export function formatApiResultAsExternalData(
-  keywordConfig: KeywordConfig,
+  keywordConfig: ToolConfig,
   primaryResult: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse,
   queryContent?: string
 ): string {
@@ -344,7 +344,7 @@ export function formatApiResultAsExternalData(
   if (keywordConfig.api === 'nfl') {
     const nflResponse = primaryResult as NFLResponse;
     const nflData = nflResponse.data?.text ?? 'No NFL data available.';
-    return formatNFLExternalData(keywordConfig.keyword, nflData);
+    return formatNFLExternalData(keywordConfig.name, nflData);
   }
   if (keywordConfig.api === 'serpapi') {
     const serpResponse = primaryResult as SerpApiResponse;
@@ -367,11 +367,11 @@ export function formatApiResultAsExternalData(
  *    conversational refinement (abilities context is NOT included to
  *    prevent endless API call loops)
  *
- * The two-stage keyword evaluation (Ollama → parseFirstLineKeyword → API) is
+ * The two-stage tool evaluation (Ollama → parseFirstLineKeyword → API) is
  * handled by the message handler, not this function. This function only
  * handles the API execution + optional retry loop + optional final formatting pass.
  *
- * @param keywordConfig - The keyword configuration with routing fields.
+ * @param keywordConfig - The tool configuration with routing fields.
  * @param content - The user's prompt text.
  * @param requester - Username for logging and queue attribution.
  * @param conversationHistory - Optional chat history for Ollama requests.
@@ -379,7 +379,7 @@ export function formatApiResultAsExternalData(
  * @returns The routed result containing final response and stage history.
  */
 export async function executeRoutedRequest(
-  keywordConfig: KeywordConfig,
+  keywordConfig: ToolConfig,
   content: string,
   requester: string,
   conversationHistory?: ChatMessage[],
@@ -390,7 +390,7 @@ export async function executeRoutedRequest(
   const needsFinalPass = keywordConfig.finalOllamaPass === true;
 
   // ── Primary API request ───────────────────────────────────────
-  logger.log('success', 'system', `API-ROUTING: Executing ${keywordConfig.api} request for "${keywordConfig.keyword}"`);
+  logger.log('success', 'system', `API-ROUTING: Executing ${keywordConfig.api} request for "${keywordConfig.name}"`);
   const apiType = keywordConfig.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
   const originalContent = content;
   let attemptContent = content;
@@ -404,7 +404,7 @@ export async function executeRoutedRequest(
     return await requestQueue.execute(
       keywordConfig.api,
       requester,
-      `${keywordConfig.keyword}${labelSuffix}`,
+      `${keywordConfig.name}${labelSuffix}`,
       keywordConfig.timeout,
       (sig) =>
         apiManager.executeRequest(
@@ -417,7 +417,7 @@ export async function executeRoutedRequest(
           sig,
           undefined,
           undefined,
-          keywordConfig.keyword
+          keywordConfig.name
         ),
       signal
     ) as ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse;
@@ -445,7 +445,7 @@ export async function executeRoutedRequest(
       const refineResult = await requestQueue.execute(
         'ollama',
         requester,
-        `${keywordConfig.keyword}:retry-refine:${attempt}`,
+        `${keywordConfig.name}:retry-refine:${attempt}`,
         keywordConfig.timeout,
         (sig) =>
           apiManager.executeRequest(
@@ -517,7 +517,7 @@ export async function executeRoutedRequest(
     }
 
     logger.log('success', 'system', 'API-ROUTING: Final Ollama refinement pass');
-    activityEvents.emitFinalPassThought(keywordConfig.keyword);
+    activityEvents.emitFinalPassThought(keywordConfig.name);
 
     // Apply context filter for the final pass
     let filteredHistory = conversationHistory;
@@ -561,7 +561,7 @@ export async function executeRoutedRequest(
     } else if (keywordConfig.api === 'nfl') {
       const nflResponse = primaryResult as NFLResponse;
       const nflData = nflResponse.data?.text ?? 'No NFL data available.';
-      externalDataBlock = formatNFLExternalData(keywordConfig.keyword, nflData);
+      externalDataBlock = formatNFLExternalData(keywordConfig.name, nflData);
     } else if (keywordConfig.api === 'serpapi') {
       const serpResponse = primaryResult as SerpApiResponse;
       const rawData = serpResponse.data?.raw;
@@ -575,7 +575,7 @@ export async function executeRoutedRequest(
     }
 
     // Build the reprompt using the standard XML template with external data.
-    // System prompt excludes keyword-routing rules to prevent infinite loops.
+    // System prompt excludes tool-routing rules to prevent infinite loops.
     const reprompt = assembleReprompt({
       userMessage: content,
       conversationHistory: filteredHistory,
@@ -593,7 +593,7 @@ export async function executeRoutedRequest(
     const finalResult = await requestQueue.execute(
       'ollama',
       requester,
-      `${keywordConfig.keyword}:final`,
+      `${keywordConfig.name}:final`,
       keywordConfig.timeout,
       (sig) =>
         apiManager.executeRequest(

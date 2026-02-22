@@ -18,7 +18,7 @@ export abstract class BaseCommand {
   abstract execute(interaction: ChatInputCommandInteraction): Promise<void>;
 
   protected getTimeout(keyword: string): number {
-    return config.getKeywordConfig(keyword)?.timeout ?? config.getDefaultTimeout();
+    return config.getToolConfig(keyword)?.timeout ?? config.getDefaultTimeout();
   }
 }
 
