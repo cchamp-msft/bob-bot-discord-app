@@ -315,6 +315,8 @@ export interface RoutedResult {
   finalApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
   /** Intermediate stage results (for debugging/logging). */
   stages: StageResult[];
+  /** When finalOllamaPass refines a ComfyUI result, the original media response for attachment. */
+  mediaSource?: ComfyUIResponse;
 }
 
 /**
@@ -617,7 +619,8 @@ export async function executeRoutedRequest(
     }
 
     logger.log('success', 'system', 'API-ROUTING: Final Ollama pass complete');
-    return { finalResponse: finalResult, finalApi: 'ollama', stages };
+    const mediaSource = keywordConfig.api === 'comfyui' ? primaryResult as ComfyUIResponse : undefined;
+    return { finalResponse: finalResult, finalApi: 'ollama', stages, mediaSource };
   }
 
   return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };

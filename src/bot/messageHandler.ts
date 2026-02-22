@@ -539,7 +539,8 @@ class MessageHandler {
           routedResult.finalApi,
           message,
           requester,
-          isDM
+          isDM,
+          routedResult.mediaSource
         );
       } else {
         // ── Ollama path: chat with abilities context, then second evaluation ──
@@ -1385,7 +1386,8 @@ class MessageHandler {
           apiResult.finalApi,
           sourceMessage,
           requester,
-          isDM
+          isDM,
+          apiResult.mediaSource
         );
         return;
       }
@@ -1425,7 +1427,8 @@ class MessageHandler {
             imageResult.finalApi,
             sourceMessage,
             requester,
-            isDM
+            isDM,
+            imageResult.mediaSource
           );
           return;
         }
@@ -1461,7 +1464,8 @@ class MessageHandler {
             memeResult.finalApi,
             sourceMessage,
             requester,
-            isDM
+            isDM,
+            memeResult.mediaSource
           );
           return;
         }
@@ -1485,7 +1489,8 @@ class MessageHandler {
     api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme',
     sourceMessage: Message,
     requester: string,
-    isDM: boolean
+    isDM: boolean,
+    mediaSource?: ComfyUIResponse
   ): Promise<void> {
     if (!response.success) {
       const errorDetail = response.error ?? 'Unknown API error';
@@ -1503,7 +1508,7 @@ class MessageHandler {
     } else if (api === 'meme') {
       await this.handleMemeResponse(response as MemeResponse, sourceMessage, requester, isDM);
     } else {
-      await this.handleOllamaResponse(response as OllamaResponse, sourceMessage, requester, isDM);
+      await this.handleOllamaResponse(response as OllamaResponse, sourceMessage, requester, isDM, mediaSource);
     }
   }
 
@@ -1583,37 +1588,21 @@ class MessageHandler {
     return replyText;
   }
 
-  private async handleComfyUIResponse(
-    apiResult: ComfyUIResponse,
-    sourceMessage: Message,
+  /**
+   * Download and save ComfyUI media files, returning attachments and metadata.
+   * Shared between handleComfyUIResponse and handleOllamaResponse (when mediaSource is present).
+   */
+  private async collectComfyUIMedia(
+    comfyResult: ComfyUIResponse,
     requester: string,
-    _isDM: boolean
-  ): Promise<void> {
-    const images = apiResult.data?.images || [];
-    const videos = apiResult.data?.videos || [];
-    const totalOutputs = images.length + videos.length;
-
-    if (totalOutputs === 0) {
-      await sourceMessage.reply('No images or videos were generated.');
-      return;
-    }
-
-    const includeEmbed = config.getImageResponseIncludeEmbed();
-
-    let embed: EmbedBuilder | undefined;
-    if (includeEmbed) {
-      embed = new EmbedBuilder()
-        .setColor('#00AA00')
-        .setTitle('ComfyUI Generation Complete')
-        .setTimestamp();
-    }
-
-    // Process each output — collect attachable files
+    embed?: EmbedBuilder
+  ): Promise<{ attachments: { attachment: Buffer; name: string }[]; savedFilePaths: string[]; savedCount: number; imageCount: number; videoCount: number }> {
+    const images = comfyResult.data?.images || [];
+    const videos = comfyResult.data?.videos || [];
     let savedCount = 0;
     const attachments: { attachment: Buffer; name: string }[] = [];
     const savedFilePaths: string[] = [];
 
-    // Derive file extension from a ComfyUI /view URL's filename query param, with a fallback.
     const extensionFromUrl = (url: string, fallback: string): string => {
       try {
         const filename = new URL(url).searchParams.get('filename') || '';
@@ -1623,7 +1612,6 @@ class MessageHandler {
       return fallback;
     };
 
-    // Helper to process a batch of output URLs with matching description/extension
     const processOutputs = async (urls: string[], description: string, defaultExtension: string, label: string) => {
       for (let i = 0; i < urls.length; i++) {
         const extension = extensionFromUrl(urls[i], defaultExtension);
@@ -1654,6 +1642,36 @@ class MessageHandler {
 
     await processOutputs(images, 'generated_image', 'png', 'Image');
     await processOutputs(videos, 'generated_video', 'mp4', 'Video');
+
+    return { attachments, savedFilePaths, savedCount, imageCount: images.length, videoCount: videos.length };
+  }
+
+  private async handleComfyUIResponse(
+    apiResult: ComfyUIResponse,
+    sourceMessage: Message,
+    requester: string,
+    _isDM: boolean
+  ): Promise<void> {
+    const images = apiResult.data?.images || [];
+    const videos = apiResult.data?.videos || [];
+    const totalOutputs = images.length + videos.length;
+
+    if (totalOutputs === 0) {
+      await sourceMessage.reply('No images or videos were generated.');
+      return;
+    }
+
+    const includeEmbed = config.getImageResponseIncludeEmbed();
+
+    let embed: EmbedBuilder | undefined;
+    if (includeEmbed) {
+      embed = new EmbedBuilder()
+        .setColor('#00AA00')
+        .setTitle('ComfyUI Generation Complete')
+        .setTimestamp();
+    }
+
+    const { attachments, savedFilePaths, savedCount } = await this.collectComfyUIMedia(apiResult, requester, embed);
 
     if (savedCount === 0) {
       await sourceMessage.reply('Files were generated but could not be saved or displayed.');
@@ -1694,13 +1712,69 @@ class MessageHandler {
     logger.logReply(requester, `ComfyUI response sent: ${parts.join(', ')}`);
   }
 
+  /** Regex to strip generated-image URL lines injected by the final Ollama pass. */
+  private static readonly GENERATED_MEDIA_LINE_RE = /\[Generated \d+ (?:image|video)\(s\):[^\]]*\]\n?/g;
+
   private async handleOllamaResponse(
     apiResult: OllamaResponse,
     sourceMessage: Message,
     requester: string,
-    isDM: boolean
+    isDM: boolean,
+    mediaSource?: ComfyUIResponse
   ): Promise<void> {
-    const text = apiResult.data?.text || 'No response generated.';
+    let text = apiResult.data?.text || 'No response generated.';
+
+    // When a ComfyUI media source is carried through, download/save files and attach them
+    if (mediaSource) {
+      const totalOutputs = (mediaSource.data?.images?.length || 0) + (mediaSource.data?.videos?.length || 0);
+      if (totalOutputs > 0) {
+        // Strip URL lines that Ollama echoed from the external data
+        text = text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim();
+
+        const { attachments, savedFilePaths, savedCount, imageCount, videoCount } =
+          await this.collectComfyUIMedia(mediaSource, requester);
+
+        if (savedCount > 0) {
+          const maxPerMessage = config.getMaxAttachments();
+          const firstBatch = attachments.slice(0, maxPerMessage);
+
+          // Split text into Discord-safe chunks
+          const chunks = chunkText(text || 'Here are your results:');
+
+          // Send first chunk with first batch of file attachments
+          await sourceMessage.reply({
+            content: chunks[0],
+            embeds: [],
+            ...(firstBatch.length > 0 ? { files: firstBatch } : {}),
+          });
+
+          // Send remaining text chunks
+          for (let i = 1; i < chunks.length; i++) {
+            if ('send' in sourceMessage.channel) {
+              await sourceMessage.channel.send(chunks[i]);
+            }
+          }
+
+          // Send remaining attachments as follow-up messages in batches
+          for (let i = maxPerMessage; i < attachments.length; i += maxPerMessage) {
+            const batch = attachments.slice(i, i + maxPerMessage);
+            if ('send' in sourceMessage.channel) {
+              await sourceMessage.channel.send({ content: '📎 Additional files', files: batch });
+            } else {
+              logger.logError(requester, `Cannot send overflow attachments: channel does not support send`);
+            }
+          }
+
+          activityEvents.emitBotImageReply(totalOutputs, savedFilePaths);
+
+          const parts: string[] = [];
+          if (imageCount > 0) parts.push(`${imageCount} image(s)`);
+          if (videoCount > 0) parts.push(`${videoCount} video(s)`);
+          logger.logReply(requester, `Ollama+ComfyUI response sent: ${text.length} chars text, ${parts.join(', ')}`);
+          return;
+        }
+      }
+    }
 
     // Split into Discord-safe chunks (newline-aware)
     const chunks = chunkText(text);
