@@ -964,9 +964,11 @@ describe('Config', () => {
   </tool>`)
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       config.reload();
       expect(config.getKeywordConfig('testkw')).toBeUndefined();
       warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
 
     it('should reject parameters with no mode element', () => {
@@ -987,9 +989,11 @@ describe('Config', () => {
   </tool>`)
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       config.reload();
       expect(config.getKeywordConfig('testkw')).toBeUndefined();
       warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
 
     it('should reject malformed XML gracefully', () => {
@@ -998,9 +1002,11 @@ describe('Config', () => {
         '<tools><tool><name>testkw</name><api>nfl</api>'
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       config.reload();
       expect(config.getKeywordConfig('testkw')).toBeUndefined();
       warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
 
     it('should reject tool with invalid api', () => {
@@ -1014,9 +1020,11 @@ describe('Config', () => {
   </tool>`)
       );
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       config.reload();
       expect(config.getKeywordConfig('testkw')).toBeUndefined();
       warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
   });
 
