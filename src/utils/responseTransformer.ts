@@ -29,7 +29,7 @@ export function extractFromComfyUI(response: ComfyUIResponse): StageResult {
   const parts: string[] = [];
   if (images.length > 0) parts.push(`${images.length} image(s)`);
   if (videos.length > 0) parts.push(`${videos.length} video(s)`);
-  const summary = parts.length > 0 ? `[Generated ${parts.join(' and ')}: ${allOutputs.join(', ')}]` : undefined;
+  const summary = parts.length > 0 ? `[Generated ${parts.join(' and ')}]` : undefined;
 
   return {
     sourceApi: 'comfyui',

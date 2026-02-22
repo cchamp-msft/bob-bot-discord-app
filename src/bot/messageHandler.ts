@@ -1219,6 +1219,7 @@ class MessageHandler {
       const toolCalls = ollamaResult.data.tool_calls;
       const externalDataParts: string[] = [];
       const configuredTools = config.getTools();
+      let comfyUIMediaSource: ComfyUIResponse | undefined;
 
       for (const tc of toolCalls) {
         const resolvedTool = resolveToolNameToTool(tc.function.name, configuredTools);
@@ -1240,6 +1241,10 @@ class MessageHandler {
           botDisplayName,
           undefined
         );
+        // Capture the first ComfyUI response as mediaSource for attachment
+        if (!comfyUIMediaSource && resolvedTool.api === 'comfyui' && apiResult.finalResponse.success) {
+          comfyUIMediaSource = apiResult.finalResponse as ComfyUIResponse;
+        }
         const part = formatApiResultAsExternalData(resolvedTool, apiResult.finalResponse, contentStr);
         externalDataParts.push(part);
       }
@@ -1280,7 +1285,7 @@ class MessageHandler {
           )
       ) as OllamaResponse;
 
-      await this.dispatchResponse(finalResult, 'ollama', sourceMessage, requester, isDM);
+      await this.dispatchResponse(finalResult, 'ollama', sourceMessage, requester, isDM, comfyUIMediaSource);
       return;
     }
 
@@ -1731,8 +1736,17 @@ class MessageHandler {
         // Strip URL lines that Ollama echoed from the external data
         text = text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim();
 
+        const includeEmbed = config.getImageResponseIncludeEmbed();
+        let embed: EmbedBuilder | undefined;
+        if (includeEmbed) {
+          embed = new EmbedBuilder()
+            .setColor('#00AA00')
+            .setTitle('ComfyUI Generation Complete')
+            .setTimestamp();
+        }
+
         const { attachments, savedFilePaths, savedCount, imageCount, videoCount } =
-          await this.collectComfyUIMedia(mediaSource, requester);
+          await this.collectComfyUIMedia(mediaSource, requester, embed);
 
         if (savedCount > 0) {
           const maxPerMessage = config.getMaxAttachments();
@@ -1744,7 +1758,7 @@ class MessageHandler {
           // Send first chunk with first batch of file attachments
           await sourceMessage.reply({
             content: chunks[0],
-            embeds: [],
+            embeds: embed ? [embed] : [],
             ...(firstBatch.length > 0 ? { files: firstBatch } : {}),
           });
 

@@ -33,6 +33,22 @@ describe('ResponseTransformer', () => {
       expect(result.rawResponse).toBe(response);
     });
 
+    it('should not include raw ComfyUI URLs in the text summary', () => {
+      const response: ComfyUIResponse = {
+        success: true,
+        data: {
+          images: ['http://localhost:8190/view?filename=output_00001_.png'],
+        },
+      };
+
+      const result = extractFromComfyUI(response);
+
+      expect(result.text).toBe('[Generated 1 image(s)]');
+      expect(result.text).not.toContain('http://');
+      expect(result.text).not.toContain('localhost');
+      expect(result.images).toEqual(['http://localhost:8190/view?filename=output_00001_.png']);
+    });
+
     it('should use text field if present in ComfyUI response', () => {
       const response: ComfyUIResponse = {
         success: true,
@@ -189,7 +205,7 @@ describe('ResponseTransformer', () => {
       const stageResult: StageResult = {
         sourceApi: 'comfyui',
         images: ['http://example.com/img.png'],
-        text: '[Generated 1 image(s): http://example.com/img.png]',
+        text: '[Generated 1 image(s)]',
         rawResponse: { success: true, data: { images: ['http://example.com/img.png'] } },
       };
 
@@ -231,7 +247,7 @@ describe('ResponseTransformer', () => {
       const stageResult: StageResult = {
         sourceApi: 'comfyui',
         images: ['http://example.com/img.png'],
-        text: '[Generated 1 image(s): http://example.com/img.png]',
+        text: '[Generated 1 image(s)]',
         rawResponse: { success: true, data: { images: ['http://example.com/img.png'] } },
       };
 
