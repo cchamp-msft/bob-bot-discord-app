@@ -1,0 +1,27 @@
+---
+description: commitpls
+alwaysApply: false
+---
+## Commit Messages
+- Use: "type(scope): desc"
+- Use a maximum of 50 including type and scope for title.
+- Use a maximum of 72 characters for subsequent lines, then wrap the line.
+- Include bullet points describing the changes in the commit to support the short description.
+- Use the following types:
+  - feat: A new feature
+  - fix: A bug fix
+  - docs: Documentation changes
+  - style: Code style changes (formatting, missing semicolons, etc.)
+  - refactor: Code changes that neither fix a bug nor add a feature
+  - perf: Performance improvements
+  - test: Adding or updating tests
+  - chore: Changes to the build process or auxiliary tools and libraries such as documentation generation
+  - ci: Changes to our CI configuration files and scripts
+  - build: Changes that affect the build system or external dependencies
+- Example:
+```
+feat(config): keep this short
+
+- be explicit here
+- and here
+```

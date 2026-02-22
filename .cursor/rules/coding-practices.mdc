@@ -1,9 +1,7 @@
 ---
-description: Apply shared Copilot guidance in Cursor
+description: Coding best practices
 alwaysApply: true
 ---
-
-# Copilot Guidance (Cursor)
 
 ## Best Practices
 - New features require unit tests.
@@ -12,32 +10,3 @@ alwaysApply: true
 - During plan phase of a new feature, consider overall commit strategy dividing work into logical steps that can be committed separately (e.g. "Add config option and basic handling", "Implement new API endpoint", "Add tests for new feature", "Update documentation").
 - When implementing error handling, prefer specific error classes and messages that can be tested against, rather than generic errors. Avoid generic catch-all error handling that may obscure the root cause of issues.
 - For security-sensitive changes, consider adding tests that simulate attack scenarios (e.g. invalid tokens for auth endpoints, malformed input for parsers) to verify that protections are effective.
-
-## Commit Messages
-- Use: "type(scope): desc"
-- Use a maximum of 50 characters for the first line.
-- Use a maximum of 72 characters for subsequent lines.
-- Include bullet points describing the changes in the commit to support the short description.
-- Never add a trailer about co-authoring by Cursor.
-- Use the following types (but not limited to):
-  - feat: A new feature
-  - fix: A bug fix
-  - docs: Documentation changes
-  - style: Code style changes (formatting, missing semicolons, etc.)
-  - refactor: Code changes that neither fix a bug nor add a feature
-  - perf: Performance improvements
-  - test: Adding or updating tests
-  - chore: Changes to the build process or auxiliary tools and libraries such as documentation generation
-  - ci: Changes to our CI configuration files and scripts
-  - build: Changes that affect the build system or external dependencies
-- When keyword "commitpls" is used in the prompt, expand it to mean "Please provide a commit message following the Conventional Commits format, including a short description and bullet points summarizing the changes made in this commit. If multiple logical changes were made, consider breaking them into separate commits for clarity."
-- Prefer `git add <specific files>`, but if adding all to confirm if the working tree is clean use `git add -A -v`
-- Example one-liner: git add file1 file2 && git commit -m "feat(config): keep this short" -m "- be explicit here" -m "- and here"
-- Example here-doc stylized:
-```
-feat(config): keep this short
-
-- be explicit here
-- and here
-```
-
