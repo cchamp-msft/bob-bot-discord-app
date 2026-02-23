@@ -13,3 +13,4 @@ outputs/
 *.swo
 config/tools.xml
 eslint-results.sarif
+.claude/settings.local.json
