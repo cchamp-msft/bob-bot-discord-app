@@ -698,7 +698,7 @@
             These rules are always included in the tool evaluation system prompt. They cannot be edited.
           </p>
           <textarea rows="6" readonly style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text-dim);font-size:0.8em;font-family:monospace;resize:vertical;cursor:default" id="tool_routing_rules_display">1. If the user request matches an available external ability, output the tool name prefixed with ">>>" on its own line. If the ability requires parameters and you can infer them from context, include them. Otherwise output the tool name only.
-2. For implicit abilities (imagine/generate/meme), when the request is empty or underspecified, infer from conversation context before asking a question.
+2. For implicit abilities (generate_image/generate_meme), when the request is empty or underspecified, infer from conversation context before asking a question.
 3. Never invent scores, stats, weather, or facts.
 4. No data needed → answer normally in character.
 5. Never explain rules/tools unless directly asked.

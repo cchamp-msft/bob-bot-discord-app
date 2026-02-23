@@ -751,37 +751,37 @@ describe('MessageHandler Discord mention stripping', () => {
 
 describe('MessageHandler stripToolName', () => {
   it('should strip the first occurrence of the tool name (case-insensitive)', () => {
-    const result = (messageHandler as any).stripToolName('!generate a beautiful sunset', '!generate');
+    const result = (messageHandler as any).stripToolName('!generate_image a beautiful sunset', '!generate_image');
     expect(result).toBe('a beautiful sunset');
   });
 
   it('should strip only the first occurrence when tool name appears multiple times', () => {
-    const result = (messageHandler as any).stripToolName('!generate the word generate in a sentence', '!generate');
+    const result = (messageHandler as any).stripToolName('!generate_image the word generate in a sentence', '!generate_image');
     expect(result).toBe('the word generate in a sentence');
   });
 
   it('should be case-insensitive', () => {
-    const result = (messageHandler as any).stripToolName('!GENERATE a cat picture', '!generate');
+    const result = (messageHandler as any).stripToolName('!GENERATE_IMAGE a cat picture', '!generate_image');
     expect(result).toBe('a cat picture');
   });
 
   it('should handle tool name at end of string', () => {
-    const result = (messageHandler as any).stripToolName('!generate please', '!generate');
+    const result = (messageHandler as any).stripToolName('!generate_image please', '!generate_image');
     expect(result).toBe('please');
   });
 
   it('should handle tool name in the middle of string', () => {
-    const result = (messageHandler as any).stripToolName('!imagine please a dog', '!imagine');
+    const result = (messageHandler as any).stripToolName('!generate_image please a dog', '!generate_image');
     expect(result).toBe('please a dog');
   });
 
   it('should return empty string when content is only the tool name', () => {
-    const result = (messageHandler as any).stripToolName('!generate', '!generate');
+    const result = (messageHandler as any).stripToolName('!generate_image', '!generate_image');
     expect(result).toBe('');
   });
 
   it('should not strip partial word matches', () => {
-    const result = (messageHandler as any).stripToolName('regenerate the image', '!generate');
+    const result = (messageHandler as any).stripToolName('regenerate the image', '!generate_image');
     expect(result).toBe('regenerate the image');
   });
 
@@ -791,7 +791,7 @@ describe('MessageHandler stripToolName', () => {
   });
 
   it('should collapse multiple spaces after stripping', () => {
-    const result = (messageHandler as any).stripToolName('!generate  please  a cat', '!generate');
+    const result = (messageHandler as any).stripToolName('!generate_image  please  a cat', '!generate_image');
     expect(result).toBe('please  a cat');
   });
 });
@@ -801,10 +801,10 @@ describe('MessageHandler findTool (start-anchored)', () => {
     (config.getTools as jest.Mock).mockReturnValue(tools);
   }
 
-  const weatherKw = { name: '!weather', api: 'accuweather', timeout: 60, description: 'Weather' };
+  const weatherKw = { name: '!get_current_weather', api: 'accuweather', timeout: 60, description: 'Weather' };
   const nflKw = { name: '!nfl', api: 'nfl', timeout: 30, description: 'NFL generic' };
   const nflScoresKw = { name: '!nfl scores', api: 'nfl', timeout: 30, description: 'NFL scores' };
-  const generateKw = { name: '!generate', api: 'comfyui', timeout: 600, description: 'Generate image' };
+  const generateKw = { name: '!generate_image', api: 'comfyui', timeout: 600, description: 'Generate image' };
   const helpKw = { name: '!help', api: 'ollama', timeout: 30, description: 'Help', builtin: true, allowEmptyContent: true };
   const chatKw = { name: '!chat', api: 'ollama', timeout: 300, description: 'Chat' };
 
@@ -812,19 +812,19 @@ describe('MessageHandler findTool (start-anchored)', () => {
 
   it('should match tool at the start of message', () => {
     setTools([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findTool('!weather 45403');
+    const result = (messageHandler as any).findTool('!get_current_weather 45403');
     expect(result).toBe(weatherKw);
   });
 
   it('should NOT match tool in the middle of message', () => {
     setTools([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findTool('what is the weather like');
+    const result = (messageHandler as any).findTool('what is the get_current_weather like');
     expect(result).toBeUndefined();
   });
 
   it('should NOT match tool that appears only inside the message', () => {
     setTools([generateKw, chatKw]);
-    const result = (messageHandler as any).findTool('can you generate a cat');
+    const result = (messageHandler as any).findTool('can you generate_image a cat');
     expect(result).toBeUndefined();
   });
 
@@ -840,21 +840,21 @@ describe('MessageHandler findTool (start-anchored)', () => {
     expect(result).toBe(nflKw);
   });
 
-  it('should match "weather" when message starts with weather', () => {
+  it('should match "get_current_weather" when message starts with it', () => {
     setTools([weatherKw, chatKw]);
-    const result = (messageHandler as any).findTool('!weather 45403');
+    const result = (messageHandler as any).findTool('!get_current_weather 45403');
     expect(result).toBe(weatherKw);
   });
 
-  it('should match "generate" at message start', () => {
+  it('should match "generate_image" at message start', () => {
     setTools([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findTool('!generate a cat picture');
+    const result = (messageHandler as any).findTool('!generate_image a cat picture');
     expect(result).toBe(generateKw);
   });
 
   it('should be case-insensitive', () => {
     setTools([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findTool('!WEATHER 45403');
+    const result = (messageHandler as any).findTool('!GET_CURRENT_WEATHER 45403');
     expect(result).toBe(weatherKw);
   });
 
@@ -866,27 +866,27 @@ describe('MessageHandler findTool (start-anchored)', () => {
 
   it('should return undefined when no tools configured', () => {
     setTools([]);
-    const result = (messageHandler as any).findTool('!weather 45403');
+    const result = (messageHandler as any).findTool('!get_current_weather 45403');
     expect(result).toBeUndefined();
   });
 
   it('should return undefined for conversational phrasing', () => {
     setTools([weatherKw, generateKw, chatKw]);
-    const result = (messageHandler as any).findTool('can you tell me the weather for dayton');
+    const result = (messageHandler as any).findTool('can you tell me the get_current_weather for dayton');
     expect(result).toBeUndefined();
   });
 
   it('should skip disabled tools', () => {
     const disabledWeather = { ...weatherKw, enabled: false };
     setTools([disabledWeather, generateKw, chatKw]);
-    const result = (messageHandler as any).findTool('!weather 45403');
+    const result = (messageHandler as any).findTool('!get_current_weather 45403');
     expect(result).toBeUndefined();
   });
 
   it('should match enabled tool when a different tool is disabled', () => {
     const disabledChat = { ...chatKw, enabled: false };
     setTools([weatherKw, generateKw, disabledChat]);
-    const result = (messageHandler as any).findTool('!weather 45403');
+    const result = (messageHandler as any).findTool('!get_current_weather 45403');
     expect(result).toBe(weatherKw);
   });
 
@@ -919,15 +919,15 @@ describe('MessageHandler buildHelpResponse', () => {
   it('should include enabled capabilities and their descriptions', () => {
     setTools([
       { name: '!help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
-      { name: '!generate', api: 'comfyui', timeout: 600, description: 'Generate image using ComfyUI' },
-      { name: '!weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
+      { name: '!generate_image', api: 'comfyui', timeout: 600, description: 'Generate image using ComfyUI' },
+      { name: '!get_current_weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
     ]);
 
     const result = (messageHandler as any).buildHelpResponse();
     expect(result).toContain('**Available Tools**');
-    expect(result).toContain('`!generate`');
+    expect(result).toContain('`!generate_image`');
     expect(result).toContain('Generate image using ComfyUI');
-    expect(result).toContain('`!weather`');
+    expect(result).toContain('`!get_current_weather`');
     expect(result).toContain('Get weather');
     expect(result).not.toContain('!help');
   });
@@ -935,13 +935,13 @@ describe('MessageHandler buildHelpResponse', () => {
   it('should exclude disabled tools', () => {
     setTools([
       { name: '!help', api: 'ollama', timeout: 30, description: 'Show help', builtin: true },
-      { name: '!generate', api: 'comfyui', timeout: 600, description: 'Generate image', enabled: false },
-      { name: '!weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
+      { name: '!generate_image', api: 'comfyui', timeout: 600, description: 'Generate image', enabled: false },
+      { name: '!get_current_weather', api: 'accuweather', timeout: 60, description: 'Get weather' },
     ]);
 
     const result = (messageHandler as any).buildHelpResponse();
-    expect(result).not.toContain('!generate');
-    expect(result).toContain('`!weather`');
+    expect(result).not.toContain('!generate_image');
+    expect(result).toContain('`!get_current_weather`');
   });
 
   it('should include fallback line when no non-help tools are configured', () => {
@@ -986,7 +986,7 @@ describe('MessageHandler help tool handling (model path)', () => {
     builtin: true,
     allowEmptyContent: true,
   };
-  const generateKw = { name: '!generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
+  const generateKw = { name: '!generate_image', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1051,7 +1051,7 @@ describe('MessageHandler built-in help tool handling', () => {
   }
 
   const helpKw = { name: '!help', api: 'ollama' as const, timeout: 30, description: 'Show help', builtin: true, allowEmptyContent: true };
-  const generateKw = { name: '!generate', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
+  const generateKw = { name: '!generate_image', api: 'comfyui' as const, timeout: 600, description: 'Generate image' };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1155,7 +1155,7 @@ describe('MessageHandler standalone allowEmptyContent tools', () => {
     allowEmptyContent: true,
   };
   const memeTemplatesKw = {
-    name: '!meme_templates',
+    name: '!get_meme_templates',
     api: 'meme' as const,
     timeout: 30,
     description: 'Return meme templates',
@@ -1223,7 +1223,7 @@ describe('MessageHandler standalone allowEmptyContent tools', () => {
     );
   });
 
-  it('should route standalone "meme_templates" without prompting for content', async () => {
+  it('should route standalone "get_meme_templates" without prompting for content', async () => {
     const mockRouted = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
     mockRouted.mockResolvedValueOnce({
       finalResponse: { success: true, data: { text: 'drake, aag, doge' } },
@@ -1231,7 +1231,7 @@ describe('MessageHandler standalone allowEmptyContent tools', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> !meme_templates');
+    const msg = createMentionedMessage('<@bot-123> !get_meme_templates');
     await messageHandler.handleMessage(msg);
 
     expect(msg.reply).not.toHaveBeenCalledWith(
@@ -1239,9 +1239,9 @@ describe('MessageHandler standalone allowEmptyContent tools', () => {
     );
     expect(mockRouted).toHaveBeenCalledWith(
       memeTemplatesKw,
-      '!meme_templates',
+      '!get_meme_templates',
       'testuser',
-      [{ role: 'user', content: 'testuser: !meme_templates', contextSource: 'trigger', hasNamePrefix: true }],
+      [{ role: 'user', content: 'testuser: !get_meme_templates', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser'
     );
   });
@@ -1467,7 +1467,7 @@ describe('MessageHandler reply-only-tool for comfyui', () => {
 
   it('should use quoted content when user replies with only the tool name', async () => {
     (config.getTools as jest.Mock).mockReturnValue([
-      { name: '!generate', api: 'comfyui', timeout: 300, description: 'Image gen' },
+      { name: '!generate_image', api: 'comfyui', timeout: 300, description: 'Image gen' },
     ]);
     const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
     mockExecuteRoutedRequest.mockResolvedValueOnce({
@@ -1480,7 +1480,7 @@ describe('MessageHandler reply-only-tool for comfyui', () => {
     });
 
     const msg = createComfyUIReplyMessage(
-      '<@bot-123> !generate',
+      '<@bot-123> !generate_image',
       'a beautiful sunset'
     );
 
@@ -1525,10 +1525,10 @@ describe('MessageHandler first-word tool routing', () => {
     };
   }
 
-  const weatherKw = { name: '!weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
+  const weatherKw = { name: '!get_current_weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
   const nflKw = { name: '!nfl' as const, api: 'nfl' as const, timeout: 30, description: 'NFL generic' };
   const nflScoresKw = { name: '!nfl scores' as const, api: 'nfl' as const, timeout: 30, description: 'NFL scores' };
-  const generateKw = { name: '!generate', api: 'comfyui' as const, timeout: 300, description: 'Image gen' };
+  const generateKw = { name: '!generate_image', api: 'comfyui' as const, timeout: 300, description: 'Image gen' };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1542,7 +1542,7 @@ describe('MessageHandler first-word tool routing', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> !weather 45403');
+    const msg = createMentionedMessage('<@bot-123> !get_current_weather 45403');
     await messageHandler.handleMessage(msg);
 
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
@@ -1601,7 +1601,7 @@ describe('MessageHandler first-word tool routing', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> !generate something');
+    const msg = createMentionedMessage('<@bot-123> !generate_image something');
     await messageHandler.handleMessage(msg);
 
     // Should add error reaction
@@ -2038,7 +2038,7 @@ describe('MessageHandler two-stage evaluation', () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
     const weatherTool = {
-      name: '!weather',
+      name: '!get_current_weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -2078,7 +2078,7 @@ describe('MessageHandler two-stage evaluation', () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
     const weatherTool = {
-      name: '!weather',
+      name: '!get_current_weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -2094,7 +2094,7 @@ describe('MessageHandler two-stage evaluation', () => {
       parsedLine: 'weather seattle wa',
       matched: true,
       inferredInput: 'Seattle, WA',
-      commentaryText: 'Sure — running !weather now.',
+      commentaryText: 'Sure — running !get_current_weather now.',
     });
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
@@ -2117,11 +2117,11 @@ describe('MessageHandler two-stage evaluation', () => {
   it('should preserve inline inferred params for tool-only implicit ability invocation', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
-    const imagineTool = {
-      name: 'imagine',
+    const generateImageTool = {
+      name: 'generate_image',
       api: 'comfyui' as const,
       timeout: 120,
-      description: 'Generate image using alternate tool name',
+      description: 'Generate image using ComfyUI',
       abilityInputs: {
         mode: 'implicit' as const,
       },
@@ -2129,12 +2129,12 @@ describe('MessageHandler two-stage evaluation', () => {
 
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
-      data: { text: '!imagine alien guy saying "whoa, aliens"' },
+      data: { text: '!generate_image alien guy saying "whoa, aliens"' },
     });
 
     mockparseFirstLineTool.mockReturnValueOnce({
-      toolConfig: imagineTool,
-      parsedLine: '!imagine alien guy saying "whoa, aliens"',
+      toolConfig: generateImageTool,
+      parsedLine: '!generate_image alien guy saying "whoa, aliens"',
       matched: true,
       inferredInput: 'alien guy saying "whoa, aliens"',
     });
@@ -2145,14 +2145,14 @@ describe('MessageHandler two-stage evaluation', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> imagine');
+    const msg = createMentionedMessage('<@bot-123> generate_image');
     await messageHandler.handleMessage(msg);
 
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ ...imagineTool, finalOllamaPass: false }),
+      expect.objectContaining({ ...generateImageTool, finalOllamaPass: false }),
       'alien guy saying "whoa, aliens"',
       'testuser',
-      [{ role: 'user', content: 'testuser: imagine', contextSource: 'trigger', hasNamePrefix: true }],
+      [{ role: 'user', content: 'testuser: generate_image', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser'
     );
   });
@@ -2234,7 +2234,7 @@ describe('MessageHandler two-stage evaluation', () => {
     });
 
     const memeTool = {
-      name: '!meme',
+      name: '!generate_meme',
       api: 'meme' as const,
       timeout: 60,
       description: 'Create meme images',
@@ -2263,7 +2263,7 @@ describe('MessageHandler two-stage evaluation', () => {
     });
 
     const memeTool = {
-      name: '!meme',
+      name: '!generate_meme',
       api: 'meme' as const,
       timeout: 60,
       description: 'Create meme images',
@@ -2385,7 +2385,7 @@ describe('MessageHandler trigger message attribution', () => {
   });
 
   it('should append trigger message with contextSource for direct tool path', async () => {
-    const weatherKw = { name: '!weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
+    const weatherKw = { name: '!get_current_weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
     (config.getTools as jest.Mock).mockReturnValue([weatherKw]);
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
@@ -2394,7 +2394,7 @@ describe('MessageHandler trigger message attribution', () => {
       stages: [],
     });
 
-    const msg = createMentionedMessage('<@bot-123> !weather Seattle');
+    const msg = createMentionedMessage('<@bot-123> !get_current_weather Seattle');
     await messageHandler.handleMessage(msg);
 
     // Should have trigger message with contextSource: 'trigger'
@@ -2417,7 +2417,7 @@ describe('MessageHandler trigger message attribution', () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
     const weatherKwWithFinalPass = {
-      name: '!weather',
+      name: '!get_current_weather',
       api: 'accuweather' as const,
       timeout: 120,
       description: 'Weather',
@@ -2428,13 +2428,13 @@ describe('MessageHandler trigger message attribution', () => {
     // Stage 1: Ollama response
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
-      data: { text: 'weather\nLet me check the weather for you.' },
+      data: { text: 'get_current_weather\nLet me check the weather for you.' },
     });
 
-    // parseFirstLineTool matches "weather"
+    // parseFirstLineTool matches "get_current_weather"
     mockparseFirstLineTool.mockReturnValueOnce({
       toolConfig: weatherKwWithFinalPass,
-      parsedLine: 'weather',
+      parsedLine: 'get_current_weather',
       matched: true,
     });
 
@@ -2464,7 +2464,7 @@ describe('MessageHandler trigger message attribution', () => {
   });
 
   it('should properly form trigger message when content has special characters', async () => {
-    const weatherKw = { name: '!weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
+    const weatherKw = { name: '!get_current_weather', api: 'accuweather' as const, timeout: 60, description: 'Weather' };
     (config.getTools as jest.Mock).mockReturnValue([weatherKw]);
 
     mockExecuteRoutedRequest.mockResolvedValueOnce({
@@ -2474,7 +2474,7 @@ describe('MessageHandler trigger message attribution', () => {
     });
 
     const specialContent = 'São Paulo <script>alert("xss")</script> & "quotes" \'apostrophes\'';
-    const msg = createMentionedMessage(`<@bot-123> !weather ${specialContent}`);
+    const msg = createMentionedMessage(`<@bot-123> !get_current_weather ${specialContent}`);
     await messageHandler.handleMessage(msg);
 
     const callArgs = mockExecuteRoutedRequest.mock.calls[0];
@@ -2616,7 +2616,7 @@ describe('MessageHandler empty-content bypass for NFL tools', () => {
     (config.getTools as jest.Mock).mockReturnValue([
       { name: '!nfl scores', api: 'nfl', timeout: 30, description: 'All scores', allowEmptyContent: true },
       { name: '!nfl news', api: 'nfl', timeout: 30, description: 'NFL news', allowEmptyContent: true },
-      { name: '!generate', api: 'comfyui', timeout: 60, description: 'Generate image' },
+      { name: '!generate_image', api: 'comfyui', timeout: 60, description: 'Generate image' },
     ]);
     (classifyIntent as jest.MockedFunction<typeof classifyIntent>)
       .mockResolvedValue({ toolConfig: null, wasClassified: false });
@@ -2645,7 +2645,7 @@ describe('MessageHandler empty-content bypass for NFL tools', () => {
 
   it('should still reject empty content for tools without allowEmptyContent', async () => {
     const { logger } = require('../src/utils/logger');
-    const msg = createDmMessage('!generate');
+    const msg = createDmMessage('!generate_image');
     await messageHandler.handleMessage(msg);
 
     // Should show the "please include a prompt" message
@@ -3921,7 +3921,7 @@ describe('MessageHandler activity event emission', () => {
 
   it('emits routing_decision on tool match path', async () => {
     const weatherTool = {
-      name: '!weather',
+      name: '!get_current_weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -3934,18 +3934,18 @@ describe('MessageHandler activity event emission', () => {
       stages: [],
     });
 
-    const msg = createMsg('!weather Seattle');
+    const msg = createMsg('!get_current_weather Seattle');
     await messageHandler.handleMessage(msg);
 
     expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
-      'accuweather', '!weather', 'keyword'
+      'accuweather', '!get_current_weather', 'keyword'
     );
   });
 
   it('emits routing_decision on two-stage tool parse', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
     const weatherTool = {
-      name: '!weather',
+      name: '!get_current_weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -3954,13 +3954,13 @@ describe('MessageHandler activity event emission', () => {
     // Ollama first-pass
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
-      data: { text: 'weather\nLet me check that' },
+      data: { text: 'get_current_weather\nLet me check that' },
     });
 
     // parseFirstLineTool matches
     mockparseFirstLineTool.mockReturnValueOnce({
       toolConfig: weatherTool,
-      parsedLine: 'weather',
+      parsedLine: 'get_current_weather',
       matched: true,
     });
 
@@ -3974,7 +3974,7 @@ describe('MessageHandler activity event emission', () => {
     await messageHandler.handleMessage(msg);
 
     expect(activityEvents.emitRoutingDecision).toHaveBeenCalledWith(
-      'accuweather', '!weather', 'two-stage-parse'
+      'accuweather', '!get_current_weather', 'two-stage-parse'
     );
   });
 
@@ -4006,7 +4006,7 @@ describe('MessageHandler activity event emission', () => {
 
   it('emits error when dispatch receives failed response', async () => {
     const weatherTool = {
-      name: '!weather',
+      name: '!get_current_weather',
       api: 'accuweather' as const,
       timeout: 60,
       description: 'Get weather',
@@ -4019,7 +4019,7 @@ describe('MessageHandler activity event emission', () => {
       stages: [],
     });
 
-    const msg = createMsg('!weather asdfasdf');
+    const msg = createMsg('!get_current_weather asdfasdf');
     await messageHandler.handleMessage(msg);
 
     expect(activityEvents.emitError).toHaveBeenCalledWith(
@@ -4393,7 +4393,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
   }
 
   const memeKw = {
-    name: '!meme',
+    name: '!generate_meme',
     api: 'meme' as const,
     timeout: 60,
     description: 'Create funny meme images',
@@ -4439,7 +4439,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
     );
 
     expect(executeRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ name: '!meme', api: 'meme', finalOllamaPass: false }),
+      expect.objectContaining({ name: '!generate_meme', api: 'meme', finalOllamaPass: false }),
       'fwp | Just got my license | Now every road is a final boss',
       'testuser',
       [{ role: 'user', content: 'testuser: can you make a meme about a kid learning to drive', contextSource: 'trigger', hasNamePrefix: true }],
@@ -4486,7 +4486,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
 
     // Should use the first-stage inline input directly
     expect(executeRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ name: '!meme', api: 'meme', finalOllamaPass: false }),
+      expect.objectContaining({ name: '!generate_meme', api: 'meme', finalOllamaPass: false }),
       'fwp | line 1 | line 2',
       'testuser',
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
@@ -4537,7 +4537,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
 
     // Should use the inferred result
     expect(executeRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ name: '!meme', api: 'meme', finalOllamaPass: false }),
+      expect.objectContaining({ name: '!generate_meme', api: 'meme', finalOllamaPass: false }),
       'fwp | inferred top | inferred bottom',
       'testuser',
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
@@ -4588,23 +4588,23 @@ describe('MessageHandler meme two-stage routing fallback', () => {
 });
 
 describe('MessageHandler image prompt context derivation', () => {
-  it('uses direct user text when imagine includes concrete prompt', () => {
+  it('uses direct user text when generate_image includes concrete prompt', () => {
     const result = (messageHandler as any).deriveImagePromptFromContext(
-      'can you imagine a neon city skyline at night',
+      'can you generate_image a neon city skyline at night',
       []
     );
 
     expect(result).toBe('a neon city skyline at night');
   });
 
-  it('uses prior user context when message is only imagine', () => {
+  it('uses prior user context when message is only generate_image', () => {
     const history = [
       { role: 'assistant', content: 'What do you want me to imagine?', contextSource: 'dm' as const },
       { role: 'user', content: 'oeb: then how could i wash my car?', contextSource: 'dm' as const, hasNamePrefix: true },
-      { role: 'user', content: 'oeb: imagine', contextSource: 'trigger' as const, hasNamePrefix: true },
+      { role: 'user', content: 'oeb: generate_image', contextSource: 'trigger' as const, hasNamePrefix: true },
     ];
 
-    const result = (messageHandler as any).deriveImagePromptFromContext('imagine', history);
+    const result = (messageHandler as any).deriveImagePromptFromContext('generate_image', history);
 
     expect(result).toBe('then how could i wash my car?');
   });
@@ -4613,10 +4613,10 @@ describe('MessageHandler image prompt context derivation', () => {
     const history = [
       { role: 'assistant', content: 'The Eiffel Tower grows taller in summer due to thermal expansion.', contextSource: 'dm' as const },
       { role: 'user', content: 'oeb: create a meme about this', contextSource: 'dm' as const, hasNamePrefix: true },
-      { role: 'user', content: 'oeb: imagine', contextSource: 'trigger' as const, hasNamePrefix: true },
+      { role: 'user', content: 'oeb: generate_image', contextSource: 'trigger' as const, hasNamePrefix: true },
     ];
 
-    const result = (messageHandler as any).deriveImagePromptFromContext('can you imagine this', history);
+    const result = (messageHandler as any).deriveImagePromptFromContext('can you generate_image this', history);
 
     expect(result).toBe('The Eiffel Tower grows taller in summer due to thermal expansion.');
   });

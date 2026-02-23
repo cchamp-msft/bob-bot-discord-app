@@ -416,7 +416,7 @@ class AccuWeatherClient {
 
     // Fallback: treat the entire input as a location name.
     // This handles keyword-stripped prompts (e.g. "new york" after
-    // the message handler removed the "weather" keyword).
+    // the message handler removed the "get_current_weather" keyword).
     return cleaned;
   }
 

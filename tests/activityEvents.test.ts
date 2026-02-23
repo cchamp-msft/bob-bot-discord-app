@@ -198,7 +198,7 @@ describe('ActivityEventStore', () => {
     });
 
     it('includes stage metadata when provided', () => {
-      const ev = activityEvents.emitRoutingDecision('comfyui', 'generate', 'two-stage');
+      const ev = activityEvents.emitRoutingDecision('comfyui', 'generate_image', 'two-stage');
       expect(ev.metadata.stage).toBe('two-stage');
     });
 
@@ -208,16 +208,16 @@ describe('ActivityEventStore', () => {
     });
 
     it('suppresses duplicate routing for same api+tool within dedupe window', () => {
-      const first = activityEvents.emitRoutingDecision('comfyui', 'imagine', 'tool');
-      const second = activityEvents.emitRoutingDecision('comfyui', 'imagine', 'api-route');
+      const first = activityEvents.emitRoutingDecision('comfyui', 'generate_image', 'tool');
+      const second = activityEvents.emitRoutingDecision('comfyui', 'generate_image', 'api-route');
       // Second call returns the same event — no new entry created
       expect(second.id).toBe(first.id);
       expect(activityEvents.size).toBe(1);
     });
 
     it('allows routing for different api+tool', () => {
-      activityEvents.emitRoutingDecision('comfyui', 'imagine');
-      activityEvents.emitRoutingDecision('accuweather', 'weather');
+      activityEvents.emitRoutingDecision('comfyui', 'generate_image');
+      activityEvents.emitRoutingDecision('accuweather', 'get_current_weather');
       expect(activityEvents.size).toBe(2);
     });
   });
@@ -403,7 +403,7 @@ describe('emitContextDecision', () => {
   });
 
   it('emits a routing_decision with context_eval subtype', () => {
-    const ev = activityEvents.emitContextDecision(3, 8, 'weather', [1, 2, 5]);
+    const ev = activityEvents.emitContextDecision(3, 8, 'get_current_weather', [1, 2, 5]);
     expect(ev.type).toBe('routing_decision');
     expect(ev.metadata.subtype).toBe('context_eval');
     expect(ev.metadata.kept).toBe(3);
@@ -433,10 +433,10 @@ describe('emitFinalPassThought', () => {
   });
 
   it('emits a routing_decision with final_pass subtype', () => {
-    const ev = activityEvents.emitFinalPassThought('weather');
+    const ev = activityEvents.emitFinalPassThought('get_current_weather');
     expect(ev.type).toBe('routing_decision');
     expect(ev.metadata.subtype).toBe('final_pass');
-    expect(ev.metadata.keyword).toBe('weather');
+    expect(ev.metadata.keyword).toBe('get_current_weather');
     expect(ev.narrative).toBe('I am considering my response');
   });
 });

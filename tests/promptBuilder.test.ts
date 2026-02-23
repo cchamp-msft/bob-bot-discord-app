@@ -8,7 +8,7 @@ jest.mock('../src/utils/config', () => ({
   config: {
     getTools: jest.fn(() => [
       {
-        name: 'weather',
+        name: 'get_current_weather',
         api: 'accuweather',
         timeout: 60,
         description: 'Get weather details including current conditions and forecast',
@@ -18,7 +18,7 @@ jest.mock('../src/utils/config', () => ({
           mode: 'explicit',
           required: ['location'],
           validation: 'Must be a city name or postal code. Use the configured default location if the user did not specify one.',
-          examples: ['weather Dallas', 'weather 90210'],
+          examples: ['get_current_weather Dallas', 'get_current_weather 90210'],
         },
       },
       {
@@ -43,7 +43,7 @@ jest.mock('../src/utils/config', () => ({
         finalOllamaPass: true,
       },
       {
-        name: 'generate',
+        name: 'generate_image',
         api: 'comfyui',
         timeout: 600,
         description: 'Generate image using ComfyUI',
@@ -52,7 +52,7 @@ jest.mock('../src/utils/config', () => ({
         abilityInputs: {
           mode: 'implicit',
           validation: 'Use the reply target text if present; otherwise use descriptive text from the current message. If no usable image prompt text can be inferred, ask the user what they want generated.',
-          examples: ['generate a sunset over mountains'],
+          examples: ['generate_image a sunset over mountains'],
         },
       },
       {
@@ -124,11 +124,11 @@ describe('PromptBuilder', () => {
       const routable = getRoutableTools();
       const names = routable.map(k => k.name);
 
-      // Included: weather, nfl, get_recent_nfl_data, generate
-      expect(names).toContain('weather');
+      // Included: get_current_weather, nfl, get_recent_nfl_data, generate_image
+      expect(names).toContain('get_current_weather');
       expect(names).toContain('nfl');
       expect(names).toContain('get_recent_nfl_data');
-      expect(names).toContain('generate');
+      expect(names).toContain('generate_image');
 
       // Excluded: chat (ollama), help (builtin), disabled_tool (enabled: false)
       expect(names).not.toContain('chat');
@@ -186,7 +186,7 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('You are Bob');
       expect(prompt).toContain('Available external abilities');
       // Structured format: tool name, What, When, Inputs
-      expect(prompt).toContain('- weather');
+      expect(prompt).toContain('- get_current_weather');
       expect(prompt).toContain('  What: Weather details including current conditions and forecast.');
       expect(prompt).toContain('  When: User asks about weather.');
       expect(prompt).toContain('  Inputs: Explicit.');
@@ -194,10 +194,10 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('Rules – follow exactly');
     });
 
-    it('should render implicit inputs for generate tool', () => {
+    it('should render implicit inputs for generate_image tool', () => {
       const prompt = buildSystemPrompt();
 
-      expect(prompt).toContain('- generate');
+      expect(prompt).toContain('- generate_image');
       expect(prompt).toContain('  What: Generate an image via ComfyUI.');
       expect(prompt).toContain('  When: User wants an image generated.');
       expect(prompt).toContain('  Inputs: Implicit.');
@@ -217,13 +217,13 @@ describe('PromptBuilder', () => {
     it('should include clarification rule in rules block', () => {
       const prompt = buildSystemPrompt();
 
-      expect(prompt).toContain('For implicit abilities (such as imagine/generate/meme), when the request is empty or underspecified, infer from conversation context before asking a question.');
+      expect(prompt).toContain('For implicit abilities (such as generate_image/generate_meme), when the request is empty or underspecified, infer from conversation context before asking a question.');
     });
 
     it('should render examples when provided', () => {
       const prompt = buildSystemPrompt();
 
-      expect(prompt).toContain('    Examples: "weather Dallas", "weather 90210".');
+      expect(prompt).toContain('    Examples: "get_current_weather Dallas", "get_current_weather 90210".');
     });
 
     it('should render validation constraints', () => {
@@ -319,7 +319,7 @@ describe('PromptBuilder', () => {
         userMessage: 'test',
       });
 
-      expect(content).toContain('weather');
+      expect(content).toContain('get_current_weather');
       expect(content).toContain('nfl');
       expect(content).toContain('get_recent_nfl_data');
     });
@@ -591,9 +591,9 @@ describe('PromptBuilder', () => {
     });
 
     it('should match tool with trailing whitespace', () => {
-      const result = parseFirstLineTool('  weather  ');
+      const result = parseFirstLineTool('  get_current_weather  ');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('weather');
+      expect(result.toolConfig?.name).toBe('get_current_weather');
     });
 
     it('should match tool with trailing punctuation', () => {
@@ -615,17 +615,17 @@ describe('PromptBuilder', () => {
     });
 
     it('should match directive on a later line when first line is commentary', () => {
-      const result = parseFirstLineTool('Sure, I can do that.\nweather: alien city skyline');
+      const result = parseFirstLineTool('Sure, I can do that.\nget_current_weather: alien city skyline');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('weather');
+      expect(result.toolConfig?.name).toBe('get_current_weather');
       expect(result.inferredInput).toBe('alien city skyline');
       expect(result.commentaryText).toBe('Sure, I can do that.');
     });
 
     it('should keep remaining lines as commentary when directive line is in the middle', () => {
-      const result = parseFirstLineTool('Quick thought first.\nweather: Seattle\nI can also add a forecast.');
+      const result = parseFirstLineTool('Quick thought first.\nget_current_weather: Seattle\nI can also add a forecast.');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('weather');
+      expect(result.toolConfig?.name).toBe('get_current_weather');
       expect(result.inferredInput).toBe('Seattle');
       expect(result.commentaryText).toBe('Quick thought first.\nI can also add a forecast.');
     });
@@ -669,9 +669,9 @@ describe('PromptBuilder', () => {
     });
 
     it('should handle tool name wrapped in quotes', () => {
-      const result = parseFirstLineTool('"weather"');
+      const result = parseFirstLineTool('"get_current_weather"');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('weather');
+      expect(result.toolConfig?.name).toBe('get_current_weather');
     });
 
     it('should support override tools for testing', () => {
@@ -690,9 +690,9 @@ describe('PromptBuilder', () => {
     });
 
     it('should match tool name preceded by an asterisk bullet marker', () => {
-      const result = parseFirstLineTool('* weather');
+      const result = parseFirstLineTool('* get_current_weather');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('weather');
+      expect(result.toolConfig?.name).toBe('get_current_weather');
     });
 
     it('should match tool name preceded by a bullet character', () => {
@@ -702,9 +702,9 @@ describe('PromptBuilder', () => {
     });
 
     it('should extract inferred input from colon-delimited first line', () => {
-      const result = parseFirstLineTool('weather: Seattle, WA');
+      const result = parseFirstLineTool('get_current_weather: Seattle, WA');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('weather');
+      expect(result.toolConfig?.name).toBe('get_current_weather');
       expect(result.inferredInput).toBe('Seattle, WA');
     });
 

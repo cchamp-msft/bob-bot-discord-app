@@ -6,7 +6,7 @@
 jest.mock('../src/utils/config', () => ({
   config: {
     getTools: jest.fn(() => [
-      { name: 'generate', api: 'comfyui', timeout: 300, description: 'Generate image using ComfyUI' },
+      { name: 'generate_image', api: 'comfyui', timeout: 300, description: 'Generate image using ComfyUI' },
       { name: 'chat', api: 'ollama', timeout: 300, description: 'Chat with Ollama AI' },
       { name: 'ask', api: 'ollama', timeout: 300, description: 'Ask a question using Ollama' },
     ]),
@@ -59,14 +59,14 @@ describe('KeywordClassifier', () => {
     it('should return matched tool config when Ollama identifies a tool', async () => {
       mockGenerate.mockResolvedValue({
         success: true,
-        data: { text: 'generate' },
+        data: { text: 'generate_image' },
       });
 
       const result = await classifyIntent('can you draw a sunset for me?', 'testuser');
 
       expect(result.wasClassified).toBe(true);
       expect(result.toolConfig).not.toBeNull();
-      expect(result.toolConfig!.name).toBe('generate');
+      expect(result.toolConfig!.name).toBe('generate_image');
       expect(result.toolConfig!.api).toBe('comfyui');
     });
 
@@ -85,13 +85,13 @@ describe('KeywordClassifier', () => {
     it('should handle case-insensitive tool matching', async () => {
       mockGenerate.mockResolvedValue({
         success: true,
-        data: { text: 'GENERATE' },
+        data: { text: 'GENERATE_IMAGE' },
       });
 
       const result = await classifyIntent('make me a picture', 'testuser');
 
       expect(result.toolConfig).not.toBeNull();
-      expect(result.toolConfig!.name).toBe('generate');
+      expect(result.toolConfig!.name).toBe('generate_image');
     });
 
     it('should strip punctuation from Ollama response', async () => {
@@ -314,15 +314,15 @@ describe('KeywordClassifier', () => {
 
     it('should deduplicate abilities with identical text', () => {
       (config.getTools as jest.Mock).mockReturnValueOnce([
-        { name: 'generate', api: 'comfyui', timeout: 300, description: 'Gen 1', abilityText: 'generate images from text descriptions' },
-        { name: 'imagine', api: 'comfyui', timeout: 300, description: 'Gen 2', abilityText: 'generate images from text descriptions' },
+        { name: 'generate_image', api: 'comfyui', timeout: 300, description: 'Gen 1', abilityText: 'generate images from text descriptions' },
+        { name: 'generate_image_alt', api: 'comfyui', timeout: 300, description: 'Gen 2', abilityText: 'generate images from text descriptions' },
       ]);
 
       const context = buildAbilitiesContext();
 
       // Each unique ability should appear only once (by full line including tool)
       const lines = context.split('\n').filter(l => l.startsWith('- '));
-      expect(lines).toHaveLength(2); // "generate" and "imagine" have different tool names
+      expect(lines).toHaveLength(2); // tools have different names but same abilityText
     });
 
     it('should return empty string when no tools are configured', () => {

@@ -336,7 +336,7 @@ describe('Tools prompt (native tool calling)', () => {
     if (msg.tool_calls && msg.tool_calls.length > 0) {
       const tc = msg.tool_calls[0] as { function?: { name?: string; arguments?: Record<string, unknown> } };
       expect(tc.function).toBeDefined();
-      expect(tc.function!.name).toBe('weather');
+      expect(tc.function!.name).toBe('get_current_weather');
       expect(tc.function!.arguments).toBeDefined();
       // The location argument should contain "Dallas"
       const args = tc.function!.arguments!;

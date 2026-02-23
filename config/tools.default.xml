@@ -19,9 +19,9 @@
     <allowEmptyContent>true</allowEmptyContent>
   </tool>
 
-  <!-- Image generation tools -->
+  <!-- Image generation tool -->
   <tool>
-    <name>generate</name>
+    <name>generate_image</name>
     <api>comfyui</api>
     <timeout>600</timeout>
     <description>Generate image using ComfyUI</description>
@@ -36,28 +36,7 @@
       <inferFrom>reply_target, current_message</inferFrom>
       <validation>Use the reply target text if present; otherwise use descriptive text from the current message. If no usable image prompt text can be inferred, ask the user what they want generated.</validation>
       <examples>
-        <example>generate a sunset over mountains</example>
-      </examples>
-    </parameters>
-  </tool>
-
-  <tool>
-    <name>imagine</name>
-    <api>comfyui</api>
-    <timeout>600</timeout>
-    <description>Generate image using ComfyUI</description>
-    <abilityWhen>User wants an image generated using an alternate tool name.</abilityWhen>
-    <parameters>
-      <mode>implicit</mode>
-      <prompt>
-        <type>string</type>
-        <description>Detailed text description of the desired image. Infer from reply target or current message context.</description>
-        <required>true</required>
-      </prompt>
-      <inferFrom>reply_target, current_message</inferFrom>
-      <validation>Use the reply target text if present; otherwise summarize the context into a relevant description for text to image.</validation>
-      <examples>
-        <example>imagine a futuristic cityscape</example>
+        <example>generate_image a sunset over mountains</example>
       </examples>
     </parameters>
   </tool>
@@ -66,7 +45,7 @@
 
   <!-- Weather tool -->
   <tool>
-    <name>weather</name>
+    <name>get_current_weather</name>
     <api>accuweather</api>
     <timeout>60</timeout>
     <description>Get weather details including current conditions and forecast</description>
@@ -80,9 +59,9 @@
       </location>
       <validation>Location must be a valid worldwide city name, region, or United States postal code.</validation>
       <examples>
-        <example>weather Dallas</example>
-        <example>weather 90210</example>
-        <example>weather London, UK</example>
+        <example>get_current_weather Dallas</example>
+        <example>get_current_weather 90210</example>
+        <example>get_current_weather London, UK</example>
       </examples>
     </parameters>
     <contextFilterMaxDepth>1</contextFilterMaxDepth>
@@ -143,7 +122,7 @@
 
   <!-- Meme tools -->
   <tool>
-    <name>meme</name>
+    <name>generate_meme</name>
     <api>meme</api>
     <timeout>60</timeout>
     <description>Create funny meme images from popular templates</description>
@@ -158,15 +137,15 @@
       <inferFrom>current_message, reply_target</inferFrom>
       <validation>Output must be: templateName | top text | bottom text. Choose the most fitting meme template for the user's intent. If the user names a specific template, use it; otherwise pick the best match.</validation>
       <examples>
-        <example>meme success kid | finished all my tasks | on a Monday</example>
-        <example>meme one does not simply | walk into mordor</example>
+        <example>generate_meme success kid | finished all my tasks | on a Monday</example>
+        <example>generate_meme one does not simply | walk into mordor</example>
       </examples>
     </parameters>
     <contextFilterMaxDepth>1</contextFilterMaxDepth>
   </tool>
 
   <tool>
-    <name>meme_templates</name>
+    <name>get_meme_templates</name>
     <api>meme</api>
     <timeout>30</timeout>
     <description>Return a comma separated list of meme templates</description>

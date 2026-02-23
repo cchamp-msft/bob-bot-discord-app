@@ -3,7 +3,7 @@ import type { ToolConfig } from '../src/utils/config';
 
 describe('toolsSchema', () => {
   const baseTool: ToolConfig = {
-    name: 'weather',
+    name: 'get_current_weather',
     api: 'accuweather',
     timeout: 60,
     description: 'Get weather',
@@ -14,27 +14,27 @@ describe('toolsSchema', () => {
       const tools: ToolConfig[] = [
         { ...baseTool, name: 'help', api: 'ollama', builtin: true },
         { ...baseTool, name: 'activity_key', api: 'ollama', builtin: true },
-        { ...baseTool, name: 'weather' },
+        { ...baseTool, name: 'get_current_weather' },
       ];
       const schema = buildOllamaToolsSchema(tools);
       const names = schema.map((t) => t.function.name);
       expect(names).not.toContain('help');
       expect(names).not.toContain('activity_key');
-      expect(names).toContain('weather');
+      expect(names).toContain('get_current_weather');
     });
 
     it('excludes disabled, builtin, and ollama-api tools', () => {
       const tools: ToolConfig[] = [
         { ...baseTool, enabled: false },
         { ...baseTool, name: 'chat', api: 'ollama' },
-        { ...baseTool, name: 'generate', api: 'comfyui', builtin: true },
+        { ...baseTool, name: 'generate_image', api: 'comfyui', builtin: true },
         { ...baseTool, name: 'web_search', api: 'serpapi' },
       ];
       const schema = buildOllamaToolsSchema(tools);
       const names = schema.map((t) => t.function.name);
-      expect(names).not.toContain('weather');
+      expect(names).not.toContain('get_current_weather');
       expect(names).not.toContain('chat');
-      expect(names).not.toContain('generate');
+      expect(names).not.toContain('generate_image');
       expect(names).toContain('web_search');
     });
 
@@ -49,7 +49,7 @@ describe('toolsSchema', () => {
       const schema = buildOllamaToolsSchema(tools);
       expect(schema).toHaveLength(1);
       expect(schema[0].type).toBe('function');
-      expect(schema[0].function.name).toBe('weather');
+      expect(schema[0].function.name).toBe('get_current_weather');
       expect(schema[0].function.description).toBe('Get weather for a location');
       expect(schema[0].function.parameters.type).toBe('object');
       expect(schema[0].function.parameters.required).toEqual(['location']);
@@ -93,8 +93,8 @@ describe('toolsSchema', () => {
 
     it('deduplicates by normalized tool name', () => {
       const tools: ToolConfig[] = [
-        { ...baseTool, name: 'weather' },
-        { ...baseTool, name: '!weather' },
+        { ...baseTool, name: 'get_current_weather' },
+        { ...baseTool, name: '!get_current_weather' },
       ];
       const schema = buildOllamaToolsSchema(tools);
       expect(schema).toHaveLength(1);
@@ -104,11 +104,11 @@ describe('toolsSchema', () => {
   describe('resolveToolNameToTool', () => {
     it('resolves tool name to tool config', () => {
       const tools: ToolConfig[] = [
-        { ...baseTool, name: 'weather' },
+        { ...baseTool, name: 'get_current_weather' },
         { ...baseTool, name: 'web_search', api: 'serpapi' },
       ];
-      const resolved = resolveToolNameToTool('weather', tools);
-      expect(resolved?.name).toBe('weather');
+      const resolved = resolveToolNameToTool('get_current_weather', tools);
+      expect(resolved?.name).toBe('get_current_weather');
       expect(resolved?.api).toBe('accuweather');
     });
 
@@ -121,9 +121,9 @@ describe('toolsSchema', () => {
     });
 
     it('accepts tool name with or without prefix', () => {
-      const tools: ToolConfig[] = [{ ...baseTool, name: '!weather' }];
-      expect(resolveToolNameToTool('weather', tools)?.name).toBe('!weather');
-      expect(resolveToolNameToTool('!weather', tools)?.name).toBe('!weather');
+      const tools: ToolConfig[] = [{ ...baseTool, name: '!get_current_weather' }];
+      expect(resolveToolNameToTool('get_current_weather', tools)?.name).toBe('!get_current_weather');
+      expect(resolveToolNameToTool('!get_current_weather', tools)?.name).toBe('!get_current_weather');
     });
   });
 });

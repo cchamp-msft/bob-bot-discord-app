@@ -120,7 +120,7 @@ class MessageHandler {
 
   private isLikelyImageRequest(content: string): boolean {
     const t = content.toLowerCase().trim();
-    return /\b(imagine|generate|draw|render|visualize|create\s+(an\s+)?image|make\s+(a\s+)?(picture|image))\b/.test(t);
+    return /\b(generate|draw|render|visualize|create\s+(an\s+)?image|make\s+(a\s+)?(picture|image))\b/.test(t);
   }
 
   private isGenericImageReference(content: string): boolean {
@@ -153,10 +153,10 @@ class MessageHandler {
 
     // Try using direct user text first (remove command-ish lead-ins)
     let direct = trimmed
-      .replace(/^[@!]?imagine\b/i, '')
+      .replace(/^[@!]?generate_image\b/i, '')
       .replace(/^[@!]?generate\b/i, '')
       .replace(/^(can|could|would)\s+you\s+/i, '')
-      .replace(/^[@!]?imagine\b/i, '')
+      .replace(/^[@!]?generate_image\b/i, '')
       .replace(/^[@!]?generate\b/i, '')
       .replace(/^(please\s+)?(create|make|draw|render|visualize)\s+(an?\s+)?(image|picture|photo)\s+(of\s+)?/i, '')
       .trim();
@@ -229,7 +229,7 @@ class MessageHandler {
           `$1${routedInput} `
         );
 
-        // Replace start-of-line bare directive form (e.g. "imagine: ...")
+        // Replace start-of-line bare directive form (e.g. "generate_image: ...")
         const bareLeadingPattern = new RegExp(`^${tnEscaped}\\b(?:\\s*[:|;,=\\-–—>]+\\s*|\\s+)`, 'i');
         return withBangReplaced.replace(bareLeadingPattern, `${routedInput} `).trim();
       })
@@ -1401,17 +1401,11 @@ class MessageHandler {
     }
 
     // Fallback: if stage-1 didn't emit an ability directive but the message is
-    // clearly an image-generation request, route to imagine/generate using a
+    // clearly an image-generation request, route to generate_image using a
     // context-derived prompt. This avoids brittle dependency on strict
     // first-line directive formatting for natural-language image requests.
     if (!strictNoApiRoutingFromInference && this.isLikelyImageRequest(content)) {
-      const normalized = content.toLowerCase();
-      const imagineToolConfig = this.findEnabledToolByName('imagine');
-      const generateToolConfig = this.findEnabledToolByName('generate');
-
-      const imageToolConfig = normalized.includes('imagine')
-        ? (imagineToolConfig ?? generateToolConfig)
-        : (generateToolConfig ?? imagineToolConfig);
+      const imageToolConfig = this.findEnabledToolByName('generate_image');
 
       if (imageToolConfig && imageToolConfig.api === 'comfyui') {
         const inferredPrompt = this.deriveImagePromptFromContext(content, filteredHistory);
@@ -1449,7 +1443,7 @@ class MessageHandler {
     // to the meme API. This avoids brittle dependency on strict first-line
     // directive formatting for natural-language meme requests.
     if (!strictNoApiRoutingFromInference && this.isLikelyMemeRequest(content)) {
-      const memeToolConfig = this.findEnabledToolByName('meme');
+      const memeToolConfig = this.findEnabledToolByName('generate_meme');
       if (memeToolConfig && memeToolConfig.api === 'meme') {
         const inferred = await inferAbilityParameters(memeToolConfig, content, requester);
         if (inferred) {

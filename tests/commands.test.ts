@@ -84,7 +84,7 @@ jest.mock('../src/api/memeClient', () => ({
 import { config } from '../src/utils/config';
 import { commands } from '../src/commands/commands';
 
-const generateCommand = commands.find((c) => c.data.name === 'generate')!;
+const generateCommand = commands.find((c) => c.data.name === 'generate_image')!;
 
 describe('GenerateCommand handleResponse', () => {
   const { fileHandler } = require('../src/utils/fileHandler');
@@ -219,7 +219,7 @@ describe('GenerateCommand handleResponse', () => {
 });
 
 describe('MemeTemplatesCommand', () => {
-  const memeTemplatesCommand = commands.find((c) => c.data.name === 'meme_templates')!;
+  const memeTemplatesCommand = commands.find((c) => c.data.name === 'get_meme_templates')!;
   const { memeClient } = require('../src/api/memeClient');
 
   afterEach(() => {
@@ -238,7 +238,7 @@ describe('MemeTemplatesCommand', () => {
 
   it('should be registered as a command', () => {
     expect(memeTemplatesCommand).toBeDefined();
-    expect(memeTemplatesCommand.data.name).toBe('meme_templates');
+    expect(memeTemplatesCommand.data.name).toBe('get_meme_templates');
   });
 
   it('should return comma-separated template ids', async () => {

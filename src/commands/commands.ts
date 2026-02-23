@@ -24,7 +24,7 @@ export abstract class BaseCommand {
 
 class GenerateCommand extends BaseCommand {
   data = new SlashCommandBuilder()
-    .setName('generate')
+    .setName('generate_image')
     .setDescription('Generate an image using ComfyUI')
     .addStringOption((option) =>
       option
@@ -41,7 +41,7 @@ class GenerateCommand extends BaseCommand {
     await interaction.deferReply({ ephemeral: true });
 
     // Log the request
-    logger.logRequest(requester, `[generate] ${prompt}`);
+    logger.logRequest(requester, `[generate_image] ${prompt}`);
 
     // Start processing message
     await interaction.editReply({
@@ -50,11 +50,11 @@ class GenerateCommand extends BaseCommand {
 
     try {
       // Execute through the queue (handles locking + timeout)
-      const timeout = this.getTimeout('generate');
+      const timeout = this.getTimeout('generate_image');
       const apiResult = await requestQueue.execute<ComfyUIResponse>(
         'comfyui',
         requester,
-        'generate',
+        'generate_image',
         timeout,
         (signal) => apiManager.executeRequest('comfyui', requester, prompt, timeout, undefined, undefined, signal) as Promise<ComfyUIResponse>
       );
@@ -286,18 +286,18 @@ class WeatherCommand extends BaseCommand {
     const prompt = location ? `weather in ${location}` : 'weather';
 
     // Log the request
-    logger.logRequest(requester, `[weather] ${config.getAccuWeatherDefaultWeatherType()} — ${location || '(default location)'}`);
+    logger.logRequest(requester, `[get_current_weather] ${config.getAccuWeatherDefaultWeatherType()} — ${location || '(default location)'}`);
 
     await interaction.editReply({
       content: '⏳ Fetching weather data…',
     });
 
     try {
-      const timeout = this.getTimeout('weather');
+      const timeout = this.getTimeout('get_current_weather');
       const apiResult = await requestQueue.execute<AccuWeatherResponse>(
         'accuweather',
         requester,
-        'weather',
+        'get_current_weather',
         timeout,
         (signal) => apiManager.executeRequest('accuweather', requester, prompt, timeout, undefined, undefined, signal) as Promise<AccuWeatherResponse>
       );
@@ -345,14 +345,14 @@ class WeatherCommand extends BaseCommand {
 
 class MemeTemplatesCommand extends BaseCommand {
   data = new SlashCommandBuilder()
-    .setName('meme_templates')
+    .setName('get_meme_templates')
     .setDescription('List available meme template ids');
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const requester = interaction.user.username;
 
     await interaction.deferReply({ ephemeral: true });
-    logger.logRequest(requester, '[meme_templates]');
+    logger.logRequest(requester, '[get_meme_templates]');
 
     const ids = memeClient.getTemplateIds();
 

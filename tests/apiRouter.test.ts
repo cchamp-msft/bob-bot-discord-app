@@ -1733,8 +1733,8 @@ describe('ApiRouter', () => {
   });
 
   describe('inferAbilityParameters with replyContext', () => {
-    const imagineTool: ToolConfig = {
-      name: 'imagine',
+    const generateImageTool: ToolConfig = {
+      name: 'generate_image',
       api: 'comfyui',
       timeout: 120,
       description: 'Generate image using ComfyUI',
@@ -1755,10 +1755,10 @@ describe('ApiRouter', () => {
         data: { text: 'a monkey wizard battling a 1970s robot' },
       });
 
-      const replyContext = 'unseenaudio: What is the craziest thing you can imagine?\nbob: How about a self-aware nebula?';
+      const replyContext = 'unseenaudio: What is the craziest thing you can picture?\nbob: How about a self-aware nebula?';
       const result = await inferAbilityParameters(
-        imagineTool,
-        'Let\'s imagine our last 3 images together',
+        generateImageTool,
+        'Let\'s generate our last 3 images together',
         'testuser',
         undefined,
         replyContext
@@ -1784,8 +1784,8 @@ describe('ApiRouter', () => {
       });
 
       const result = await inferAbilityParameters(
-        imagineTool,
-        'imagine a futuristic cityscape',
+        generateImageTool,
+        'generate_image a futuristic cityscape',
         'testuser'
       );
 

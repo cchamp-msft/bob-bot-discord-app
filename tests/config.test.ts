@@ -762,10 +762,10 @@ describe('Config', () => {
     const { config } = require('../src/utils/config');
 
     it('should find tool case-insensitively', () => {
-      // The runtime tools.xml (copied from tools.default.xml) should have "generate"
-      const kw = config.getToolConfig('GENERATE');
+      // The runtime tools.xml (copied from tools.default.xml) should have "generate_image"
+      const kw = config.getToolConfig('GENERATE_IMAGE');
       if (kw) {
-        expect(kw.name.toLowerCase()).toBe('generate');
+        expect(kw.name.toLowerCase()).toBe('generate_image');
       }
       // If no tools loaded, this test is a no-op (still valid)
     });
@@ -937,7 +937,7 @@ describe('Config', () => {
       ] as any));
       config.reload();
 
-      const mt = config.getToolConfig('meme_templates');
+      const mt = config.getToolConfig('get_meme_templates');
       expect(mt).toBeDefined();
       expect(mt!.api).toBe('meme');
       expect(mt!.allowEmptyContent).toBe(true);
@@ -1061,8 +1061,8 @@ describe('Config', () => {
         const loaded = config.getToolConfig('envkw');
         expect(loaded).toBeDefined();
         expect(loaded!.description).toBe('Loaded from env path');
-        // Default sync merges ALL tools from defaults, so 'generate' is present
-        expect(config.getToolConfig('generate')).toBeDefined();
+        // Default sync merges ALL tools from defaults, so 'generate_image' is present
+        expect(config.getToolConfig('generate_image')).toBeDefined();
       } finally {
         delete process.env.TOOLS_CONFIG_PATH;
         config.reload();

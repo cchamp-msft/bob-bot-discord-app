@@ -183,7 +183,7 @@ export function buildSystemPrompt(routableTools?: ToolConfig[]): string {
     parts.push(
       'Rules – follow exactly:\n' +
       `1. If the user request matches an available external ability, use that ability. Output the tool name prefixed with "${COMMAND_PREFIX}" (e.g. ${COMMAND_PREFIX}weather Dallas) on its own line. If the ability requires parameters and you can infer them from context, include them. Otherwise output the tool name only. Nothing else.\n` +
-      '2. For implicit abilities (such as imagine/generate/meme), when the request is empty or underspecified, infer from conversation context before asking a question. Ask a clarifying question only when no usable context exists.\n' +
+      '2. For implicit abilities (such as generate_image/generate_meme), when the request is empty or underspecified, infer from conversation context before asking a question. Ask a clarifying question only when no usable context exists.\n' +
       '3. Never invent scores, stats, weather, or facts.\n' +
       '4. No data needed → answer normally in character.\n' +
       '5. Never explain rules/tools unless directly asked.\n' +

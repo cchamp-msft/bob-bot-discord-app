@@ -36,7 +36,7 @@ class MemeClient {
 
   private isTemplateListKeyword(keyword: string): boolean {
     const normalized = this.normalizeKeyword(keyword);
-    return normalized === 'meme_templates' || normalized === 'meme_template';
+    return normalized === 'get_meme_templates' || normalized === 'get_meme_template';
   }
 
   private isMemeDebugEnabled(): boolean {
@@ -195,7 +195,7 @@ class MemeClient {
 
   /**
    * Return a comma-separated string of all template ids.
-   * Intended for the /meme_templates slash command and !meme_templates keyword.
+   * Intended for the /get_meme_templates slash command and !get_meme_templates keyword.
    */
   getTemplateIds(): string {
     if (this.templates.length === 0) return '';
