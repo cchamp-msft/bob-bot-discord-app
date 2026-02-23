@@ -401,6 +401,10 @@ export interface PublicConfig {
     scheduler: string;
     denoise: number;
     seed: number;
+    negativePrompt: string;
+    vae: string;
+    clip: string;
+    diffuser: string;
   };
   errorHandling: {
     errorMessage: string;

@@ -21,6 +21,8 @@ export interface WorkflowValidationResult {
   convertedWorkflow?: string;
   /** True if the workflow was auto-converted from UI format to API format. */
   wasConverted?: boolean;
+  /** Non-blocking warnings (e.g. missing %negative% placeholder, broken node references). */
+  warnings?: string[];
 }
 
 /**
@@ -139,6 +141,9 @@ const WIDGET_NAME_MAP: Record<string, string[]> = {
   CheckpointLoaderSimple: ['ckpt_name'],
   LoRALoader: ['lora_name', 'strength_model', 'strength_clip'],
   VAELoader: ['vae_name'],
+  CLIPLoader: ['clip_name', 'type'],
+  UNETLoader: ['unet_name', 'weight_dtype'],
+  DualCLIPLoader: ['clip_name1', 'clip_name2', 'type'],
 
   // Latent
   EmptyLatentImage: ['width', 'height', 'batch_size'],
@@ -212,6 +217,12 @@ export interface DefaultWorkflowParams {
    * before sending to ComfyUI. Any other value is used as-is.
    */
   seed: number;
+  /** Separate VAE model path. When set, a VAELoader node is added. */
+  vae_name?: string;
+  /** Separate CLIP model path. When set, a CLIPLoader node is added. */
+  clip_name?: string;
+  /** Diffuser/UNET model path. When set, a UNETLoader replaces CheckpointLoaderSimple as model source. */
+  diffuser_name?: string;
 }
 
 /**
@@ -244,84 +255,213 @@ export function resolveWorkflowSeeds(workflow: Record<string, unknown>): void {
 }
 
 /**
+ * Parse the `--negative: <text>` convention from a content string.
+ * Returns the positive prompt (without the negative marker) and the negative text.
+ * If no `--negative:` is found, the entire string is positive and negative is empty.
+ */
+export function parseNegativePrompt(content: string): { positive: string; negative: string } {
+  const marker = '\n--negative:';
+  const idx = content.indexOf(marker);
+  if (idx === -1) {
+    return { positive: content, negative: '' };
+  }
+  const positive = content.substring(0, idx).trim();
+  const negative = content.substring(idx + marker.length).trim();
+  return { positive, negative };
+}
+
+/**
+ * Combine config default negative prompt with model-provided negative.
+ * Default is prepended, comma-separated. Either or both may be empty.
+ */
+export function resolveNegativePrompt(defaultNeg: string, modelNeg: string): string {
+  const parts = [defaultNeg.trim(), modelNeg.trim()].filter(Boolean);
+  return parts.join(', ');
+}
+
+/**
+ * Walk all node inputs in a parsed API-format workflow and check that
+ * every `[nodeId, slot]` array reference points to an existing node.
+ * Returns an array of warning strings for broken references.
+ */
+export function validateNodeReferences(workflow: Record<string, unknown>): string[] {
+  const warnings: string[] = [];
+  const nodeIds = new Set(Object.keys(workflow));
+
+  for (const [nodeId, nodeValue] of Object.entries(workflow)) {
+    const node = nodeValue as Record<string, unknown>;
+    const inputs = node.inputs as Record<string, unknown> | undefined;
+    if (!inputs) continue;
+
+    for (const [inputName, inputValue] of Object.entries(inputs)) {
+      if (Array.isArray(inputValue) && inputValue.length === 2 && typeof inputValue[0] === 'string' && typeof inputValue[1] === 'number') {
+        const refNodeId = inputValue[0];
+        if (!nodeIds.has(refNodeId)) {
+          warnings.push(`Node ${nodeId} input "${inputName}" references non-existent node ${refNodeId}`);
+        }
+      }
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * Build a default text-to-image workflow in ComfyUI API format.
  *
- * Node layout:
- *   1: CheckpointLoaderSimple (provides MODEL, CLIP, VAE)
- *   2: CLIPTextEncode (positive prompt — uses %prompt%)
- *   3: CLIPTextEncode (negative prompt — empty)
- *   4: EmptyLatentImage
- *   5: KSampler
- *   6: VAEDecode
- *   7: SaveImage
+ * Adaptive: the node graph varies based on whether separate VAE, CLIP,
+ * or diffuser/UNET models are configured.
+ *
+ * Mode detection:
+ *   - Checkpoint only (default): CheckpointLoaderSimple provides MODEL, CLIP, VAE
+ *   - + VAE: adds VAELoader, overrides VAE source
+ *   - + CLIP: adds CLIPLoader, overrides CLIP source
+ *   - Diffuser (requires VAE): UNETLoader for MODEL, CheckpointLoaderSimple
+ *     or CLIPLoader for CLIP, VAELoader for VAE
  */
 export function buildDefaultWorkflow(params: DefaultWorkflowParams): Record<string, unknown> {
-  return {
-    '1': {
+  const useDiffuser = !!params.diffuser_name;
+  const useSeparateVae = !!params.vae_name;
+  const useSeparateClip = !!params.clip_name;
+
+  const workflow: Record<string, unknown> = {};
+  let nextId = 1;
+  const id = () => String(nextId++);
+
+  // Track source nodes as [nodeId, slotIndex] tuples
+  let modelSource: [string, number];
+  let clipSource: [string, number];
+  let vaeSource: [string, number];
+
+  // ── Model loader(s) ───────────────────────────────────────
+
+  if (useDiffuser) {
+    // UNETLoader for MODEL
+    const unetId = id();
+    workflow[unetId] = {
+      class_type: 'UNETLoader',
+      inputs: { unet_name: params.diffuser_name, weight_dtype: 'default' },
+      _meta: { title: 'Load Diffusion Model' },
+    };
+    modelSource = [unetId, 0];
+
+    // Diffuser mode requires separate VAE
+    const vaeId = id();
+    workflow[vaeId] = {
+      class_type: 'VAELoader',
+      inputs: { vae_name: params.vae_name },
+      _meta: { title: 'Load VAE' },
+    };
+    vaeSource = [vaeId, 0];
+
+    if (useSeparateClip) {
+      // CLIPLoader for CLIP
+      const clipId = id();
+      workflow[clipId] = {
+        class_type: 'CLIPLoader',
+        inputs: { clip_name: params.clip_name, type: 'stable_diffusion' },
+        _meta: { title: 'Load CLIP' },
+      };
+      clipSource = [clipId, 0];
+    } else {
+      // Fall back to checkpoint for CLIP
+      const ckptId = id();
+      workflow[ckptId] = {
+        class_type: 'CheckpointLoaderSimple',
+        inputs: { ckpt_name: params.ckpt_name },
+        _meta: { title: 'Load Checkpoint (CLIP)' },
+      };
+      clipSource = [ckptId, 1];
+    }
+  } else {
+    // Standard checkpoint mode
+    const ckptId = id();
+    workflow[ckptId] = {
       class_type: 'CheckpointLoaderSimple',
-      inputs: {
-        ckpt_name: params.ckpt_name,
-      },
+      inputs: { ckpt_name: params.ckpt_name },
       _meta: { title: 'Load Checkpoint' },
-    },
-    '2': {
-      class_type: 'CLIPTextEncode',
-      inputs: {
-        text: '%prompt%',
-        clip: ['1', 1], // CheckpointLoaderSimple output slot 1 = CLIP
-      },
-      _meta: { title: 'Positive Prompt' },
-    },
-    '3': {
-      class_type: 'CLIPTextEncode',
-      inputs: {
-        text: '',
-        clip: ['1', 1], // CheckpointLoaderSimple output slot 1 = CLIP
-      },
-      _meta: { title: 'Negative Prompt' },
-    },
-    '4': {
-      class_type: 'EmptyLatentImage',
-      inputs: {
-        width: params.width,
-        height: params.height,
-        batch_size: 1,
-      },
-      _meta: { title: 'Empty Latent Image' },
-    },
-    '5': {
-      class_type: 'KSampler',
-      inputs: {
-        seed: params.seed,
-        steps: params.steps,
-        cfg: params.cfg,
-        sampler_name: params.sampler_name,
-        scheduler: params.scheduler,
-        denoise: params.denoise,
-        model: ['1', 0],    // CheckpointLoaderSimple output slot 0 = MODEL
-        positive: ['2', 0], // Positive CLIPTextEncode output slot 0
-        negative: ['3', 0], // Negative CLIPTextEncode output slot 0
-        latent_image: ['4', 0], // EmptyLatentImage output slot 0
-      },
-      _meta: { title: 'KSampler' },
-    },
-    '6': {
-      class_type: 'VAEDecode',
-      inputs: {
-        samples: ['5', 0], // KSampler output slot 0 = LATENT
-        vae: ['1', 2],     // CheckpointLoaderSimple output slot 2 = VAE
-      },
-      _meta: { title: 'VAE Decode' },
-    },
-    '7': {
-      class_type: 'SaveImage',
-      inputs: {
-        filename_prefix: 'BobBot',
-        images: ['6', 0], // VAEDecode output slot 0 = IMAGE
-      },
-      _meta: { title: 'Save Image' },
-    },
+    };
+    modelSource = [ckptId, 0];
+    clipSource = [ckptId, 1];
+    vaeSource = [ckptId, 2];
+
+    if (useSeparateVae) {
+      const vaeId = id();
+      workflow[vaeId] = {
+        class_type: 'VAELoader',
+        inputs: { vae_name: params.vae_name },
+        _meta: { title: 'Load VAE' },
+      };
+      vaeSource = [vaeId, 0];
+    }
+
+    if (useSeparateClip) {
+      const clipId = id();
+      workflow[clipId] = {
+        class_type: 'CLIPLoader',
+        inputs: { clip_name: params.clip_name, type: 'stable_diffusion' },
+        _meta: { title: 'Load CLIP' },
+      };
+      clipSource = [clipId, 0];
+    }
+  }
+
+  // ── Common tail nodes ─────────────────────────────────────
+
+  const posPromptId = id();
+  workflow[posPromptId] = {
+    class_type: 'CLIPTextEncode',
+    inputs: { text: '%prompt%', clip: clipSource },
+    _meta: { title: 'Positive Prompt' },
   };
+
+  const negPromptId = id();
+  workflow[negPromptId] = {
+    class_type: 'CLIPTextEncode',
+    inputs: { text: '%negative%', clip: clipSource },
+    _meta: { title: 'Negative Prompt' },
+  };
+
+  const latentId = id();
+  workflow[latentId] = {
+    class_type: 'EmptyLatentImage',
+    inputs: { width: params.width, height: params.height, batch_size: 1 },
+    _meta: { title: 'Empty Latent Image' },
+  };
+
+  const samplerId = id();
+  workflow[samplerId] = {
+    class_type: 'KSampler',
+    inputs: {
+      seed: params.seed,
+      steps: params.steps,
+      cfg: params.cfg,
+      sampler_name: params.sampler_name,
+      scheduler: params.scheduler,
+      denoise: params.denoise,
+      model: modelSource,
+      positive: [posPromptId, 0],
+      negative: [negPromptId, 0],
+      latent_image: [latentId, 0],
+    },
+    _meta: { title: 'KSampler' },
+  };
+
+  const decodeId = id();
+  workflow[decodeId] = {
+    class_type: 'VAEDecode',
+    inputs: { samples: [samplerId, 0], vae: vaeSource },
+    _meta: { title: 'VAE Decode' },
+  };
+
+  const saveId = id();
+  workflow[saveId] = {
+    class_type: 'SaveImage',
+    inputs: { filename_prefix: 'BobBot', images: [decodeId, 0] },
+    _meta: { title: 'Save Image' },
+  };
+
+  return workflow;
 }
 
 /**
@@ -502,6 +642,54 @@ class ComfyUIClient {
   }
 
   /**
+   * Get available VAE model files from ComfyUI.
+   * Queries GET /models/vae.
+   */
+  async getVaeModels(): Promise<string[]> {
+    try {
+      const response = await this.client.get('/models/vae');
+      if (response.status === 200 && Array.isArray(response.data)) {
+        return response.data as string[];
+      }
+    } catch {
+      // ComfyUI unreachable
+    }
+    return [];
+  }
+
+  /**
+   * Get available CLIP model files from ComfyUI.
+   * Queries GET /models/clip.
+   */
+  async getClipModels(): Promise<string[]> {
+    try {
+      const response = await this.client.get('/models/clip');
+      if (response.status === 200 && Array.isArray(response.data)) {
+        return response.data as string[];
+      }
+    } catch {
+      // ComfyUI unreachable
+    }
+    return [];
+  }
+
+  /**
+   * Get available diffuser/UNET model files from ComfyUI.
+   * Queries GET /models/diffusers.
+   */
+  async getDiffuserModels(): Promise<string[]> {
+    try {
+      const response = await this.client.get('/models/diffusers');
+      if (response.status === 200 && Array.isArray(response.data)) {
+        return response.data as string[];
+      }
+    } catch {
+      // ComfyUI unreachable
+    }
+    return [];
+  }
+
+  /**
    * Validate a workflow JSON string.
    * Checks that it is valid JSON and contains at least one occurrence of %prompt% (case-sensitive).
    * If the workflow is in ComfyUI's UI export format, it is auto-converted to API format.
@@ -547,9 +735,28 @@ class ComfyUIClient {
       };
     }
 
+    // Collect non-blocking warnings
+    const warnings: string[] = [];
+
+    // Warn if negative prompt is configured but %negative% is missing
+    if (config.getComfyUIDefaultNegativePrompt() && !finalJson.includes('%negative%')) {
+      const msg = 'Default negative prompt is configured but this workflow has no %negative% placeholder — the negative prompt will be ignored for this workflow.';
+      warnings.push(msg);
+      logger.logWarn('comfyui', msg);
+    }
+
+    // Validate node references
+    const effectiveParsed = wasConverted ? JSON.parse(finalJson) : parsed;
+    const refWarnings = validateNodeReferences(effectiveParsed as Record<string, unknown>);
+    for (const w of refWarnings) {
+      warnings.push(w);
+      logger.logWarn('comfyui', `Workflow node reference warning: ${w}`);
+    }
+
     return {
       valid: true,
       ...(wasConverted ? { convertedWorkflow: finalJson, wasConverted: true } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 
@@ -621,6 +828,9 @@ class ComfyUIClient {
       scheduler: config.getComfyUIDefaultScheduler(),
       denoise: config.getComfyUIDefaultDenoise(),
       seed: config.getComfyUIDefaultSeed(),
+      vae_name: config.getComfyUIDefaultVae() || undefined,
+      clip_name: config.getComfyUIDefaultClip() || undefined,
+      diffuser_name: config.getComfyUIDefaultDiffuser() || undefined,
     };
 
     const validatedParams = await this.validateDefaultWorkflowParams(rawParams);
@@ -668,6 +878,9 @@ class ComfyUIClient {
       scheduler: config.getComfyUIDefaultScheduler(),
       denoise: config.getComfyUIDefaultDenoise(),
       seed: config.getComfyUIDefaultSeed(),
+      vae_name: config.getComfyUIDefaultVae() || undefined,
+      clip_name: config.getComfyUIDefaultClip() || undefined,
+      diffuser_name: config.getComfyUIDefaultDiffuser() || undefined,
     };
 
     const workflow = buildDefaultWorkflow(params);
@@ -720,11 +933,21 @@ class ComfyUIClient {
         `ComfyUI generate: ${prompt.substring(0, 100)}...`
       );
 
-      // JSON-escape the prompt so quotes/backslashes don't break the workflow JSON
-      const escapedPrompt = JSON.stringify(prompt).slice(1, -1);
+      // Split positive/negative from the --negative: convention
+      const { positive, negative: modelNegative } = parseNegativePrompt(prompt);
+      const resolvedNegative = resolveNegativePrompt(
+        config.getComfyUIDefaultNegativePrompt(),
+        modelNegative
+      );
 
-      // Replace all occurrences of %prompt% with the escaped prompt (case-sensitive)
-      const substitutedWorkflow = effectiveWorkflow.split('%prompt%').join(escapedPrompt);
+      // JSON-escape prompts so quotes/backslashes don't break the workflow JSON
+      const escapedPrompt = JSON.stringify(positive).slice(1, -1);
+      const escapedNegative = JSON.stringify(resolvedNegative).slice(1, -1);
+
+      // Replace all occurrences of %prompt% and %negative% (case-sensitive)
+      const substitutedWorkflow = effectiveWorkflow
+        .split('%prompt%').join(escapedPrompt)
+        .split('%negative%').join(escapedNegative);
 
       // Parse the substituted workflow to send as the prompt object
       const workflowData = JSON.parse(substitutedWorkflow);

@@ -802,6 +802,28 @@
           </div>
 
           <div class="field-row">
+            <div class="field">
+              <label>VAE <span style="font-size:0.8em;color:var(--text-dim)">(optional)</span></label>
+              <select id="dw_vae" style="width:100%">
+                <option value="">— use checkpoint VAE —</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>CLIP <span style="font-size:0.8em;color:var(--text-dim)">(optional)</span></label>
+              <select id="dw_clip" style="width:100%">
+                <option value="">— use checkpoint CLIP —</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Diffuser/UNET <span style="font-size:0.8em;color:var(--text-dim)">(optional)</span></label>
+              <select id="dw_diffuser" style="width:100%">
+                <option value="">— none (use checkpoint) —</option>
+              </select>
+            </div>
+          </div>
+          <div id="dw_diffuser_warning" style="display:none;font-size:0.75em;color:var(--warn,#e6a700);margin-bottom:6px">Diffuser/UNET mode requires a separate VAE model to be selected.</div>
+
+          <div class="field-row">
             <div class="field narrow">
               <label>Width</label>
               <input type="number" id="dw_width" value="512" min="64" max="4096" step="8">
@@ -851,6 +873,12 @@
               <input type="number" id="dw_seed" value="-1" min="-1" max="2147483647" step="1">
               <span style="font-size:0.7em;color:var(--text-dim)">-1 = random</span>
             </div>
+          </div>
+
+          <div class="field" style="margin-top:8px">
+            <label>Default Negative Prompt</label>
+            <textarea id="dw_negative_prompt" rows="2" placeholder="e.g. blurry, low quality, watermark, text" style="width:100%;resize:vertical;font-family:inherit;font-size:0.85em;padding:6px 8px;background:var(--input-bg,var(--bg));color:var(--text);border:1px solid var(--border);border-radius:4px"></textarea>
+            <span style="font-size:0.7em;color:var(--text-dim)">Prepended to any model-provided negative prompt on all requests</span>
           </div>
 
           <div style="margin-top:8px;display:flex;align-items:center;gap:10px">
@@ -1424,6 +1452,24 @@ flowchart TD
         }
         document.getElementById('dw_denoise').value = typeof dw.denoise === 'number' ? dw.denoise : 1.0;
         document.getElementById('dw_seed').value = typeof dw.seed === 'number' ? dw.seed : -1;
+        document.getElementById('dw_negative_prompt').value = dw.negativePrompt || '';
+
+        // Populate optional model dropdowns from saved config
+        function restoreOptionalSelect(selectId, value) {
+          if (!value) return;
+          const sel = document.getElementById(selectId);
+          const exists = Array.from(sel.options).some(o => o.value === value);
+          if (!exists) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = value + ' (saved)';
+            sel.appendChild(opt);
+          }
+          sel.value = value;
+        }
+        restoreOptionalSelect('dw_vae', dw.vae);
+        restoreOptionalSelect('dw_clip', dw.clip);
+        restoreOptionalSelect('dw_diffuser', dw.diffuser);
       }
       updateDefaultWorkflowInfo();
 
@@ -2263,15 +2309,21 @@ flowchart TD
   async function discoverComfyUIOptions() {
     conLog(`[${new Date().toISOString()}] Discovering ComfyUI options…`);
     try {
-      const [samplersRes, schedulersRes, checkpointsRes] = await Promise.all([
+      const [samplersRes, schedulersRes, checkpointsRes, vaeRes, clipRes, diffusersRes] = await Promise.all([
         fetch('/api/config/comfyui/samplers'),
         fetch('/api/config/comfyui/schedulers'),
         fetch('/api/config/comfyui/checkpoints'),
+        fetch('/api/config/comfyui/vae'),
+        fetch('/api/config/comfyui/clip'),
+        fetch('/api/config/comfyui/diffusers'),
       ]);
 
       const samplers = await samplersRes.json();
       const schedulers = await schedulersRes.json();
       const checkpoints = await checkpointsRes.json();
+      const vaeModels = await vaeRes.json();
+      const clipModels = await clipRes.json();
+      const diffuserModels = await diffusersRes.json();
 
       // Populate sampler dropdown
       if (Array.isArray(samplers) && samplers.length > 0) {
@@ -2327,6 +2379,33 @@ flowchart TD
       } else {
         conLog('  ⚠ No checkpoints returned — ensure ComfyUI is connected', 'warn');
       }
+
+      // Helper to populate an optional model dropdown
+      function populateOptionalSelect(selectId, models, noneLabel, logLabel) {
+        const sel = document.getElementById(selectId);
+        const currentVal = sel.value;
+        sel.innerHTML = '';
+        const noneOpt = document.createElement('option');
+        noneOpt.value = '';
+        noneOpt.textContent = noneLabel;
+        sel.appendChild(noneOpt);
+        if (Array.isArray(models) && models.length > 0) {
+          for (const m of models) {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            sel.appendChild(opt);
+          }
+          if (currentVal && models.includes(currentVal)) sel.value = currentVal;
+          conLog(`  ✓ Found ${models.length} ${logLabel}`, 'ok');
+        } else {
+          conLog(`  ⚠ No ${logLabel} returned`, 'warn');
+        }
+      }
+
+      populateOptionalSelect('dw_vae', vaeModels, '— use checkpoint VAE —', 'VAE model(s)');
+      populateOptionalSelect('dw_clip', clipModels, '— use checkpoint CLIP —', 'CLIP model(s)');
+      populateOptionalSelect('dw_diffuser', diffuserModels, '— none (use checkpoint) —', 'diffuser/UNET model(s)');
     } catch (e) {
       conLog(`  ✗ Discovery failed: ${e.message}. Test ComfyUI connection first.`, 'err');
     }
@@ -2351,6 +2430,10 @@ flowchart TD
       scheduler: document.getElementById('dw_scheduler').value || 'beta',
       denoise: parseFloat(document.getElementById('dw_denoise').value),
       seed: parseInt(document.getElementById('dw_seed').value),
+      negativePrompt: document.getElementById('dw_negative_prompt').value || '',
+      vae: document.getElementById('dw_vae').value || '',
+      clip: document.getElementById('dw_clip').value || '',
+      diffuser: document.getElementById('dw_diffuser').value || '',
     };
 
     if (isNaN(params.denoise)) params.denoise = 0.88;
@@ -2384,6 +2467,18 @@ flowchart TD
       conLog(`  ✗ Save failed: ${e.message}`, 'err');
     }
   }
+
+  // Show/hide diffuser warning when selections change
+  (function() {
+    const diffuserSel = document.getElementById('dw_diffuser');
+    const vaeSel = document.getElementById('dw_vae');
+    const warningEl = document.getElementById('dw_diffuser_warning');
+    function updateWarning() {
+      warningEl.style.display = (diffuserSel.value && !vaeSel.value) ? 'block' : 'none';
+    }
+    diffuserSel.addEventListener('change', updateWarning);
+    vaeSel.addEventListener('change', updateWarning);
+  })();
 
   async function deleteCustomWorkflow() {
     if (!confirm('Remove the custom workflow? The default workflow settings will be used instead.')) return;

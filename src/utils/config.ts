@@ -886,6 +886,26 @@ class Config {
     return Math.max(0, Math.min(raw, 2147483647));
   }
 
+  /** Default negative prompt prepended to all image generation requests. */
+  getComfyUIDefaultNegativePrompt(): string {
+    return process.env.COMFYUI_DEFAULT_NEGATIVE_PROMPT || '';
+  }
+
+  /** Separate VAE model path for the default workflow. Empty = use checkpoint VAE. */
+  getComfyUIDefaultVae(): string {
+    return process.env.COMFYUI_DEFAULT_VAE || '';
+  }
+
+  /** Separate CLIP model path for the default workflow. Empty = use checkpoint CLIP. */
+  getComfyUIDefaultClip(): string {
+    return process.env.COMFYUI_DEFAULT_CLIP || '';
+  }
+
+  /** Diffuser/UNET model path for the default workflow. Empty = use checkpoint model. */
+  getComfyUIDefaultDiffuser(): string {
+    return process.env.COMFYUI_DEFAULT_DIFFUSER || '';
+  }
+
   /**
    * Load the ComfyUI workflow JSON from .config/comfyui-workflow.json.
    * Returns the raw JSON string, or empty string if not found.
@@ -1015,6 +1035,10 @@ class Config {
     const prevDefaultScheduler = this.getComfyUIDefaultScheduler();
     const prevDefaultDenoise = this.getComfyUIDefaultDenoise();
     const prevDefaultSeed = this.getComfyUIDefaultSeed();
+    const prevDefaultNegativePrompt = this.getComfyUIDefaultNegativePrompt();
+    const prevDefaultVae = this.getComfyUIDefaultVae();
+    const prevDefaultClip = this.getComfyUIDefaultClip();
+    const prevDefaultDiffuser = this.getComfyUIDefaultDiffuser();
 
     // Re-parse .env into process.env
     const envPath = path.join(__dirname, '../../.env');
@@ -1102,6 +1126,10 @@ class Config {
     if (this.getComfyUIDefaultScheduler() !== prevDefaultScheduler) reloaded.push('COMFYUI_DEFAULT_SCHEDULER');
     if (this.getComfyUIDefaultDenoise() !== prevDefaultDenoise) reloaded.push('COMFYUI_DEFAULT_DENOISE');
     if (this.getComfyUIDefaultSeed() !== prevDefaultSeed) reloaded.push('COMFYUI_DEFAULT_SEED');
+    if (this.getComfyUIDefaultNegativePrompt() !== prevDefaultNegativePrompt) reloaded.push('COMFYUI_DEFAULT_NEGATIVE_PROMPT');
+    if (this.getComfyUIDefaultVae() !== prevDefaultVae) reloaded.push('COMFYUI_DEFAULT_VAE');
+    if (this.getComfyUIDefaultClip() !== prevDefaultClip) reloaded.push('COMFYUI_DEFAULT_CLIP');
+    if (this.getComfyUIDefaultDiffuser() !== prevDefaultDiffuser) reloaded.push('COMFYUI_DEFAULT_DIFFUSER');
 
     // Reload tools
     this.loadTools();
@@ -1171,6 +1199,10 @@ class Config {
         scheduler: this.getComfyUIDefaultScheduler(),
         denoise: this.getComfyUIDefaultDenoise(),
         seed: this.getComfyUIDefaultSeed(),
+        negativePrompt: this.getComfyUIDefaultNegativePrompt(),
+        vae: this.getComfyUIDefaultVae(),
+        clip: this.getComfyUIDefaultClip(),
+        diffuser: this.getComfyUIDefaultDiffuser(),
       },
       errorHandling: {
         errorMessage: this.getErrorMessage(),

@@ -52,6 +52,10 @@ jest.mock('../src/utils/config', () => ({
     getComfyUIDefaultScheduler: jest.fn(() => 'normal'),
     getComfyUIDefaultDenoise: jest.fn(() => 1.0),
     getComfyUIDefaultSeed: jest.fn(() => -1),
+    getComfyUIDefaultNegativePrompt: jest.fn(() => ''),
+    getComfyUIDefaultVae: jest.fn(() => ''),
+    getComfyUIDefaultClip: jest.fn(() => ''),
+    getComfyUIDefaultDiffuser: jest.fn(() => ''),
   },
 }));
 
@@ -69,7 +73,7 @@ jest.mock('../src/utils/logger', () => ({
 
 // Import after mocks — singleton captures mockInstance
 import { comfyuiClient } from '../src/api/comfyuiClient';
-import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode, resolveSeed, resolveWorkflowSeeds } from '../src/api/comfyuiClient';
+import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode, resolveSeed, resolveWorkflowSeeds, parseNegativePrompt, resolveNegativePrompt, validateNodeReferences } from '../src/api/comfyuiClient';
 import { config } from '../src/utils/config';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -104,6 +108,10 @@ describe('ComfyUIClient', () => {
     (config.getComfyUIDefaultScheduler as jest.Mock).mockReturnValue('beta');
     (config.getComfyUIDefaultDenoise as jest.Mock).mockReturnValue(0.88);
     (config.getComfyUIDefaultSeed as jest.Mock).mockReturnValue(-1);
+    (config.getComfyUIDefaultNegativePrompt as jest.Mock).mockReturnValue('');
+    (config.getComfyUIDefaultVae as jest.Mock).mockReturnValue('');
+    (config.getComfyUIDefaultClip as jest.Mock).mockReturnValue('');
+    (config.getComfyUIDefaultDiffuser as jest.Mock).mockReturnValue('');
     comfyuiClient.refresh();
   });
 
@@ -1457,11 +1465,11 @@ describe('ComfyUIClient', () => {
       expect(posPrompt.inputs.text).toBe('%prompt%');
     });
 
-    it('should have empty negative prompt', () => {
+    it('should have %negative% placeholder in negative prompt', () => {
       const workflow = buildDefaultWorkflow(defaultParams);
       const negPrompt = workflow['3'] as any;
       expect(negPrompt.class_type).toBe('CLIPTextEncode');
-      expect(negPrompt.inputs.text).toBe('');
+      expect(negPrompt.inputs.text).toBe('%negative%');
     });
 
     it('should set latent image dimensions correctly', () => {
@@ -1914,6 +1922,286 @@ describe('ComfyUIClient', () => {
       mockObjectInfoForValidation();
       const result = await comfyuiClient.validateDefaultWorkflowParams({ ...baseParams, cfg: 0 });
       expect(result.cfg).toBe(0.1);
+    });
+  });
+
+  describe('parseNegativePrompt', () => {
+    it('should return full content as positive when no --negative: marker', () => {
+      const result = parseNegativePrompt('a sunset over mountains');
+      expect(result.positive).toBe('a sunset over mountains');
+      expect(result.negative).toBe('');
+    });
+
+    it('should split on --negative: marker', () => {
+      const result = parseNegativePrompt('a sunset over mountains\n--negative: blurry, low quality');
+      expect(result.positive).toBe('a sunset over mountains');
+      expect(result.negative).toBe('blurry, low quality');
+    });
+
+    it('should handle multi-line negative text', () => {
+      const result = parseNegativePrompt('cat\n--negative: blurry\nwatermark');
+      expect(result.positive).toBe('cat');
+      expect(result.negative).toBe('blurry\nwatermark');
+    });
+
+    it('should handle empty positive with negative', () => {
+      const result = parseNegativePrompt('\n--negative: blurry');
+      expect(result.positive).toBe('');
+      expect(result.negative).toBe('blurry');
+    });
+
+    it('should handle --negative: with no text after it', () => {
+      const result = parseNegativePrompt('cat\n--negative:');
+      expect(result.positive).toBe('cat');
+      expect(result.negative).toBe('');
+    });
+  });
+
+  describe('resolveNegativePrompt', () => {
+    it('should combine default and model negative', () => {
+      expect(resolveNegativePrompt('blurry', 'watermark')).toBe('blurry, watermark');
+    });
+
+    it('should return default-only when model is empty', () => {
+      expect(resolveNegativePrompt('blurry, low quality', '')).toBe('blurry, low quality');
+    });
+
+    it('should return model-only when default is empty', () => {
+      expect(resolveNegativePrompt('', 'watermark')).toBe('watermark');
+    });
+
+    it('should return empty when both are empty', () => {
+      expect(resolveNegativePrompt('', '')).toBe('');
+    });
+
+    it('should trim whitespace from both parts', () => {
+      expect(resolveNegativePrompt('  blurry  ', '  watermark  ')).toBe('blurry, watermark');
+    });
+  });
+
+  describe('validateNodeReferences', () => {
+    it('should return empty array for valid workflow', () => {
+      const workflow = {
+        '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'model.safetensors' } },
+        '2': { class_type: 'CLIPTextEncode', inputs: { text: 'hello', clip: ['1', 1] } },
+      };
+      expect(validateNodeReferences(workflow)).toEqual([]);
+    });
+
+    it('should detect broken node references', () => {
+      const workflow = {
+        '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'model.safetensors' } },
+        '2': { class_type: 'CLIPTextEncode', inputs: { text: 'hello', clip: ['99', 1] } },
+      };
+      const warnings = validateNodeReferences(workflow);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('node 99');
+      expect(warnings[0]).toContain('Node 2');
+    });
+
+    it('should return empty array for empty workflow', () => {
+      expect(validateNodeReferences({})).toEqual([]);
+    });
+
+    it('should skip non-reference inputs', () => {
+      const workflow = {
+        '1': { class_type: 'KSampler', inputs: { seed: 42, steps: 20, cfg: 7.0 } },
+      };
+      expect(validateNodeReferences(workflow)).toEqual([]);
+    });
+  });
+
+  describe('buildDefaultWorkflow multi-mode', () => {
+    const baseParams = {
+      ckpt_name: 'model.safetensors',
+      width: 512,
+      height: 768,
+      steps: 20,
+      cfg: 7.0,
+      sampler_name: 'euler_ancestral',
+      scheduler: 'beta',
+      denoise: 0.88,
+      seed: -1,
+    };
+
+    it('should add VAELoader when vae_name is set', () => {
+      const workflow = buildDefaultWorkflow({ ...baseParams, vae_name: 'vae.safetensors' });
+      const classTypes = Object.values(workflow).map((n: any) => n.class_type);
+      expect(classTypes).toContain('VAELoader');
+      expect(classTypes).toContain('CheckpointLoaderSimple');
+      expect(classTypes).not.toContain('UNETLoader');
+
+      // VAEDecode should wire to VAELoader, not checkpoint
+      const vaeDecode = Object.values(workflow).find((n: any) => n.class_type === 'VAEDecode') as any;
+      const vaeLoaderId = Object.entries(workflow).find(([, n]: any) => n.class_type === 'VAELoader')![0];
+      expect(vaeDecode.inputs.vae).toEqual([vaeLoaderId, 0]);
+    });
+
+    it('should add CLIPLoader when clip_name is set', () => {
+      const workflow = buildDefaultWorkflow({ ...baseParams, clip_name: 'clip.safetensors' });
+      const classTypes = Object.values(workflow).map((n: any) => n.class_type);
+      expect(classTypes).toContain('CLIPLoader');
+
+      // Both text encoders should wire to CLIPLoader
+      const clipLoaderId = Object.entries(workflow).find(([, n]: any) => n.class_type === 'CLIPLoader')![0];
+      const textEncoders = Object.values(workflow).filter((n: any) => n.class_type === 'CLIPTextEncode') as any[];
+      for (const enc of textEncoders) {
+        expect(enc.inputs.clip).toEqual([clipLoaderId, 0]);
+      }
+    });
+
+    it('should use UNETLoader + VAELoader in diffuser mode', () => {
+      const workflow = buildDefaultWorkflow({
+        ...baseParams,
+        diffuser_name: 'flux.safetensors',
+        vae_name: 'vae.safetensors',
+      });
+      const classTypes = Object.values(workflow).map((n: any) => n.class_type);
+      expect(classTypes).toContain('UNETLoader');
+      expect(classTypes).toContain('VAELoader');
+
+      // KSampler model input should wire to UNETLoader
+      const unetId = Object.entries(workflow).find(([, n]: any) => n.class_type === 'UNETLoader')![0];
+      const ksampler = Object.values(workflow).find((n: any) => n.class_type === 'KSampler') as any;
+      expect(ksampler.inputs.model).toEqual([unetId, 0]);
+    });
+
+    it('should use CLIPLoader in diffuser + clip mode', () => {
+      const workflow = buildDefaultWorkflow({
+        ...baseParams,
+        diffuser_name: 'flux.safetensors',
+        vae_name: 'vae.safetensors',
+        clip_name: 'clip.safetensors',
+      });
+      const classTypes = Object.values(workflow).map((n: any) => n.class_type);
+      expect(classTypes).toContain('UNETLoader');
+      expect(classTypes).toContain('VAELoader');
+      expect(classTypes).toContain('CLIPLoader');
+      // Should NOT have CheckpointLoaderSimple when both CLIP and UNET are separate
+      expect(classTypes).not.toContain('CheckpointLoaderSimple');
+    });
+
+    it('should fall back to checkpoint for CLIP in diffuser mode without clip_name', () => {
+      const workflow = buildDefaultWorkflow({
+        ...baseParams,
+        diffuser_name: 'flux.safetensors',
+        vae_name: 'vae.safetensors',
+      });
+      const classTypes = Object.values(workflow).map((n: any) => n.class_type);
+      expect(classTypes).toContain('CheckpointLoaderSimple');
+      expect(classTypes).toContain('UNETLoader');
+    });
+
+    it('should produce valid node references in all modes', () => {
+      const modes = [
+        baseParams,
+        { ...baseParams, vae_name: 'v.safetensors' },
+        { ...baseParams, clip_name: 'c.safetensors' },
+        { ...baseParams, vae_name: 'v.safetensors', clip_name: 'c.safetensors' },
+        { ...baseParams, diffuser_name: 'd.safetensors', vae_name: 'v.safetensors' },
+        { ...baseParams, diffuser_name: 'd.safetensors', vae_name: 'v.safetensors', clip_name: 'c.safetensors' },
+      ];
+
+      for (const params of modes) {
+        const workflow = buildDefaultWorkflow(params);
+        const warnings = validateNodeReferences(workflow as Record<string, unknown>);
+        expect(warnings).toEqual([]);
+      }
+    });
+
+    it('should always include common tail nodes in all modes', () => {
+      const workflow = buildDefaultWorkflow({
+        ...baseParams,
+        diffuser_name: 'flux.safetensors',
+        vae_name: 'vae.safetensors',
+        clip_name: 'clip.safetensors',
+      });
+      const classTypes = Object.values(workflow).map((n: any) => n.class_type);
+      expect(classTypes.filter(t => t === 'CLIPTextEncode')).toHaveLength(2);
+      expect(classTypes).toContain('EmptyLatentImage');
+      expect(classTypes).toContain('KSampler');
+      expect(classTypes).toContain('VAEDecode');
+      expect(classTypes).toContain('SaveImage');
+    });
+  });
+
+  describe('generateImage negative prompt handling', () => {
+    function mockSuccessfulGeneration(outputImages: Array<Record<string, string>> = [{ filename: 'img_001.png', subfolder: '', type: 'output' }]) {
+      const promptId = 'neg-prompt-id';
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: promptId, number: 1, node_errors: {} },
+      });
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: true,
+        promptId,
+        completed: true,
+      });
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          [promptId]: {
+            outputs: { '9': { images: outputImages } },
+          },
+        },
+      });
+      return promptId;
+    }
+
+    it('should split --negative: from prompt and substitute into %negative%', async () => {
+      const workflow = '{"2": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%negative%"}}, "7": {"class_type": "SaveImage", "inputs": {}}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+      (config.getComfyUIDefaultNegativePrompt as jest.Mock).mockReturnValue('');
+
+      mockSuccessfulGeneration();
+
+      await comfyuiClient.generateImage('a sunset\n--negative: blurry, watermark', 'user1');
+
+      const sentBody = mockInstance.post.mock.calls[0][1];
+      expect(sentBody.prompt['2'].inputs.text).toBe('a sunset');
+      expect(sentBody.prompt['3'].inputs.text).toBe('blurry, watermark');
+    });
+
+    it('should prepend default negative prompt to model-provided negative', async () => {
+      const workflow = '{"2": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%negative%"}}, "7": {"class_type": "SaveImage", "inputs": {}}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+      (config.getComfyUIDefaultNegativePrompt as jest.Mock).mockReturnValue('low quality, deformed');
+
+      mockSuccessfulGeneration();
+
+      await comfyuiClient.generateImage('a cat\n--negative: watermark', 'user1');
+
+      const sentBody = mockInstance.post.mock.calls[0][1];
+      expect(sentBody.prompt['2'].inputs.text).toBe('a cat');
+      expect(sentBody.prompt['3'].inputs.text).toBe('low quality, deformed, watermark');
+    });
+
+    it('should use only default negative when no model negative provided', async () => {
+      const workflow = '{"2": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%negative%"}}, "7": {"class_type": "SaveImage", "inputs": {}}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+      (config.getComfyUIDefaultNegativePrompt as jest.Mock).mockReturnValue('blurry');
+
+      mockSuccessfulGeneration();
+
+      await comfyuiClient.generateImage('a dog', 'user1');
+
+      const sentBody = mockInstance.post.mock.calls[0][1];
+      expect(sentBody.prompt['2'].inputs.text).toBe('a dog');
+      expect(sentBody.prompt['3'].inputs.text).toBe('blurry');
+    });
+
+    it('should leave %negative% as empty string when no negative configured', async () => {
+      const workflow = '{"2": {"class_type": "CLIPTextEncode", "inputs": {"text": "%prompt%"}}, "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "%negative%"}}, "7": {"class_type": "SaveImage", "inputs": {}}}';
+      (config.getComfyUIWorkflow as jest.Mock).mockReturnValue(workflow);
+      (config.getComfyUIDefaultNegativePrompt as jest.Mock).mockReturnValue('');
+
+      mockSuccessfulGeneration();
+
+      await comfyuiClient.generateImage('hello world', 'user1');
+
+      const sentBody = mockInstance.post.mock.calls[0][1];
+      expect(sentBody.prompt['2'].inputs.text).toBe('hello world');
+      expect(sentBody.prompt['3'].inputs.text).toBe('');
     });
   });
 });

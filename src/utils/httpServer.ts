@@ -280,6 +280,24 @@ class HttpServer {
       res.json(checkpoints);
     }));
 
+    // GET available ComfyUI VAE models
+    this.app.get('/api/config/comfyui/vae', ...adminGuard, safeHandler(async (_req, res) => {
+      const models = await comfyuiClient.getVaeModels();
+      res.json(models);
+    }));
+
+    // GET available ComfyUI CLIP models
+    this.app.get('/api/config/comfyui/clip', ...adminGuard, safeHandler(async (_req, res) => {
+      const models = await comfyuiClient.getClipModels();
+      res.json(models);
+    }));
+
+    // GET available ComfyUI diffuser/UNET models
+    this.app.get('/api/config/comfyui/diffusers', ...adminGuard, safeHandler(async (_req, res) => {
+      const models = await comfyuiClient.getDiffuserModels();
+      res.json(models);
+    }));
+
     // GET export currently active workflow as ComfyUI API format JSON
     this.app.get('/api/config/workflow/export', ...adminGuard, safeHandler(async (_req, res) => {
       const result = await comfyuiClient.getExportWorkflow();
@@ -318,6 +336,17 @@ class HttpServer {
         if (isNaN(denoise) || denoise < 0 || denoise > 1) errors.push('denoise must be between 0 and 1');
         if (isNaN(seed) || !Number.isInteger(seed) || (seed !== -1 && (seed < 0 || seed > 2147483647))) errors.push('seed must be -1 (random) or an integer 0–2147483647');
 
+        // Optional new fields
+        const negativePrompt = typeof body.negativePrompt === 'string' ? body.negativePrompt : '';
+        const vae = typeof body.vae === 'string' ? body.vae.trim() : '';
+        const clip = typeof body.clip === 'string' ? body.clip.trim() : '';
+        const diffuser = typeof body.diffuser === 'string' ? body.diffuser.trim() : '';
+
+        // Validate: diffuser requires VAE
+        if (diffuser && !vae) {
+          errors.push('vae is required when using a diffuser/UNET model');
+        }
+
         if (errors.length > 0) {
           res.status(400).json({ success: false, errors });
           return;
@@ -333,6 +362,10 @@ class HttpServer {
         if (scheduler) envUpdates.COMFYUI_DEFAULT_SCHEDULER = scheduler;
         envUpdates.COMFYUI_DEFAULT_DENOISE = denoise;
         envUpdates.COMFYUI_DEFAULT_SEED = seed;
+        envUpdates.COMFYUI_DEFAULT_NEGATIVE_PROMPT = negativePrompt;
+        envUpdates.COMFYUI_DEFAULT_VAE = vae;
+        envUpdates.COMFYUI_DEFAULT_CLIP = clip;
+        envUpdates.COMFYUI_DEFAULT_DIFFUSER = diffuser;
 
         await configWriter.updateEnv(envUpdates);
         config.reload();
