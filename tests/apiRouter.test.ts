@@ -22,7 +22,9 @@ jest.mock('../src/utils/config', () => ({
     getAbilityRetryMaxRetries: jest.fn(() => 2),
     getAbilityRetryModel: jest.fn(() => 'llama2'),
     getAbilityRetryPrompt: jest.fn(() => 'Refine the parameters. Return ONLY the refined parameters.'),
+    getAbilityRetryTimeout: jest.fn(() => 120000),
     getOllamaFinalPassPrompt: jest.fn(() => ''),
+    getOllamaFinalPassTimeout: jest.fn(() => 120000),
     getBotDisplayName: jest.fn(() => ''),
   },
 }));

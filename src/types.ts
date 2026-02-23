@@ -372,6 +372,10 @@ export interface PublicConfig {
     ollamaFinalPassPrompt: string;
     ollamaToolContextSize: number;
     ollamaFinalPassContextSize: number;
+    ollamaTimeout: number;
+    ollamaVisionTimeout: number;
+    ollamaToolTimeout: number;
+    ollamaFinalPassTimeout: number;
     comfyuiWorkflowConfigured: boolean;
     accuweather: string;
     accuweatherDefaultLocation: string;
@@ -432,6 +436,7 @@ export interface PublicConfig {
     enabled: boolean;
     model: string;
     contextSize: number;
+    timeout: number;
     prompt: string;
   };
   debugLogging: boolean;
@@ -449,6 +454,8 @@ export interface PublicConfig {
     model: string;
     /** Generic refinement prompt (abilities may still use specialized prompts internally). */
     prompt: string;
+    /** HTTP timeout in milliseconds for retry requests. */
+    timeout: number;
   };
   imageResponse: {
     includeEmbed: boolean;

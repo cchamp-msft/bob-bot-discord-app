@@ -1203,6 +1203,7 @@ class MessageHandler {
           {
             includeSystemPrompt: false,
             contextSize: config.getOllamaToolContextSize(),
+            timeout: config.getOllamaToolTimeout(),
             ...(useToolsPath ? { tools } : {}),
             ...(imagePayloads.length > 0 ? { images: imagePayloads } : {}),
           }
@@ -1281,7 +1282,7 @@ class MessageHandler {
             [{ role: 'system', content: finalSystemContent }],
             sig,
             undefined,
-            { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize() }
+            { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: config.getOllamaFinalPassTimeout() }
           )
       ) as OllamaResponse;
 

@@ -74,14 +74,10 @@ class OllamaClient {
   private visionCache: Map<string, { capable: boolean; expiry: number }> = new Map();
   private static VISION_CACHE_TTL_MS = 60_000; // 1 minute
 
-  /** Default HTTP timeout (ms) for all Ollama requests, including
-   *  pre-flight checks that lack a per-request AbortSignal. */
-  private static HTTP_TIMEOUT_MS = 60_000;
-
   constructor() {
     this.client = axios.create({
       baseURL: config.getOllamaEndpoint(),
-      timeout: OllamaClient.HTTP_TIMEOUT_MS,
+      timeout: config.getOllamaTimeout(),
     });
   }
 
@@ -92,7 +88,7 @@ class OllamaClient {
   refresh(): void {
     this.client = axios.create({
       baseURL: config.getOllamaEndpoint(),
-      timeout: OllamaClient.HTTP_TIMEOUT_MS,
+      timeout: config.getOllamaTimeout(),
     });
     // Invalidate model cache when endpoint changes
     this.modelCache = { names: new Set(), expiry: 0 };
@@ -187,7 +183,7 @@ class OllamaClient {
     model?: string,
     conversationHistory?: ChatMessage[],
     signal?: AbortSignal,
-    options?: { includeSystemPrompt?: boolean; tools?: OllamaTool[]; contextSize?: number },
+    options?: { includeSystemPrompt?: boolean; tools?: OllamaTool[]; contextSize?: number; timeout?: number },
     images?: string[],
   ): Promise<OllamaResponse> {
     let selectedModel = model || config.getOllamaModel();
@@ -278,7 +274,11 @@ class OllamaClient {
       // DEBUG: log full Ollama request messages
       logger.logDebugLazy(requester, () => `OLLAMA-REQUEST: model=${selectedModel}, messages=${JSON.stringify(messages, null, 2)}`);
 
-      const response = await this.client.post('/api/chat', requestBody, signal ? { signal } : undefined);
+      const reqConfig: Record<string, unknown> = {};
+      if (signal) reqConfig.signal = signal;
+      if (options?.timeout) reqConfig.timeout = options.timeout;
+      const response = await this.client.post('/api/chat', requestBody,
+        Object.keys(reqConfig).length > 0 ? reqConfig : undefined);
 
       if (response.status === 200 && response.data?.message) {
         const msg = response.data.message as { content?: string; tool_calls?: unknown[] };

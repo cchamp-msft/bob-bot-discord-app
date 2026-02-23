@@ -591,6 +591,117 @@ describe('Config', () => {
     });
   });
 
+  describe('per-model-role HTTP timeouts', () => {
+    const { config } = require('../src/utils/config');
+
+    afterEach(() => {
+      delete process.env.OLLAMA_TIMEOUT;
+      delete process.env.OLLAMA_VISION_TIMEOUT;
+      delete process.env.CONTEXT_EVAL_TIMEOUT;
+      delete process.env.OLLAMA_TOOL_TIMEOUT;
+      delete process.env.OLLAMA_FINAL_PASS_TIMEOUT;
+      delete process.env.ABILITY_RETRY_TIMEOUT;
+    });
+
+    // ── Global timeout ──────────────────────────────────────────
+    it('getOllamaTimeout should default to 120000', () => {
+      delete process.env.OLLAMA_TIMEOUT;
+      expect(config.getOllamaTimeout()).toBe(120000);
+    });
+
+    it('getOllamaTimeout should parse a valid env value', () => {
+      process.env.OLLAMA_TIMEOUT = '180000';
+      expect(config.getOllamaTimeout()).toBe(180000);
+    });
+
+    it('getOllamaTimeout should clamp below minimum to 5000', () => {
+      process.env.OLLAMA_TIMEOUT = '1000';
+      expect(config.getOllamaTimeout()).toBe(5000);
+    });
+
+    it('getOllamaTimeout should clamp above maximum to 600000', () => {
+      process.env.OLLAMA_TIMEOUT = '999999';
+      expect(config.getOllamaTimeout()).toBe(600000);
+    });
+
+    // ── Vision timeout ──────────────────────────────────────────
+    it('getOllamaVisionTimeout should fall back to global timeout', () => {
+      delete process.env.OLLAMA_VISION_TIMEOUT;
+      process.env.OLLAMA_TIMEOUT = '90000';
+      expect(config.getOllamaVisionTimeout()).toBe(90000);
+    });
+
+    it('getOllamaVisionTimeout should use its own env var when set', () => {
+      process.env.OLLAMA_VISION_TIMEOUT = '300000';
+      expect(config.getOllamaVisionTimeout()).toBe(300000);
+    });
+
+    it('getOllamaVisionTimeout should fall back to default when neither set', () => {
+      delete process.env.OLLAMA_VISION_TIMEOUT;
+      delete process.env.OLLAMA_TIMEOUT;
+      expect(config.getOllamaVisionTimeout()).toBe(120000);
+    });
+
+    // ── Context eval timeout ────────────────────────────────────
+    it('getContextEvalTimeout should fall back to global timeout', () => {
+      delete process.env.CONTEXT_EVAL_TIMEOUT;
+      process.env.OLLAMA_TIMEOUT = '90000';
+      expect(config.getContextEvalTimeout()).toBe(90000);
+    });
+
+    it('getContextEvalTimeout should use its own env var when set', () => {
+      process.env.CONTEXT_EVAL_TIMEOUT = '30000';
+      expect(config.getContextEvalTimeout()).toBe(30000);
+    });
+
+    // ── Tool timeout ────────────────────────────────────────────
+    it('getOllamaToolTimeout should fall back to global timeout', () => {
+      delete process.env.OLLAMA_TOOL_TIMEOUT;
+      process.env.OLLAMA_TIMEOUT = '90000';
+      expect(config.getOllamaToolTimeout()).toBe(90000);
+    });
+
+    it('getOllamaToolTimeout should use its own env var when set', () => {
+      process.env.OLLAMA_TOOL_TIMEOUT = '60000';
+      expect(config.getOllamaToolTimeout()).toBe(60000);
+    });
+
+    // ── Final pass timeout ──────────────────────────────────────
+    it('getOllamaFinalPassTimeout should fall back to global timeout', () => {
+      delete process.env.OLLAMA_FINAL_PASS_TIMEOUT;
+      process.env.OLLAMA_TIMEOUT = '90000';
+      expect(config.getOllamaFinalPassTimeout()).toBe(90000);
+    });
+
+    it('getOllamaFinalPassTimeout should use its own env var when set', () => {
+      process.env.OLLAMA_FINAL_PASS_TIMEOUT = '240000';
+      expect(config.getOllamaFinalPassTimeout()).toBe(240000);
+    });
+
+    // ── Ability retry timeout ───────────────────────────────────
+    it('getAbilityRetryTimeout should fall back to global timeout', () => {
+      delete process.env.ABILITY_RETRY_TIMEOUT;
+      process.env.OLLAMA_TIMEOUT = '90000';
+      expect(config.getAbilityRetryTimeout()).toBe(90000);
+    });
+
+    it('getAbilityRetryTimeout should use its own env var when set', () => {
+      process.env.ABILITY_RETRY_TIMEOUT = '45000';
+      expect(config.getAbilityRetryTimeout()).toBe(45000);
+    });
+
+    // ── Clamping on role-specific timeouts ──────────────────────
+    it('role-specific timeout should clamp below minimum to 5000', () => {
+      process.env.OLLAMA_TOOL_TIMEOUT = '100';
+      expect(config.getOllamaToolTimeout()).toBe(5000);
+    });
+
+    it('role-specific timeout should clamp above maximum to 600000', () => {
+      process.env.OLLAMA_FINAL_PASS_TIMEOUT = '999999';
+      expect(config.getOllamaFinalPassTimeout()).toBe(600000);
+    });
+  });
+
   describe('image response config', () => {
     const { config } = require('../src/utils/config');
 

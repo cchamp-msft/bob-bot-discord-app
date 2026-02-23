@@ -256,7 +256,8 @@ export async function evaluateContextWindow(
           combinedSignal,
           {
             includeSystemPrompt: false,
-            contextSize: config.getContextEvalContextSize()
+            contextSize: config.getContextEvalContextSize(),
+            timeout: config.getContextEvalTimeout()
           }
         );
       }

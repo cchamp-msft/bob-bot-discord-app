@@ -20,6 +20,8 @@ export interface OllamaRequestOptions {
   tools?: OllamaTool[];
   /** num_ctx for this request (Ollama context window size). */
   contextSize?: number;
+  /** Per-request HTTP timeout in milliseconds (overrides constructor default). */
+  timeout?: number;
 }
 
 class ApiManager {

@@ -12,6 +12,7 @@ jest.mock('../src/utils/config', () => ({
     ]),
     getOllamaModel: jest.fn(() => 'llama2'),
     getDefaultTimeout: jest.fn(() => 300),
+    getOllamaToolTimeout: jest.fn(() => 120000),
   },
 }));
 
@@ -179,7 +180,7 @@ describe('KeywordClassifier', () => {
           }),
         ]),
         expect.anything(), // queue signal or caller signal
-        { includeSystemPrompt: false }
+        { includeSystemPrompt: false, timeout: 120000 }
       );
     });
 

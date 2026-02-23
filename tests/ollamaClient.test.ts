@@ -27,6 +27,7 @@ jest.mock('../src/utils/config', () => ({
     getOllamaModel: jest.fn(() => 'llama2'),
     getOllamaVisionModel: jest.fn(() => 'llava:7b'),
     getOllamaSystemPrompt: jest.fn(() => ''),
+    getOllamaTimeout: jest.fn(() => 120000),
   },
 }));
 
@@ -55,6 +56,7 @@ describe('OllamaClient', () => {
     (config.getOllamaEndpoint as jest.Mock).mockReturnValue('http://localhost:11434');
     (config.getOllamaSystemPrompt as jest.Mock).mockReturnValue('');
     (config.getOllamaVisionModel as jest.Mock).mockReturnValue('llava:7b');
+    (config.getOllamaTimeout as jest.Mock).mockReturnValue(120000);
     // Clear the model cache between tests
     (ollamaClient as any).modelCache = { names: new Set(), expiry: 0 };
     (ollamaClient as any).visionCache = new Map();
@@ -380,6 +382,64 @@ describe('OllamaClient', () => {
         stream: false,
       }, undefined);
     });
+
+    it('should pass per-request timeout to axios config', async () => {
+      // Validate model
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: { models: [{ name: 'llama2', size: 0, details: {} }] },
+      });
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { message: { content: 'response with custom timeout' } },
+      });
+
+      const result = await ollamaClient.generate(
+        'hello',
+        'user1',
+        'llama2',
+        undefined,
+        undefined,
+        { includeSystemPrompt: false, timeout: 300000 },
+      );
+
+      expect(result.success).toBe(true);
+      // The POST call should include { timeout: 300000 } in the config
+      const postCalls = mockInstance.post.mock.calls;
+      const chatCall = postCalls.find((c: unknown[]) => c[0] === '/api/chat');
+      expect(chatCall).toBeDefined();
+      expect(chatCall![2]).toEqual({ timeout: 300000 });
+    });
+
+    it('should not include timeout in axios config when not specified', async () => {
+      // Validate model
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: { models: [{ name: 'llama2', size: 0, details: {} }] },
+      });
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { message: { content: 'response without timeout' } },
+      });
+
+      const result = await ollamaClient.generate(
+        'hello',
+        'user1',
+        'llama2',
+        undefined,
+        undefined,
+        { includeSystemPrompt: false },
+      );
+
+      expect(result.success).toBe(true);
+      const postCalls = mockInstance.post.mock.calls;
+      const chatCall = postCalls.find((c: unknown[]) => c[0] === '/api/chat');
+      expect(chatCall).toBeDefined();
+      // No signal and no timeout → config should be undefined
+      expect(chatCall![2]).toBeUndefined();
+    });
   });
 
   describe('testConnection', () => {
@@ -460,7 +520,19 @@ describe('OllamaClient', () => {
       expect(createCallsAfter).toBe(createCallsBefore + 1);
       expect(mockedAxios.create).toHaveBeenLastCalledWith({
         baseURL: 'http://new-host:9999',
-        timeout: 60000,
+        timeout: 120000,
+      });
+    });
+
+    it('should use custom timeout from config', () => {
+      (config.getOllamaEndpoint as jest.Mock).mockReturnValue('http://localhost:11434');
+      (config.getOllamaTimeout as jest.Mock).mockReturnValue(180000);
+
+      ollamaClient.refresh();
+
+      expect(mockedAxios.create).toHaveBeenLastCalledWith({
+        baseURL: 'http://localhost:11434',
+        timeout: 180000,
       });
     });
 

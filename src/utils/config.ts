@@ -601,6 +601,76 @@ class Config {
     return Math.max(256, Math.min(raw, 131072));
   }
 
+  // ── Per-model-role HTTP timeouts (ms) ─────────────────────────
+
+  /** Minimum allowed timeout (ms). */
+  private static TIMEOUT_MIN_MS = 5_000;
+  /** Maximum allowed timeout (ms). */
+  private static TIMEOUT_MAX_MS = 600_000;
+
+  /** Clamp a timeout value to [5000, 600000]. */
+  private clampTimeout(value: number): number {
+    return Math.max(Config.TIMEOUT_MIN_MS, Math.min(value, Config.TIMEOUT_MAX_MS));
+  }
+
+  /**
+   * Global Ollama HTTP timeout in milliseconds.
+   * Applies to all Ollama requests unless a role-specific timeout is set.
+   * Default: 120000 (2 min). Range: 5000–600000.
+   */
+  getOllamaTimeout(): number {
+    return this.clampTimeout(this.parseIntEnv('OLLAMA_TIMEOUT', 120_000));
+  }
+
+  /**
+   * Ollama HTTP timeout for vision model requests.
+   * Falls back to OLLAMA_TIMEOUT. Range: 5000–600000.
+   */
+  getOllamaVisionTimeout(): number {
+    const raw = process.env.OLLAMA_VISION_TIMEOUT;
+    if (raw) return this.clampTimeout(this.parseIntEnv('OLLAMA_VISION_TIMEOUT', this.getOllamaTimeout()));
+    return this.getOllamaTimeout();
+  }
+
+  /**
+   * Ollama HTTP timeout for context evaluation requests.
+   * Falls back to OLLAMA_TIMEOUT. Range: 5000–600000.
+   */
+  getContextEvalTimeout(): number {
+    const raw = process.env.CONTEXT_EVAL_TIMEOUT;
+    if (raw) return this.clampTimeout(this.parseIntEnv('CONTEXT_EVAL_TIMEOUT', this.getOllamaTimeout()));
+    return this.getOllamaTimeout();
+  }
+
+  /**
+   * Ollama HTTP timeout for tool evaluation requests.
+   * Falls back to OLLAMA_TIMEOUT. Range: 5000–600000.
+   */
+  getOllamaToolTimeout(): number {
+    const raw = process.env.OLLAMA_TOOL_TIMEOUT;
+    if (raw) return this.clampTimeout(this.parseIntEnv('OLLAMA_TOOL_TIMEOUT', this.getOllamaTimeout()));
+    return this.getOllamaTimeout();
+  }
+
+  /**
+   * Ollama HTTP timeout for the final refinement pass.
+   * Falls back to OLLAMA_TIMEOUT. Range: 5000–600000.
+   */
+  getOllamaFinalPassTimeout(): number {
+    const raw = process.env.OLLAMA_FINAL_PASS_TIMEOUT;
+    if (raw) return this.clampTimeout(this.parseIntEnv('OLLAMA_FINAL_PASS_TIMEOUT', this.getOllamaTimeout()));
+    return this.getOllamaTimeout();
+  }
+
+  /**
+   * Ollama HTTP timeout for ability retry/refinement requests.
+   * Falls back to OLLAMA_TIMEOUT. Range: 5000–600000.
+   */
+  getAbilityRetryTimeout(): number {
+    const raw = process.env.ABILITY_RETRY_TIMEOUT;
+    if (raw) return this.clampTimeout(this.parseIntEnv('ABILITY_RETRY_TIMEOUT', this.getOllamaTimeout()));
+    return this.getOllamaTimeout();
+  }
 
 
   getErrorRateLimitMinutes(): number {
@@ -930,6 +1000,12 @@ class Config {
     const prevAbilityRetryModel = this.getAbilityRetryModel();
     const prevAbilityRetryPrompt = this.getAbilityRetryPrompt();
     const prevBotDisplayName = this.getBotDisplayName();
+    const prevOllamaTimeout = this.getOllamaTimeout();
+    const prevOllamaVisionTimeout = this.getOllamaVisionTimeout();
+    const prevContextEvalTimeout = this.getContextEvalTimeout();
+    const prevOllamaToolTimeout = this.getOllamaToolTimeout();
+    const prevOllamaFinalPassTimeout = this.getOllamaFinalPassTimeout();
+    const prevAbilityRetryTimeout = this.getAbilityRetryTimeout();
     const prevDefaultModel = this.getComfyUIDefaultModel();
     const prevDefaultWidth = this.getComfyUIDefaultWidth();
     const prevDefaultHeight = this.getComfyUIDefaultHeight();
@@ -1011,6 +1087,12 @@ class Config {
     if (this.getAbilityRetryModel() !== prevAbilityRetryModel) reloaded.push('ABILITY_RETRY_MODEL');
     if (this.getAbilityRetryPrompt() !== prevAbilityRetryPrompt) reloaded.push('ABILITY_RETRY_PROMPT');
     if (this.getBotDisplayName() !== prevBotDisplayName) reloaded.push('BOT_DISPLAY_NAME');
+    if (this.getOllamaTimeout() !== prevOllamaTimeout) reloaded.push('OLLAMA_TIMEOUT');
+    if (this.getOllamaVisionTimeout() !== prevOllamaVisionTimeout) reloaded.push('OLLAMA_VISION_TIMEOUT');
+    if (this.getContextEvalTimeout() !== prevContextEvalTimeout) reloaded.push('CONTEXT_EVAL_TIMEOUT');
+    if (this.getOllamaToolTimeout() !== prevOllamaToolTimeout) reloaded.push('OLLAMA_TOOL_TIMEOUT');
+    if (this.getOllamaFinalPassTimeout() !== prevOllamaFinalPassTimeout) reloaded.push('OLLAMA_FINAL_PASS_TIMEOUT');
+    if (this.getAbilityRetryTimeout() !== prevAbilityRetryTimeout) reloaded.push('ABILITY_RETRY_TIMEOUT');
     if (this.getComfyUIDefaultModel() !== prevDefaultModel) reloaded.push('COMFYUI_DEFAULT_MODEL');
     if (this.getComfyUIDefaultWidth() !== prevDefaultWidth) reloaded.push('COMFYUI_DEFAULT_WIDTH');
     if (this.getComfyUIDefaultHeight() !== prevDefaultHeight) reloaded.push('COMFYUI_DEFAULT_HEIGHT');
@@ -1060,6 +1142,10 @@ class Config {
         ollamaFinalPassPrompt: this.getOllamaFinalPassPrompt(),
         ollamaToolContextSize: this.getOllamaToolContextSize(),
         ollamaFinalPassContextSize: this.getOllamaFinalPassContextSize(),
+        ollamaTimeout: this.getOllamaTimeout(),
+        ollamaVisionTimeout: this.getOllamaVisionTimeout(),
+        ollamaToolTimeout: this.getOllamaToolTimeout(),
+        ollamaFinalPassTimeout: this.getOllamaFinalPassTimeout(),
         comfyuiWorkflowConfigured: this.hasComfyUIWorkflow(),
         accuweather: this.getAccuWeatherEndpoint(),
         accuweatherDefaultLocation: this.getAccuWeatherDefaultLocation(),
@@ -1120,6 +1206,7 @@ class Config {
         enabled: this.getContextEvalEnabled(),
         model: this.getContextEvalModel(),
         contextSize: this.getContextEvalContextSize(),
+        timeout: this.getContextEvalTimeout(),
         prompt: this.getContextEvalPrompt(),
       },
       debugLogging: this.getDebugLogging(),
@@ -1134,6 +1221,7 @@ class Config {
         maxRetries: this.getAbilityRetryMaxRetries(),
         model: this.getAbilityRetryModel(),
         prompt: this.getAbilityRetryPrompt(),
+        timeout: this.getAbilityRetryTimeout(),
       },
       imageResponse: {
         includeEmbed: this.getImageResponseIncludeEmbed(),

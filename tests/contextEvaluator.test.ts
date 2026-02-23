@@ -12,6 +12,7 @@ jest.mock('../src/utils/config', () => ({
     getContextEvalModel: jest.fn(() => 'llama2'),
     getContextEvalPrompt: jest.fn(() => ''),
     getContextEvalContextSize: jest.fn(() => 2048),
+    getContextEvalTimeout: jest.fn(() => 120000),
   },
 }));
 

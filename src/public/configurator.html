@@ -580,6 +580,16 @@
             <button class="btn-test btn-sm" onclick="testConnection('ollama')">Test</button>
           </div>
         </div>
+        <div class="field-row">
+          <div class="field narrow">
+            <label>Global HTTP Timeout <span class="note">ms, 5000–600000</span></label>
+            <input type="number" id="ollama_timeout" data-env="OLLAMA_TIMEOUT" placeholder="120000" min="5000" max="600000">
+          </div>
+          <div class="field narrow">
+            <label>Vision Timeout <span class="note">ms, falls back to global</span></label>
+            <input type="number" id="ollama_vision_timeout" data-env="OLLAMA_VISION_TIMEOUT" placeholder="120000" min="5000" max="600000">
+          </div>
+        </div>
 
         <hr style="border-color:var(--border);margin:16px 0">
         <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin:12px 0 8px">Reply Chain Context</div>
@@ -631,6 +641,10 @@
             <label>Context Size <span class="note">num_ctx, 256–131072</span></label>
             <input type="number" id="context_eval_context_size" data-env="CONTEXT_EVAL_CONTEXT_SIZE" placeholder="2048" min="256" max="131072">
           </div>
+          <div class="field narrow">
+            <label>HTTP Timeout <span class="note">ms, 5000–600000</span></label>
+            <input type="number" id="context_eval_timeout" data-env="CONTEXT_EVAL_TIMEOUT" placeholder="120000" min="5000" max="600000">
+          </div>
         </div>
         <div class="field">
           <label>Context Eval Prompt <span class="note">optional; leave empty to use built-in prompt</span></label>
@@ -654,6 +668,10 @@
         <div class="field narrow">
           <label>Context Size <span class="note">num_ctx, 256–131072</span></label>
           <input type="number" id="ollama_tool_context_size" data-env="OLLAMA_TOOL_CONTEXT_SIZE" placeholder="4096" min="256" max="131072">
+        </div>
+        <div class="field narrow">
+          <label>HTTP Timeout <span class="note">ms, 5000–600000</span></label>
+          <input type="number" id="ollama_tool_timeout" data-env="OLLAMA_TOOL_TIMEOUT" placeholder="120000" min="5000" max="600000">
         </div>
         <div class="field">
           <label>
@@ -685,6 +703,10 @@
         <div class="field narrow">
           <label>Context Size <span class="note">num_ctx, 256–131072</span></label>
           <input type="number" id="ollama_final_pass_context_size" data-env="OLLAMA_FINAL_PASS_CONTEXT_SIZE" placeholder="4096" min="256" max="131072">
+        </div>
+        <div class="field narrow">
+          <label>HTTP Timeout <span class="note">ms, 5000–600000</span></label>
+          <input type="number" id="ollama_final_pass_timeout" data-env="OLLAMA_FINAL_PASS_TIMEOUT" placeholder="120000" min="5000" max="600000">
         </div>
         <div class="field">
           <label>Final Pass Prompt <span class="note">AI instruction appended to every final pass refinement</span></label>
@@ -1428,6 +1450,7 @@ flowchart TD
       const ctxEvalEnabled = document.getElementById('context_eval_enabled');
       ctxEvalEnabled.value = cfg.contextEval?.enabled === false ? 'false' : 'true';
       document.getElementById('context_eval_context_size').value = cfg.contextEval?.contextSize ?? 2048;
+      document.getElementById('context_eval_timeout').value = cfg.contextEval?.timeout ?? '';
       document.getElementById('context_eval_prompt').value = cfg.contextEval?.prompt || '';
       const contextEvalModelSelect = document.getElementById('context_eval_model');
       if (cfg.contextEval?.model) {
@@ -1456,9 +1479,13 @@ flowchart TD
         fpModelSelect.value = cfg.apis.ollamaFinalPassModel;
       }
 
-      // Populate Ollama context size fields
+      // Populate Ollama context size and timeout fields
       document.getElementById('ollama_tool_context_size').value = cfg.apis.ollamaToolContextSize ?? '';
       document.getElementById('ollama_final_pass_context_size').value = cfg.apis.ollamaFinalPassContextSize ?? '';
+      document.getElementById('ollama_timeout').value = cfg.apis.ollamaTimeout ?? '';
+      document.getElementById('ollama_vision_timeout').value = cfg.apis.ollamaVisionTimeout ?? '';
+      document.getElementById('ollama_tool_timeout').value = cfg.apis.ollamaToolTimeout ?? '';
+      document.getElementById('ollama_final_pass_timeout').value = cfg.apis.ollamaFinalPassTimeout ?? '';
 
       // Populate image response setting
       const irEmbed = document.getElementById('image_response_include_embed');

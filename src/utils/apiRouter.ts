@@ -214,7 +214,7 @@ export async function inferAbilityParameters(
           [{ role: 'system', content: systemPrompt }],
           combinedSignal,
           undefined,
-          { includeSystemPrompt: false }
+          { includeSystemPrompt: false, timeout: config.getAbilityRetryTimeout() }
         );
       }
     ) as OllamaResponse;
@@ -457,7 +457,7 @@ export async function executeRoutedRequest(
             [{ role: 'system', content: systemPrompt }],
             sig,
             undefined,
-            { includeSystemPrompt: false }
+            { includeSystemPrompt: false, timeout: config.getAbilityRetryTimeout() }
           ),
         signal
       ) as OllamaResponse;
@@ -605,7 +605,7 @@ export async function executeRoutedRequest(
           [{ role: 'system', content: finalSystemContent }],
           sig,
           undefined,
-          { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize() }
+          { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: config.getOllamaFinalPassTimeout() }
         ),
       signal
     ) as OllamaResponse;
