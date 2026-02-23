@@ -522,7 +522,7 @@ class MessageHandler {
         // Append the triggering message so the model always knows who is asking.
         const historyWithTrigger: ChatMessage[] = [
           ...conversationHistory,
-          { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true },
+          { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true, createdAtMs: message.createdTimestamp },
         ];
         activityEvents.emitRoutingDecision(toolConfig.api, toolConfig.name, 'keyword');
 
@@ -759,6 +759,7 @@ class MessageHandler {
           role,
           content,
           contextSource: 'dm',
+          createdAtMs: msg.createdTimestamp,
           ...(isUserMsg && { hasNamePrefix: true }),
         });
       }
@@ -1160,7 +1161,7 @@ class MessageHandler {
     // This is done after context evaluation so it is never filtered out.
     filteredHistory = [
       ...filteredHistory,
-      { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true },
+      { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true, createdAtMs: sourceMessage.createdTimestamp },
     ];
 
     // Native tools path: when tools are available, use Ollama tool_calls (max 3) and one final pass.

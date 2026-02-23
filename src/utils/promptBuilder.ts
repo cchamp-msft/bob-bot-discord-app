@@ -229,7 +229,8 @@ function formatConversationHistory(history: ChatMessage[], discordBotName?: stri
       // is never prefixed upstream and stripping would corrupt bot output
       // that happens to start with "word: …" patterns.
       const text = msg.role === 'user' ? stripSpeakerPrefix(msg.content, msg.hasNamePrefix) : msg.content;
-      return `<message role="${msg.role}" speaker="${escapeXmlAttribute(speaker)}" speaker_type="${speakerType}">${escapeXmlContent(text)}</message>`;
+      const tsAttr = msg.createdAtMs != null ? ` timestamp="${Math.floor(msg.createdAtMs / 1000)}"` : '';
+      return `<message role="${msg.role}" speaker="${escapeXmlAttribute(speaker)}" speaker_type="${speakerType}"${tsAttr}>${escapeXmlContent(text)}</message>`;
     });
     blocks.push(`<context source="${source}">\n${lines.join('\n')}\n</context>`);
   }
@@ -417,6 +418,18 @@ export function getCurrentDateTimeTag(now?: Date): string {
   return `<current_datetime>${formatted}</current_datetime>`;
 }
 
+/**
+ * Build an XML tag containing the current Unix epoch timestamp (seconds)
+ * so the model can compute relative ages of messages in conversation history.
+ *
+ * @param now - Optional Date for testing; defaults to `new Date()`.
+ */
+export function getCurrentTimestampTag(now?: Date): string {
+  const d = now ?? new Date();
+  const epochSeconds = Math.floor(d.getTime() / 1000);
+  return `<current_timestamp>${epochSeconds}</current_timestamp>`;
+}
+
 // ── XML user content builder ─────────────────────────────────────
 
 /**
@@ -439,6 +452,8 @@ export function buildUserContent(options: PromptBuildOptions): string {
     botDisplayName
   );
   if (historyText) {
+    // Include epoch timestamp so the model can reason about message ages
+    parts.push(getCurrentTimestampTag());
     parts.push(`<conversation_history>\n${historyText}\n</conversation_history>`);
   } else {
     parts.push('<conversation_history>\n</conversation_history>');
@@ -721,6 +736,7 @@ export function assembleReprompt(options: PromptBuildOptions): AssembledPrompt {
     botDisplayName
   );
   if (historyText) {
+    parts.push(getCurrentTimestampTag());
     parts.push(`<conversation_history>\n${historyText}\n</conversation_history>`);
   } else {
     parts.push('<conversation_history>\n</conversation_history>');

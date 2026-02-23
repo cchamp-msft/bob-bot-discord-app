@@ -109,6 +109,7 @@ import {
   escapeXmlContent,
   escapeXmlAttribute,
   getCurrentDateTimeTag,
+  getCurrentTimestampTag,
 } from '../src/utils/promptBuilder';
 import { config } from '../src/utils/config';
 
@@ -867,6 +868,117 @@ describe('PromptBuilder', () => {
       const year = new Date().getFullYear().toString();
       expect(tag).toContain(year);
       expect(tag).toContain('<current_datetime>');
+    });
+  });
+
+  // ── getCurrentTimestampTag ────────────────────────────────
+
+  describe('getCurrentTimestampTag', () => {
+    it('should wrap Unix epoch seconds in <current_timestamp> tag', () => {
+      const d = new Date('2026-02-23T15:00:00Z');
+      const expected = Math.floor(d.getTime() / 1000);
+      const tag = getCurrentTimestampTag(d);
+      expect(tag).toBe(`<current_timestamp>${expected}</current_timestamp>`);
+    });
+
+    it('should use current time when no argument is provided', () => {
+      const before = Math.floor(Date.now() / 1000);
+      const tag = getCurrentTimestampTag();
+      const after = Math.floor(Date.now() / 1000);
+      const match = tag.match(/<current_timestamp>(\d+)<\/current_timestamp>/);
+      expect(match).not.toBeNull();
+      const epoch = Number(match![1]);
+      expect(epoch).toBeGreaterThanOrEqual(before);
+      expect(epoch).toBeLessThanOrEqual(after);
+    });
+  });
+
+  // ── current_timestamp integration ──────────────────────────
+
+  describe('current_timestamp in prompts', () => {
+    it('should appear in buildUserContent when conversation history is non-empty', () => {
+      const content = buildUserContent({
+        userMessage: 'Hello',
+        conversationHistory: [
+          { role: 'user', content: 'Hi' },
+        ],
+      });
+      expect(content).toContain('<current_timestamp>');
+      expect(content).toContain('</current_timestamp>');
+    });
+
+    it('should NOT appear in buildUserContent when conversation history is empty', () => {
+      const content = buildUserContent({
+        userMessage: 'Hello',
+      });
+      expect(content).not.toContain('<current_timestamp>');
+    });
+
+    it('should NOT appear in buildUserContent when history contains only system messages', () => {
+      const content = buildUserContent({
+        userMessage: 'Hello',
+        conversationHistory: [
+          { role: 'system', content: 'You are a bot' },
+        ],
+      });
+      expect(content).not.toContain('<current_timestamp>');
+    });
+
+    it('should appear in assembleReprompt when conversation history is non-empty', () => {
+      const result = assembleReprompt({
+        userMessage: 'What is the weather?',
+        externalData: 'Sunny',
+        conversationHistory: [
+          { role: 'user', content: 'Previous msg' },
+        ],
+      });
+      expect(result.userContent).toContain('<current_timestamp>');
+    });
+
+    it('should NOT appear in assembleReprompt when conversation history is empty', () => {
+      const result = assembleReprompt({
+        userMessage: 'What is the weather?',
+        externalData: 'Sunny',
+      });
+      expect(result.userContent).not.toContain('<current_timestamp>');
+    });
+  });
+
+  // ── message timestamp attribute ────────────────────────────
+
+  describe('message timestamp attribute', () => {
+    it('should include timestamp attribute when createdAtMs is set', () => {
+      const content = buildUserContent({
+        userMessage: 'test',
+        conversationHistory: [
+          { role: 'user', content: 'hello', createdAtMs: 1700000000000 },
+        ],
+      });
+      expect(content).toContain('timestamp="1700000000"');
+    });
+
+    it('should omit timestamp attribute when createdAtMs is not set', () => {
+      const content = buildUserContent({
+        userMessage: 'test',
+        conversationHistory: [
+          { role: 'user', content: 'hello' },
+        ],
+      });
+      expect(content).not.toContain('timestamp=');
+    });
+
+    it('should include timestamp on some messages and omit on others', () => {
+      const content = buildUserContent({
+        userMessage: 'test',
+        conversationHistory: [
+          { role: 'user', content: 'with timestamp', createdAtMs: 1700000000000 },
+          { role: 'assistant', content: 'no timestamp' },
+        ],
+      });
+      expect(content).toContain('timestamp="1700000000"');
+      // The assistant message without createdAtMs should not have timestamp
+      expect(content).toMatch(/<message role="assistant"[^>]*speaker_type="bot">no timestamp<\/message>/);
+      expect(content).not.toMatch(/<message role="assistant"[^>]*timestamp="[^"]*"[^>]*>no timestamp<\/message>/);
     });
   });
 
