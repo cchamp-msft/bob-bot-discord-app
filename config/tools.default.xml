@@ -88,42 +88,27 @@
     <contextFilterMaxDepth>1</contextFilterMaxDepth>
   </tool>
 
-  <!-- NFL tools -->
+  <!-- NFL tool -->
   <tool>
-    <name>nfl_scores</name>
+    <name>get_recent_nfl_data</name>
     <api>nfl</api>
     <timeout>30</timeout>
-    <description>Get current NFL game scores. Optionally provide a date (YYYYMMDD or YYYY-MM-DD) to look up scores for a specific date; otherwise returns the most recent scoreboard.</description>
-    <abilityWhen>User asks about NFL scores or game results.</abilityWhen>
+    <description>Get recent NFL scores or news. Provide a data type: "scores" for game results, "news" for headlines. Optionally add a filter — a date (YYYYMMDD or YYYY-MM-DD) for scores, or a keyword (e.g. team name) for news.</description>
+    <abilityWhen>User asks about NFL scores, game results, news, or headlines.</abilityWhen>
     <parameters>
       <mode>mixed</mode>
-      <date>
+      <dataType>
         <type>string</type>
-        <description>Date in YYYYMMDD or YYYY-MM-DD format. If omitted, returns the most recent scoreboard.</description>
-        <required>false</required>
-      </date>
-      <inferFrom>current_message</inferFrom>
-      <validation>Date must be YYYYMMDD or YYYY-MM-DD. If omitted, returns the most recent scoreboard.</validation>
-    </parameters>
-    <finalOllamaPass>true</finalOllamaPass>
-    <allowEmptyContent>true</allowEmptyContent>
-  </tool>
-
-  <tool>
-    <name>nfl_news</name>
-    <api>nfl</api>
-    <timeout>30</timeout>
-    <description>Get latest NFL news headlines. Optionally provide a filter word to narrow results (e.g. 'nfl_news chiefs').</description>
-    <abilityWhen>User asks about NFL news or headlines.</abilityWhen>
-    <parameters>
-      <mode>mixed</mode>
+        <description>The kind of NFL data to retrieve: "scores" or "news".</description>
+        <required>true</required>
+      </dataType>
       <filter>
         <type>string</type>
-        <description>Optional NFL-related term to narrow results (e.g. team name). If omitted, returns all headlines.</description>
+        <description>Optional filter — date (YYYYMMDD or YYYY-MM-DD) for scores, keyword/team name for news.</description>
         <required>false</required>
       </filter>
       <inferFrom>current_message</inferFrom>
-      <validation>Filter is an optional NFL-related term to narrow results (e.g. team name). If omitted, returns all headlines.</validation>
+      <validation>Type must be "scores" or "news". Filter is optional: for scores a date in YYYYMMDD or YYYY-MM-DD format; for news a keyword to narrow results.</validation>
     </parameters>
     <finalOllamaPass>true</finalOllamaPass>
     <allowEmptyContent>true</allowEmptyContent>

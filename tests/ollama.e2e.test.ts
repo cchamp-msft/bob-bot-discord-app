@@ -389,7 +389,7 @@ describe('Final pass prompt', () => {
   ].join('\n');
 
   const sampleExternalData = [
-    '<external_data source="nfl" keyword="nfl_scores">',
+    '<external_data source="nfl" keyword="get_recent_nfl_data">',
     'NFL Scores for Week 10:',
     'Kansas City Chiefs 27 - Buffalo Bills 24 (Final)',
     'Dallas Cowboys 14 - Philadelphia Eagles 31 (Final)',

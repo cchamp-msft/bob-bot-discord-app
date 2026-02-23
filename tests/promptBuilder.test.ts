@@ -28,25 +28,19 @@ jest.mock('../src/utils/config', () => ({
         description: 'Generic NFL lookup',
       },
       {
-        name: 'nfl_scores',
+        name: 'get_recent_nfl_data',
         api: 'nfl',
         timeout: 60,
-        description: 'Get NFL game information',
-        abilityText: 'Get NFL game information, enhanced with live data',
-        abilityWhen: 'User asks about NFL scores or game results.',
+        description: 'Get recent NFL scores or news',
+        abilityText: 'Get recent NFL scores or news, enhanced with live data',
+        abilityWhen: 'User asks about NFL scores, game results, news, or headlines.',
         abilityInputs: {
           mode: 'mixed',
-          optional: ['date'],
-          validation: 'Date must be YYYYMMDD or YYYY-MM-DD. If omitted, returns the most recent scoreboard.',
+          required: ['dataType'],
+          optional: ['filter'],
+          validation: 'Type must be "scores" or "news". Filter is optional: for scores a date in YYYYMMDD or YYYY-MM-DD format; for news a keyword to narrow results.',
         },
         finalOllamaPass: true,
-      },
-      {
-        name: 'nfl_news',
-        api: 'nfl',
-        timeout: 30,
-        description: 'Get current NFL news headlines',
-        abilityText: 'Get current NFL news headlines',
       },
       {
         name: 'generate',
@@ -130,11 +124,10 @@ describe('PromptBuilder', () => {
       const routable = getRoutableTools();
       const names = routable.map(k => k.name);
 
-      // Included: weather, nfl, nfl_scores, nfl_news, generate
+      // Included: weather, nfl, get_recent_nfl_data, generate
       expect(names).toContain('weather');
       expect(names).toContain('nfl');
-      expect(names).toContain('nfl_scores');
-      expect(names).toContain('nfl_news');
+      expect(names).toContain('get_recent_nfl_data');
       expect(names).toContain('generate');
 
       // Excluded: chat (ollama), help (builtin), disabled_tool (enabled: false)
@@ -211,21 +204,14 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('    Validation: Use the reply target text if present;');
     });
 
-    it('should render mixed inputs with optional params for nfl_scores', () => {
+    it('should render mixed inputs with required and optional params for get_recent_nfl_data', () => {
       const prompt = buildSystemPrompt();
 
-      expect(prompt).toContain('- nfl_scores');
+      expect(prompt).toContain('- get_recent_nfl_data');
       expect(prompt).toContain('  Inputs: Mixed.');
-      expect(prompt).toContain('    Optional: date.');
+      expect(prompt).toContain('    Required: dataType.');
+      expect(prompt).toContain('    Optional: filter.');
       expect(prompt).toContain('    Validation:');
-    });
-
-    it('should render default explicit fallback for tools without abilityInputs', () => {
-      const prompt = buildSystemPrompt();
-
-      // nfl_news has no abilityInputs — should get default fallback
-      expect(prompt).toContain('- nfl_news');
-      expect(prompt).toContain('    Use the user\'s current message content as input.');
     });
 
     it('should include clarification rule in rules block', () => {
@@ -335,8 +321,7 @@ describe('PromptBuilder', () => {
 
       expect(content).toContain('weather');
       expect(content).toContain('nfl');
-      expect(content).toContain('nfl_scores');
-      expect(content).toContain('nfl_news');
+      expect(content).toContain('get_recent_nfl_data');
     });
 
     it('should include clarification steps in thinking_and_output_rules', () => {
@@ -600,9 +585,9 @@ describe('PromptBuilder', () => {
 
   describe('parseFirstLineTool', () => {
     it('should match exact tool on first line', () => {
-      const result = parseFirstLineTool('nfl_scores');
+      const result = parseFirstLineTool('get_recent_nfl_data');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('nfl_scores');
+      expect(result.toolConfig?.name).toBe('get_recent_nfl_data');
     });
 
     it('should match tool with trailing whitespace', () => {
@@ -612,21 +597,21 @@ describe('PromptBuilder', () => {
     });
 
     it('should match tool with trailing punctuation', () => {
-      const result = parseFirstLineTool('nfl_scores.');
+      const result = parseFirstLineTool('get_recent_nfl_data.');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('nfl_scores');
+      expect(result.toolConfig?.name).toBe('get_recent_nfl_data');
     });
 
     it('should match tool case-insensitively', () => {
-      const result = parseFirstLineTool('NFL_SCORES');
+      const result = parseFirstLineTool('GET_RECENT_NFL_DATA');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('nfl_scores');
+      expect(result.toolConfig?.name).toBe('get_recent_nfl_data');
     });
 
     it('should take only first line when tool + junk after', () => {
-      const result = parseFirstLineTool('nfl_scores\nlol why ask me');
+      const result = parseFirstLineTool('get_recent_nfl_data\nlol why ask me');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('nfl_scores');
+      expect(result.toolConfig?.name).toBe('get_recent_nfl_data');
     });
 
     it('should match directive on a later line when first line is commentary', () => {
@@ -645,10 +630,10 @@ describe('PromptBuilder', () => {
       expect(result.commentaryText).toBe('Quick thought first.\nI can also add a forecast.');
     });
 
-    it('should prefer longest tool name match (nfl_scores over nfl)', () => {
-      const result = parseFirstLineTool('nfl_scores');
+    it('should prefer longest tool name match (get_recent_nfl_data over nfl)', () => {
+      const result = parseFirstLineTool('get_recent_nfl_data');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('nfl_scores');
+      expect(result.toolConfig?.name).toBe('get_recent_nfl_data');
     });
 
     it('should NOT match if first line is a normal sentence', () => {
@@ -699,9 +684,9 @@ describe('PromptBuilder', () => {
     });
 
     it('should match tool name preceded by a dash bullet marker', () => {
-      const result = parseFirstLineTool('- nfl_scores');
+      const result = parseFirstLineTool('- get_recent_nfl_data');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('nfl_scores');
+      expect(result.toolConfig?.name).toBe('get_recent_nfl_data');
     });
 
     it('should match tool name preceded by an asterisk bullet marker', () => {
@@ -711,9 +696,9 @@ describe('PromptBuilder', () => {
     });
 
     it('should match tool name preceded by a bullet character', () => {
-      const result = parseFirstLineTool('\u2022 nfl_news');
+      const result = parseFirstLineTool('\u2022 get_recent_nfl_data');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('nfl_news');
+      expect(result.toolConfig?.name).toBe('get_recent_nfl_data');
     });
 
     it('should extract inferred input from colon-delimited first line', () => {
@@ -724,9 +709,9 @@ describe('PromptBuilder', () => {
     });
 
     it('should extract inferred input from whitespace-delimited first line', () => {
-      const result = parseFirstLineTool('nfl_scores 2026-02-16');
+      const result = parseFirstLineTool('get_recent_nfl_data 2026-02-16');
       expect(result.matched).toBe(true);
-      expect(result.toolConfig?.name).toBe('nfl_scores');
+      expect(result.toolConfig?.name).toBe('get_recent_nfl_data');
       expect(result.inferredInput).toBe('2026-02-16');
     });
   });
@@ -743,13 +728,13 @@ describe('PromptBuilder', () => {
   });
 
   describe('formatNFLExternalData', () => {
-    it('should use "nfl-scores" source for scores tool names', () => {
-      const result = formatNFLExternalData('nfl_scores', 'Chiefs 38 – Seahawks 31');
+    it('should use "nfl-scores" source for scores content', () => {
+      const result = formatNFLExternalData('get_recent_nfl_data', 'Chiefs 38 – Seahawks 31');
       expect(result).toContain('source="nfl-scores"');
     });
 
-    it('should use "nfl-news" source for news tool names', () => {
-      const result = formatNFLExternalData('nfl_news', 'Top headlines...');
+    it('should use "nfl-news" source for news content', () => {
+      const result = formatNFLExternalData('get_recent_nfl_data', '📰 **NFL News**\nTop headlines...');
       expect(result).toContain('source="nfl-news"');
     });
   });

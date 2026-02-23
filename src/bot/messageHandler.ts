@@ -412,7 +412,7 @@ class MessageHandler {
     }
 
     if (!content) {
-      // Some tools (e.g. "nfl_scores", "nfl_news") work without extra content.
+      // Some tools (e.g. "get_recent_nfl_data") work without extra content.
       // For those, use the tool name itself as the content so the request proceeds.
       const toolAllowsEmpty = toolConfig.allowEmptyContent === true;
 
@@ -981,7 +981,7 @@ class MessageHandler {
   /**
    * Match a tool only when the message starts with the command prefix (!).
    * Tools are sorted longest-first so multi-word tool names like
-   * "!nfl_scores" take priority over shorter overlaps.
+   * "!get_recent_nfl_data" take priority over shorter overlaps.
    * Disabled tools (enabled === false) are skipped.
    *
    * Messages without the command prefix are NOT matched here — they are

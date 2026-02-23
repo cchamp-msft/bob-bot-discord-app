@@ -897,10 +897,14 @@ export class NFLClient {
     }
 
     try {
+      if (lowerToolName === 'get_recent_nfl_data') {
+        return await this.handleUnifiedRequest(content, signal);
+      }
+
+      // Legacy fallback for stale runtime tools.xml
       if (lowerToolName === 'nfl_scores') {
         return await this.handleAllScores(content, signal);
       }
-
       if (lowerToolName === 'nfl_news') {
         return await this.handleNews(content, signal);
       }
@@ -913,6 +917,31 @@ export class NFLClient {
       const msg = error instanceof Error ? error.message : String(error);
       logger.logError('nfl', `NFL request failed: ${msg}`);
       return { success: false, error: `NFL API error: ${msg}` };
+    }
+  }
+
+  private async handleUnifiedRequest(content: string, signal?: AbortSignal): Promise<NFLResponse> {
+    const text = content.trim().toLowerCase();
+
+    // Determine the data type
+    let dataType: 'scores' | 'news';
+    if (/\bnews\b/.test(text)) {
+      dataType = 'news';
+    } else {
+      // Default to scores (covers explicit "scores" keyword and empty content)
+      dataType = 'scores';
+    }
+
+    // Extract filter by removing the tool name and type keyword from content
+    const filter = content
+      .replace(/get_recent_nfl_data/i, '')
+      .replace(/\b(scores?|news)\b/i, '')
+      .trim();
+
+    if (dataType === 'scores') {
+      return await this.handleAllScores(filter, signal);
+    } else {
+      return await this.handleNews(filter, signal);
     }
   }
 
@@ -950,10 +979,10 @@ export class NFLClient {
     }
 
     if (!dateParam) {
-      text += '\n\n_Tip: specify a date for historical scores, e.g. `nfl scores 20260208` or `nfl scores 2026-02-08`._';
+      text += '\n\n_Tip: specify a date for historical scores, e.g. `get_recent_nfl_data scores 20260208` or `get_recent_nfl_data scores 2026-02-08`._';
     }
 
-    this.logResponsePayload('nfl_scores', text);
+    this.logResponsePayload('get_recent_nfl_data', text);
     return { success: true, data: { text, games } };
   }
 
@@ -962,7 +991,7 @@ export class NFLClient {
 
     // Strip the keyword itself from content to get the filter term
     const filterTerm = content
-      .replace(/^nfl\s+news\s*/i, '')
+      .replace(/^(nfl\s+news|get_recent_nfl_data\s+news)\s*/i, '')
       .trim();
 
     let filtered: ESPNNewsArticle[];
@@ -974,13 +1003,13 @@ export class NFLClient {
 
     if (filtered.length === 0) {
       const msg = filterTerm
-        ? `No NFL news articles matching "${filterTerm}". Try a different filter or use \`nfl news\` without a filter to see all headlines.`
+        ? `No NFL news articles matching "${filterTerm}". Try a different filter or use \`get_recent_nfl_data news\` without a filter to see all headlines.`
         : 'No NFL news available at this time.';
       return { success: true, data: { text: msg } };
     }
 
     const text = this.formatNews(filtered);
-    this.logResponsePayload('nfl_news', text);
+    this.logResponsePayload('get_recent_nfl_data', text);
     return { success: true, data: { text, articles: filtered } };
   }
 

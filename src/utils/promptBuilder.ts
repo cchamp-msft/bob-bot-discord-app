@@ -534,7 +534,9 @@ export function formatNFLExternalData(
   nflDataText: string
 ): string {
   const lowerName = toolName.toLowerCase();
-  const source = lowerName.includes('news') ? 'nfl-news' : 'nfl-scores';
+  // Detect news vs scores from tool name (legacy) or content (unified tool)
+  const isNews = lowerName.includes('news') || /📰|NFL News/i.test(nflDataText);
+  const source = isNews ? 'nfl-news' : 'nfl-scores';
   return `<espn_data source="${source}">\n${nflDataText}\n</espn_data>`;
 }
 

@@ -63,13 +63,13 @@ describe('toolsSchema', () => {
       const tools: ToolConfig[] = [
         {
           ...baseTool,
-          name: 'nfl_scores',
+          name: 'get_recent_nfl_data',
           api: 'nfl',
           abilityInputs: {
             mode: 'mixed',
             optional: ['date'],
             validation: 'Date YYYYMMDD.',
-            examples: ['nfl_scores', 'nfl_scores 20250101'],
+            examples: ['get_recent_nfl_data scores', 'get_recent_nfl_data scores 20250101'],
           },
         },
       ];
@@ -78,7 +78,7 @@ describe('toolsSchema', () => {
       expect(schema[0].function.parameters.required).toBeUndefined();
       expect(schema[0].function.parameters.properties.date).toEqual({
         type: 'string',
-        description: 'Date YYYYMMDD. Examples: nfl_scores; nfl_scores 20250101',
+        description: 'Date YYYYMMDD. Examples: get_recent_nfl_data scores; get_recent_nfl_data scores 20250101',
       });
     });
 

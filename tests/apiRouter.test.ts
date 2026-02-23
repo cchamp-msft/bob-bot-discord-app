@@ -494,7 +494,7 @@ describe('ApiRouter', () => {
       (config.getOllamaFinalPassPrompt as jest.Mock).mockReturnValue('Be extra opinionated.');
 
       const tool: ToolConfig = {
-        name: 'nfl_scores',
+        name: 'get_recent_nfl_data',
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
@@ -526,7 +526,7 @@ describe('ApiRouter', () => {
       (config.getOllamaFinalPassPrompt as jest.Mock).mockReturnValue('');
 
       const tool: ToolConfig = {
-        name: 'nfl_scores',
+        name: 'get_recent_nfl_data',
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
@@ -910,7 +910,7 @@ describe('ApiRouter', () => {
   describe('executeRoutedRequest — NFL routing', () => {
     it('should route NFL requests through requestQueue with nfl api type', async () => {
       const tool: ToolConfig = {
-        name: 'nfl_scores',
+        name: 'get_recent_nfl_data',
         api: 'nfl',
         timeout: 30,
         description: 'NFL scores',
@@ -929,7 +929,7 @@ describe('ApiRouter', () => {
       expect(mockExecute).toHaveBeenCalledWith(
         'nfl',
         'testuser',
-        'nfl_scores',
+        'get_recent_nfl_data',
         30,
         expect.any(Function),
         undefined
@@ -991,7 +991,7 @@ describe('ApiRouter', () => {
 
     it('should return error when NFL request fails', async () => {
       const tool: ToolConfig = {
-        name: 'nfl_scores',
+        name: 'get_recent_nfl_data',
         api: 'nfl',
         timeout: 30,
         description: 'NFL scores',
@@ -1037,7 +1037,7 @@ describe('ApiRouter', () => {
 
     it('should pass caller signal for NFL requests too', async () => {
       const tool: ToolConfig = {
-        name: 'nfl_scores',
+        name: 'get_recent_nfl_data',
         api: 'nfl',
         timeout: 30,
         description: 'NFL scores',
@@ -1052,7 +1052,7 @@ describe('ApiRouter', () => {
       await executeRoutedRequest(tool, '', 'testuser', undefined, undefined, controller.signal);
 
       expect(mockExecute).toHaveBeenCalledWith(
-        'nfl', 'testuser', 'nfl_scores', 30,
+        'nfl', 'testuser', 'get_recent_nfl_data', 30,
         expect.any(Function),
         controller.signal
       );
@@ -1120,7 +1120,7 @@ describe('ApiRouter', () => {
 
     it('should wrap "nfl scores" final-pass with <espn_data source="nfl-scores"> XML tags', async () => {
       const tool: ToolConfig = {
-        name: 'nfl_scores',
+        name: 'get_recent_nfl_data',
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
@@ -1136,14 +1136,14 @@ describe('ApiRouter', () => {
 
     it('should wrap "nfl news" final-pass with <espn_data source="nfl-news"> XML tags', async () => {
       const tool: ToolConfig = {
-        name: 'nfl_news',
+        name: 'get_recent_nfl_data',
         api: 'nfl',
         timeout: 60,
         description: 'NFL news',
         finalOllamaPass: true,
       };
 
-      const prompt = await captureNflFinalPrompt(tool, 'NFL News Headlines\n- Chiefs sign free agent', 'give me the latest');
+      const prompt = await captureNflFinalPrompt(tool, '📰 **NFL News**\n- Chiefs sign free agent', 'give me the latest');
       expect(prompt).toContain('<espn_data source="nfl-news">');
       expect(prompt).toContain('</espn_data>');
       expect(prompt).not.toContain('source="nfl-scores"');
@@ -1151,7 +1151,7 @@ describe('ApiRouter', () => {
 
     it('should include user question in <current_question> XML block', async () => {
       const tool: ToolConfig = {
-        name: 'nfl_scores',
+        name: 'get_recent_nfl_data',
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
@@ -1166,7 +1166,7 @@ describe('ApiRouter', () => {
 
     it('should fall back to NFL result when final pass fails', async () => {
       const tool: ToolConfig = {
-        name: 'nfl_scores',
+        name: 'get_recent_nfl_data',
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
