@@ -567,10 +567,137 @@
       </div>
     </section>
 
+    <!-- Ollama Section -->
+    <section>
+      <h2 class="open" onclick="toggleSection(this)">Ollama</h2>
+      <div class="body open">
+        <div class="field-row">
+          <div class="field">
+            <label>Ollama Endpoint</label>
+            <input type="text" id="ollama_endpoint" data-env="OLLAMA_ENDPOINT" placeholder="http://localhost:11434">
+          </div>
+          <div class="field tiny">
+            <button class="btn-test btn-sm" onclick="testConnection('ollama')">Test</button>
+          </div>
+        </div>
+
+        <hr style="border-color:var(--border);margin:16px 0">
+        <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin:12px 0 8px">Reply Chain Context</div>
+        <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
+          When enabled, the bot collects conversation history for Ollama. In servers, this traverses reply chains.
+          In <strong>DMs</strong>, recent messages are included automatically without requiring explicit replies.
+        </p>
+        <div class="field-row">
+          <div class="field narrow">
+            <label>Enabled</label>
+            <select id="reply_chain_enabled" data-env="REPLY_CHAIN_ENABLED" onchange="markDirty()">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Max Depth <span class="note">1–50 messages</span></label>
+            <input type="number" id="reply_chain_max_depth" data-env="REPLY_CHAIN_MAX_DEPTH" placeholder="10" min="1" max="50">
+          </div>
+          <div class="field narrow">
+            <label>Max Tokens <span class="note">1,000–128,000 chars</span></label>
+            <input type="number" id="reply_chain_max_tokens" data-env="REPLY_CHAIN_MAX_TOKENS" placeholder="16000" min="1000" max="128000">
+          </div>
+          <div class="field narrow">
+            <label>Image Max Depth <span class="note">0–50 messages</span></label>
+            <input type="number" id="reply_chain_image_max_depth" data-env="REPLY_CHAIN_IMAGE_MAX_DEPTH" placeholder="5" min="0" max="50">
+          </div>
+        </div>
+
+        <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px;padding-left:8px">Context Evaluation</div>
+        <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
+          When enabled, the bot uses Ollama to filter collected conversation history to the messages most relevant to the current prompt before building the two-stage (abilities) prompt. This is a <strong>global</strong> setting; per-tool Ctx Eval has been removed.
+        </p>
+        <div class="field-row">
+          <div class="field narrow">
+            <label>Enabled</label>
+            <select id="context_eval_enabled" data-env="CONTEXT_EVAL_ENABLED" onchange="markDirty()">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Model <span class="note">falls back to default Ollama model if empty</span></label>
+            <select id="context_eval_model" data-env="CONTEXT_EVAL_MODEL" onchange="markDirty()">
+              <option value="">— use default model —</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Context Size <span class="note">num_ctx, 256–131072</span></label>
+            <input type="number" id="context_eval_context_size" data-env="CONTEXT_EVAL_CONTEXT_SIZE" placeholder="2048" min="256" max="131072">
+          </div>
+        </div>
+        <div class="field">
+          <label>Context Eval Prompt <span class="note">optional; leave empty to use built-in prompt</span></label>
+          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
+            System prompt for the context relevance evaluator. When empty, the bot uses a built-in prompt that asks the model to return a JSON array of relevant message indices.
+          </p>
+          <textarea id="context_eval_prompt" data-env="CONTEXT_EVAL_PROMPT" rows="4" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9em;font-family:inherit;resize:vertical" placeholder="Leave empty for built-in prompt"></textarea>
+        </div>
+
+        <hr style="border-color:var(--border);margin:16px 0">
+        <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin:12px 0 8px">Tool Evaluation</div>
+        <div class="field">
+          <label>Ollama Model</label>
+          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
+            Select a model from the Ollama instance. Click <strong>Test</strong> above to refresh the model list.
+          </p>
+          <select id="ollama_model" data-env="OLLAMA_MODEL" onchange="markDirty()">
+            <option value="">— click Test to load models —</option>
+          </select>
+        </div>
+        <div class="field narrow">
+          <label>Context Size <span class="note">num_ctx, 256–131072</span></label>
+          <input type="number" id="ollama_tool_context_size" data-env="OLLAMA_TOOL_CONTEXT_SIZE" placeholder="4096" min="256" max="131072">
+        </div>
+        <div class="field">
+          <label>
+            System Prompt
+            <span class="note">sets the bot's personality for all Ollama responses</span>
+            <button class="btn-sm" style="margin-left:8px;font-size:0.85em;vertical-align:middle" onclick="resetSystemPrompt()">Reset to Default</button>
+          </label>
+          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
+            When set, this prompt is included as the system message in all conversational Ollama responses, shaping the bot's tone and personality. Internal AI processes (tool routing, context evaluation) always skip this prompt. Leave empty to send no system message — the model responds based on its training defaults.
+          </p>
+          <textarea id="ollama_system_prompt" data-env="OLLAMA_SYSTEM_PROMPT" rows="4" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9em;font-family:inherit;resize:vertical" placeholder="You are a helpful Discord bot assistant. Be friendly and helpful by default, but match the user's tone when appropriate—if someone is being snarky or playful, feel free to respond in kind. Always prioritize being useful and respectful."></textarea>
+        </div>
+
+        <hr style="border-color:var(--border);margin:16px 0">
+        <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin:12px 0 8px">Final Pass</div>
+        <div class="field">
+          <label>
+            Final Pass Model
+            <span class="note">used when Final Pass is enabled on a tool — falls back to default model above</span>
+          </label>
+          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
+            When a tool has <strong>Final Pass</strong> checked, the API result is refined through Ollama using this model.
+            Click <strong>Test</strong> above to populate the model list. Leave empty to use the default Ollama model.
+          </p>
+          <select id="ollama_final_pass_model" data-env="OLLAMA_FINAL_PASS_MODEL" onchange="markDirty()">
+            <option value="">— use default model —</option>
+          </select>
+        </div>
+        <div class="field narrow">
+          <label>Context Size <span class="note">num_ctx, 256–131072</span></label>
+          <input type="number" id="ollama_final_pass_context_size" data-env="OLLAMA_FINAL_PASS_CONTEXT_SIZE" placeholder="4096" min="256" max="131072">
+        </div>
+        <div class="field">
+          <label>Final Pass Prompt <span class="note">AI instruction appended to every final pass refinement</span></label>
+          <textarea id="ollama_final_pass_prompt" data-env="OLLAMA_FINAL_PASS_PROMPT" rows="3" placeholder="Keeping in character, review the incoming data and provide an opinionated response."></textarea>
+          <button type="button" class="btn small" onclick="document.getElementById('ollama_final_pass_prompt').value='';markDirty();" title="Clear to use default prompt">Reset to Default</button>
+        </div>
+      </div>
+    </section>
+
     <!-- ComfyUI Section -->
     <section>
-      <h2 class="open" onclick="toggleSection(this)">ComfyUI</h2>
-      <div class="body open">
+      <h2 onclick="toggleSection(this)">ComfyUI</h2>
+      <div class="body">
         <div class="field-row">
           <div class="field">
             <label>ComfyUI Endpoint</label>
@@ -704,61 +831,6 @@
             <option value="false">No</option>
             <option value="true">Yes</option>
           </select>
-        </div>
-      </div>
-    </section>
-
-    <!-- Ollama Section -->
-    <section>
-      <h2 onclick="toggleSection(this)">Ollama</h2>
-      <div class="body">
-        <div class="field-row">
-          <div class="field">
-            <label>Ollama Endpoint</label>
-            <input type="text" id="ollama_endpoint" data-env="OLLAMA_ENDPOINT" placeholder="http://localhost:11434">
-          </div>
-          <div class="field tiny">
-            <button class="btn-test btn-sm" onclick="testConnection('ollama')">Test</button>
-          </div>
-        </div>
-        <div class="field">
-          <label>Ollama Model</label>
-          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
-            Select a model from the Ollama instance. Click <strong>Test</strong> above to refresh the model list.
-          </p>
-          <select id="ollama_model" data-env="OLLAMA_MODEL" onchange="markDirty()">
-            <option value="">— click Test to load models —</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>
-            System Prompt
-            <span class="note">sets the bot's personality for all Ollama responses</span>
-            <button class="btn-sm" style="margin-left:8px;font-size:0.85em;vertical-align:middle" onclick="resetSystemPrompt()">Reset to Default</button>
-          </label>
-          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
-            When set, this prompt is included as the system message in all conversational Ollama responses, shaping the bot's tone and personality. Internal AI processes (tool routing, context evaluation) always skip this prompt. Leave empty to send no system message — the model responds based on its training defaults.
-          </p>
-          <textarea id="ollama_system_prompt" data-env="OLLAMA_SYSTEM_PROMPT" rows="4" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9em;font-family:inherit;resize:vertical" placeholder="You are a helpful Discord bot assistant. Be friendly and helpful by default, but match the user's tone when appropriate—if someone is being snarky or playful, feel free to respond in kind. Always prioritize being useful and respectful."></textarea>
-        </div>
-        <hr style="border-color:var(--border);margin:16px 0">
-        <div class="field">
-          <label>
-            Final Pass Model
-            <span class="note">used when Final Pass is enabled on a tool — falls back to default model above</span>
-          </label>
-          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
-            When a tool has <strong>Final Pass</strong> checked, the API result is refined through Ollama using this model.
-            Click <strong>Test</strong> above to populate the model list. Leave empty to use the default Ollama model.
-          </p>
-          <select id="ollama_final_pass_model" data-env="OLLAMA_FINAL_PASS_MODEL" onchange="markDirty()">
-            <option value="">— use default model —</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Final Pass Prompt <span class="note">AI instruction appended to every final pass refinement</span></label>
-          <textarea id="ollama_final_pass_prompt" data-env="OLLAMA_FINAL_PASS_PROMPT" rows="3" placeholder="Keeping in character, review the incoming data and provide an opinionated response."></textarea>
-          <button type="button" class="btn small" onclick="document.getElementById('ollama_final_pass_prompt').value='';markDirty();" title="Clear to use default prompt">Reset to Default</button>
         </div>
       </div>
     </section>
@@ -989,72 +1061,6 @@
         </div>
       </div>
     </section>
-    <!-- Reply Chain Section -->
-    <section>
-      <h2 onclick="toggleSection(this)">Reply Chain Context</h2>
-      <div class="body">
-        <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
-          When enabled, the bot collects conversation history for Ollama. In servers, this traverses reply chains.
-          In <strong>DMs</strong>, recent messages are included automatically without requiring explicit replies.
-        </p>
-        <div class="field-row">
-          <div class="field narrow">
-            <label>Enabled</label>
-            <select id="reply_chain_enabled" data-env="REPLY_CHAIN_ENABLED" onchange="markDirty()">
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </select>
-          </div>
-          <div class="field narrow">
-            <label>Max Depth <span class="note">1–50 messages</span></label>
-            <input type="number" id="reply_chain_max_depth" data-env="REPLY_CHAIN_MAX_DEPTH" placeholder="10" min="1" max="50">
-          </div>
-          <div class="field narrow">
-            <label>Max Tokens <span class="note">1,000–128,000 chars</span></label>
-            <input type="number" id="reply_chain_max_tokens" data-env="REPLY_CHAIN_MAX_TOKENS" placeholder="16000" min="1000" max="128000">
-          </div>
-          <div class="field narrow">
-            <label>Image Max Depth <span class="note">0–50 messages</span></label>
-            <input type="number" id="reply_chain_image_max_depth" data-env="REPLY_CHAIN_IMAGE_MAX_DEPTH" placeholder="5" min="0" max="50">
-          </div>
-        </div>
-      </div>
-    </section>
-    <!-- Context Evaluation Section -->
-    <section>
-      <h2 onclick="toggleSection(this)">Context Evaluation</h2>
-      <div class="body">
-        <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
-          When enabled, the bot uses Ollama to filter collected conversation history to the messages most relevant to the current prompt before building the two-stage (abilities) prompt. This is a <strong>global</strong> setting; per-tool Ctx Eval has been removed.
-        </p>
-        <div class="field-row">
-          <div class="field narrow">
-            <label>Enabled</label>
-            <select id="context_eval_enabled" data-env="CONTEXT_EVAL_ENABLED" onchange="markDirty()">
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </select>
-          </div>
-          <div class="field narrow">
-            <label>Model <span class="note">falls back to default Ollama model if empty</span></label>
-            <select id="context_eval_model" data-env="CONTEXT_EVAL_MODEL" onchange="markDirty()">
-              <option value="">— use default model —</option>
-            </select>
-          </div>
-          <div class="field narrow">
-            <label>Context Size <span class="note">num_ctx, 256–131072</span></label>
-            <input type="number" id="context_eval_context_size" data-env="CONTEXT_EVAL_CONTEXT_SIZE" placeholder="2048" min="256" max="131072">
-          </div>
-        </div>
-        <div class="field">
-          <label>Context Eval Prompt <span class="note">optional; leave empty to use built-in prompt</span></label>
-          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
-            System prompt for the context relevance evaluator. When empty, the bot uses a built-in prompt that asks the model to return a JSON array of relevant message indices.
-          </p>
-          <textarea id="context_eval_prompt" data-env="CONTEXT_EVAL_PROMPT" rows="4" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9em;font-family:inherit;resize:vertical" placeholder="Leave empty for built-in prompt"></textarea>
-        </div>
-      </div>
-    </section>
     <!-- Message Flow Section -->
     <section>
       <h2 onclick="toggleSection(this)">Message Flow Overview</h2>
@@ -1063,22 +1069,21 @@
           How the bot processes an incoming @mention or DM.
         </p>
         <pre class="mermaid" style="background:transparent;text-align:center">
-flowchart LR
-    A["📨 Message"] --> B{"!api\ntool?"}
-    B -->|Yes| D["⚡ Route to API"]
-    B -->|No| CF["🔍 Context Filter\n(if enabled)"]
-    CF --> C["🧠 Ollama Chat\n(with abilities)"]
-    C -->|"Ability detected"| IP["🧠 Infer Params\n(if needed)"]
-    IP --> D
-    C -->|"No ability"| F["💬 Direct Reply"]
-    D --> R{"❌ Failed?"}
-    R -->|"Yes &\nretry on"| RT["🔄 Retry\n(refine params)"]
-    RT --> D
-    R -->|No| E{"🔄 Final\nPass?"}
-    E -->|Yes| G["🧠 Ollama\nRefinement"]
-    E -->|No| H["📤 Response"]
-    G --> H
-    F --> H
+flowchart TD
+    A["📨 Incoming Message"] --> B["🔍 findKeyword regex match"]
+    B -->|"Exact API tool match<br/>(weather, nfl, etc.)"| C["⚡ Direct API Execution<br/>(short-circuit)"]
+    B -->|"Built-in<br/>(help, activity_key)"| D["🏠 Built-in Handler<br/>(short-circuit)"]
+    B -->|"No match<br/>(default path)"| E["🔍 Context Evaluator<br/>(global, optional)"]
+    C --> F["🧠 Final Ollama Pass<br/>(if configured)"]
+    E --> G["🧠 Ollama Tool Evaluation<br/>(native tools)"]
+    G -->|"tool_calls returned"| H["⚡ Execute API(s)"]
+    G -->|"no tool_calls"| I["💬 Direct Chat Response"]
+    H --> J{"🔄 More passes<br/>(max depth)?"}
+    J -->|yes| G
+    J -->|no| F
+    F --> K["📤 Response Dispatch"]
+    I --> K
+    D --> K
         </pre>
       </div>
     </section>
@@ -1450,6 +1455,10 @@ flowchart LR
         }
         fpModelSelect.value = cfg.apis.ollamaFinalPassModel;
       }
+
+      // Populate Ollama context size fields
+      document.getElementById('ollama_tool_context_size').value = cfg.apis.ollamaToolContextSize ?? '';
+      document.getElementById('ollama_final_pass_context_size').value = cfg.apis.ollamaFinalPassContextSize ?? '';
 
       // Populate image response setting
       const irEmbed = document.getElementById('image_response_include_embed');

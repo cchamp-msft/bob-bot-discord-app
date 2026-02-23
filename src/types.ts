@@ -370,6 +370,8 @@ export interface PublicConfig {
     ollamaFinalPassModel: string;
     ollamaSystemPrompt: string;
     ollamaFinalPassPrompt: string;
+    ollamaToolContextSize: number;
+    ollamaFinalPassContextSize: number;
     comfyuiWorkflowConfigured: boolean;
     accuweather: string;
     accuweatherDefaultLocation: string;

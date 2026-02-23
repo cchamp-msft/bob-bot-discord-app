@@ -77,16 +77,40 @@ describe('Configurator — embed toggle placement', () => {
   });
 });
 
-// ── Reply Chain Context section ───────────────────────────────
+// ── Reply Chain Context fields inside Ollama section ─────────
 
-describe('Configurator — Reply Chain Context section', () => {
+describe('Configurator — Reply Chain Context in Ollama section', () => {
   const sections = extractSections();
 
-  it('the Reply Chain Context section contains the image max depth field', () => {
-    const rc = sections.find(s => s.heading === 'Reply Chain Context');
-    expect(rc).toBeDefined();
-    expect(rc!.body).toContain('reply_chain_image_max_depth');
-    expect(rc!.body).toContain('REPLY_CHAIN_IMAGE_MAX_DEPTH');
+  it('the Ollama section contains the reply chain image max depth field', () => {
+    const ollama = sections.find(s => s.heading === 'Ollama');
+    expect(ollama).toBeDefined();
+    expect(ollama!.body).toContain('reply_chain_image_max_depth');
+    expect(ollama!.body).toContain('REPLY_CHAIN_IMAGE_MAX_DEPTH');
+  });
+
+  it('the Ollama section contains the context eval fields', () => {
+    const ollama = sections.find(s => s.heading === 'Ollama');
+    expect(ollama).toBeDefined();
+    expect(ollama!.body).toContain('context_eval_enabled');
+    expect(ollama!.body).toContain('context_eval_context_size');
+  });
+
+  it('the Ollama section contains the tool and final pass context size fields', () => {
+    const ollama = sections.find(s => s.heading === 'Ollama');
+    expect(ollama).toBeDefined();
+    expect(ollama!.body).toContain('ollama_tool_context_size');
+    expect(ollama!.body).toContain('ollama_final_pass_context_size');
+  });
+
+  it('there is no standalone Reply Chain Context section', () => {
+    const headings = sections.map(s => s.heading);
+    expect(headings).not.toContain('Reply Chain Context');
+  });
+
+  it('there is no standalone Context Evaluation section', () => {
+    const headings = sections.map(s => s.heading);
+    expect(headings).not.toContain('Context Evaluation');
   });
 });
 

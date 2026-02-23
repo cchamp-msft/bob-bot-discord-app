@@ -1058,6 +1058,8 @@ class Config {
         ollamaFinalPassModel: this.getOllamaFinalPassModel(),
         ollamaSystemPrompt: this.getOllamaSystemPrompt(),
         ollamaFinalPassPrompt: this.getOllamaFinalPassPrompt(),
+        ollamaToolContextSize: this.getOllamaToolContextSize(),
+        ollamaFinalPassContextSize: this.getOllamaFinalPassContextSize(),
         comfyuiWorkflowConfigured: this.hasComfyUIWorkflow(),
         accuweather: this.getAccuWeatherEndpoint(),
         accuweatherDefaultLocation: this.getAccuWeatherDefaultLocation(),
