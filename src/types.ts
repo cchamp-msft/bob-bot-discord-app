@@ -370,6 +370,7 @@ export interface PublicConfig {
     ollamaFinalPassModel: string;
     ollamaSystemPrompt: string;
     ollamaFinalPassPrompt: string;
+    ollamaToolPrompt: string;
     ollamaToolContextSize: number;
     ollamaFinalPassContextSize: number;
     ollamaTimeout: number;

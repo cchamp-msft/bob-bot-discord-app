@@ -1140,6 +1140,7 @@ class Config {
         ollamaFinalPassModel: this.getOllamaFinalPassModel(),
         ollamaSystemPrompt: this.getOllamaSystemPrompt(),
         ollamaFinalPassPrompt: this.getOllamaFinalPassPrompt(),
+        ollamaToolPrompt: this.getOllamaToolPrompt(),
         ollamaToolContextSize: this.getOllamaToolContextSize(),
         ollamaFinalPassContextSize: this.getOllamaFinalPassContextSize(),
         ollamaTimeout: this.getOllamaTimeout(),

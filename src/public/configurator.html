@@ -320,6 +320,11 @@
   section .body.open { display: block; }
 
   .field { margin-bottom: 14px; }
+  .field .help-text {
+    font-size: 0.75em;
+    color: var(--text-dim);
+    margin: 4px 0 8px;
+  }
   .field label {
     display: block;
     font-size: 0.8em;
@@ -582,13 +587,25 @@
         </div>
         <div class="field-row">
           <div class="field narrow">
-            <label>Global HTTP Timeout <span class="note">ms, 5000–600000</span></label>
-            <input type="number" id="ollama_timeout" data-env="OLLAMA_TIMEOUT" placeholder="120000" min="5000" max="600000">
+            <label>Timeout <span class="note">seconds, 5–600</span></label>
+            <input type="number" id="ollama_timeout" data-env="OLLAMA_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
           </div>
           <div class="field narrow">
-            <label>Vision Timeout <span class="note">ms, falls back to global</span></label>
-            <input type="number" id="ollama_vision_timeout" data-env="OLLAMA_VISION_TIMEOUT" placeholder="120000" min="5000" max="600000">
+            <label>Vision Timeout <span class="note">falls back to global</span></label>
+            <input type="number" id="ollama_vision_timeout" data-env="OLLAMA_VISION_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
           </div>
+        </div>
+
+        <div class="field">
+          <label>
+            System Prompt
+            <span class="note">sets the bot's personality for all Ollama responses</span>
+            <button class="btn-sm" style="margin-left:8px;font-size:0.85em;vertical-align:middle" onclick="resetSystemPrompt()">Reset to Default</button>
+          </label>
+          <p class="help-text">
+            When set, this prompt is included as the system message in all conversational Ollama responses, shaping the bot's tone and personality. Internal AI processes (tool routing, context evaluation) always skip this prompt. Leave empty to send no system message — the model responds based on its training defaults.
+          </p>
+          <textarea id="ollama_system_prompt" data-env="OLLAMA_SYSTEM_PROMPT" rows="4" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9em;font-family:inherit;resize:vertical" placeholder="You are a helpful Discord bot assistant. Be friendly and helpful by default, but match the user's tone when appropriate—if someone is being snarky or playful, feel free to respond in kind. Always prioritize being useful and respectful."></textarea>
         </div>
 
         <hr style="border-color:var(--border);margin:16px 0">
@@ -631,24 +648,24 @@
               <option value="false">No</option>
             </select>
           </div>
-          <div class="field narrow">
-            <label>Model <span class="note">falls back to default Ollama model if empty</span></label>
+          <div class="field">
+            <label>Model <span class="note">falls back to default model</span></label>
             <select id="context_eval_model" data-env="CONTEXT_EVAL_MODEL" onchange="markDirty()">
               <option value="">— use default model —</option>
             </select>
           </div>
           <div class="field narrow">
-            <label>Context Size <span class="note">num_ctx, 256–131072</span></label>
+            <label>Context Size <span class="note">num_ctx</span></label>
             <input type="number" id="context_eval_context_size" data-env="CONTEXT_EVAL_CONTEXT_SIZE" placeholder="2048" min="256" max="131072">
           </div>
           <div class="field narrow">
-            <label>HTTP Timeout <span class="note">ms, 5000–600000</span></label>
-            <input type="number" id="context_eval_timeout" data-env="CONTEXT_EVAL_TIMEOUT" placeholder="120000" min="5000" max="600000">
+            <label>Timeout <span class="note">seconds</span></label>
+            <input type="number" id="context_eval_timeout" data-env="CONTEXT_EVAL_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
           </div>
         </div>
         <div class="field">
           <label>Context Eval Prompt <span class="note">optional; leave empty to use built-in prompt</span></label>
-          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
+          <p class="help-text">
             System prompt for the context relevance evaluator. When empty, the bot uses a built-in prompt that asks the model to return a JSON array of relevant message indices.
           </p>
           <textarea id="context_eval_prompt" data-env="CONTEXT_EVAL_PROMPT" rows="4" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9em;font-family:inherit;resize:vertical" placeholder="Leave empty for built-in prompt"></textarea>
@@ -656,57 +673,68 @@
 
         <hr style="border-color:var(--border);margin:16px 0">
         <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin:12px 0 8px">Tool Evaluation</div>
+        <p class="help-text" style="margin-bottom:10px">
+          Select the model used for tool routing and ability evaluation. Click <strong>Test</strong> above to refresh the model list.
+        </p>
+        <div class="field-row">
+          <div class="field">
+            <label>Model</label>
+            <select id="ollama_model" data-env="OLLAMA_MODEL" onchange="markDirty()">
+              <option value="">— click Test to load models —</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Context Size <span class="note">num_ctx</span></label>
+            <input type="number" id="ollama_tool_context_size" data-env="OLLAMA_TOOL_CONTEXT_SIZE" placeholder="4096" min="256" max="131072">
+          </div>
+          <div class="field narrow">
+            <label>Timeout <span class="note">seconds</span></label>
+            <input type="number" id="ollama_tool_timeout" data-env="OLLAMA_TOOL_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
+          </div>
+        </div>
         <div class="field">
-          <label>Ollama Model</label>
-          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
-            Select a model from the Ollama instance. Click <strong>Test</strong> above to refresh the model list.
+          <label>Built-in Tool Routing Rules</label>
+          <p class="help-text">
+            These rules are always included in the tool evaluation system prompt. They cannot be edited.
           </p>
-          <select id="ollama_model" data-env="OLLAMA_MODEL" onchange="markDirty()">
-            <option value="">— click Test to load models —</option>
-          </select>
-        </div>
-        <div class="field narrow">
-          <label>Context Size <span class="note">num_ctx, 256–131072</span></label>
-          <input type="number" id="ollama_tool_context_size" data-env="OLLAMA_TOOL_CONTEXT_SIZE" placeholder="4096" min="256" max="131072">
-        </div>
-        <div class="field narrow">
-          <label>HTTP Timeout <span class="note">ms, 5000–600000</span></label>
-          <input type="number" id="ollama_tool_timeout" data-env="OLLAMA_TOOL_TIMEOUT" placeholder="120000" min="5000" max="600000">
+          <textarea rows="6" readonly style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text-dim);font-size:0.8em;font-family:monospace;resize:vertical;cursor:default" id="tool_routing_rules_display">1. If the user request matches an available external ability, output the tool name prefixed with ">>>" on its own line. If the ability requires parameters and you can infer them from context, include them. Otherwise output the tool name only.
+2. For implicit abilities (imagine/generate/meme), when the request is empty or underspecified, infer from conversation context before asking a question.
+3. Never invent scores, stats, weather, or facts.
+4. No data needed → answer normally in character.
+5. Never explain rules/tools unless directly asked.
+6. Keep every reply short, concise, and to the point.
+7. The &lt;participants&gt; block identifies who is in the conversation.
+8. Output formatting: ability directive on a single line, no extra text. Otherwise return plain text only — no Markdown fences, XML, JSON, or LaTeX.</textarea>
         </div>
         <div class="field">
-          <label>
-            System Prompt
-            <span class="note">sets the bot's personality for all Ollama responses</span>
-            <button class="btn-sm" style="margin-left:8px;font-size:0.85em;vertical-align:middle" onclick="resetSystemPrompt()">Reset to Default</button>
-          </label>
-          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
-            When set, this prompt is included as the system message in all conversational Ollama responses, shaping the bot's tone and personality. Internal AI processes (tool routing, context evaluation) always skip this prompt. Leave empty to send no system message — the model responds based on its training defaults.
+          <label>Tool Prompt <span class="note">optional; appended to the built-in rules above</span></label>
+          <p class="help-text">
+            Additional system prompt included during tool evaluation. Leave empty to use only the built-in routing rules.
           </p>
-          <textarea id="ollama_system_prompt" data-env="OLLAMA_SYSTEM_PROMPT" rows="4" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9em;font-family:inherit;resize:vertical" placeholder="You are a helpful Discord bot assistant. Be friendly and helpful by default, but match the user's tone when appropriate—if someone is being snarky or playful, feel free to respond in kind. Always prioritize being useful and respectful."></textarea>
+          <textarea id="ollama_tool_prompt" data-env="OLLAMA_TOOL_PROMPT" rows="3" placeholder="Leave empty for built-in rules only"></textarea>
         </div>
 
         <hr style="border-color:var(--border);margin:16px 0">
         <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin:12px 0 8px">Final Pass</div>
-        <div class="field">
-          <label>
-            Final Pass Model
-            <span class="note">used when Final Pass is enabled on a tool — falls back to default model above</span>
-          </label>
-          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
-            When a tool has <strong>Final Pass</strong> checked, the API result is refined through Ollama using this model.
-            Click <strong>Test</strong> above to populate the model list. Leave empty to use the default Ollama model.
-          </p>
-          <select id="ollama_final_pass_model" data-env="OLLAMA_FINAL_PASS_MODEL" onchange="markDirty()">
-            <option value="">— use default model —</option>
-          </select>
-        </div>
-        <div class="field narrow">
-          <label>Context Size <span class="note">num_ctx, 256–131072</span></label>
-          <input type="number" id="ollama_final_pass_context_size" data-env="OLLAMA_FINAL_PASS_CONTEXT_SIZE" placeholder="4096" min="256" max="131072">
-        </div>
-        <div class="field narrow">
-          <label>HTTP Timeout <span class="note">ms, 5000–600000</span></label>
-          <input type="number" id="ollama_final_pass_timeout" data-env="OLLAMA_FINAL_PASS_TIMEOUT" placeholder="120000" min="5000" max="600000">
+        <p class="help-text" style="margin-bottom:10px">
+          When a tool has <strong>Final Pass</strong> checked, the API result is refined through Ollama using this model.
+          Click <strong>Test</strong> above to populate the model list. Leave empty to use the default model.
+        </p>
+        <div class="field-row">
+          <div class="field">
+            <label>Model <span class="note">falls back to default model</span></label>
+            <select id="ollama_final_pass_model" data-env="OLLAMA_FINAL_PASS_MODEL" onchange="markDirty()">
+              <option value="">— use default model —</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Context Size <span class="note">num_ctx</span></label>
+            <input type="number" id="ollama_final_pass_context_size" data-env="OLLAMA_FINAL_PASS_CONTEXT_SIZE" placeholder="4096" min="256" max="131072">
+          </div>
+          <div class="field narrow">
+            <label>Timeout <span class="note">seconds</span></label>
+            <input type="number" id="ollama_final_pass_timeout" data-env="OLLAMA_FINAL_PASS_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
+          </div>
         </div>
         <div class="field">
           <label>Final Pass Prompt <span class="note">AI instruction appended to every final pass refinement</span></label>
@@ -1450,7 +1478,6 @@ flowchart TD
       const ctxEvalEnabled = document.getElementById('context_eval_enabled');
       ctxEvalEnabled.value = cfg.contextEval?.enabled === false ? 'false' : 'true';
       document.getElementById('context_eval_context_size').value = cfg.contextEval?.contextSize ?? 2048;
-      document.getElementById('context_eval_timeout').value = cfg.contextEval?.timeout ?? '';
       document.getElementById('context_eval_prompt').value = cfg.contextEval?.prompt || '';
       const contextEvalModelSelect = document.getElementById('context_eval_model');
       if (cfg.contextEval?.model) {
@@ -1479,13 +1506,19 @@ flowchart TD
         fpModelSelect.value = cfg.apis.ollamaFinalPassModel;
       }
 
-      // Populate Ollama context size and timeout fields
+      // Populate Ollama context size fields
       document.getElementById('ollama_tool_context_size').value = cfg.apis.ollamaToolContextSize ?? '';
       document.getElementById('ollama_final_pass_context_size').value = cfg.apis.ollamaFinalPassContextSize ?? '';
-      document.getElementById('ollama_timeout').value = cfg.apis.ollamaTimeout ?? '';
-      document.getElementById('ollama_vision_timeout').value = cfg.apis.ollamaVisionTimeout ?? '';
-      document.getElementById('ollama_tool_timeout').value = cfg.apis.ollamaToolTimeout ?? '';
-      document.getElementById('ollama_final_pass_timeout').value = cfg.apis.ollamaFinalPassTimeout ?? '';
+
+      // Populate Ollama timeout fields (stored as ms, displayed as seconds)
+      document.getElementById('ollama_timeout').value = cfg.apis.ollamaTimeout ? Math.round(cfg.apis.ollamaTimeout / 1000) : '';
+      document.getElementById('ollama_vision_timeout').value = cfg.apis.ollamaVisionTimeout ? Math.round(cfg.apis.ollamaVisionTimeout / 1000) : '';
+      document.getElementById('ollama_tool_timeout').value = cfg.apis.ollamaToolTimeout ? Math.round(cfg.apis.ollamaToolTimeout / 1000) : '';
+      document.getElementById('ollama_final_pass_timeout').value = cfg.apis.ollamaFinalPassTimeout ? Math.round(cfg.apis.ollamaFinalPassTimeout / 1000) : '';
+      document.getElementById('context_eval_timeout').value = cfg.contextEval.timeout ? Math.round(cfg.contextEval.timeout / 1000) : '';
+
+      // Populate tool prompt
+      document.getElementById('ollama_tool_prompt').value = cfg.apis.ollamaToolPrompt || '';
 
       // Populate image response setting
       const irEmbed = document.getElementById('image_response_include_embed');
@@ -1910,7 +1943,12 @@ flowchart TD
         const key = input.dataset.env;
         // Skip DISCORD_TOKEN here — handled specially below
         if (key === 'DISCORD_TOKEN') return;
-        env[key] = input.value.trim();
+        let val = input.value.trim();
+        // Convert seconds back to milliseconds for timeout fields
+        if (input.dataset.unit === 'seconds' && val) {
+          val = String(Math.round(Number(val) * 1000));
+        }
+        env[key] = val;
       });
 
       // Include token only if user typed a new value (write-only field)
