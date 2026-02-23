@@ -17,6 +17,7 @@ import { runWithThreadId } from '../src/utils/threadContext';
 describe('Logger', () => {
   let tempDir: string;
   let originalLogsDir: string;
+  let originalDebugLogging: string | undefined;
   let consoleSpy: jest.SpyInstance;
   let consoleErrorSpy: jest.SpyInstance;
   let consoleWarnSpy: jest.SpyInstance;
@@ -24,6 +25,8 @@ describe('Logger', () => {
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'logger-test-'));
     originalLogsDir = (logger as any).logsDir;
+    originalDebugLogging = process.env.DEBUG_LOGGING;
+    delete process.env.DEBUG_LOGGING;
     (logger as any).logsDir = tempDir;
     consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -32,6 +35,11 @@ describe('Logger', () => {
 
   afterEach(() => {
     (logger as any).logsDir = originalLogsDir;
+    if (originalDebugLogging === undefined) {
+      delete process.env.DEBUG_LOGGING;
+    } else {
+      process.env.DEBUG_LOGGING = originalDebugLogging;
+    }
     fs.rmSync(tempDir, { recursive: true, force: true });
     consoleSpy.mockRestore();
     consoleErrorSpy.mockRestore();
