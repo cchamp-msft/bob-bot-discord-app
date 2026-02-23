@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(grep:*)",
-      "Bash(npx jest:*)"
+      "Bash(npx jest:*)",
+      "Bash(tail:*)",
+      "Bash(cd /c/git/bob-bot-discord-app && npm run build 2>&1)"
     ]
   }
 }
