@@ -142,6 +142,14 @@ jest.mock('../src/utils/activityEvents', () => ({
   },
 }));
 
+jest.mock('../src/api/memeClient', () => ({
+  memeClient: {
+    getTemplateIds: jest.fn(() => 'aag, ackbar, afraid'),
+    getTemplateListForInference: jest.fn(() => ''),
+    handleRequest: jest.fn(),
+  },
+}));
+
 jest.mock('../src/utils/activityKeyManager', () => ({
   activityKeyManager: {
     issueKey: jest.fn(() => 'mock-activity-key-abc'),
@@ -157,6 +165,7 @@ import { classifyIntent } from '../src/utils/keywordClassifier';
 import { executeRoutedRequest, inferAbilityParameters } from '../src/utils/apiRouter';
 import { assemblePrompt, parseFirstLineTool } from '../src/utils/promptBuilder';
 import { activityEvents } from '../src/utils/activityEvents';
+import { memeClient } from '../src/api/memeClient';
 import axios from 'axios';
 import type { Message } from 'discord.js';
 
@@ -1239,27 +1248,21 @@ describe('MessageHandler standalone allowEmptyContent tools', () => {
     );
   });
 
-  it('should route standalone "get_meme_templates" without prompting for content', async () => {
+  it('should short-circuit "get_meme_templates" with direct template list reply', async () => {
     const mockRouted = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
-    mockRouted.mockResolvedValueOnce({
-      finalResponse: { success: true, data: { text: 'drake, aag, doge' } },
-      finalApi: 'meme',
-      stages: [],
-    });
 
     const msg = createMentionedMessage('<@bot-123> !get_meme_templates');
     await messageHandler.handleMessage(msg);
 
+    // Should NOT prompt for content
     expect(msg.reply).not.toHaveBeenCalledWith(
       'Please include a prompt or question after the tool name!'
     );
-    expect(mockRouted).toHaveBeenCalledWith(
-      memeTemplatesKw,
-      '!get_meme_templates',
-      'testuser',
-      [{ role: 'user', content: 'testuser: !get_meme_templates', contextSource: 'trigger', hasNamePrefix: true }],
-      'BotUser'
-    );
+    // Should NOT go through API routing
+    expect(mockRouted).not.toHaveBeenCalled();
+    // Should reply with the mocked template list directly
+    expect(msg.reply).toHaveBeenCalledWith('aag, ackbar, afraid');
+    expect(memeClient.getTemplateIds).toHaveBeenCalled();
   });
 });
 

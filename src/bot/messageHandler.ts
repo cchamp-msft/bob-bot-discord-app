@@ -9,6 +9,7 @@ import { logger } from '../utils/logger';
 import { requestQueue } from '../utils/requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { fileHandler } from '../utils/fileHandler';
+import { memeClient } from '../api/memeClient';
 import { ChatMessage, NFLResponse, MemeResponse } from '../types';
 import { chunkText } from '../utils/chunkText';
 import { executeRoutedRequest, inferAbilityParameters, formatApiResultAsExternalData } from '../utils/apiRouter';
@@ -459,6 +460,16 @@ class MessageHandler {
 
       await message.reply(reply);
       logger.log('success', 'system', `ACTIVITY-KEY: Key issued to ${requester}`);
+      return;
+    }
+
+    // Route standalone "!get_meme_templates" — return cached template list directly.
+    // No model call or context needed; the list is deterministic.
+    if (toolMatched && this.toolNameIs(toolConfig.name, 'get_meme_templates')) {
+      const ids = memeClient.getTemplateIds();
+      const reply = ids || 'No meme templates available. Templates may still be loading.';
+      await message.reply(reply);
+      logger.log('success', 'system', `MEME-TEMPLATES: Direct template list sent to ${requester}`);
       return;
     }
 
