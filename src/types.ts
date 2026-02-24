@@ -354,6 +354,32 @@ export interface MemeHealthResult {
   error?: string;
 }
 
+// ── Media follow-up types ───────────────────────────────────────
+
+/** Media follow-up sent after the Ollama text reply. */
+export type MediaFollowUp =
+  | ComfyUIMediaFollowUp
+  | UrlMediaFollowUp;
+
+/** ComfyUI file attachments — needs the full response for file
+ *  downloading, embed building, and batch sending. */
+export interface ComfyUIMediaFollowUp {
+  kind: 'comfyui';
+  response: {
+    success: boolean;
+    data?: { text?: string; images?: string[]; videos?: string[] };
+    error?: string;
+  };
+}
+
+/** A bare URL for Discord auto-embed (meme images, weather radar, etc.). */
+export interface UrlMediaFollowUp {
+  kind: 'url';
+  url: string;
+  /** Human-readable label for logging/activity events (e.g. 'meme'). */
+  label: string;
+}
+
 /** Safe (no secrets) config snapshot returned by GET /api/config. */
 export interface PublicConfig {
   discord: {

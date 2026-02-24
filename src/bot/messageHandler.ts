@@ -10,7 +10,7 @@ import { requestQueue } from '../utils/requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { fileHandler } from '../utils/fileHandler';
 import { memeClient } from '../api/memeClient';
-import { ChatMessage, NFLResponse, MemeResponse } from '../types';
+import { ChatMessage, NFLResponse, MemeResponse, MediaFollowUp, ComfyUIMediaFollowUp, UrlMediaFollowUp } from '../types';
 import { chunkText } from '../utils/chunkText';
 import { executeRoutedRequest, inferAbilityParameters, formatApiResultAsExternalData } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
@@ -551,8 +551,7 @@ class MessageHandler {
           message,
           requester,
           isDM,
-          routedResult.mediaSource,
-          routedResult.memeImageUrl
+          routedResult.media
         );
       } else {
         // ── Ollama path: chat with abilities context, then second evaluation ──
@@ -1233,7 +1232,7 @@ class MessageHandler {
       const toolCalls = ollamaResult.data.tool_calls;
       const externalDataParts: string[] = [];
       const configuredTools = config.getTools();
-      let comfyUIMediaSource: ComfyUIResponse | undefined;
+      const mediaFollowUps: MediaFollowUp[] = [];
 
       for (const tc of toolCalls) {
         const resolvedTool = resolveToolNameToTool(tc.function.name, configuredTools);
@@ -1256,9 +1255,14 @@ class MessageHandler {
           undefined,
           { skipFinalPass: true }
         );
-        // Capture the first ComfyUI response as mediaSource for attachment
-        if (!comfyUIMediaSource && resolvedTool.api === 'comfyui' && apiResult.finalResponse.success) {
-          comfyUIMediaSource = apiResult.finalResponse as ComfyUIResponse;
+        // Capture media follow-ups for attachment after the text reply
+        if (resolvedTool.api === 'comfyui' && apiResult.finalResponse.success
+            && !mediaFollowUps.some(m => m.kind === 'comfyui')) {
+          mediaFollowUps.push({ kind: 'comfyui', response: apiResult.finalResponse as ComfyUIResponse });
+        }
+        if (resolvedTool.api === 'meme' && apiResult.finalResponse.success) {
+          const url = (apiResult.finalResponse as MemeResponse).data?.imageUrl;
+          if (url) mediaFollowUps.push({ kind: 'url', url, label: 'meme' });
         }
         const part = formatApiResultAsExternalData(resolvedTool, apiResult.finalResponse, contentStr);
         externalDataParts.push(part);
@@ -1300,7 +1304,7 @@ class MessageHandler {
           )
       ) as OllamaResponse;
 
-      await this.dispatchResponse(finalResult, 'ollama', sourceMessage, requester, isDM, comfyUIMediaSource);
+      await this.dispatchResponse(finalResult, 'ollama', sourceMessage, requester, isDM, mediaFollowUps);
       return;
     }
 
@@ -1400,8 +1404,7 @@ class MessageHandler {
           sourceMessage,
           requester,
           isDM,
-          apiResult.mediaSource,
-          apiResult.memeImageUrl
+          apiResult.media
         );
         return;
       }
@@ -1435,8 +1438,7 @@ class MessageHandler {
             sourceMessage,
             requester,
             isDM,
-            imageResult.mediaSource,
-            imageResult.memeImageUrl
+            imageResult.media
           );
           return;
         }
@@ -1472,8 +1474,7 @@ class MessageHandler {
             sourceMessage,
             requester,
             isDM,
-            memeResult.mediaSource,
-            memeResult.memeImageUrl
+            memeResult.media
           );
           return;
         }
@@ -1561,8 +1562,7 @@ class MessageHandler {
     sourceMessage: Message,
     requester: string,
     isDM: boolean,
-    mediaSource?: ComfyUIResponse,
-    memeImageUrl?: string
+    media?: MediaFollowUp[]
   ): Promise<void> {
     if (!response.success) {
       const errorDetail = response.error ?? 'Unknown API error';
@@ -1580,7 +1580,7 @@ class MessageHandler {
     } else if (api === 'meme') {
       await this.handleMemeResponse(response as MemeResponse, sourceMessage, requester, isDM);
     } else {
-      await this.handleOllamaResponse(response as OllamaResponse, sourceMessage, requester, isDM, mediaSource, memeImageUrl);
+      await this.handleOllamaResponse(response as OllamaResponse, sourceMessage, requester, isDM, media);
     }
   }
 
@@ -1662,7 +1662,7 @@ class MessageHandler {
 
   /**
    * Download and save ComfyUI media files, returning attachments and metadata.
-   * Shared between handleComfyUIResponse and handleOllamaResponse (when mediaSource is present).
+   * Shared between handleComfyUIResponse and handleOllamaResponse (when ComfyUI media is present).
    */
   private async collectComfyUIMedia(
     comfyResult: ComfyUIResponse,
@@ -1792,13 +1792,14 @@ class MessageHandler {
     sourceMessage: Message,
     requester: string,
     isDM: boolean,
-    mediaSource?: ComfyUIResponse,
-    memeImageUrl?: string
+    media?: MediaFollowUp[]
   ): Promise<void> {
     let text = apiResult.data?.text || 'No response generated.';
 
     // When a ComfyUI media source is carried through, download/save files and attach them
-    if (mediaSource) {
+    const comfyMedia = media?.find((m): m is ComfyUIMediaFollowUp => m.kind === 'comfyui');
+    if (comfyMedia) {
+      const mediaSource = comfyMedia.response;
       const totalOutputs = (mediaSource.data?.images?.length || 0) + (mediaSource.data?.videos?.length || 0);
       if (totalOutputs > 0) {
         // Strip URL lines that Ollama echoed from the external data
@@ -1871,11 +1872,13 @@ class MessageHandler {
       }
     }
 
-    // When a meme image was generated, post the URL as a follow-up for Discord auto-embed
-    if (memeImageUrl && 'send' in sourceMessage.channel) {
-      await sourceMessage.channel.send({ content: memeImageUrl, allowedMentions: { parse: [] } });
-      activityEvents.emitBotReply('meme', memeImageUrl, isDM);
-      logger.logReply(requester, `Meme image follow-up sent: ${memeImageUrl}`);
+    // Send URL-based media follow-ups (meme images, weather radar, etc.)
+    for (const um of media?.filter((m): m is UrlMediaFollowUp => m.kind === 'url') ?? []) {
+      if ('send' in sourceMessage.channel) {
+        await sourceMessage.channel.send({ content: um.url, allowedMentions: { parse: [] } });
+        activityEvents.emitBotReply(um.label, um.url, isDM);
+        logger.logReply(requester, `${um.label} follow-up sent: ${um.url}`);
+      }
     }
 
     activityEvents.emitBotReply('ollama', text, isDM);

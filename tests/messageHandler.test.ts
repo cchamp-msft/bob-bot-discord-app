@@ -1203,6 +1203,7 @@ describe('MessageHandler standalone allowEmptyContent tools', () => {
       finalResponse: { success: true, data: { text: 'Cowboys 24, Eagles 17' } },
       finalApi: 'nfl',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> !nfl scores');
@@ -1220,6 +1221,7 @@ describe('MessageHandler standalone allowEmptyContent tools', () => {
       finalResponse: { success: true, data: { text: 'Trade deadline approaches...' } },
       finalApi: 'nfl',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> !nfl news');
@@ -1499,6 +1501,7 @@ describe('MessageHandler reply-only-tool for comfyui', () => {
       },
       finalApi: 'comfyui',
       stages: [],
+      media: [],
     });
 
     const msg = createComfyUIReplyMessage(
@@ -1562,6 +1565,7 @@ describe('MessageHandler first-word tool routing', () => {
       finalResponse: { success: true, data: { text: 'Sunny' } },
       finalApi: 'accuweather',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> !get_current_weather 45403');
@@ -1581,6 +1585,7 @@ describe('MessageHandler first-word tool routing', () => {
       finalResponse: { success: true, data: { text: 'Scores' } },
       finalApi: 'nfl',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> !nfl scores 20251116');
@@ -1621,6 +1626,7 @@ describe('MessageHandler first-word tool routing', () => {
       finalResponse: { success: false, error: 'Pipeline failed' },
       finalApi: 'comfyui',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> !generate_image something');
@@ -1677,6 +1683,7 @@ describe('MessageHandler first-word tool routing', () => {
       finalResponse: { success: true, data: { text: '🔎 **Second opinion for:** *is water wet*\n\n🤖 **Google AI Overview:**\n> Water is wet.' } },
       finalApi: 'serpapi',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> !second opinion is water wet');
@@ -1702,6 +1709,7 @@ describe('MessageHandler first-word tool routing', () => {
       finalResponse: { success: true, data: { text: 'overview text' } },
       finalApi: 'serpapi',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> !second opinion about AI');
@@ -1785,6 +1793,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
       },
       finalApi: 'serpapi',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> !second opinion niche topic');
@@ -1811,6 +1820,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
       },
       finalApi: 'serpapi',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> !second opinion restricted');
@@ -1828,6 +1838,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
       finalResponse: { success: false, error: 'SerpAPI key is not configured' },
       finalApi: 'serpapi',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> !second opinion test');
@@ -1888,6 +1899,7 @@ describe('MessageHandler SerpAPI find content tool routing', () => {
       },
       finalApi: 'serpapi',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> !find content TypeScript generics');
@@ -2092,6 +2104,7 @@ describe('MessageHandler two-stage evaluation', () => {
       finalResponse: { success: true, data: { text: 'Sunny in Seattle' } },
       finalApi: 'accuweather',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> is it going to rain in Seattle');
@@ -2133,6 +2146,7 @@ describe('MessageHandler two-stage evaluation', () => {
       finalResponse: { success: true, data: { text: 'Sunny in Seattle' } },
       finalApi: 'accuweather',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> weather seattle');
@@ -2175,6 +2189,7 @@ describe('MessageHandler two-stage evaluation', () => {
       finalResponse: { success: true, data: { images: ['http://localhost/image.png'] } },
       finalApi: 'comfyui',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> generate_image');
@@ -2397,6 +2412,7 @@ describe('MessageHandler trigger message attribution', () => {
       finalResponse: { success: true, data: { text: 'Sunny' } },
       finalApi: 'accuweather',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> !get_current_weather Seattle');
@@ -2447,6 +2463,7 @@ describe('MessageHandler trigger message attribution', () => {
       finalResponse: { success: true, data: { text: 'Beautiful day in Seattle!' } },
       finalApi: 'ollama',
       stages: [],
+      media: [],
     });
 
     const msg = createMentionedMessage('<@bot-123> is it going to rain in Seattle');
@@ -2475,6 +2492,7 @@ describe('MessageHandler trigger message attribution', () => {
       finalResponse: { success: true, data: { text: 'Sunny' } },
       finalApi: 'accuweather',
       stages: [],
+      media: [],
     });
 
     const specialContent = 'São Paulo <script>alert("xss")</script> & "quotes" \'apostrophes\'';
@@ -2634,6 +2652,7 @@ describe('MessageHandler empty-content bypass for NFL tools', () => {
       finalResponse: { success: true, data: { text: '🏈 **NFL Scores**\n\n✅ Some game' } },
       finalApi: 'nfl',
       stages: [],
+      media: [],
     });
 
     const msg = createDmMessage('!nfl scores');
@@ -2665,6 +2684,7 @@ describe('MessageHandler empty-content bypass for NFL tools', () => {
       finalResponse: { success: true, data: { text: '📰 **NFL News**\n\nStory 1' } },
       finalApi: 'nfl',
       stages: [],
+      media: [],
     });
 
     const msg = createDmMessage('!nfl news');
@@ -3936,6 +3956,7 @@ describe('MessageHandler activity event emission', () => {
       finalResponse: { success: true, data: { text: 'Sunny, 72°F' } },
       finalApi: 'accuweather',
       stages: [],
+      media: [],
     });
 
     const msg = createMsg('!get_current_weather Seattle');
@@ -3972,6 +3993,7 @@ describe('MessageHandler activity event emission', () => {
       finalResponse: { success: true, data: { text: 'Sunny' } },
       finalApi: 'accuweather',
       stages: [],
+      media: [],
     });
 
     const msg = createMsg('is it going to rain');
@@ -4026,6 +4048,7 @@ describe('MessageHandler activity event emission', () => {
       finalResponse: { success: false, error: 'Location not found' },
       finalApi: 'accuweather',
       stages: [],
+      media: [],
     });
 
     const msg = createMsg('!get_current_weather asdfasdf');
@@ -4436,6 +4459,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
         },
         finalApi: 'meme',
         stages: [],
+        media: [],
       });
 
     const msg = createMentionedMessage('<@bot-123> can you make a meme about a kid learning to drive');
@@ -4485,6 +4509,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
         },
         finalApi: 'meme',
         stages: [],
+        media: [],
       });
 
     const msg = createMentionedMessage('<@bot-123> make a meme about driving class');
@@ -4530,6 +4555,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
         },
         finalApi: 'meme',
         stages: [],
+        media: [],
       });
 
     const msg = createMentionedMessage('<@bot-123> make a meme about driving class');
@@ -4578,6 +4604,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
         },
         finalApi: 'meme',
         stages: [],
+        media: [],
       });
 
     const msg = createMentionedMessage('<@bot-123> make a meme about driving class');

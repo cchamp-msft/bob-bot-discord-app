@@ -5,7 +5,7 @@ import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpA
 import { accuweatherClient } from '../api/accuweatherClient';
 import { serpApiClient } from '../api/serpApiClient';
 import { memeClient } from '../api/memeClient';
-import { ChatMessage, NFLResponse, MemeResponse } from '../types';
+import { ChatMessage, NFLResponse, MemeResponse, MediaFollowUp } from '../types';
 import {
   StageResult,
   extractStageResult,
@@ -314,10 +314,8 @@ export interface RoutedResult {
   finalApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
   /** Intermediate stage results (for debugging/logging). */
   stages: StageResult[];
-  /** When the final Ollama pass refines a ComfyUI result, the original media response for attachment. */
-  mediaSource?: ComfyUIResponse;
-  /** When a meme was generated, the image URL for Discord auto-embed after the text reply. */
-  memeImageUrl?: string;
+  /** Media follow-ups to send after the text reply (ComfyUI attachments, meme URLs, etc.). */
+  media: MediaFollowUp[];
 }
 
 /**
@@ -504,7 +502,7 @@ export async function executeRoutedRequest(
 
   if (!primaryResult.success) {
     logger.logError('system', `API-ROUTING: ${keywordConfig.api} request failed: ${primaryResult.error}`);
-    return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };
+    return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages, media: [] };
   }
 
   logger.log('success', 'system', `API-ROUTING: ${keywordConfig.api} request complete`);
@@ -512,14 +510,14 @@ export async function executeRoutedRequest(
   // ── Skip individual final pass when caller will run a combined pass ──
   if (options?.skipFinalPass) {
     logger.log('success', 'system', 'API-ROUTING: Skipping individual final pass (caller handles combined pass)');
-    return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };
+    return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages, media: [] };
   }
 
   // ── Mandatory final Ollama pass for all non-Ollama APIs ────────
   // Don't double-pass through Ollama if the primary API was already Ollama
   if (keywordConfig.api === 'ollama') {
     logger.log('success', 'system', 'API-ROUTING: Skipping final Ollama pass — primary API was already Ollama');
-    return { finalResponse: primaryResult, finalApi: 'ollama', stages };
+    return { finalResponse: primaryResult, finalApi: 'ollama', stages, media: [] };
   }
 
   logger.log('success', 'system', 'API-ROUTING: Final Ollama refinement pass');
@@ -564,10 +562,11 @@ export async function executeRoutedRequest(
     externalDataBlock = formatSerpApiExternalData(content, searchContext);
   } else if (keywordConfig.api === 'meme') {
     const memeResponse = primaryResult as MemeResponse;
-    const memeUrl = memeResponse.data?.imageUrl ?? '';
-    const memeText = memeUrl
-      ? `A meme image was generated: ${memeUrl}`
-      : (memeResponse.data?.text ?? 'No meme data available.');
+    // Only pass the template name — the actual image URL is sent as a
+    // separate follow-up message for Discord auto-embed.  Including the
+    // URL here causes the LLM to echo it back wrapped in backticks which
+    // prevents Discord from parsing it as a link.
+    const memeText = memeResponse.data?.text ?? 'No meme data available.';
     externalDataBlock = formatGenericExternalData('meme', memeText);
   } else {
     const genericText = primaryExtracted.text ?? 'No data available.';
@@ -615,11 +614,17 @@ export async function executeRoutedRequest(
 
   if (!finalResult.success) {
     logger.logWarn('system', `API-ROUTING: Final Ollama pass failed: ${finalResult.error} — returning API result`);
-    return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };
+    return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages, media: [] };
   }
 
   logger.log('success', 'system', 'API-ROUTING: Final Ollama pass complete');
-  const mediaSource = keywordConfig.api === 'comfyui' ? primaryResult as ComfyUIResponse : undefined;
-  const memeImageUrl = keywordConfig.api === 'meme' ? (primaryResult as MemeResponse).data?.imageUrl : undefined;
-  return { finalResponse: finalResult, finalApi: 'ollama', stages, mediaSource, memeImageUrl };
+  const media: MediaFollowUp[] = [];
+  if (keywordConfig.api === 'comfyui') {
+    media.push({ kind: 'comfyui', response: primaryResult as ComfyUIResponse });
+  }
+  if (keywordConfig.api === 'meme') {
+    const url = (primaryResult as MemeResponse).data?.imageUrl;
+    if (url) media.push({ kind: 'url', url, label: 'meme' });
+  }
+  return { finalResponse: finalResult, finalApi: 'ollama', stages, media };
 }
