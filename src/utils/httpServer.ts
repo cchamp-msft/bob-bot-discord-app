@@ -298,6 +298,15 @@ class HttpServer {
       res.json(models);
     }));
 
+    // GET available CLIP type options (single and dual)
+    this.app.get('/api/config/comfyui/clip-types', ...adminGuard, safeHandler(async (_req, res) => {
+      const [single, dual] = await Promise.all([
+        comfyuiClient.getClipTypes(),
+        comfyuiClient.getDualClipTypes(),
+      ]);
+      res.json({ single, dual });
+    }));
+
     // GET export currently active workflow as ComfyUI API format JSON
     this.app.get('/api/config/workflow/export', ...adminGuard, safeHandler(async (_req, res) => {
       const result = await comfyuiClient.getExportWorkflow();
@@ -340,6 +349,8 @@ class HttpServer {
         const negativePrompt = typeof body.negativePrompt === 'string' ? body.negativePrompt : '';
         const vae = typeof body.vae === 'string' ? body.vae.trim() : '';
         const clip = typeof body.clip === 'string' ? body.clip.trim() : '';
+        const clip2 = typeof body.clip2 === 'string' ? body.clip2.trim() : '';
+        const clipType = typeof body.clipType === 'string' ? body.clipType.trim() : '';
         const diffuser = typeof body.diffuser === 'string' ? body.diffuser.trim() : '';
 
         // Validate: diffuser requires VAE
@@ -365,6 +376,8 @@ class HttpServer {
         envUpdates.COMFYUI_DEFAULT_NEGATIVE_PROMPT = negativePrompt;
         envUpdates.COMFYUI_DEFAULT_VAE = vae;
         envUpdates.COMFYUI_DEFAULT_CLIP = clip;
+        envUpdates.COMFYUI_DEFAULT_CLIP2 = clip2;
+        envUpdates.COMFYUI_DEFAULT_CLIP_TYPE = clipType;
         envUpdates.COMFYUI_DEFAULT_DIFFUSER = diffuser;
 
         await configWriter.updateEnv(envUpdates);

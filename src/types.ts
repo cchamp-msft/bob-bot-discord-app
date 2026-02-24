@@ -404,6 +404,8 @@ export interface PublicConfig {
     negativePrompt: string;
     vae: string;
     clip: string;
+    clip2: string;
+    clipType: string;
     diffuser: string;
   };
   errorHandling: {

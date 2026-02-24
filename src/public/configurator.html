@@ -820,9 +820,23 @@
               </select>
             </div>
             <div class="field">
+              <label>CLIP 2 <span style="font-size:0.8em;color:var(--text-dim)">(optional, dual CLIP)</span></label>
+              <select id="dw_clip2" style="width:100%">
+                <option value="">— none (single CLIP) —</option>
+              </select>
+            </div>
+            <div class="field">
               <label>Diffuser/UNET <span style="font-size:0.8em;color:var(--text-dim)">(optional)</span></label>
               <select id="dw_diffuser" style="width:100%">
                 <option value="">— none (use checkpoint) —</option>
+              </select>
+            </div>
+          </div>
+          <div id="dw_clip_type_row" style="display:none;margin-bottom:6px">
+            <div class="field" style="max-width:320px">
+              <label>CLIP Type</label>
+              <select id="dw_clip_type" style="width:100%">
+                <option value="stable_diffusion">stable_diffusion</option>
               </select>
             </div>
           </div>
@@ -1475,7 +1489,21 @@ flowchart TD
         }
         restoreOptionalSelect('dw_vae', dw.vae);
         restoreOptionalSelect('dw_clip', dw.clip);
+        restoreOptionalSelect('dw_clip2', dw.clip2);
         restoreOptionalSelect('dw_diffuser', dw.diffuser);
+        // Restore CLIP type and show/hide the row
+        if (dw.clipType) {
+          const clipTypeSel = document.getElementById('dw_clip_type');
+          const exists = Array.from(clipTypeSel.options).some(o => o.value === dw.clipType);
+          if (!exists) {
+            const opt = document.createElement('option');
+            opt.value = dw.clipType;
+            opt.textContent = dw.clipType + ' (saved)';
+            clipTypeSel.appendChild(opt);
+          }
+          clipTypeSel.value = dw.clipType;
+        }
+        updateClipTypeVisibility();
       }
       updateDefaultWorkflowInfo();
 
@@ -2314,13 +2342,14 @@ flowchart TD
   async function discoverComfyUIOptions() {
     conLog(`[${new Date().toISOString()}] Discovering ComfyUI options…`);
     try {
-      const [samplersRes, schedulersRes, checkpointsRes, vaeRes, clipRes, diffusersRes] = await Promise.all([
+      const [samplersRes, schedulersRes, checkpointsRes, vaeRes, clipRes, diffusersRes, clipTypesRes] = await Promise.all([
         fetch('/api/config/comfyui/samplers'),
         fetch('/api/config/comfyui/schedulers'),
         fetch('/api/config/comfyui/checkpoints'),
         fetch('/api/config/comfyui/vae'),
         fetch('/api/config/comfyui/clip'),
         fetch('/api/config/comfyui/diffusers'),
+        fetch('/api/config/comfyui/clip-types'),
       ]);
 
       const samplers = await samplersRes.json();
@@ -2329,6 +2358,7 @@ flowchart TD
       const vaeModels = await vaeRes.json();
       const clipModels = await clipRes.json();
       const diffuserModels = await diffusersRes.json();
+      const clipTypes = await clipTypesRes.json();
 
       // Populate sampler dropdown
       if (Array.isArray(samplers) && samplers.length > 0) {
@@ -2410,7 +2440,14 @@ flowchart TD
 
       populateOptionalSelect('dw_vae', vaeModels, '— use checkpoint VAE —', 'VAE model(s)');
       populateOptionalSelect('dw_clip', clipModels, '— use checkpoint CLIP —', 'CLIP model(s)');
+      populateOptionalSelect('dw_clip2', clipModels, '— none (single CLIP) —', 'CLIP 2 model(s)');
       populateOptionalSelect('dw_diffuser', diffuserModels, '— none (use checkpoint) —', 'diffuser/UNET model(s)');
+
+      // Populate CLIP type options and store them for dynamic switching
+      if (clipTypes) {
+        window._clipTypesData = clipTypes;
+        updateClipTypeOptions();
+      }
     } catch (e) {
       conLog(`  ✗ Discovery failed: ${e.message}. Test ComfyUI connection first.`, 'err');
     }
@@ -2438,6 +2475,8 @@ flowchart TD
       negativePrompt: document.getElementById('dw_negative_prompt').value || '',
       vae: document.getElementById('dw_vae').value || '',
       clip: document.getElementById('dw_clip').value || '',
+      clip2: document.getElementById('dw_clip2').value || '',
+      clipType: document.getElementById('dw_clip_type').value || '',
       diffuser: document.getElementById('dw_diffuser').value || '',
     };
 
@@ -2472,6 +2511,43 @@ flowchart TD
       conLog(`  ✗ Save failed: ${e.message}`, 'err');
     }
   }
+
+  // CLIP type visibility: show when CLIP is selected, switch options for dual vs single
+  function updateClipTypeVisibility() {
+    const clipSel = document.getElementById('dw_clip');
+    const clip2Sel = document.getElementById('dw_clip2');
+    const clipTypeRow = document.getElementById('dw_clip_type_row');
+    clipTypeRow.style.display = clipSel.value ? 'block' : 'none';
+    updateClipTypeOptions();
+  }
+
+  function updateClipTypeOptions() {
+    const clip2Sel = document.getElementById('dw_clip2');
+    const clipTypeSel = document.getElementById('dw_clip_type');
+    const currentVal = clipTypeSel.value;
+    const data = window._clipTypesData;
+    if (!data) return;
+    const types = clip2Sel.value ? (data.dual || []) : (data.single || []);
+    if (types.length === 0) return;
+    clipTypeSel.innerHTML = '';
+    for (const t of types) {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      clipTypeSel.appendChild(opt);
+    }
+    if (types.includes(currentVal)) clipTypeSel.value = currentVal;
+  }
+
+  // Wire CLIP 1/CLIP 2 onchange to toggle type dropdown
+  (function() {
+    const clipSel = document.getElementById('dw_clip');
+    const clip2Sel = document.getElementById('dw_clip2');
+    clipSel.addEventListener('change', updateClipTypeVisibility);
+    clip2Sel.addEventListener('change', function() {
+      updateClipTypeOptions();
+    });
+  })();
 
   // Show/hide diffuser warning when selections change
   (function() {

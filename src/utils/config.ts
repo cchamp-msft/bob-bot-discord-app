@@ -909,6 +909,16 @@ class Config {
     return process.env.COMFYUI_DEFAULT_CLIP || '';
   }
 
+  /** Second CLIP model path for DualCLIPLoader. Empty = single CLIP mode. */
+  getComfyUIDefaultClip2(): string {
+    return process.env.COMFYUI_DEFAULT_CLIP2 || '';
+  }
+
+  /** CLIP loader type (e.g. 'stable_diffusion', 'sdxl', 'flux'). Default: 'stable_diffusion'. */
+  getComfyUIDefaultClipType(): string {
+    return process.env.COMFYUI_DEFAULT_CLIP_TYPE || 'stable_diffusion';
+  }
+
   /** Diffuser/UNET model path for the default workflow. Empty = use checkpoint model. */
   getComfyUIDefaultDiffuser(): string {
     return process.env.COMFYUI_DEFAULT_DIFFUSER || '';
@@ -1046,6 +1056,8 @@ class Config {
     const prevDefaultNegativePrompt = this.getComfyUIDefaultNegativePrompt();
     const prevDefaultVae = this.getComfyUIDefaultVae();
     const prevDefaultClip = this.getComfyUIDefaultClip();
+    const prevDefaultClip2 = this.getComfyUIDefaultClip2();
+    const prevDefaultClipType = this.getComfyUIDefaultClipType();
     const prevMaxToolCalls = this.getMaxToolCalls();
     const prevDefaultDiffuser = this.getComfyUIDefaultDiffuser();
 
@@ -1138,6 +1150,8 @@ class Config {
     if (this.getComfyUIDefaultNegativePrompt() !== prevDefaultNegativePrompt) reloaded.push('COMFYUI_DEFAULT_NEGATIVE_PROMPT');
     if (this.getComfyUIDefaultVae() !== prevDefaultVae) reloaded.push('COMFYUI_DEFAULT_VAE');
     if (this.getComfyUIDefaultClip() !== prevDefaultClip) reloaded.push('COMFYUI_DEFAULT_CLIP');
+    if (this.getComfyUIDefaultClip2() !== prevDefaultClip2) reloaded.push('COMFYUI_DEFAULT_CLIP2');
+    if (this.getComfyUIDefaultClipType() !== prevDefaultClipType) reloaded.push('COMFYUI_DEFAULT_CLIP_TYPE');
     if (this.getMaxToolCalls() !== prevMaxToolCalls) reloaded.push('MAX_TOOL_CALLS');
     if (this.getComfyUIDefaultDiffuser() !== prevDefaultDiffuser) reloaded.push('COMFYUI_DEFAULT_DIFFUSER');
 
@@ -1212,6 +1226,8 @@ class Config {
         negativePrompt: this.getComfyUIDefaultNegativePrompt(),
         vae: this.getComfyUIDefaultVae(),
         clip: this.getComfyUIDefaultClip(),
+        clip2: this.getComfyUIDefaultClip2(),
+        clipType: this.getComfyUIDefaultClipType(),
         diffuser: this.getComfyUIDefaultDiffuser(),
       },
       errorHandling: {

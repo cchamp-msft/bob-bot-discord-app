@@ -55,6 +55,8 @@ jest.mock('../src/utils/config', () => ({
     getComfyUIDefaultNegativePrompt: jest.fn(() => ''),
     getComfyUIDefaultVae: jest.fn(() => ''),
     getComfyUIDefaultClip: jest.fn(() => ''),
+    getComfyUIDefaultClip2: jest.fn(() => ''),
+    getComfyUIDefaultClipType: jest.fn(() => 'stable_diffusion'),
     getComfyUIDefaultDiffuser: jest.fn(() => ''),
   },
 }));
@@ -111,6 +113,8 @@ describe('ComfyUIClient', () => {
     (config.getComfyUIDefaultNegativePrompt as jest.Mock).mockReturnValue('');
     (config.getComfyUIDefaultVae as jest.Mock).mockReturnValue('');
     (config.getComfyUIDefaultClip as jest.Mock).mockReturnValue('');
+    (config.getComfyUIDefaultClip2 as jest.Mock).mockReturnValue('');
+    (config.getComfyUIDefaultClipType as jest.Mock).mockReturnValue('stable_diffusion');
     (config.getComfyUIDefaultDiffuser as jest.Mock).mockReturnValue('');
     comfyuiClient.refresh();
   });
@@ -1798,6 +1802,111 @@ describe('ComfyUIClient', () => {
     });
   });
 
+  describe('getClipModels', () => {
+    it('should extract clip model names from /object_info/CLIPLoader response', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          CLIPLoader: {
+            input: {
+              required: {
+                clip_name: [['clip_l.safetensors', 't5xxl_fp16.safetensors']],
+              },
+            },
+          },
+        },
+      });
+
+      const clips = await comfyuiClient.getClipModels();
+      expect(clips).toEqual(['clip_l.safetensors', 't5xxl_fp16.safetensors']);
+    });
+
+    it('should return empty array when ComfyUI is unreachable', async () => {
+      mockInstance.get.mockRejectedValue(new Error('ECONNREFUSED'));
+      const clips = await comfyuiClient.getClipModels();
+      expect(clips).toEqual([]);
+    });
+  });
+
+  describe('getDiffuserModels', () => {
+    it('should extract diffuser model names from /object_info/UNETLoader response', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          UNETLoader: {
+            input: {
+              required: {
+                unet_name: [['flux1-dev.safetensors', 'sd3_medium.safetensors']],
+              },
+            },
+          },
+        },
+      });
+
+      const diffusers = await comfyuiClient.getDiffuserModels();
+      expect(diffusers).toEqual(['flux1-dev.safetensors', 'sd3_medium.safetensors']);
+    });
+
+    it('should return empty array when ComfyUI is unreachable', async () => {
+      mockInstance.get.mockRejectedValue(new Error('ECONNREFUSED'));
+      const diffusers = await comfyuiClient.getDiffuserModels();
+      expect(diffusers).toEqual([]);
+    });
+  });
+
+  describe('getClipTypes', () => {
+    it('should extract clip type options from /object_info/CLIPLoader', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          CLIPLoader: {
+            input: {
+              required: {
+                type: [['stable_diffusion', 'stable_cascade', 'sd3', 'stable_audio', 'mochi', 'ltxv', 'pixart', 'cosmos', 'lumina2', 'wan', 'hidream']],
+              },
+            },
+          },
+        },
+      });
+
+      const types = await comfyuiClient.getClipTypes();
+      expect(types).toContain('stable_diffusion');
+      expect(types).toContain('sd3');
+    });
+
+    it('should return empty array when ComfyUI is unreachable', async () => {
+      mockInstance.get.mockRejectedValue(new Error('ECONNREFUSED'));
+      const types = await comfyuiClient.getClipTypes();
+      expect(types).toEqual([]);
+    });
+  });
+
+  describe('getDualClipTypes', () => {
+    it('should extract dual clip type options from /object_info/DualCLIPLoader', async () => {
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          DualCLIPLoader: {
+            input: {
+              required: {
+                type: [['sdxl', 'sd3', 'flux', 'hunyuan_video', 'cosmos']],
+              },
+            },
+          },
+        },
+      });
+
+      const types = await comfyuiClient.getDualClipTypes();
+      expect(types).toEqual(['sdxl', 'sd3', 'flux', 'hunyuan_video', 'cosmos']);
+    });
+
+    it('should return empty array when ComfyUI is unreachable', async () => {
+      mockInstance.get.mockRejectedValue(new Error('ECONNREFUSED'));
+      const types = await comfyuiClient.getDualClipTypes();
+      expect(types).toEqual([]);
+    });
+  });
+
   describe('getCheckpoints', () => {
     it('should return checkpoint list from /models/checkpoints', async () => {
       mockInstance.get.mockResolvedValue({
@@ -2050,6 +2159,59 @@ describe('ComfyUIClient', () => {
       }
     });
 
+    it('should pass clip_type to CLIPLoader when set', () => {
+      const workflow = buildDefaultWorkflow({ ...baseParams, clip_name: 'clip.safetensors', clip_type: 'sd3' });
+      const clipLoader = Object.values(workflow).find((n: any) => n.class_type === 'CLIPLoader') as any;
+      expect(clipLoader.inputs.type).toBe('sd3');
+    });
+
+    it('should default clip_type to stable_diffusion for CLIPLoader', () => {
+      const workflow = buildDefaultWorkflow({ ...baseParams, clip_name: 'clip.safetensors' });
+      const clipLoader = Object.values(workflow).find((n: any) => n.class_type === 'CLIPLoader') as any;
+      expect(clipLoader.inputs.type).toBe('stable_diffusion');
+    });
+
+    it('should use DualCLIPLoader when both clip_name and clip_name2 are set', () => {
+      const workflow = buildDefaultWorkflow({
+        ...baseParams,
+        clip_name: 'clip_l.safetensors',
+        clip_name2: 't5xxl.safetensors',
+        clip_type: 'flux',
+      });
+      const classTypes = Object.values(workflow).map((n: any) => n.class_type);
+      expect(classTypes).toContain('DualCLIPLoader');
+      expect(classTypes).not.toContain('CLIPLoader');
+
+      const dualClip = Object.values(workflow).find((n: any) => n.class_type === 'DualCLIPLoader') as any;
+      expect(dualClip.inputs.clip_name1).toBe('clip_l.safetensors');
+      expect(dualClip.inputs.clip_name2).toBe('t5xxl.safetensors');
+      expect(dualClip.inputs.type).toBe('flux');
+
+      // Both text encoders should wire to DualCLIPLoader
+      const dualClipId = Object.entries(workflow).find(([, n]: any) => n.class_type === 'DualCLIPLoader')![0];
+      const textEncoders = Object.values(workflow).filter((n: any) => n.class_type === 'CLIPTextEncode') as any[];
+      for (const enc of textEncoders) {
+        expect(enc.inputs.clip).toEqual([dualClipId, 0]);
+      }
+    });
+
+    it('should use DualCLIPLoader in diffuser + dual CLIP mode', () => {
+      const workflow = buildDefaultWorkflow({
+        ...baseParams,
+        diffuser_name: 'flux.safetensors',
+        vae_name: 'vae.safetensors',
+        clip_name: 'clip_l.safetensors',
+        clip_name2: 't5xxl.safetensors',
+        clip_type: 'flux',
+      });
+      const classTypes = Object.values(workflow).map((n: any) => n.class_type);
+      expect(classTypes).toContain('UNETLoader');
+      expect(classTypes).toContain('VAELoader');
+      expect(classTypes).toContain('DualCLIPLoader');
+      expect(classTypes).not.toContain('CLIPLoader');
+      expect(classTypes).not.toContain('CheckpointLoaderSimple');
+    });
+
     it('should use UNETLoader + VAELoader in diffuser mode', () => {
       const workflow = buildDefaultWorkflow({
         ...baseParams,
@@ -2097,9 +2259,13 @@ describe('ComfyUIClient', () => {
         baseParams,
         { ...baseParams, vae_name: 'v.safetensors' },
         { ...baseParams, clip_name: 'c.safetensors' },
+        { ...baseParams, clip_name: 'c.safetensors', clip_type: 'sd3' },
+        { ...baseParams, clip_name: 'c1.safetensors', clip_name2: 'c2.safetensors', clip_type: 'flux' },
         { ...baseParams, vae_name: 'v.safetensors', clip_name: 'c.safetensors' },
+        { ...baseParams, vae_name: 'v.safetensors', clip_name: 'c1.safetensors', clip_name2: 'c2.safetensors', clip_type: 'sdxl' },
         { ...baseParams, diffuser_name: 'd.safetensors', vae_name: 'v.safetensors' },
         { ...baseParams, diffuser_name: 'd.safetensors', vae_name: 'v.safetensors', clip_name: 'c.safetensors' },
+        { ...baseParams, diffuser_name: 'd.safetensors', vae_name: 'v.safetensors', clip_name: 'c1.safetensors', clip_name2: 'c2.safetensors', clip_type: 'flux' },
       ];
 
       for (const params of modes) {

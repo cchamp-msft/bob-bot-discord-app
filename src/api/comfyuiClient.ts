@@ -221,6 +221,10 @@ export interface DefaultWorkflowParams {
   vae_name?: string;
   /** Separate CLIP model path. When set, a CLIPLoader node is added. */
   clip_name?: string;
+  /** Second CLIP model path for DualCLIPLoader. When set along with clip_name, uses DualCLIPLoader. */
+  clip_name2?: string;
+  /** CLIP loader type (e.g. 'stable_diffusion', 'sdxl', 'flux'). Defaults to 'stable_diffusion'. */
+  clip_type?: string;
   /** Diffuser/UNET model path. When set, a UNETLoader replaces CheckpointLoaderSimple as model source. */
   diffuser_name?: string;
 }
@@ -323,6 +327,8 @@ export function buildDefaultWorkflow(params: DefaultWorkflowParams): Record<stri
   const useDiffuser = !!params.diffuser_name;
   const useSeparateVae = !!params.vae_name;
   const useSeparateClip = !!params.clip_name;
+  const useDualClip = useSeparateClip && !!params.clip_name2;
+  const clipType = params.clip_type || 'stable_diffusion';
 
   const workflow: Record<string, unknown> = {};
   let nextId = 1;
@@ -354,12 +360,21 @@ export function buildDefaultWorkflow(params: DefaultWorkflowParams): Record<stri
     };
     vaeSource = [vaeId, 0];
 
-    if (useSeparateClip) {
+    if (useDualClip) {
+      // DualCLIPLoader for CLIP
+      const clipId = id();
+      workflow[clipId] = {
+        class_type: 'DualCLIPLoader',
+        inputs: { clip_name1: params.clip_name, clip_name2: params.clip_name2, type: clipType },
+        _meta: { title: 'Load Dual CLIP' },
+      };
+      clipSource = [clipId, 0];
+    } else if (useSeparateClip) {
       // CLIPLoader for CLIP
       const clipId = id();
       workflow[clipId] = {
         class_type: 'CLIPLoader',
-        inputs: { clip_name: params.clip_name, type: 'stable_diffusion' },
+        inputs: { clip_name: params.clip_name, type: clipType },
         _meta: { title: 'Load CLIP' },
       };
       clipSource = [clipId, 0];
@@ -395,11 +410,19 @@ export function buildDefaultWorkflow(params: DefaultWorkflowParams): Record<stri
       vaeSource = [vaeId, 0];
     }
 
-    if (useSeparateClip) {
+    if (useDualClip) {
+      const clipId = id();
+      workflow[clipId] = {
+        class_type: 'DualCLIPLoader',
+        inputs: { clip_name1: params.clip_name, clip_name2: params.clip_name2, type: clipType },
+        _meta: { title: 'Load Dual CLIP' },
+      };
+      clipSource = [clipId, 0];
+    } else if (useSeparateClip) {
       const clipId = id();
       workflow[clipId] = {
         class_type: 'CLIPLoader',
-        inputs: { clip_name: params.clip_name, type: 'stable_diffusion' },
+        inputs: { clip_name: params.clip_name, type: clipType },
         _meta: { title: 'Load CLIP' },
       };
       clipSource = [clipId, 0];
@@ -517,8 +540,8 @@ class ComfyUIClient {
   /** Max consecutive HTTP failures before assuming ComfyUI is down during polling. */
   private static MAX_CONSECUTIVE_POLL_FAILURES = 5;
 
-  /** Cached object_info response with TTL */
-  private objectInfoCache: { data: Record<string, unknown>; expiry: number } | null = null;
+  /** Per-node-type object_info cache with TTL */
+  private nodeInfoCache = new Map<string, { data: Record<string, unknown>; expiry: number }>();
   private static OBJECT_INFO_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   /** WebSocket manager for real-time execution tracking */
@@ -549,27 +572,28 @@ class ComfyUIClient {
     });
     this.wsManager.updateBaseUrl(newEndpoint);
     this.cachedDefaultWorkflow = null;
-    this.objectInfoCache = null;
+    this.nodeInfoCache.clear();
   }
 
   // ── Discovery methods ──────────────────────────────────────────
 
   /**
-   * Fetch the full /object_info response from ComfyUI.
-   * Cached for 5 minutes to reduce API calls.
+   * Fetch /object_info/{nodeType} from ComfyUI.
+   * Per-node-type caching with 5-minute TTL.
    */
-  private async getObjectInfo(): Promise<Record<string, unknown>> {
-    if (this.objectInfoCache && Date.now() < this.objectInfoCache.expiry) {
-      return this.objectInfoCache.data;
+  private async getNodeInfo(nodeType: string): Promise<Record<string, unknown>> {
+    const cached = this.nodeInfoCache.get(nodeType);
+    if (cached && Date.now() < cached.expiry) {
+      return cached.data;
     }
     try {
-      const response = await this.client.get('/object_info/KSampler');
+      const response = await this.client.get(`/object_info/${nodeType}`);
       if (response.status === 200 && response.data) {
-        this.objectInfoCache = {
+        this.nodeInfoCache.set(nodeType, {
           data: response.data as Record<string, unknown>,
           expiry: Date.now() + ComfyUIClient.OBJECT_INFO_CACHE_TTL_MS,
-        };
-        return this.objectInfoCache.data;
+        });
+        return response.data as Record<string, unknown>;
       }
     } catch {
       // ComfyUI unreachable — return empty
@@ -578,21 +602,21 @@ class ComfyUIClient {
   }
 
   /**
-   * Get available sampler names from ComfyUI.
-   * Queries /object_info/KSampler and extracts the sampler_name options.
-   * Tolerates both `{ KSampler: { input: … } }` and direct `{ input: … }` shapes.
+   * Extract the available options for a specific input from a node's object_info.
+   * Navigates: info[nodeType].input.required[inputName][0] (array of strings).
+   * Tolerates both `{ NodeType: { input: … } }` and direct `{ input: … }` shapes.
    */
-  async getSamplers(): Promise<string[]> {
+  private async extractNodeInputOptions(nodeType: string, inputName: string): Promise<string[]> {
     try {
-      const info = await this.getObjectInfo();
-      const ksampler = (info.KSampler ?? info) as Record<string, unknown> | undefined;
-      if (!ksampler) return [];
-      const input = ksampler.input as Record<string, Record<string, unknown>> | undefined;
+      const info = await this.getNodeInfo(nodeType);
+      const node = (info[nodeType] ?? info) as Record<string, unknown> | undefined;
+      if (!node) return [];
+      const input = node.input as Record<string, Record<string, unknown>> | undefined;
       const required = input?.required;
-      const samplerEntry = required?.sampler_name as unknown[] | undefined;
-      if (Array.isArray(samplerEntry)) {
+      const entry = required?.[inputName] as unknown[] | undefined;
+      if (Array.isArray(entry)) {
         // Handle [["euler",…]] (nested) or ["euler",…] (flat)
-        const list = Array.isArray(samplerEntry[0]) ? samplerEntry[0] : samplerEntry;
+        const list = Array.isArray(entry[0]) ? entry[0] : entry;
         return list.filter((v): v is string => typeof v === 'string');
       }
     } catch {
@@ -602,27 +626,19 @@ class ComfyUIClient {
   }
 
   /**
+   * Get available sampler names from ComfyUI.
+   * Queries /object_info/KSampler and extracts the sampler_name options.
+   */
+  async getSamplers(): Promise<string[]> {
+    return this.extractNodeInputOptions('KSampler', 'sampler_name');
+  }
+
+  /**
    * Get available scheduler names from ComfyUI.
    * Queries /object_info/KSampler and extracts the scheduler options.
-   * Tolerates both `{ KSampler: { input: … } }` and direct `{ input: … }` shapes.
    */
   async getSchedulers(): Promise<string[]> {
-    try {
-      const info = await this.getObjectInfo();
-      const ksampler = (info.KSampler ?? info) as Record<string, unknown> | undefined;
-      if (!ksampler) return [];
-      const input = ksampler.input as Record<string, Record<string, unknown>> | undefined;
-      const required = input?.required;
-      const schedulerEntry = required?.scheduler as unknown[] | undefined;
-      if (Array.isArray(schedulerEntry)) {
-        // Handle [["normal",…]] (nested) or ["normal",…] (flat)
-        const list = Array.isArray(schedulerEntry[0]) ? schedulerEntry[0] : schedulerEntry;
-        return list.filter((v): v is string => typeof v === 'string');
-      }
-    } catch {
-      // Fall through
-    }
-    return [];
+    return this.extractNodeInputOptions('KSampler', 'scheduler');
   }
 
   /**
@@ -659,34 +675,34 @@ class ComfyUIClient {
 
   /**
    * Get available CLIP model files from ComfyUI.
-   * Queries GET /models/clip.
+   * Queries /object_info/CLIPLoader for the clip_name input options.
    */
   async getClipModels(): Promise<string[]> {
-    try {
-      const response = await this.client.get('/models/clip');
-      if (response.status === 200 && Array.isArray(response.data)) {
-        return response.data as string[];
-      }
-    } catch {
-      // ComfyUI unreachable
-    }
-    return [];
+    return this.extractNodeInputOptions('CLIPLoader', 'clip_name');
   }
 
   /**
    * Get available diffuser/UNET model files from ComfyUI.
-   * Queries GET /models/diffusers.
+   * Queries /object_info/UNETLoader for the unet_name input options.
    */
   async getDiffuserModels(): Promise<string[]> {
-    try {
-      const response = await this.client.get('/models/diffusers');
-      if (response.status === 200 && Array.isArray(response.data)) {
-        return response.data as string[];
-      }
-    } catch {
-      // ComfyUI unreachable
-    }
-    return [];
+    return this.extractNodeInputOptions('UNETLoader', 'unet_name');
+  }
+
+  /**
+   * Get available CLIP type options for single CLIPLoader.
+   * Queries /object_info/CLIPLoader for the type input options.
+   */
+  async getClipTypes(): Promise<string[]> {
+    return this.extractNodeInputOptions('CLIPLoader', 'type');
+  }
+
+  /**
+   * Get available CLIP type options for DualCLIPLoader.
+   * Queries /object_info/DualCLIPLoader for the type input options.
+   */
+  async getDualClipTypes(): Promise<string[]> {
+    return this.extractNodeInputOptions('DualCLIPLoader', 'type');
   }
 
   /**
@@ -830,6 +846,8 @@ class ComfyUIClient {
       seed: config.getComfyUIDefaultSeed(),
       vae_name: config.getComfyUIDefaultVae() || undefined,
       clip_name: config.getComfyUIDefaultClip() || undefined,
+      clip_name2: config.getComfyUIDefaultClip2() || undefined,
+      clip_type: config.getComfyUIDefaultClipType() || undefined,
       diffuser_name: config.getComfyUIDefaultDiffuser() || undefined,
     };
 
@@ -880,6 +898,8 @@ class ComfyUIClient {
       seed: config.getComfyUIDefaultSeed(),
       vae_name: config.getComfyUIDefaultVae() || undefined,
       clip_name: config.getComfyUIDefaultClip() || undefined,
+      clip_name2: config.getComfyUIDefaultClip2() || undefined,
+      clip_type: config.getComfyUIDefaultClipType() || undefined,
       diffuser_name: config.getComfyUIDefaultDiffuser() || undefined,
     };
 
