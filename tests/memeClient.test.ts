@@ -315,10 +315,12 @@ describe('MemeClient', () => {
       expect(result.error).toContain('Meme generation failed');
     });
 
-    it('returns comma-separated template ids for get_meme_templates keyword', async () => {
+    it('returns detailed template list for get_meme_templates keyword', async () => {
       const result = await memeClient.handleRequest('', 'get_meme_templates');
       expect(result.success).toBe(true);
-      expect(result.data?.text).toBe('drake, aag, doge');
+      expect(result.data?.text).toBe(
+        'drake: Drake Hotline Bling (2 lines)\naag: Ancient Aliens Guy (2 lines)\ndoge: Doge (2 lines)'
+      );
     });
 
     it('returns fallback message when get_meme_templates requested with empty template cache', async () => {

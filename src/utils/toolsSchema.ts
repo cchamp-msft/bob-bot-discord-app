@@ -1,7 +1,7 @@
 import type { ToolConfig } from './config';
 
 /** Tool names that are internal-only (e.g. !help, !activity_key). Not sent to Ollama as tools. */
-const INTERNAL_ONLY_TOOLS = new Set(['help', 'activity_key']);
+const INTERNAL_ONLY_TOOLS = new Set(['help', 'activity_key', 'get_meme_templates']);
 
 function isInternalOnlyTool(name: string): boolean {
   const normalized = name.replace(/^!\s*/, '').trim().toLowerCase();
@@ -162,6 +162,8 @@ export function toolArgumentsToContent(
       return get('date') || get('input') || '';
     }
     case 'meme': {
+      const combined = get('template_and_text');
+      if (combined) return combined;
       const template = get('templateId') || get('template') || get('templateName');
       const top = get('top') || get('top_text') || '';
       const bottom = get('bottom') || get('bottom_text') || '';

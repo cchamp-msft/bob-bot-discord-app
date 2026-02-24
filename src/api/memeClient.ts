@@ -236,7 +236,7 @@ class MemeClient {
     }
 
     if (this.isTemplateListKeyword(_keyword)) {
-      const ids = this.getTemplateIds();
+      const ids = this.getTemplateListForInference();
       return {
         success: true,
         data: {

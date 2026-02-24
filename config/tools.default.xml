@@ -128,8 +128,8 @@
     <name>generate_meme</name>
     <api>meme</api>
     <timeout>60</timeout>
-    <description>Create funny meme images from popular templates</description>
-    <abilityWhen>User wants a meme generated, asks for a meme, or describes a funny image macro.</abilityWhen>
+    <description>Create meme images from popular templates</description>
+    <abilityWhen>User asks to create or generate a meme image.</abilityWhen>
     <parameters>
       <mode>implicit</mode>
       <template_and_text>
