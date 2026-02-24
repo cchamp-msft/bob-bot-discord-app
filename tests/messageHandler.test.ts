@@ -145,7 +145,7 @@ jest.mock('../src/utils/activityEvents', () => ({
 jest.mock('../src/api/memeClient', () => ({
   memeClient: {
     getTemplateIds: jest.fn(() => 'aag, ackbar, afraid'),
-    getTemplateListForInference: jest.fn(() => ''),
+    getTemplateListForInference: jest.fn(() => 'aag (2 lines), ackbar (2 lines), afraid (2 lines)'),
     handleRequest: jest.fn(),
   },
 }));
@@ -1261,8 +1261,8 @@ describe('MessageHandler standalone allowEmptyContent tools', () => {
     // Should NOT go through API routing
     expect(mockRouted).not.toHaveBeenCalled();
     // Should reply with the mocked template list directly
-    expect(msg.reply).toHaveBeenCalledWith('aag, ackbar, afraid');
-    expect(memeClient.getTemplateIds).toHaveBeenCalled();
+    expect(msg.reply).toHaveBeenCalledWith('aag (2 lines), ackbar (2 lines), afraid (2 lines)');
+    expect(memeClient.getTemplateListForInference).toHaveBeenCalled();
   });
 });
 

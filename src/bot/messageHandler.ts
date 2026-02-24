@@ -466,7 +466,7 @@ class MessageHandler {
     // Route standalone "!get_meme_templates" — return cached template list directly.
     // No model call or context needed; the list is deterministic.
     if (toolMatched && this.toolNameIs(toolConfig.name, 'get_meme_templates')) {
-      const ids = memeClient.getTemplateIds();
+      const ids = memeClient.getTemplateListForInference();
       const reply = ids || 'No meme templates available. Templates may still be loading.';
       await message.reply(reply);
       logger.log('success', 'system', `MEME-TEMPLATES: Direct template list sent to ${requester}`);
