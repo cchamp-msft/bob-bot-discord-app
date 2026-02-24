@@ -468,7 +468,13 @@ class MessageHandler {
     if (toolMatched && this.toolNameIs(toolConfig.name, 'get_meme_templates')) {
       const ids = memeClient.getTemplateListForInference();
       const reply = ids || 'No meme templates available. Templates may still be loading.';
-      await message.reply(reply);
+      const chunks = chunkText(reply);
+      await message.reply({ content: chunks[0], allowedMentions: { parse: [] } });
+      for (let i = 1; i < chunks.length; i++) {
+        if ('send' in message.channel) {
+          await message.channel.send({ content: chunks[i], allowedMentions: { parse: [] } });
+        }
+      }
       logger.log('success', 'system', `MEME-TEMPLATES: Direct template list sent to ${requester}`);
       return;
     }

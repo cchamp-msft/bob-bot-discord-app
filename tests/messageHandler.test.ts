@@ -1261,7 +1261,10 @@ describe('MessageHandler standalone allowEmptyContent tools', () => {
     // Should NOT go through API routing
     expect(mockRouted).not.toHaveBeenCalled();
     // Should reply with the mocked template list directly
-    expect(msg.reply).toHaveBeenCalledWith('aag (2 lines), ackbar (2 lines), afraid (2 lines)');
+    expect(msg.reply).toHaveBeenCalledWith({
+      content: 'aag (2 lines), ackbar (2 lines), afraid (2 lines)',
+      allowedMentions: { parse: [] },
+    });
     expect(memeClient.getTemplateListForInference).toHaveBeenCalled();
   });
 });
