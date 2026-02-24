@@ -385,7 +385,8 @@ export async function executeRoutedRequest(
   requester: string,
   conversationHistory?: ChatMessage[],
   botDisplayName?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: { skipFinalPass?: boolean }
 ): Promise<RoutedResult> {
   const stages: StageResult[] = [];
 
@@ -507,6 +508,12 @@ export async function executeRoutedRequest(
   }
 
   logger.log('success', 'system', `API-ROUTING: ${keywordConfig.api} request complete`);
+
+  // ── Skip individual final pass when caller will run a combined pass ──
+  if (options?.skipFinalPass) {
+    logger.log('success', 'system', 'API-ROUTING: Skipping individual final pass (caller handles combined pass)');
+    return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };
+  }
 
   // ── Mandatory final Ollama pass for all non-Ollama APIs ────────
   // Don't double-pass through Ollama if the primary API was already Ollama

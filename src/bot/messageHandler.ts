@@ -1236,7 +1236,8 @@ class MessageHandler {
           requester,
           filteredHistory.length > 0 ? filteredHistory : undefined,
           botDisplayName,
-          undefined
+          undefined,
+          { skipFinalPass: true }
         );
         // Capture the first ComfyUI response as mediaSource for attachment
         if (!comfyUIMediaSource && resolvedTool.api === 'comfyui' && apiResult.finalResponse.success) {
