@@ -151,7 +151,8 @@
     <name>get_meme_templates</name>
     <api>meme</api>
     <timeout>30</timeout>
-    <description>Return a comma separated list of meme templates</description>
+    <description>Get available meme templates. Use when a user asks what meme templates are available or wants to see a list of meme templates.</description>
+    <abilityWhen>User asks what meme templates are available or wants to see a list of meme templates.</abilityWhen>
     <allowEmptyContent>true</allowEmptyContent>
   </tool>
 </tools>

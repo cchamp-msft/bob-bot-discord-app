@@ -1,7 +1,7 @@
 import type { ToolConfig } from './config';
 
 /** Tool names that are internal-only (e.g. !help, !activity_key). Not sent to Ollama as tools. */
-const INTERNAL_ONLY_TOOLS = new Set(['help', 'activity_key', 'get_meme_templates']);
+const INTERNAL_ONLY_TOOLS = new Set(['help', 'activity_key']);
 
 function isInternalOnlyTool(name: string): boolean {
   const normalized = name.replace(/^!\s*/, '').trim().toLowerCase();
@@ -27,8 +27,8 @@ export interface OllamaTool {
 
 /**
  * Build OpenAI-compatible tool definitions from tool config for Ollama's native tools.
- * Excludes internal-only tools (help, activity_key) and non-routable tools
- * (disabled, builtin, api === 'ollama').
+ * Excludes internal-only tools (help, activity_key) and non-routable
+ * tools (disabled, builtin, api === 'ollama').
  *
  * @param tools - Full tool list (e.g. from config).
  * @returns Tool definitions suitable for the `tools` parameter of /api/chat.
