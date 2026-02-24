@@ -202,6 +202,20 @@ export function buildSystemPrompt(routableTools?: ToolConfig[]): string {
 // ── Conversation history formatter ───────────────────────────────
 
 /**
+ * Result of formatting conversation history for the reprompt pass.
+ * Contains the inner XML (context blocks only, no participants) and
+ * the inferred bot/requester names as standalone values.
+ */
+interface RepromptHistoryResult {
+  /** Context blocks with <message> tags — no <participants> wrapper. */
+  historyInnerXml: string;
+  /** Inferred bot display name. */
+  botName: string;
+  /** Inferred requester display name, or null if unknown. */
+  requesterName: string | null;
+}
+
+/**
  * Format conversation history into the <conversation_history> XML block.
  * Input messages should be oldest-to-newest (as returned by contextEvaluator).
  * Messages are grouped by contextSource (reply, thread, channel, dm) into
@@ -236,6 +250,40 @@ function formatConversationHistory(history: ChatMessage[], discordBotName?: stri
   }
 
   return [participantsBlock, ...blocks].join('\n');
+}
+
+/**
+ * Format conversation history for the reprompt (final Ollama pass).
+ * Unlike `formatConversationHistory()`, this does NOT include a
+ * `<participants>` block — the bot and requester names are returned
+ * separately so the caller can emit them as top-level tags.
+ */
+function formatConversationHistoryForReprompt(
+  history: ChatMessage[],
+  discordBotName?: string,
+): RepromptHistoryResult {
+  const inferredBotName = inferBotName(discordBotName);
+  const requesterName = inferRequesterName(history);
+
+  if (!history || history.length === 0) {
+    return { historyInnerXml: '', botName: inferredBotName, requesterName };
+  }
+
+  const groups = groupMessagesBySource(history);
+
+  const blocks: string[] = [];
+  for (const [source, msgs] of groups) {
+    const lines = msgs.map(msg => {
+      const speaker = inferSpeakerName(msg, inferredBotName, requesterName);
+      const speakerType = inferSpeakerType(msg, speaker, requesterName);
+      const text = msg.role === 'user' ? stripSpeakerPrefix(msg.content, msg.hasNamePrefix) : msg.content;
+      const tsAttr = msg.createdAtMs != null ? ` timestamp="${Math.floor(msg.createdAtMs / 1000)}"` : '';
+      return `<message role="${msg.role}" speaker="${escapeXmlAttribute(speaker)}" speaker_type="${speakerType}"${tsAttr}>${escapeXmlContent(text)}</message>`;
+    });
+    blocks.push(`<context source="${source}">\n${lines.join('\n')}\n</context>`);
+  }
+
+  return { historyInnerXml: blocks.join('\n'), botName: inferredBotName, requesterName };
 }
 
 /**
@@ -728,27 +776,36 @@ export function assembleReprompt(options: PromptBuildOptions): AssembledPrompt {
   // Build user content with external data but WITHOUT thinking_and_output_rules
   const { userMessage, conversationHistory, externalData, botDisplayName } = options;
 
+  const filtered = (conversationHistory ?? []).filter(m => m.role !== 'system');
+  const { historyInnerXml, botName, requesterName } = formatConversationHistoryForReprompt(
+    filtered,
+    botDisplayName,
+  );
+
   const parts: string[] = [];
 
-  // ── <conversation_history> ──
-  const historyText = formatConversationHistory(
-    (conversationHistory ?? []).filter(m => m.role !== 'system'),
-    botDisplayName
-  );
-  if (historyText) {
-    parts.push(getCurrentTimestampTag());
-    parts.push(`<conversation_history>\n${historyText}\n</conversation_history>`);
+  // ── <current_question> (highest priority — what to answer) ──
+  parts.push(`<current_question>\n${escapeXmlContent(userMessage)}\n</current_question>`);
+
+  // ── <requester_name> and <bot_name> (who is asking / who is answering) ──
+  parts.push(`<requester_name>${escapeXmlContent(requesterName ?? 'unknown')}</requester_name>`);
+  parts.push(`<bot_name>${escapeXmlContent(botName)}</bot_name>`);
+
+  // ── <current_datetime> (human-readable temporal context) ──
+  parts.push(getCurrentDateTimeTag());
+
+  // ── <external_data> (data needed to formulate the answer) ──
+  if (externalData) {
+    parts.push(`<external_data>\n${externalData}\n</external_data>`);
+  }
+
+  // ── <conversation_history> (background context, lowest priority) ──
+  if (historyInnerXml) {
+    const epochSeconds = Math.floor(Date.now() / 1000);
+    parts.push(`<conversation_history current_timestamp="${epochSeconds}">\n${historyInnerXml}\n</conversation_history>`);
   } else {
     parts.push('<conversation_history>\n</conversation_history>');
   }
-
-  // ── <external_data> (always present in reprompt) ──
-  if (externalData) {
-    parts.push(`\n<external_data>\n${externalData}\n</external_data>`);
-  }
-
-  // ── <current_question> ──
-  parts.push(`\n<current_question>\n${escapeXmlContent(userMessage)}\n</current_question>`);
 
   const userContent = parts.join('\n');
 

@@ -104,7 +104,7 @@ jest.mock('../src/utils/promptBuilder', () => ({
   })),
   assembleReprompt: jest.fn((opts: any) => ({
     systemContent: 'You are Bob.',
-    userContent: (opts.externalData ? `<external_data>\n${opts.externalData}\n</external_data>\n\n` : '') + `<current_question>\n${opts.userMessage}\n</current_question>`,
+    userContent: `<current_question>\n${opts.userMessage}\n</current_question>\n` + (opts.externalData ? `<external_data>\n${opts.externalData}\n</external_data>\n` : '') + '<conversation_history>\n</conversation_history>',
     messages: [],
   })),
   parseFirstLineTool: jest.fn(() => ({ toolConfig: null, parsedLine: '', matched: false })),

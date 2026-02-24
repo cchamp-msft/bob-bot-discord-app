@@ -555,6 +555,86 @@ describe('PromptBuilder', () => {
       expect(result.systemContent).not.toContain('Available external abilities');
       expect(result.systemContent).not.toContain('Rules – follow exactly');
     });
+
+    it('should place <current_question> before <external_data> and <conversation_history>', () => {
+      const result = assembleReprompt({
+        userMessage: 'What is the weather?',
+        externalData: 'Sunny',
+        conversationHistory: [
+          { role: 'user', content: 'Hi' },
+        ],
+      });
+
+      const qIdx = result.userContent.indexOf('<current_question>');
+      const edIdx = result.userContent.indexOf('<external_data>');
+      const chIdx = result.userContent.indexOf('<conversation_history');
+      expect(qIdx).toBeLessThan(edIdx);
+      expect(qIdx).toBeLessThan(chIdx);
+    });
+
+    it('should emit <requester_name> and <bot_name> as standalone top-level tags', () => {
+      const result = assembleReprompt({
+        userMessage: 'nfl scores',
+        conversationHistory: [
+          { role: 'user', content: 'oeb: nfl scores', contextSource: 'trigger' as const, hasNamePrefix: true },
+        ],
+      });
+
+      expect(result.userContent).toContain('<requester_name>oeb</requester_name>');
+      expect(result.userContent).toContain('<bot_name>Bob</bot_name>');
+    });
+
+    it('should include <current_datetime> in reprompt output', () => {
+      const result = assembleReprompt({
+        userMessage: 'Hello',
+        externalData: 'data',
+      });
+
+      expect(result.userContent).toContain('<current_datetime>');
+      expect(result.userContent).toContain('</current_datetime>');
+    });
+
+    it('should put current_timestamp as attribute on <conversation_history>, not as standalone tag', () => {
+      const result = assembleReprompt({
+        userMessage: 'Hello',
+        externalData: 'data',
+        conversationHistory: [
+          { role: 'user', content: 'Hi' },
+        ],
+      });
+
+      expect(result.userContent).toMatch(/<conversation_history current_timestamp="\d+">/);
+      expect(result.userContent).not.toContain('<current_timestamp>');
+    });
+
+    it('should NOT include <participants> block in reprompt conversation_history', () => {
+      const result = assembleReprompt({
+        userMessage: 'test',
+        conversationHistory: [
+          { role: 'user', content: 'alice: hello', contextSource: 'channel' as const, hasNamePrefix: true },
+          { role: 'user', content: 'oeb: test', contextSource: 'trigger' as const, hasNamePrefix: true },
+        ],
+      });
+
+      expect(result.userContent).not.toContain('<participants>');
+      expect(result.userContent).not.toContain('<third_parties>');
+      // But standalone tags should still be present
+      expect(result.userContent).toContain('<requester_name>oeb</requester_name>');
+      expect(result.userContent).toContain('<bot_name>Bob</bot_name>');
+    });
+
+    it('should default requester to unknown and omit timestamp attr when no history', () => {
+      const result = assembleReprompt({
+        userMessage: 'Hello',
+        externalData: 'data',
+      });
+
+      expect(result.userContent).toContain('<requester_name>unknown</requester_name>');
+      expect(result.userContent).toContain('<bot_name>Bob</bot_name>');
+      // Empty conversation_history should have no current_timestamp attribute
+      expect(result.userContent).toContain('<conversation_history>\n</conversation_history>');
+      expect(result.userContent).not.toMatch(/current_timestamp/);
+    });
   });
 
   // ── buildAskPrompt ─────────────────────────────────────────────
@@ -923,7 +1003,7 @@ describe('PromptBuilder', () => {
       expect(content).not.toContain('<current_timestamp>');
     });
 
-    it('should appear in assembleReprompt when conversation history is non-empty', () => {
+    it('should appear as attribute on conversation_history in assembleReprompt when history is non-empty', () => {
       const result = assembleReprompt({
         userMessage: 'What is the weather?',
         externalData: 'Sunny',
@@ -931,7 +1011,9 @@ describe('PromptBuilder', () => {
           { role: 'user', content: 'Previous msg' },
         ],
       });
-      expect(result.userContent).toContain('<current_timestamp>');
+      // Now an attribute, not a standalone tag
+      expect(result.userContent).toMatch(/<conversation_history current_timestamp="\d+">/);
+      expect(result.userContent).not.toMatch(/<current_timestamp>\d+<\/current_timestamp>/);
     });
 
     it('should NOT appear in assembleReprompt when conversation history is empty', () => {
@@ -939,7 +1021,7 @@ describe('PromptBuilder', () => {
         userMessage: 'What is the weather?',
         externalData: 'Sunny',
       });
-      expect(result.userContent).not.toContain('<current_timestamp>');
+      expect(result.userContent).not.toContain('current_timestamp');
     });
   });
 
