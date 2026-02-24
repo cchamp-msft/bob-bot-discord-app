@@ -1389,8 +1389,8 @@ describe('Config', () => {
     });
 
     it('getComfyUIDefaultSeed should clamp to valid range', () => {
-      process.env.COMFYUI_DEFAULT_SEED = '9999999999';
-      expect(config.getComfyUIDefaultSeed()).toBe(2147483647);
+      process.env.COMFYUI_DEFAULT_SEED = '9007199254740992';
+      expect(config.getComfyUIDefaultSeed()).toBe(9007199254740991);
     });
 
     it('should include default workflow in getPublicConfig', () => {

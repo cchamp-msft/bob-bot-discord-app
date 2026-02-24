@@ -1371,12 +1371,12 @@ describe('ComfyUIClient', () => {
   });
 
   describe('resolveSeed', () => {
-    it('should return a random integer in [0, 2147483647] when seed is -1', () => {
+    it('should return a random integer in [0, Number.MAX_SAFE_INTEGER] when seed is -1', () => {
       for (let i = 0; i < 20; i++) {
         const val = resolveSeed(-1);
         expect(Number.isInteger(val)).toBe(true);
         expect(val).toBeGreaterThanOrEqual(0);
-        expect(val).toBeLessThanOrEqual(2147483647);
+        expect(val).toBeLessThanOrEqual(Number.MAX_SAFE_INTEGER);
       }
     });
 
@@ -1398,9 +1398,9 @@ describe('ComfyUIClient', () => {
       const seed2 = ((workflow['2'] as any).inputs as any).seed;
       const seed3 = ((workflow['3'] as any).inputs as any).seed;
       expect(seed2).toBeGreaterThanOrEqual(0);
-      expect(seed2).toBeLessThanOrEqual(2147483647);
+      expect(seed2).toBeLessThanOrEqual(Number.MAX_SAFE_INTEGER);
       expect(seed3).toBeGreaterThanOrEqual(0);
-      expect(seed3).toBeLessThanOrEqual(2147483647);
+      expect(seed3).toBeLessThanOrEqual(Number.MAX_SAFE_INTEGER);
     });
 
     it('should leave specific seed values unchanged', () => {
@@ -1694,7 +1694,7 @@ describe('ComfyUIClient', () => {
       expect(sentBody.prompt['5'].inputs.scheduler).toBe('karras');
       expect(sentBody.prompt['5'].inputs.denoise).toBe(0.88);
       expect(sentBody.prompt['5'].inputs.seed).toBeGreaterThanOrEqual(0);
-      expect(sentBody.prompt['5'].inputs.seed).toBeLessThanOrEqual(2147483647);
+      expect(sentBody.prompt['5'].inputs.seed).toBeLessThanOrEqual(Number.MAX_SAFE_INTEGER);
     });
   });
 

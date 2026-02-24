@@ -339,7 +339,7 @@ describe('Default Workflow Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(res.body.errors).toContain('seed must be -1 (random) or an integer 0\u20132147483647');
+      expect(res.body.errors).toContain('seed must be -1 (random) or an integer 0\u20139007199254740991');
     });
 
     it('should reject seed below -1', async () => {
@@ -349,17 +349,17 @@ describe('Default Workflow Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(res.body.errors).toContain('seed must be -1 (random) or an integer 0\u20132147483647');
+      expect(res.body.errors).toContain('seed must be -1 (random) or an integer 0\u20139007199254740991');
     });
 
-    it('should reject seed above 2147483647', async () => {
+    it('should reject seed above Number.MAX_SAFE_INTEGER', async () => {
       const res = await postJson(server, '/api/config/default-workflow', {
         ...validPayload,
-        seed: 2147483648,
+        seed: 9007199254740992,
       });
 
       expect(res.status).toBe(400);
-      expect(res.body.errors).toContain('seed must be -1 (random) or an integer 0\u20132147483647');
+      expect(res.body.errors).toContain('seed must be -1 (random) or an integer 0\u20139007199254740991');
     });
 
     it('should accept seed of 0', async () => {

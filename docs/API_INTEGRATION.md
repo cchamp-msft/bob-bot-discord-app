@@ -75,7 +75,7 @@ The configurator includes a **Workflow Settings** section that generates a basic
 | `COMFYUI_DEFAULT_SAMPLER` | `euler_ancestral` | Sampler algorithm |
 | `COMFYUI_DEFAULT_SCHEDULER` | `beta` | Noise scheduler |
 | `COMFYUI_DEFAULT_DENOISE` | `0.88` | Denoise strength (0–1.0) |
-| `COMFYUI_DEFAULT_SEED` | `-1` | KSampler seed (`-1` = random, or `0`–`2147483647` for a fixed seed) |
+| `COMFYUI_DEFAULT_SEED` | `-1` | KSampler seed (`-1` = random, or `0`–`9007199254740991` for a fixed seed) |
 
 > **Scope:** `COMFYUI_DEFAULT_MODEL`, `COMFYUI_DEFAULT_WIDTH`, and `COMFYUI_DEFAULT_HEIGHT` apply only to the default workflow (they configure `CheckpointLoaderSimple` and `EmptyLatentImage` nodes). The remaining six parameters are also applied as sampler overrides to custom uploaded workflows (see below).
 

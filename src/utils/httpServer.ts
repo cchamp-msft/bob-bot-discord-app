@@ -343,7 +343,7 @@ class HttpServer {
         if (isNaN(steps) || steps <= 0) errors.push('steps must be positive');
         if (isNaN(cfg) || cfg <= 0) errors.push('cfg must be positive');
         if (isNaN(denoise) || denoise < 0 || denoise > 1) errors.push('denoise must be between 0 and 1');
-        if (isNaN(seed) || !Number.isInteger(seed) || (seed !== -1 && (seed < 0 || seed > 2147483647))) errors.push('seed must be -1 (random) or an integer 0–2147483647');
+        if (isNaN(seed) || !Number.isInteger(seed) || (seed !== -1 && (seed < 0 || seed > Number.MAX_SAFE_INTEGER))) errors.push('seed must be -1 (random) or an integer 0–9007199254740991');
 
         // Optional new fields
         const negativePrompt = typeof body.negativePrompt === 'string' ? body.negativePrompt : '';

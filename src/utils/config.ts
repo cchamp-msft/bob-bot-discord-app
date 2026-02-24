@@ -885,13 +885,13 @@ class Config {
   /**
    * Seed for the default workflow KSampler.
    * -1 means random (ComfyUI generates a new seed each run).
-   * Valid range: -1 or 0–2147483647.
+   * Valid range: -1 or 0–9007199254740991 (Number.MAX_SAFE_INTEGER).
    * Default: -1 (random).
    */
   getComfyUIDefaultSeed(): number {
     const raw = this.parseIntEnv('COMFYUI_DEFAULT_SEED', -1);
     if (raw === -1) return -1;
-    return Math.max(0, Math.min(raw, 2147483647));
+    return Math.max(0, Math.min(raw, Number.MAX_SAFE_INTEGER));
   }
 
   /** Default negative prompt prepended to all image generation requests. */

@@ -213,7 +213,7 @@ export interface DefaultWorkflowParams {
   denoise: number;
   /**
    * Seed for the KSampler node.
-   * -1 means random: resolved to a random integer in [0, 2147483647]
+   * -1 means random: resolved to a random integer in [0, Number.MAX_SAFE_INTEGER]
    * before sending to ComfyUI. Any other value is used as-is.
    */
   seed: number;
@@ -231,12 +231,12 @@ export interface DefaultWorkflowParams {
 
 /**
  * Resolve a seed value for ComfyUI.
- * -1 means random: generate a random integer in [0, 2147483647].
+ * -1 means random: generate a random integer in [0, Number.MAX_SAFE_INTEGER].
  * Any other value is passed through unchanged.
  */
 export function resolveSeed(seed: number): number {
   if (seed === -1) {
-    return Math.floor(Math.random() * 2147483648); // 0–2147483647
+    return Math.floor(Math.random() * (Number.MAX_SAFE_INTEGER + 1)); // 0–9007199254740991
   }
   return seed;
 }
