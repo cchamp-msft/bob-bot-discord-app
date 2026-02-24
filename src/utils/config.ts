@@ -700,7 +700,7 @@ class Config {
   getOllamaFinalPassPrompt(): string {
     const val = process.env.OLLAMA_FINAL_PASS_PROMPT;
     if (val === undefined) {
-      return 'Keeping in character, review the incoming data and provide an opinionated response.';
+      return 'Review the message context for the tone of the conversation and provide replies in a similar tone. Be helpful, concise with details, and try to maintain continuity between the context, the prompt, and your reply. Review the incoming data and provide a relevant and opinionated response. Treat information from external_data as the most recent update to any related context in conversation_history.\n\nFormatting rules:\n- Basic text styles: Use **text** for bold, *text* or _text_ for italics, __text__ for underline, and ~~text~~ for strikethrough; combine them like ***bold italics*** or __**underline bold**__ for more emphasis.\n- Code & code blocks: Single backticks `code` for inline code, triple backticks for ```code blocks``` (e.g. ```python\\nprint("Hello World!")\\n```)\n- Spoilers & hiding text: Wrap content in ||text|| to create ||spoiler|| tags that hide text until clicked and cannot be used inside of `code` or ```code blocks```.\n- Links and URLs:  Masked links via [text](URL) and cannot be used inside of `code` or ```code blocks```.\n- Quotes & organization: Use the identifier followed by a space; > text for block quotes or >>> text for multi-line quotes; headers with # Header, ## Smaller, etc.; bulleted lists with - item or * item and double-space indent for nested bullets.\n- Tables: Tabularized data needs to be encapsulated in ```code block``` and spaced exactly, markdown tables are not supported.';
     }
     return val;
   }

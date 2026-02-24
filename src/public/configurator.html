@@ -745,7 +745,7 @@
         </div>
         <div class="field">
           <label>Final Pass Prompt <span class="note">AI instruction appended to every final pass refinement</span></label>
-          <textarea id="ollama_final_pass_prompt" data-env="OLLAMA_FINAL_PASS_PROMPT" rows="3" placeholder="Keeping in character, review the incoming data and provide an opinionated response."></textarea>
+          <textarea id="ollama_final_pass_prompt" data-env="OLLAMA_FINAL_PASS_PROMPT" rows="3" placeholder="Review the message context for the tone of the conversation and provide replies in a similar tone. Be helpful, concise with details, and try to maintain continuity between the context, the prompt, and your reply. Review the incoming data and provide a relevant and opinionated response."></textarea>
           <button type="button" class="btn small" onclick="document.getElementById('ollama_final_pass_prompt').value='';markDirty();" title="Clear to use default prompt">Reset to Default</button>
         </div>
       </div>
