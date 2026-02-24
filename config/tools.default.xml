@@ -134,11 +134,11 @@
       <mode>implicit</mode>
       <template_and_text>
         <type>string</type>
-        <description>Output must be: templateName | top text | bottom text. Choose the most fitting meme template for the user's intent.</description>
+        <description>Output must be: templateName | top text | bottom text. Pick the template whose tone and format best match the subject, mood, or joke the user is going for.</description>
         <required>true</required>
       </template_and_text>
       <inferFrom>current_message, reply_target</inferFrom>
-      <validation>Output must be: templateName | top text | bottom text. Choose the most fitting meme template for the user's intent. If the user names a specific template, use it; otherwise pick the best match.</validation>
+      <validation>Output must be: templateName | top text | bottom text. Pick the template whose tone and format best match the subject, mood, or joke the user is going for. If the user names a specific template, use it.</validation>
       <examples>
         <example>generate_meme success kid | finished all my tasks | on a Monday</example>
         <example>generate_meme one does not simply | walk into mordor</example>

@@ -109,7 +109,7 @@ function buildInferenceSystemPrompt(keywordConfig: ToolConfig): string {
       '',
       'Rules \u2014 follow exactly:',
       '1) Output ONLY in this format: templateId | top text | bottom text',
-      '2) Choose the most fitting template id from the available list below.',
+      '2) Pick the template whose tone and format best match the subject, mood, or joke the user is going for.',
       '3) If the user names a specific template, use that template id.',
       '4) The number of text lines must match the template\'s expected line count.',
       '5) If no meme can be inferred at all, output exactly: NONE',
