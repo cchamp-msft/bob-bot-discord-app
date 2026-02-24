@@ -6,7 +6,6 @@ import { accuweatherClient } from '../api/accuweatherClient';
 import { serpApiClient } from '../api/serpApiClient';
 import { memeClient } from '../api/memeClient';
 import { ChatMessage, NFLResponse, MemeResponse } from '../types';
-import { evaluateContextWindow } from './contextEvaluator';
 import {
   StageResult,
   extractStageResult,
@@ -315,8 +314,10 @@ export interface RoutedResult {
   finalApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
   /** Intermediate stage results (for debugging/logging). */
   stages: StageResult[];
-  /** When finalOllamaPass refines a ComfyUI result, the original media response for attachment. */
+  /** When the final Ollama pass refines a ComfyUI result, the original media response for attachment. */
   mediaSource?: ComfyUIResponse;
+  /** When a meme was generated, the image URL for Discord auto-embed after the text reply. */
+  memeImageUrl?: string;
 }
 
 /**
@@ -363,9 +364,9 @@ export function formatApiResultAsExternalData(
  *
  * Flow:
  * 1. Execute the primary API request (keywordConfig.api)
- * 2. If finalOllamaPass is true, pass the result through Ollama for
- *    conversational refinement (abilities context is NOT included to
- *    prevent endless API call loops)
+ * 2. For non-Ollama APIs, pass the result through a mandatory Ollama
+ *    final pass for conversational refinement (abilities context is NOT
+ *    included to prevent endless API call loops)
  *
  * The two-stage tool evaluation (Ollama → parseFirstLineKeyword → API) is
  * handled by the message handler, not this function. This function only
@@ -387,7 +388,6 @@ export async function executeRoutedRequest(
   signal?: AbortSignal
 ): Promise<RoutedResult> {
   const stages: StageResult[] = [];
-  const needsFinalPass = keywordConfig.finalOllamaPass === true;
 
   // ── Primary API request ───────────────────────────────────────
   logger.log('success', 'system', `API-ROUTING: Executing ${keywordConfig.api} request for "${keywordConfig.name}"`);
@@ -508,120 +508,111 @@ export async function executeRoutedRequest(
 
   logger.log('success', 'system', `API-ROUTING: ${keywordConfig.api} request complete`);
 
-  // ── Final Ollama pass (if configured) ─────────────────────────
-  if (needsFinalPass) {
-    // Don't double-pass through Ollama if the primary API was already Ollama
-    if (keywordConfig.api === 'ollama') {
-      logger.log('success', 'system', 'API-ROUTING: Skipping final Ollama pass — primary API was already Ollama');
-      return { finalResponse: primaryResult, finalApi: 'ollama', stages };
-    }
-
-    logger.log('success', 'system', 'API-ROUTING: Final Ollama refinement pass');
-    activityEvents.emitFinalPassThought(keywordConfig.name);
-
-    // Apply context filter for the final pass
-    let filteredHistory = conversationHistory;
-    if (conversationHistory?.length) {
-      const preFilterCount = conversationHistory.filter(m => m.role !== 'system').length;
-      filteredHistory = await evaluateContextWindow(
-        conversationHistory,
-        content,
-        keywordConfig,
-        requester,
-        signal
-      );
-      logger.log('success', 'system',
-        `API-ROUTING: Context-eval applied for final pass (${preFilterCount}→${filteredHistory?.length ?? 0} messages)`);
-    }
-
-    // Append the triggering message to context so the model knows who is asking.
-    // Guard against duplication: the caller (messageHandler) may have already
-    // appended the trigger message before passing history into this function.
-    const lastMsg = filteredHistory?.[filteredHistory.length - 1];
-    if (lastMsg?.contextSource !== 'trigger') {
-      filteredHistory = [
-        ...(filteredHistory ?? []),
-        { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true },
-      ];
-    }
-
-    // Build final prompt — format API data as <external_data> using XML template
-    let externalDataBlock: string;
-    if (keywordConfig.api === 'accuweather') {
-      const awResponse = primaryResult as AccuWeatherResponse;
-      const locationName = awResponse.data?.location
-        ? `${awResponse.data.location.LocalizedName}, ${awResponse.data.location.AdministrativeArea.ID}, ${awResponse.data.location.Country.LocalizedName}`
-        : 'Unknown location';
-      const aiContext = accuweatherClient.formatWeatherContextForAI(
-        locationName,
-        awResponse.data?.current ?? null,
-        awResponse.data?.forecast ?? null
-      );
-      externalDataBlock = formatAccuWeatherExternalData(locationName, aiContext);
-    } else if (keywordConfig.api === 'nfl') {
-      const nflResponse = primaryResult as NFLResponse;
-      const nflData = nflResponse.data?.text ?? 'No NFL data available.';
-      externalDataBlock = formatNFLExternalData(keywordConfig.name, nflData);
-    } else if (keywordConfig.api === 'serpapi') {
-      const serpResponse = primaryResult as SerpApiResponse;
-      const rawData = serpResponse.data?.raw;
-      const searchContext = rawData
-        ? serpApiClient.formatSearchContextForAI(rawData as Parameters<typeof serpApiClient.formatSearchContextForAI>[0], content)
-        : serpResponse.data?.text ?? 'No search data available.';
-      externalDataBlock = formatSerpApiExternalData(content, searchContext);
-    } else {
-      const genericText = primaryExtracted.text ?? 'No data available.';
-      externalDataBlock = formatGenericExternalData(keywordConfig.api, genericText);
-    }
-
-    // Build the reprompt using the standard XML template with external data.
-    // System prompt excludes tool-routing rules to prevent infinite loops.
-    const reprompt = assembleReprompt({
-      userMessage: content,
-      conversationHistory: filteredHistory,
-      externalData: externalDataBlock,
-      botDisplayName,
-    });
-
-    // Append final-pass prompt to persona so OLLAMA_FINAL_PASS_PROMPT
-    // actually affects the model's behavior.
-    const finalPassPrompt = config.getOllamaFinalPassPrompt();
-    const finalSystemContent = finalPassPrompt
-      ? `${reprompt.systemContent}\n\n${finalPassPrompt}`
-      : reprompt.systemContent;
-
-    const finalResult = await requestQueue.execute(
-      'ollama',
-      requester,
-      `${keywordConfig.name}:final`,
-      keywordConfig.timeout,
-      (sig) =>
-        apiManager.executeRequest(
-          'ollama',
-          requester,
-          reprompt.userContent,
-          keywordConfig.timeout,
-          config.getOllamaFinalPassModel() || undefined,
-          [{ role: 'system', content: finalSystemContent }],
-          sig,
-          undefined,
-          { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: config.getOllamaFinalPassTimeout() }
-        ),
-      signal
-    ) as OllamaResponse;
-
-    const finalExtracted = extractStageResult('ollama', finalResult);
-    stages.push(finalExtracted);
-
-    if (!finalResult.success) {
-      logger.logWarn('system', `API-ROUTING: Final Ollama pass failed: ${finalResult.error} — returning API result`);
-      return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };
-    }
-
-    logger.log('success', 'system', 'API-ROUTING: Final Ollama pass complete');
-    const mediaSource = keywordConfig.api === 'comfyui' ? primaryResult as ComfyUIResponse : undefined;
-    return { finalResponse: finalResult, finalApi: 'ollama', stages, mediaSource };
+  // ── Mandatory final Ollama pass for all non-Ollama APIs ────────
+  // Don't double-pass through Ollama if the primary API was already Ollama
+  if (keywordConfig.api === 'ollama') {
+    logger.log('success', 'system', 'API-ROUTING: Skipping final Ollama pass — primary API was already Ollama');
+    return { finalResponse: primaryResult, finalApi: 'ollama', stages };
   }
 
-  return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };
+  logger.log('success', 'system', 'API-ROUTING: Final Ollama refinement pass');
+  activityEvents.emitFinalPassThought(keywordConfig.name);
+
+  // Use the conversation history as-is — context filtering is done once by the caller.
+  // Append the triggering message to context so the model knows who is asking.
+  // Guard against duplication: the caller (messageHandler) may have already
+  // appended the trigger message before passing history into this function.
+  let filteredHistory = conversationHistory;
+  const lastMsg = filteredHistory?.[filteredHistory.length - 1];
+  if (lastMsg?.contextSource !== 'trigger') {
+    filteredHistory = [
+      ...(filteredHistory ?? []),
+      { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true },
+    ];
+  }
+
+  // Build final prompt — format API data as <external_data> using XML template
+  let externalDataBlock: string;
+  if (keywordConfig.api === 'accuweather') {
+    const awResponse = primaryResult as AccuWeatherResponse;
+    const locationName = awResponse.data?.location
+      ? `${awResponse.data.location.LocalizedName}, ${awResponse.data.location.AdministrativeArea.ID}, ${awResponse.data.location.Country.LocalizedName}`
+      : 'Unknown location';
+    const aiContext = accuweatherClient.formatWeatherContextForAI(
+      locationName,
+      awResponse.data?.current ?? null,
+      awResponse.data?.forecast ?? null
+    );
+    externalDataBlock = formatAccuWeatherExternalData(locationName, aiContext);
+  } else if (keywordConfig.api === 'nfl') {
+    const nflResponse = primaryResult as NFLResponse;
+    const nflData = nflResponse.data?.text ?? 'No NFL data available.';
+    externalDataBlock = formatNFLExternalData(keywordConfig.name, nflData);
+  } else if (keywordConfig.api === 'serpapi') {
+    const serpResponse = primaryResult as SerpApiResponse;
+    const rawData = serpResponse.data?.raw;
+    const searchContext = rawData
+      ? serpApiClient.formatSearchContextForAI(rawData as Parameters<typeof serpApiClient.formatSearchContextForAI>[0], content)
+      : serpResponse.data?.text ?? 'No search data available.';
+    externalDataBlock = formatSerpApiExternalData(content, searchContext);
+  } else if (keywordConfig.api === 'meme') {
+    const memeResponse = primaryResult as MemeResponse;
+    const memeUrl = memeResponse.data?.imageUrl ?? '';
+    const memeText = memeUrl
+      ? `A meme image was generated: ${memeUrl}`
+      : (memeResponse.data?.text ?? 'No meme data available.');
+    externalDataBlock = formatGenericExternalData('meme', memeText);
+  } else {
+    const genericText = primaryExtracted.text ?? 'No data available.';
+    externalDataBlock = formatGenericExternalData(keywordConfig.api, genericText);
+  }
+
+  // Build the reprompt using the standard XML template with external data.
+  // System prompt excludes tool-routing rules to prevent infinite loops.
+  const reprompt = assembleReprompt({
+    userMessage: content,
+    conversationHistory: filteredHistory,
+    externalData: externalDataBlock,
+    botDisplayName,
+  });
+
+  // Append final-pass prompt to persona so OLLAMA_FINAL_PASS_PROMPT
+  // actually affects the model's behavior.
+  const finalPassPrompt = config.getOllamaFinalPassPrompt();
+  const finalSystemContent = finalPassPrompt
+    ? `${reprompt.systemContent}\n\n${finalPassPrompt}`
+    : reprompt.systemContent;
+
+  const finalResult = await requestQueue.execute(
+    'ollama',
+    requester,
+    `${keywordConfig.name}:final`,
+    keywordConfig.timeout,
+    (sig) =>
+      apiManager.executeRequest(
+        'ollama',
+        requester,
+        reprompt.userContent,
+        keywordConfig.timeout,
+        config.getOllamaFinalPassModel() || undefined,
+        [{ role: 'system', content: finalSystemContent }],
+        sig,
+        undefined,
+        { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: config.getOllamaFinalPassTimeout() }
+      ),
+    signal
+  ) as OllamaResponse;
+
+  const finalExtracted = extractStageResult('ollama', finalResult);
+  stages.push(finalExtracted);
+
+  if (!finalResult.success) {
+    logger.logWarn('system', `API-ROUTING: Final Ollama pass failed: ${finalResult.error} — returning API result`);
+    return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages };
+  }
+
+  logger.log('success', 'system', 'API-ROUTING: Final Ollama pass complete');
+  const mediaSource = keywordConfig.api === 'comfyui' ? primaryResult as ComfyUIResponse : undefined;
+  const memeImageUrl = keywordConfig.api === 'meme' ? (primaryResult as MemeResponse).data?.imageUrl : undefined;
+  return { finalResponse: finalResult, finalApi: 'ollama', stages, mediaSource, memeImageUrl };
 }

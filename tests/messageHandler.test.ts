@@ -38,9 +38,12 @@ jest.mock('../src/utils/config', () => ({
     getContextEvalEnabled: jest.fn(() => true),
     getOllamaToolModel: jest.fn(() => 'llama2'),
     getOllamaToolContextSize: jest.fn(() => 2048),
+    getOllamaFinalPassModel: jest.fn(() => 'llama2'),
+    getOllamaFinalPassPrompt: jest.fn(() => ''),
     getOllamaFinalPassContextSize: jest.fn(() => 2048),
     getOllamaToolTimeout: jest.fn(() => 120000),
     getOllamaFinalPassTimeout: jest.fn(() => 120000),
+    getMaxToolCalls: jest.fn(() => 5),
     getReplyChainMaxDepth: jest.fn(() => 10),
     getReplyChainMaxTokens: jest.fn(() => 16000),
     getMaxAttachments: jest.fn(() => 10),
@@ -645,6 +648,11 @@ describe('MessageHandler shouldRespond — guild reply to bot', () => {
       success: true,
       data: { text: 'Here is a follow-up answer.' },
     });
+    // Mandatory final pass
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Here is a follow-up answer.' },
+    });
 
     const botReply = {
       author: { id: 'bot-123', username: 'Bot' },
@@ -1061,7 +1069,12 @@ describe('MessageHandler built-in help tool handling', () => {
     (config.getTools as jest.Mock).mockReturnValue([helpKw, generateKw]);
 
     const { requestQueue } = require('../src/utils/requestQueue');
-    requestQueue.execute.mockResolvedValue({
+    // Tool eval call + mandatory final pass
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'regular response' },
+    });
+    requestQueue.execute.mockResolvedValueOnce({
       success: true,
       data: { text: 'regular response' },
     });
@@ -1088,7 +1101,12 @@ describe('MessageHandler built-in help tool handling', () => {
     (config.getTools as jest.Mock).mockReturnValue([disabledHelp, generateKw]);
 
     const { requestQueue } = require('../src/utils/requestQueue');
-    requestQueue.execute.mockResolvedValue({
+    // Tool eval call + mandatory final pass
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'I can help you!' },
+    });
+    requestQueue.execute.mockResolvedValueOnce({
       success: true,
       data: { text: 'I can help you!' },
     });
@@ -1142,7 +1160,6 @@ describe('MessageHandler standalone allowEmptyContent tools', () => {
     timeout: 30,
     description: 'Get current NFL game scores',
     abilityText: 'Get current NFL game scores',
-    finalOllamaPass: true,
     allowEmptyContent: true,
   };
   const nflNewsKw = {
@@ -1151,7 +1168,6 @@ describe('MessageHandler standalone allowEmptyContent tools', () => {
     timeout: 30,
     description: 'Get latest NFL news headlines',
     abilityText: 'Get latest NFL news headlines',
-    finalOllamaPass: true,
     allowEmptyContent: true,
   };
   const memeTemplatesKw = {
@@ -1940,7 +1956,12 @@ describe('MessageHandler standalone help tool uses actual config flag', () => {
 
   it('should NOT reject standalone "help" when allowEmptyContent is true', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
-    requestQueue.execute.mockResolvedValue({
+    // Tool eval call + mandatory final pass
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Here is what I can help with.' },
+    });
+    requestQueue.execute.mockResolvedValueOnce({
       success: true,
       data: { text: 'Here is what I can help with.' },
     });
@@ -2012,6 +2033,11 @@ describe('MessageHandler two-stage evaluation', () => {
       success: true,
       data: { text: 'I can check the weather for you!' },
     });
+    // Mandatory final pass
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'I can check the weather for you!' },
+    });
 
     // parseFirstLineTool does NOT match (no directive on first line)
     mockparseFirstLineTool.mockReturnValueOnce({
@@ -2066,7 +2092,7 @@ describe('MessageHandler two-stage evaluation', () => {
     await messageHandler.handleMessage(msg);
 
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ ...weatherTool, finalOllamaPass: true }),
+      expect.objectContaining({ ...weatherTool }),
       'Seattle, WA',
       'testuser',
       [{ role: 'user', content: 'testuser: is it going to rain in Seattle', contextSource: 'trigger', hasNamePrefix: true }],
@@ -2149,52 +2175,10 @@ describe('MessageHandler two-stage evaluation', () => {
     await messageHandler.handleMessage(msg);
 
     expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ ...generateImageTool, finalOllamaPass: false }),
+      expect.objectContaining({ ...generateImageTool }),
       'alien guy saying "whoa, aliens"',
       'testuser',
       [{ role: 'user', content: 'testuser: generate_image', contextSource: 'trigger', hasNamePrefix: true }],
-      'BotUser'
-    );
-  });
-
-  it('should force finalOllamaPass true for model-inferred abilities even when tool config omits it', async () => {
-    const { requestQueue } = require('../src/utils/requestQueue');
-
-    const searchTool = {
-      name: '!search',
-      api: 'serpapi' as const,
-      timeout: 60,
-      description: 'Search web',
-      // finalOllamaPass deliberately omitted (defaults to undefined/false)
-    };
-
-    requestQueue.execute.mockResolvedValueOnce({
-      success: true,
-      data: { text: 'search: latest AI news\nLet me look that up.' },
-    });
-
-    mockparseFirstLineTool.mockReturnValueOnce({
-      toolConfig: searchTool,
-      parsedLine: 'search latest ai news',
-      matched: true,
-      inferredInput: 'latest AI news',
-    });
-
-    mockExecuteRoutedRequest.mockResolvedValueOnce({
-      finalResponse: { success: true, data: { text: 'Top results...' } },
-      finalApi: 'serpapi',
-      stages: [],
-    });
-
-    const msg = createMentionedMessage('<@bot-123> find latest AI news');
-    await messageHandler.handleMessage(msg);
-
-    // Model-inferred abilities must always set finalOllamaPass: true
-    expect(mockExecuteRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ ...searchTool, finalOllamaPass: true }),
-      'latest AI news',
-      'testuser',
-      expect.anything(),
       'BotUser'
     );
   });
@@ -2203,6 +2187,11 @@ describe('MessageHandler two-stage evaluation', () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
     // Ollama response (generic chat, no API suggestion)
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'The meaning of life is 42.' },
+    });
+    // Mandatory final pass
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
       data: { text: 'The meaning of life is 42.' },
@@ -2232,6 +2221,11 @@ describe('MessageHandler two-stage evaluation', () => {
       success: true,
       data: { text: 'Which meme template (and any top/bottom text) should I use?' },
     });
+    // Mandatory final pass
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Which meme template (and any top/bottom text) should I use?' },
+    });
 
     const memeTool = {
       name: '!generate_meme',
@@ -2257,6 +2251,11 @@ describe('MessageHandler two-stage evaluation', () => {
   it('should suppress fallback meme routing when original user content is not meme intent', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'The square root is 16.' },
+    });
+    // Mandatory final pass
     requestQueue.execute.mockResolvedValueOnce({
       success: true,
       data: { text: 'The square root is 16.' },
@@ -2413,7 +2412,7 @@ describe('MessageHandler trigger message attribution', () => {
     );
   });
 
-  it('should not duplicate trigger message when two-stage path routes to API with finalOllamaPass', async () => {
+  it('should not duplicate trigger message when two-stage path routes to API with final pass', async () => {
     const { requestQueue } = require('../src/utils/requestQueue');
 
     const weatherKwWithFinalPass = {
@@ -2421,7 +2420,6 @@ describe('MessageHandler trigger message attribution', () => {
       api: 'accuweather' as const,
       timeout: 120,
       description: 'Weather',
-      finalOllamaPass: true,
     };
     (config.getTools as jest.Mock).mockReturnValue([]);
 
@@ -3984,6 +3982,11 @@ describe('MessageHandler activity event emission', () => {
       success: true,
       data: { text: 'The answer is 42.' },
     });
+    // Mandatory final pass
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'The answer is 42.' },
+    });
     mockClassifyIntent.mockResolvedValueOnce({ toolConfig: null, wasClassified: false });
 
     const msg = createMsg('meaning of life');
@@ -4439,7 +4442,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
     );
 
     expect(executeRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ name: '!generate_meme', api: 'meme', finalOllamaPass: false }),
+      expect.objectContaining({ name: '!generate_meme', api: 'meme' }),
       'fwp | Just got my license | Now every road is a final boss',
       'testuser',
       [{ role: 'user', content: 'testuser: can you make a meme about a kid learning to drive', contextSource: 'trigger', hasNamePrefix: true }],
@@ -4486,7 +4489,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
 
     // Should use the first-stage inline input directly
     expect(executeRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ name: '!generate_meme', api: 'meme', finalOllamaPass: false }),
+      expect.objectContaining({ name: '!generate_meme', api: 'meme' }),
       'fwp | line 1 | line 2',
       'testuser',
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
@@ -4537,7 +4540,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
 
     // Should use the inferred result
     expect(executeRoutedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ name: '!generate_meme', api: 'meme', finalOllamaPass: false }),
+      expect.objectContaining({ name: '!generate_meme', api: 'meme' }),
       'fwp | inferred top | inferred bottom',
       'testuser',
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],

@@ -63,8 +63,6 @@ export interface ToolConfig {
   abilityWhen?: string;
   /** Model-facing: structured input inference/validation guidance. */
   abilityInputs?: AbilityInputs;
-  /** When true, pass the API result back through Ollama for conversational refinement. */
-  finalOllamaPass?: boolean;
   /** When true, this tool can be invoked with no additional user content (e.g. 'nfl_scores' alone). */
   allowEmptyContent?: boolean;
   /** Whether this tool is currently enabled. Defaults to true when omitted. */
@@ -364,6 +362,16 @@ class Config {
    */
   getSerpApiLocation(): string {
     return process.env.SERPAPI_LOCATION || '';
+  }
+
+  /**
+   * Maximum number of tool call iterations per user message turn.
+   * Limits the tool evaluation loop to prevent runaway API calls.
+   * Default: 5, range: 1-10.
+   */
+  getMaxToolCalls(): number {
+    const raw = this.parseIntEnv('MAX_TOOL_CALLS', 5);
+    return Math.max(1, Math.min(raw, 10));
   }
 
   getHttpPort(): number {
@@ -1038,6 +1046,7 @@ class Config {
     const prevDefaultNegativePrompt = this.getComfyUIDefaultNegativePrompt();
     const prevDefaultVae = this.getComfyUIDefaultVae();
     const prevDefaultClip = this.getComfyUIDefaultClip();
+    const prevMaxToolCalls = this.getMaxToolCalls();
     const prevDefaultDiffuser = this.getComfyUIDefaultDiffuser();
 
     // Re-parse .env into process.env
@@ -1129,6 +1138,7 @@ class Config {
     if (this.getComfyUIDefaultNegativePrompt() !== prevDefaultNegativePrompt) reloaded.push('COMFYUI_DEFAULT_NEGATIVE_PROMPT');
     if (this.getComfyUIDefaultVae() !== prevDefaultVae) reloaded.push('COMFYUI_DEFAULT_VAE');
     if (this.getComfyUIDefaultClip() !== prevDefaultClip) reloaded.push('COMFYUI_DEFAULT_CLIP');
+    if (this.getMaxToolCalls() !== prevMaxToolCalls) reloaded.push('MAX_TOOL_CALLS');
     if (this.getComfyUIDefaultDiffuser() !== prevDefaultDiffuser) reloaded.push('COMFYUI_DEFAULT_DIFFUSER');
 
     // Reload tools
@@ -1225,6 +1235,7 @@ class Config {
         maxAttachments: this.getMaxAttachments(),
         imageAttachmentMaxSize: this.getImageAttachmentMaxSize(),
         imageAttachmentMaxCount: this.getImageAttachmentMaxCount(),
+        maxToolCalls: this.getMaxToolCalls(),
       },
       tools: this.getTools(),
       defaultTools: this.getDefaultTools(),

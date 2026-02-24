@@ -241,9 +241,6 @@ class ConfigWriter {
             throw new Error(`Tool "${entry.name}" has invalid abilityInputs.examples — must be an array of strings`);
           }
         }
-        if (entry.finalOllamaPass !== undefined && typeof entry.finalOllamaPass !== 'boolean') {
-          throw new Error(`Tool "${entry.name}" has invalid finalOllamaPass — must be a boolean`);
-        }
         if (entry.allowEmptyContent !== undefined && typeof entry.allowEmptyContent !== 'boolean') {
           throw new Error(`Tool "${entry.name}" has invalid allowEmptyContent — must be a boolean`);
         }
@@ -313,7 +310,6 @@ class ConfigWriter {
         if (entry.abilityWhen) clean.abilityWhen = entry.abilityWhen;
         if (entry.abilityInputs) clean.abilityInputs = entry.abilityInputs;
         if (entry.parameters) clean.parameters = entry.parameters;
-        if (entry.finalOllamaPass !== undefined) clean.finalOllamaPass = entry.finalOllamaPass;
         if (entry.allowEmptyContent !== undefined) clean.allowEmptyContent = entry.allowEmptyContent;
         if (entry.enabled === false) clean.enabled = false;
         if (entry.retry) {

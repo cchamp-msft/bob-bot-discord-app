@@ -691,6 +691,10 @@
             <label>Timeout <span class="note">seconds</span></label>
             <input type="number" id="ollama_tool_timeout" data-env="OLLAMA_TOOL_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
           </div>
+          <div class="field narrow">
+            <label>Max Tool Calls <span class="note">per message (1-10)</span></label>
+            <input type="number" id="max_tool_calls" data-env="MAX_TOOL_CALLS" placeholder="5" min="1" max="10">
+          </div>
         </div>
         <div class="field">
           <label>Built-in Tool Routing Rules</label>
@@ -717,7 +721,8 @@
         <hr style="border-color:var(--border);margin:16px 0">
         <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin:12px 0 8px">Final Pass</div>
         <p class="help-text" style="margin-bottom:10px">
-          When a tool has <strong>Final Pass</strong> checked, the API result is refined through Ollama using this model.
+          Every response is refined through Ollama before being sent to Discord, ensuring consistent personality and tone.
+          Configure the model and prompt used for this mandatory refinement step.
           Click <strong>Test</strong> above to populate the model list. Leave empty to use the default model.
         </p>
         <div class="field-row">
@@ -1384,6 +1389,7 @@ flowchart TD
       document.getElementById('file_size_threshold').value = cfg.limits.fileSizeThreshold;
       document.getElementById('default_timeout').value = cfg.limits.defaultTimeout;
       document.getElementById('max_attachments').value = cfg.limits.maxAttachments;
+      document.getElementById('max_tool_calls').value = cfg.limits.maxToolCalls ?? '';
 
       // Populate Ollama model (saved selection)
       const modelSelect = document.getElementById('ollama_model');
@@ -1808,7 +1814,6 @@ flowchart TD
       if (kw.description) xml += `    <description>${escXml(kw.description)}</description>\n`;
       if (kw.builtin) xml += '    <builtin>true</builtin>\n';
       if (kw.enabled === false) xml += '    <enabled>false</enabled>\n';
-      if (kw.finalOllamaPass) xml += '    <finalOllamaPass>true</finalOllamaPass>\n';
       if (kw.contextFilterMinDepth) xml += `    <contextFilterMinDepth>${kw.contextFilterMinDepth}</contextFilterMinDepth>\n`;
       if (kw.contextFilterMaxDepth) xml += `    <contextFilterMaxDepth>${kw.contextFilterMaxDepth}</contextFilterMaxDepth>\n`;
       if (kw.allowEmptyContent === true) xml += '    <allowEmptyContent>true</allowEmptyContent>\n';

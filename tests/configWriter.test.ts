@@ -275,28 +275,10 @@ describe('ConfigWriter', () => {
       ).rejects.toThrow('invalid abilityText');
     });
 
-    it('should accept valid finalOllamaPass field', async () => {
-      await configWriter.updateTools([
-        { ...validTool, finalOllamaPass: true },
-      ]);
-
-      const content = parseToolsXml(fs.readFileSync(toolsPath, 'utf-8'));
-      expect(content[0].finalOllamaPass).toBe(true);
-    });
-
-    it('should reject non-boolean finalOllamaPass', async () => {
-      await expect(
-        configWriter.updateTools([
-          { ...validTool, finalOllamaPass: 'yes' as any },
-        ])
-      ).rejects.toThrow('invalid finalOllamaPass');
-    });
-
     it('should persist tools with all routing fields', async () => {
       const full = {
         ...validTool,
         abilityText: 'do something',
-        finalOllamaPass: true,
       };
       await configWriter.updateTools([full]);
 
@@ -304,7 +286,6 @@ describe('ConfigWriter', () => {
       expect(content[0]).toMatchObject({
         name: 'test',
         api: 'ollama',
-        finalOllamaPass: true,
       });
     });
 
@@ -314,7 +295,6 @@ describe('ConfigWriter', () => {
       const content = parseToolsXml(fs.readFileSync(toolsPath, 'utf-8'));
       // In XML, abilityText is always derived from description
       expect(content[0].abilityText).toBe('Test tool');
-      expect(content[0].finalOllamaPass).toBeUndefined();
     });
 
     it('should strip unknown fields like routeApi on save', async () => {
@@ -465,20 +445,6 @@ describe('ConfigWriter', () => {
       ]);
       const content = parseToolsXml(fs.readFileSync(toolsPath, 'utf-8'));
       expect(content[0].allowEmptyContent).toBe(false);
-    });
-
-    it('should persist finalOllamaPass=false explicitly', async () => {
-      await configWriter.updateTools([
-        { ...validTool, finalOllamaPass: false },
-      ]);
-      const content = parseToolsXml(fs.readFileSync(toolsPath, 'utf-8'));
-      expect(content[0].finalOllamaPass).toBe(false);
-    });
-
-    it('should omit finalOllamaPass when not provided (inherit default)', async () => {
-      await configWriter.updateTools([validTool]);
-      const content = parseToolsXml(fs.readFileSync(toolsPath, 'utf-8'));
-      expect(content[0].finalOllamaPass).toBeUndefined();
     });
 
     it('should omit allowEmptyContent when not provided (inherit default)', async () => {

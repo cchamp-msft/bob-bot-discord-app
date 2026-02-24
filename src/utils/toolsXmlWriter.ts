@@ -28,7 +28,7 @@ export function buildToolsXml(tools: ToolConfig[]): string {
  *
  * Field ordering follows the canonical tools.default.xml layout:
  * name, api, timeout, description, builtin, enabled, allowEmptyContent,
- * abilityWhen, parameters, finalOllamaPass, contextFilter*, retry.
+ * abilityWhen, parameters, contextFilter*, retry.
  */
 function buildToolObject(tc: ToolConfig): Record<string, unknown> {
   const obj: Record<string, unknown> = {};
@@ -52,9 +52,6 @@ function buildToolObject(tc: ToolConfig): Record<string, unknown> {
   if (tc.parameters || tc.abilityInputs) {
     obj.parameters = buildParametersObject(tc.abilityInputs, tc.parameters);
   }
-
-  // Routing
-  if (tc.finalOllamaPass !== undefined) obj.finalOllamaPass = tc.finalOllamaPass;
 
   // Context filter
   if (tc.contextFilterMinDepth !== undefined) obj.contextFilterMinDepth = tc.contextFilterMinDepth;

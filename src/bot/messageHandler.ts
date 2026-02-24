@@ -195,12 +195,6 @@ class MessageHandler {
     return null;
   }
 
-  private shouldForceFinalOllamaPassForApi(api: ToolConfig['api']): boolean {
-    // Keep raw media-style API outputs (image URLs/files) intact.
-    // Force conversational final-pass only for text-oriented data APIs.
-    return api === 'accuweather' || api === 'nfl' || api === 'serpapi';
-  }
-
   private escapeRegExp(text: string): string {
     return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
@@ -540,7 +534,8 @@ class MessageHandler {
           message,
           requester,
           isDM,
-          routedResult.mediaSource
+          routedResult.mediaSource,
+          routedResult.memeImageUrl
         );
       } else {
         // ── Ollama path: chat with abilities context, then second evaluation ──
@@ -1216,7 +1211,7 @@ class MessageHandler {
       return;
     }
 
-    // Tools path: handle structured tool_calls (already trimmed to MAX_TOOL_CALLS by client).
+    // Tools path: handle structured tool_calls (already trimmed to DEFAULT_MAX_TOOL_CALLS by client).
     if (useToolsPath && ollamaResult.data?.tool_calls && ollamaResult.data.tool_calls.length > 0) {
       const toolCalls = ollamaResult.data.tool_calls;
       const externalDataParts: string[] = [];
@@ -1236,7 +1231,7 @@ class MessageHandler {
         activityEvents.emitRoutingDecision(resolvedTool.api, resolvedTool.name, 'tool-call');
 
         const apiResult = await executeRoutedRequest(
-          { ...resolvedTool, finalOllamaPass: false },
+          resolvedTool,
           contentStr,
           requester,
           filteredHistory.length > 0 ? filteredHistory : undefined,
@@ -1291,9 +1286,10 @@ class MessageHandler {
       return;
     }
 
-    // Tools path with no tool_calls: direct chat reply.
+    // Tools path with no tool_calls: run mandatory final pass for consistent personality.
     if (useToolsPath) {
-      await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
+      const finalResult = await this.runFinalPass(content, filteredHistory, botDisplayName, requester, timeout);
+      await this.dispatchResponse(finalResult ?? ollamaResult, 'ollama', sourceMessage, requester, isDM);
       return;
     }
 
@@ -1372,16 +1368,8 @@ class MessageHandler {
         //   await this.sendCommentaryPrelude(sourceMessage, requester, isDM, commentaryPrelude);
         // }
 
-        // Force final Ollama pass only for text-centric external APIs.
-        // For media APIs (e.g., meme/comfyui), keep raw API output so
-        // Discord receives image URLs/files directly.
-        const inferredConfig = {
-          ...parseResult.toolConfig,
-          finalOllamaPass: this.shouldForceFinalOllamaPassForApi(parseResult.toolConfig.api),
-        };
-
         const apiResult = await executeRoutedRequest(
-          inferredConfig,
+          parseResult.toolConfig,
           routedInput,
           requester,
           filteredHistory.length > 0 ? filteredHistory : undefined,
@@ -1394,7 +1382,8 @@ class MessageHandler {
           sourceMessage,
           requester,
           isDM,
-          apiResult.mediaSource
+          apiResult.mediaSource,
+          apiResult.memeImageUrl
         );
         return;
       }
@@ -1414,9 +1403,8 @@ class MessageHandler {
           logger.log('success', 'system',
             `TWO-STAGE: Image fallback inference succeeded for "${imageToolConfig.name}" — executing comfyui API`);
 
-          const imageConfig = { ...imageToolConfig, finalOllamaPass: false };
           const imageResult = await executeRoutedRequest(
-            imageConfig,
+            imageToolConfig,
             inferredPrompt,
             requester,
             filteredHistory.length > 0 ? filteredHistory : undefined,
@@ -1429,7 +1417,8 @@ class MessageHandler {
             sourceMessage,
             requester,
             isDM,
-            imageResult.mediaSource
+            imageResult.mediaSource,
+            imageResult.memeImageUrl
           );
           return;
         }
@@ -1451,9 +1440,8 @@ class MessageHandler {
           logger.log('success', 'system',
             'TWO-STAGE: Meme fallback inference succeeded — executing meme API');
 
-          const memeConfig = { ...memeToolConfig, finalOllamaPass: false };
           const memeResult = await executeRoutedRequest(
-            memeConfig,
+            memeToolConfig,
             inferred,
             requester,
             filteredHistory.length > 0 ? filteredHistory : undefined,
@@ -1466,7 +1454,8 @@ class MessageHandler {
             sourceMessage,
             requester,
             isDM,
-            memeResult.mediaSource
+            memeResult.mediaSource,
+            memeResult.memeImageUrl
           );
           return;
         }
@@ -1476,9 +1465,72 @@ class MessageHandler {
       }
     }
 
-    // No ability tool detected — return Ollama's response as direct chat
-    logger.log('success', 'system', 'TWO-STAGE: No ability directive in Ollama response — returning as direct chat');
-    await this.dispatchResponse(ollamaResult, 'ollama', sourceMessage, requester, isDM);
+    // No ability tool detected — run mandatory final pass for consistent personality
+    logger.log('success', 'system', 'TWO-STAGE: No ability directive in Ollama response — running final pass');
+    const finalResult = await this.runFinalPass(content, filteredHistory, botDisplayName, requester, timeout);
+    await this.dispatchResponse(finalResult ?? ollamaResult, 'ollama', sourceMessage, requester, isDM);
+  }
+
+  /**
+   * Run the mandatory final Ollama pass for pure chat (no tool matched).
+   * Ensures all responses go through the OLLAMA_FINAL_PASS_MODEL with
+   * the configured OLLAMA_FINAL_PASS_PROMPT for consistent personality.
+   * Returns null if the final pass fails (caller should fall back to the
+   * original Ollama result).
+   */
+  private async runFinalPass(
+    content: string,
+    conversationHistory: ChatMessage[],
+    botDisplayName: string | undefined,
+    requester: string,
+    timeout: number
+  ): Promise<OllamaResponse | null> {
+    logger.log('success', 'system', 'FINAL-PASS: Running mandatory final pass for chat response');
+    activityEvents.emitFinalPassThought('chat');
+
+    const reprompt = assembleReprompt({
+      userMessage: content,
+      conversationHistory,
+      botDisplayName,
+    });
+
+    const finalPassPrompt = config.getOllamaFinalPassPrompt();
+    const finalSystemContent = finalPassPrompt
+      ? `${reprompt.systemContent}\n\n${finalPassPrompt}`
+      : reprompt.systemContent;
+
+    try {
+      const finalResult = await requestQueue.execute(
+        'ollama',
+        requester,
+        'chat:final',
+        timeout,
+        (sig) =>
+          apiManager.executeRequest(
+            'ollama',
+            requester,
+            reprompt.userContent,
+            timeout,
+            config.getOllamaFinalPassModel() ?? undefined,
+            [{ role: 'system', content: finalSystemContent }],
+            sig,
+            undefined,
+            { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: config.getOllamaFinalPassTimeout() }
+          )
+      ) as OllamaResponse;
+
+      if (!finalResult.success) {
+        logger.logWarn('system', `FINAL-PASS: Final pass failed: ${finalResult.error} — falling back to tool eval response`);
+        return null;
+      }
+
+      logger.log('success', 'system', 'FINAL-PASS: Final pass complete');
+      return finalResult;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.logError('system', `FINAL-PASS: Final pass error: ${msg} — falling back to tool eval response`);
+      return null;
+    }
   }
 
   /**
@@ -1491,7 +1543,8 @@ class MessageHandler {
     sourceMessage: Message,
     requester: string,
     isDM: boolean,
-    mediaSource?: ComfyUIResponse
+    mediaSource?: ComfyUIResponse,
+    memeImageUrl?: string
   ): Promise<void> {
     if (!response.success) {
       const errorDetail = response.error ?? 'Unknown API error';
@@ -1509,7 +1562,7 @@ class MessageHandler {
     } else if (api === 'meme') {
       await this.handleMemeResponse(response as MemeResponse, sourceMessage, requester, isDM);
     } else {
-      await this.handleOllamaResponse(response as OllamaResponse, sourceMessage, requester, isDM, mediaSource);
+      await this.handleOllamaResponse(response as OllamaResponse, sourceMessage, requester, isDM, mediaSource, memeImageUrl);
     }
   }
 
@@ -1721,7 +1774,8 @@ class MessageHandler {
     sourceMessage: Message,
     requester: string,
     isDM: boolean,
-    mediaSource?: ComfyUIResponse
+    mediaSource?: ComfyUIResponse,
+    memeImageUrl?: string
   ): Promise<void> {
     let text = apiResult.data?.text || 'No response generated.';
 
@@ -1797,6 +1851,13 @@ class MessageHandler {
       if ('send' in sourceMessage.channel) {
         await sourceMessage.channel.send(chunks[i]);
       }
+    }
+
+    // When a meme image was generated, post the URL as a follow-up for Discord auto-embed
+    if (memeImageUrl && 'send' in sourceMessage.channel) {
+      await sourceMessage.channel.send({ content: memeImageUrl, allowedMentions: { parse: [] } });
+      activityEvents.emitBotReply('meme', memeImageUrl, isDM);
+      logger.logReply(requester, `Meme image follow-up sent: ${memeImageUrl}`);
     }
 
     activityEvents.emitBotReply('ollama', text, isDM);

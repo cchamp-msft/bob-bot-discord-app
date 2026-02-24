@@ -5,7 +5,7 @@ import { ChatMessage } from '../types';
 import type { OllamaTool } from '../utils/toolsSchema';
 
 /** Maximum tool calls to process per turn (enforced when returning from /api/chat). */
-export const MAX_TOOL_CALLS = 3;
+export const DEFAULT_MAX_TOOL_CALLS = 3;
 
 /** One tool call from Ollama message.tool_calls. */
 export interface OllamaToolCall {
@@ -43,7 +43,7 @@ export interface OllamaResponse {
   success: boolean;
   data?: {
     text: string;
-    /** Present when the model returned tool_calls (trimmed to MAX_TOOL_CALLS). */
+    /** Present when the model returned tool_calls (trimmed to DEFAULT_MAX_TOOL_CALLS). */
     tool_calls?: OllamaToolCall[];
   };
   error?: string;
@@ -296,7 +296,7 @@ class OllamaClient {
         let tool_calls: OllamaToolCall[] | undefined;
         if (Array.isArray(rawToolCalls) && rawToolCalls.length > 0) {
           tool_calls = rawToolCalls
-            .slice(0, MAX_TOOL_CALLS)
+            .slice(0, DEFAULT_MAX_TOOL_CALLS)
             .map((tc: unknown) => normalizeToolCall(tc))
             .filter((tc): tc is OllamaToolCall => tc !== null);
         }

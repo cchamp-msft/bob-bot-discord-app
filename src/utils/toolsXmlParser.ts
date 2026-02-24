@@ -100,9 +100,6 @@ function parseToolElement(raw: Record<string, unknown>, index: number): ToolConf
   if (raw.abilityWhen !== undefined) {
     tc.abilityWhen = String(raw.abilityWhen);
   }
-  if (raw.finalOllamaPass !== undefined) {
-    tc.finalOllamaPass = parseBool(raw.finalOllamaPass, `tool "${name}" <finalOllamaPass>`);
-  }
   if (raw.allowEmptyContent !== undefined) {
     tc.allowEmptyContent = parseBool(raw.allowEmptyContent, `tool "${name}" <allowEmptyContent>`);
   }

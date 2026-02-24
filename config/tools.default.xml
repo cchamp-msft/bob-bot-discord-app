@@ -94,7 +94,6 @@
       <inferFrom>current_message</inferFrom>
       <validation>Type must be "scores" or "news". Filter is optional: for scores a date in YYYYMMDD or YYYY-MM-DD format; for news a keyword to narrow results.</validation>
     </parameters>
-    <finalOllamaPass>true</finalOllamaPass>
     <allowEmptyContent>true</allowEmptyContent>
   </tool>
 
@@ -121,7 +120,6 @@
         <example>web_search Super Bowl winner 2026</example>
       </examples>
     </parameters>
-    <finalOllamaPass>true</finalOllamaPass>
     <contextFilterMaxDepth>1</contextFilterMaxDepth>
   </tool>
 

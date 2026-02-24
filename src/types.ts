@@ -427,6 +427,7 @@ export interface PublicConfig {
     maxAttachments: number;
     imageAttachmentMaxSize: number;
     imageAttachmentMaxCount: number;
+    maxToolCalls: number;
   };
   tools: import('./utils/config').ToolConfig[];
   defaultTools: import('./utils/config').ToolConfig[];

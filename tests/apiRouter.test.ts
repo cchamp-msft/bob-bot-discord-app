@@ -131,13 +131,19 @@ describe('ApiRouter', () => {
         data: { text: 'Sunny, 72°F' },
       });
 
+      // 4) Mandatory final Ollama pass
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'It is sunny and 72F.' },
+      });
+
       const result = await executeRoutedRequest(tool, 'asdfasdf', 'testuser');
 
-      expect(result.finalApi).toBe('accuweather');
+      expect(result.finalApi).toBe('ollama');
       expect(result.finalResponse.success).toBe(true);
-      expect(mockExecute).toHaveBeenCalledTimes(3);
-      // stages: accuweather fail + ollama refine + accuweather success
-      expect(result.stages).toHaveLength(3);
+      expect(mockExecute).toHaveBeenCalledTimes(4);
+      // stages: accuweather fail + ollama refine + accuweather success + final ollama pass
+      expect(result.stages).toHaveLength(4);
 
       // Ensure we invoked refinement (ollama) between attempts
       expect(mockExecute.mock.calls[1][0]).toBe('ollama');
@@ -364,11 +370,17 @@ describe('ApiRouter', () => {
         data: { text: 'Sunny, 55°F' },
       });
 
+      // 4) Mandatory final Ollama pass
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Sunny and warm in Denver.' },
+      });
+
       const result = await executeRoutedRequest(tool, '', 'testuser');
 
       expect(result.finalResponse.success).toBe(true);
-      expect(mockExecute).toHaveBeenCalledTimes(3);
-      expect(result.stages).toHaveLength(3);
+      expect(mockExecute).toHaveBeenCalledTimes(4);
+      expect(result.stages).toHaveLength(4);
     });
 
     it('should respect per-tool retry.enabled=false override', async () => {
@@ -498,7 +510,6 @@ describe('ApiRouter', () => {
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
-        finalOllamaPass: true,
       };
 
       mockApiExecute.mockResolvedValue({ success: true, data: { text: 'AI response' } } as any);
@@ -530,7 +541,6 @@ describe('ApiRouter', () => {
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
-        finalOllamaPass: true,
       };
 
       mockApiExecute.mockResolvedValue({ success: true, data: { text: 'AI response' } } as any);
@@ -553,8 +563,8 @@ describe('ApiRouter', () => {
     });
   });
 
-  describe('executeRoutedRequest — single stage (no final pass)', () => {
-    it('should execute a single API request when no finalOllamaPass is configured', async () => {
+  describe('executeRoutedRequest — ollama and failed APIs (no final pass)', () => {
+    it('should skip final pass when primary API is ollama', async () => {
       const tool: ToolConfig = {
         name: 'chat',
         api: 'ollama',
@@ -607,12 +617,17 @@ describe('ApiRouter', () => {
         data: { text: 'Sunny, 72°F' },
       });
 
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'It is sunny and 72F in Seattle.' },
+      });
+
       const result = await executeRoutedRequest(tool, 'weather in Seattle', 'testuser');
 
-      expect(result.finalApi).toBe('accuweather');
+      expect(result.finalApi).toBe('ollama');
       expect(result.finalResponse.success).toBe(true);
-      expect(result.stages).toHaveLength(1);
-      expect(mockExecute).toHaveBeenCalledTimes(1);
+      expect(result.stages).toHaveLength(2);
+      expect(mockExecute).toHaveBeenCalledTimes(2);
     });
 
     it('should execute serpapi "web_search" tool directly without final pass', async () => {
@@ -628,12 +643,17 @@ describe('ApiRouter', () => {
         data: { text: '🔎 **Search results for:** *TypeScript tips*', raw: {} },
       });
 
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Here are the search results for TypeScript tips.' },
+      });
+
       const result = await executeRoutedRequest(tool, 'TypeScript tips', 'testuser');
 
-      expect(result.finalApi).toBe('serpapi');
+      expect(result.finalApi).toBe('ollama');
       expect(result.finalResponse.success).toBe(true);
-      expect(result.stages).toHaveLength(1);
-      expect(mockExecute).toHaveBeenCalledTimes(1);
+      expect(result.stages).toHaveLength(2);
+      expect(mockExecute).toHaveBeenCalledTimes(2);
     });
 
     it('should return failure when serpapi request fails', async () => {
@@ -658,14 +678,13 @@ describe('ApiRouter', () => {
 
   });
 
-  describe('executeRoutedRequest — with finalOllamaPass', () => {
-    it('should add final Ollama refinement pass after comfyui', async () => {
+  describe('executeRoutedRequest — mandatory final pass', () => {
+    it('should run mandatory final pass after comfyui', async () => {
       const tool: ToolConfig = {
         name: 'generate',
         api: 'comfyui',
         timeout: 300,
         description: 'Generate image',
-        finalOllamaPass: true,
       };
 
       // Primary: ComfyUI
@@ -693,7 +712,6 @@ describe('ApiRouter', () => {
         api: 'comfyui',
         timeout: 300,
         description: 'Generate image',
-        finalOllamaPass: true,
       };
 
       // Primary: ComfyUI
@@ -719,7 +737,6 @@ describe('ApiRouter', () => {
         api: 'ollama',
         timeout: 300,
         description: 'Chat',
-        finalOllamaPass: true,
       };
 
       mockExecute.mockResolvedValueOnce({
@@ -738,7 +755,6 @@ describe('ApiRouter', () => {
         api: 'ollama',
         timeout: 300,
         description: 'Chat',
-        finalOllamaPass: true,
       };
 
       mockExecute.mockResolvedValueOnce({
@@ -759,7 +775,6 @@ describe('ApiRouter', () => {
         api: 'comfyui',
         timeout: 300,
         description: 'Generate image',
-        finalOllamaPass: true,
       };
 
       // Primary: Success
@@ -790,7 +805,6 @@ describe('ApiRouter', () => {
         api: 'accuweather',
         timeout: 120,
         description: 'Weather',
-        finalOllamaPass: true,
       };
 
       // Primary: AccuWeather
@@ -832,7 +846,6 @@ describe('ApiRouter', () => {
         api: 'accuweather',
         timeout: 120,
         description: 'Weather',
-        finalOllamaPass: true,
       };
 
       mockExecute.mockResolvedValueOnce({
@@ -860,7 +873,6 @@ describe('ApiRouter', () => {
         api: 'accuweather',
         timeout: 120,
         description: 'Weather',
-        finalOllamaPass: true,
       };
 
       mockExecute.mockResolvedValueOnce({
@@ -880,14 +892,13 @@ describe('ApiRouter', () => {
     });
   });
 
-  describe('executeRoutedRequest — finalOllamaPass model', () => {
+  describe('executeRoutedRequest — final pass model', () => {
     it('should use global final-pass model in final Ollama pass', async () => {
       const tool: ToolConfig = {
         name: 'generate',
         api: 'comfyui',
         timeout: 300,
         description: 'Generate image',
-        finalOllamaPass: true,
       };
 
       mockExecute.mockResolvedValueOnce({
@@ -921,19 +932,27 @@ describe('ApiRouter', () => {
         data: { text: '🏈 **NFL Scores**\n\n✅ Eagles 28 - Cowboys 21 (Final)', games: [] },
       });
 
+      // Mandatory final Ollama pass
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Eagles beat Cowboys 28-21 in an exciting finale.' },
+      });
+
       const result = await executeRoutedRequest(tool, 'nfl scores', 'testuser');
 
-      expect(result.finalApi).toBe('nfl');
+      expect(result.finalApi).toBe('ollama');
       expect(result.finalResponse.success).toBe(true);
-      expect(result.stages).toHaveLength(1);
-      expect(mockExecute).toHaveBeenCalledWith(
+      expect(result.stages).toHaveLength(2);
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+      // Verify the first call was to the NFL API
+      expect(mockExecute.mock.calls[0]).toEqual([
         'nfl',
         'testuser',
         'get_recent_nfl_data',
         30,
         expect.any(Function),
-        undefined
-      );
+        undefined,
+      ]);
     });
 
     it('should support NFL with final Ollama pass', async () => {
@@ -942,7 +961,6 @@ describe('ApiRouter', () => {
         api: 'nfl',
         timeout: 60,
         description: 'NFL chat',
-        finalOllamaPass: true,
       };
 
       // Primary: NFL data (plain — router wraps with markers)
@@ -970,7 +988,6 @@ describe('ApiRouter', () => {
         api: 'nfl',
         timeout: 60,
         description: 'NFL chat',
-        finalOllamaPass: true,
       };
 
       mockExecute.mockResolvedValueOnce({
@@ -1048,14 +1065,21 @@ describe('ApiRouter', () => {
         data: { text: 'Scores', games: [] },
       });
 
+      // Mandatory final Ollama pass
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Scored data refined.' },
+      });
+
       const controller = new AbortController();
       await executeRoutedRequest(tool, '', 'testuser', undefined, undefined, controller.signal);
 
-      expect(mockExecute).toHaveBeenCalledWith(
+      // Verify the first call was to the NFL API with the signal
+      expect(mockExecute.mock.calls[0]).toEqual([
         'nfl', 'testuser', 'get_recent_nfl_data', 30,
         expect.any(Function),
-        controller.signal
-      );
+        controller.signal,
+      ]);
     });
 
     it('should pass caller signal to final Ollama pass', async () => {
@@ -1064,7 +1088,6 @@ describe('ApiRouter', () => {
         api: 'nfl',
         timeout: 60,
         description: 'NFL',
-        finalOllamaPass: true,
       };
 
       // Primary NFL request
@@ -1124,7 +1147,6 @@ describe('ApiRouter', () => {
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
-        finalOllamaPass: true,
       };
 
       const prompt = await captureNflFinalPrompt(tool, 'NFL Scores - Current Week\nChiefs 14 - Ravens 10', 'who is winning?');
@@ -1140,7 +1162,6 @@ describe('ApiRouter', () => {
         api: 'nfl',
         timeout: 60,
         description: 'NFL news',
-        finalOllamaPass: true,
       };
 
       const prompt = await captureNflFinalPrompt(tool, '📰 **NFL News**\n- Chiefs sign free agent', 'give me the latest');
@@ -1155,7 +1176,6 @@ describe('ApiRouter', () => {
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
-        finalOllamaPass: true,
       };
 
       const prompt = await captureNflFinalPrompt(tool, 'Some NFL data', 'tell me about the chiefs');
@@ -1170,7 +1190,6 @@ describe('ApiRouter', () => {
         api: 'nfl',
         timeout: 60,
         description: 'NFL scores',
-        finalOllamaPass: true,
       };
 
       mockExecute.mockResolvedValueOnce({
@@ -1189,161 +1208,13 @@ describe('ApiRouter', () => {
     });
   });
 
-  describe('Context Evaluation in Final Pass', () => {
-    const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
-    const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
-
-    beforeEach(() => {
-      mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
-    });
-
-    it('should call evaluateContextWindow before final Ollama pass', async () => {
-      const tool: ToolConfig = {
-        name: 'weather',
-        api: 'accuweather',
-        timeout: 60,
-        description: 'Weather',
-        finalOllamaPass: true,
-        contextFilterMinDepth: 1,
-        contextFilterMaxDepth: 5,
-      };
-
-      const conversationHistory = [
-        { role: 'user' as const, content: 'old msg' },
-        { role: 'assistant' as const, content: 'old reply' },
-      ];
-
-      // Primary API result
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: {
-          text: 'Sunny, 72°F',
-          location: { LocalizedName: 'Dayton', Country: { ID: 'US', LocalizedName: 'United States' }, AdministrativeArea: { ID: 'OH', LocalizedName: 'Ohio' } },
-          current: null,
-          forecast: null,
-        },
-      });
-
-      // Final Ollama pass result
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: { text: 'Nice weather today!' },
-      });
-
-      await executeRoutedRequest(tool, 'weather 45403', 'testuser', conversationHistory);
-
-      expect(mockEvaluate).toHaveBeenCalledWith(
-        conversationHistory,
-        'weather 45403',
-        tool,
-        'testuser',
-        undefined
-      );
-    });
-
-    it('should not call evaluateContextWindow when no conversation history', async () => {
-      const tool: ToolConfig = {
-        name: 'weather',
-        api: 'accuweather',
-        timeout: 60,
-        description: 'Weather',
-        finalOllamaPass: true,
-        contextFilterMinDepth: 1,
-        contextFilterMaxDepth: 5,
-      };
-
-      // Primary API result
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: {
-          text: 'Sunny, 72°F',
-          location: { LocalizedName: 'Dayton', Country: { ID: 'US', LocalizedName: 'United States' }, AdministrativeArea: { ID: 'OH', LocalizedName: 'Ohio' } },
-          current: null,
-          forecast: null,
-        },
-      });
-
-      // Final Ollama pass result
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: { text: 'Nice weather today!' },
-      });
-
-      await executeRoutedRequest(tool, 'weather 45403', 'testuser');
-
-      expect(mockEvaluate).not.toHaveBeenCalled();
-    });
-
-    it('should pass filtered history to final Ollama pass', async () => {
-      const tool: ToolConfig = {
-        name: 'weather',
-        api: 'accuweather',
-        timeout: 60,
-        description: 'Weather',
-        finalOllamaPass: true,
-        contextFilterMinDepth: 1,
-        contextFilterMaxDepth: 3,
-      };
-
-      const fullHistory = [
-        { role: 'user' as const, content: 'msg1' },
-        { role: 'assistant' as const, content: 'msg2' },
-        { role: 'user' as const, content: 'msg3' },
-      ];
-
-      const filteredHistory = [
-        { role: 'user' as const, content: 'msg3' },
-      ];
-
-      // evaluateContextWindow returns filtered history
-      mockEvaluate.mockResolvedValue(filteredHistory);
-
-      // Primary API result
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: {
-          text: 'Sunny, 72°F',
-          location: { LocalizedName: 'Dayton', Country: { ID: 'US', LocalizedName: 'United States' }, AdministrativeArea: { ID: 'OH', LocalizedName: 'Ohio' } },
-          current: null,
-          forecast: null,
-        },
-      });
-
-      // Final Ollama pass — capture the call to check history
-      mockExecute.mockResolvedValueOnce({
-        success: true,
-        data: { text: 'Nice weather today!' },
-      });
-
-      await executeRoutedRequest(tool, 'weather 45403', 'testuser', fullHistory);
-
-      // The second mockExecute call (final pass) should receive filtered history via apiManager
-      // We verify the evaluator was called with the full history
-      expect(mockEvaluate).toHaveBeenCalledWith(
-        fullHistory,
-        'weather 45403',
-        tool,
-        'testuser',
-        undefined
-      );
-    });
-  });
-
   describe('Trigger message deduplication', () => {
-    const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
-    const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
-
-    beforeEach(() => {
-      mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
-    });
-
     it('should not duplicate trigger message when history already contains one', async () => {
       const tool: ToolConfig = {
         name: 'weather',
         api: 'accuweather',
         timeout: 120,
         description: 'Weather',
-        finalOllamaPass: true,
       };
 
       // History already has trigger message (appended by messageHandler two-stage path)
@@ -1352,9 +1223,6 @@ describe('ApiRouter', () => {
         { role: 'assistant' as const, content: 'old reply' },
         { role: 'user' as const, content: 'testuser: weather in Seattle', contextSource: 'trigger' as const },
       ];
-
-      // evaluateContextWindow preserves the trigger message
-      mockEvaluate.mockResolvedValueOnce(historyWithTrigger);
 
       // Primary API result
       mockExecute.mockResolvedValueOnce({
@@ -1393,7 +1261,6 @@ describe('ApiRouter', () => {
         api: 'accuweather',
         timeout: 120,
         description: 'Weather',
-        finalOllamaPass: true,
       };
 
       // History WITHOUT trigger message (direct tool path)
@@ -1401,9 +1268,6 @@ describe('ApiRouter', () => {
         { role: 'user' as const, content: 'old question' },
         { role: 'assistant' as const, content: 'old reply' },
       ];
-
-      // evaluateContextWindow returns history as-is
-      mockEvaluate.mockResolvedValueOnce(historyWithoutTrigger);
 
       // Primary API result
       mockExecute.mockResolvedValueOnce({
@@ -1439,7 +1303,6 @@ describe('ApiRouter', () => {
         api: 'accuweather',
         timeout: 120,
         description: 'Weather',
-        finalOllamaPass: true,
       };
 
       const specialContent = 'São Paulo <tag> & "quotes"';

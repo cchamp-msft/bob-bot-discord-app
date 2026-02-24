@@ -40,7 +40,6 @@ jest.mock('../src/utils/config', () => ({
           optional: ['filter'],
           validation: 'Type must be "scores" or "news". Filter is optional: for scores a date in YYYYMMDD or YYYY-MM-DD format; for news a keyword to narrow results.',
         },
-        finalOllamaPass: true,
       },
       {
         name: 'generate_image',
