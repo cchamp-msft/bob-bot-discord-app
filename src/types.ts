@@ -550,4 +550,11 @@ export interface PublicConfig {
   configuratorTheme: string;
   /** Pipeline execution mode: 'unified' or 'legacy'. */
   pipelineMode: 'unified' | 'legacy';
+  ollamaFixup: {
+    enabled: boolean;
+    extractXmlTools: boolean;
+    extractJsonTools: boolean;
+    repairUrls: boolean;
+    stripToolPreamble: boolean;
+  };
 }

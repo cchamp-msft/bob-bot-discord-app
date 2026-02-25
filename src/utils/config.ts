@@ -704,6 +704,33 @@ class Config {
     return 'unified';
   }
 
+  // ── Ollama response fixup ────────────────────────────────
+
+  /** Global toggle for the Ollama response fixup layer. Default: true. */
+  getOllamaFixupEnabled(): boolean {
+    return process.env.OLLAMA_FIXUP_ENABLED !== 'false';
+  }
+
+  /** Extract tool calls from XML-wrapped blocks in response text. Default: true. */
+  getOllamaFixupExtractXmlTools(): boolean {
+    return process.env.OLLAMA_FIXUP_EXTRACT_XML_TOOLS !== 'false';
+  }
+
+  /** Extract tool calls from bare JSON objects in response text. Default: true. */
+  getOllamaFixupExtractJsonTools(): boolean {
+    return process.env.OLLAMA_FIXUP_EXTRACT_JSON_TOOLS !== 'false';
+  }
+
+  /** Repair malformed URLs in response text. Default: true. */
+  getOllamaFixupRepairUrls(): boolean {
+    return process.env.OLLAMA_FIXUP_REPAIR_URLS !== 'false';
+  }
+
+  /** Strip preamble text when tool calls are extracted. Default: true. */
+  getOllamaFixupStripToolPreamble(): boolean {
+    return process.env.OLLAMA_FIXUP_STRIP_TOOL_PREAMBLE !== 'false';
+  }
+
   /**
    * Whether the final pass requires a separate Ollama call.
    * Returns false when the tool model and final pass model are the same
@@ -1084,6 +1111,11 @@ class Config {
     const prevDefaultClipType = this.getComfyUIDefaultClipType();
     const prevMaxToolCalls = this.getMaxToolCalls();
     const prevDefaultDiffuser = this.getComfyUIDefaultDiffuser();
+    const prevFixupEnabled = this.getOllamaFixupEnabled();
+    const prevFixupExtractXml = this.getOllamaFixupExtractXmlTools();
+    const prevFixupExtractJson = this.getOllamaFixupExtractJsonTools();
+    const prevFixupRepairUrls = this.getOllamaFixupRepairUrls();
+    const prevFixupStripPreamble = this.getOllamaFixupStripToolPreamble();
 
     // Re-parse .env into process.env
     const envPath = path.join(__dirname, '../../.env');
@@ -1178,6 +1210,11 @@ class Config {
     if (this.getComfyUIDefaultClipType() !== prevDefaultClipType) reloaded.push('COMFYUI_DEFAULT_CLIP_TYPE');
     if (this.getMaxToolCalls() !== prevMaxToolCalls) reloaded.push('MAX_TOOL_CALLS');
     if (this.getComfyUIDefaultDiffuser() !== prevDefaultDiffuser) reloaded.push('COMFYUI_DEFAULT_DIFFUSER');
+    if (this.getOllamaFixupEnabled() !== prevFixupEnabled) reloaded.push('OLLAMA_FIXUP_ENABLED');
+    if (this.getOllamaFixupExtractXmlTools() !== prevFixupExtractXml) reloaded.push('OLLAMA_FIXUP_EXTRACT_XML_TOOLS');
+    if (this.getOllamaFixupExtractJsonTools() !== prevFixupExtractJson) reloaded.push('OLLAMA_FIXUP_EXTRACT_JSON_TOOLS');
+    if (this.getOllamaFixupRepairUrls() !== prevFixupRepairUrls) reloaded.push('OLLAMA_FIXUP_REPAIR_URLS');
+    if (this.getOllamaFixupStripToolPreamble() !== prevFixupStripPreamble) reloaded.push('OLLAMA_FIXUP_STRIP_TOOL_PREAMBLE');
 
     // Reload tools
     this.loadTools();
@@ -1312,6 +1349,13 @@ class Config {
       },
       configuratorTheme: this.getConfiguratorTheme(),
       pipelineMode: this.getPipelineMode(),
+      ollamaFixup: {
+        enabled: this.getOllamaFixupEnabled(),
+        extractXmlTools: this.getOllamaFixupExtractXmlTools(),
+        extractJsonTools: this.getOllamaFixupExtractJsonTools(),
+        repairUrls: this.getOllamaFixupRepairUrls(),
+        stripToolPreamble: this.getOllamaFixupStripToolPreamble(),
+      },
     };
   }
 }

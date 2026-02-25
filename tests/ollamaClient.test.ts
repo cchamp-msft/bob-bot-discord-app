@@ -28,7 +28,21 @@ jest.mock('../src/utils/config', () => ({
     getOllamaVisionModel: jest.fn(() => 'llava:7b'),
     getOllamaSystemPrompt: jest.fn(() => ''),
     getOllamaTimeout: jest.fn(() => 120000),
+    getTools: jest.fn(() => []),
+    getOllamaFixupEnabled: jest.fn(() => true),
+    getOllamaFixupExtractXmlTools: jest.fn(() => true),
+    getOllamaFixupExtractJsonTools: jest.fn(() => true),
+    getOllamaFixupRepairUrls: jest.fn(() => true),
+    getOllamaFixupStripToolPreamble: jest.fn(() => true),
   },
+}));
+
+jest.mock('../src/utils/ollamaFixup', () => ({
+  applyFixups: jest.fn((text: string, toolCalls: unknown[]) => ({
+    text,
+    toolCalls: [...toolCalls],
+    log: [],
+  })),
 }));
 
 jest.mock('../src/utils/logger', () => ({
@@ -869,6 +883,46 @@ describe('OllamaClient', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('does not support images');
+    });
+  });
+
+  describe('fixup integration', () => {
+    const { applyFixups } = require('../src/utils/ollamaFixup') as { applyFixups: jest.Mock };
+
+    beforeEach(() => {
+      applyFixups.mockClear();
+    });
+
+    it('calls applyFixups on successful response', async () => {
+      mockInstance.get.mockResolvedValue({ status: 200, data: { models: [{ name: 'llama2' }] } });
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { message: { content: 'Hello world' } },
+      });
+
+      await ollamaClient.generate('Hello', 'user1');
+      expect(applyFixups).toHaveBeenCalledTimes(1);
+      expect(applyFixups).toHaveBeenCalledWith('Hello world', [], []);
+    });
+
+    it('passes native tool_calls through fixup', async () => {
+      mockInstance.get.mockResolvedValue({ status: 200, data: { models: [{ name: 'llama2' }] } });
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: {
+          message: {
+            content: '',
+            tool_calls: [{ type: 'function', function: { name: 'test_tool', arguments: {} } }],
+          },
+        },
+      });
+
+      await ollamaClient.generate('Hello', 'user1');
+      expect(applyFixups).toHaveBeenCalledTimes(1);
+      // Second argument should be the normalized tool_calls array
+      const passedToolCalls = applyFixups.mock.calls[0][1];
+      expect(passedToolCalls).toHaveLength(1);
+      expect(passedToolCalls[0].function.name).toBe('test_tool');
     });
   });
 });

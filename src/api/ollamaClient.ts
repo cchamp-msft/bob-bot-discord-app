@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
+import { applyFixups } from '../utils/ollamaFixup';
 import { ChatMessage } from '../types';
 import type { OllamaTool } from '../utils/toolsSchema';
 
@@ -301,11 +302,23 @@ class OllamaClient {
             .filter((tc): tc is OllamaToolCall => tc !== null);
         }
 
+        // Apply response fixup rules (XML/JSON tool extraction, URL repair, etc.)
+        const fixup = applyFixups(
+          responseText,
+          tool_calls ?? [],
+          config.getTools(),
+        );
+        for (const entry of fixup.log) {
+          logger.logDebug(requester, entry);
+        }
+        const finalText = fixup.text;
+        const finalToolCalls = fixup.toolCalls.length > 0 ? fixup.toolCalls : undefined;
+
         return {
           success: true,
           data: {
-            text: responseText,
-            ...(tool_calls && tool_calls.length > 0 ? { tool_calls } : {}),
+            text: finalText,
+            ...(finalToolCalls ? { tool_calls: finalToolCalls } : {}),
           },
         };
       }

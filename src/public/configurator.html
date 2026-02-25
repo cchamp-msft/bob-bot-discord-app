@@ -748,6 +748,51 @@
           <textarea id="ollama_final_pass_prompt" data-env="OLLAMA_FINAL_PASS_PROMPT" rows="3" placeholder="Review the message context for the tone of the conversation and provide replies in a similar tone. Be helpful, concise with details, and try to maintain continuity between the context, the prompt, and your reply. Review the incoming data and provide a relevant and opinionated response."></textarea>
           <button type="button" class="btn small" onclick="document.getElementById('ollama_final_pass_prompt').value='';markDirty();" title="Clear to use default prompt">Reset to Default</button>
         </div>
+
+        <hr style="border-color:var(--border);margin:16px 0">
+        <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin:12px 0 8px">Response Fixup</div>
+        <p class="help-text" style="margin-bottom:10px">
+          Some Ollama models return tool calls as XML blocks or bare JSON in their text content instead of
+          using the native tool_calls format. These fixup rules detect and recover those near-miss responses.
+          URL repair fixes common formatting issues like double-wrapped markdown links.
+        </p>
+        <div class="field-row">
+          <div class="field narrow">
+            <label>Fixup Enabled</label>
+            <select id="ollama_fixup_enabled" data-env="OLLAMA_FIXUP_ENABLED" onchange="markDirty()">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Extract XML Tools</label>
+            <select id="ollama_fixup_extract_xml_tools" data-env="OLLAMA_FIXUP_EXTRACT_XML_TOOLS" onchange="markDirty()">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Extract JSON Tools</label>
+            <select id="ollama_fixup_extract_json_tools" data-env="OLLAMA_FIXUP_EXTRACT_JSON_TOOLS" onchange="markDirty()">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Repair URLs</label>
+            <select id="ollama_fixup_repair_urls" data-env="OLLAMA_FIXUP_REPAIR_URLS" onchange="markDirty()">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Strip Preamble</label>
+            <select id="ollama_fixup_strip_tool_preamble" data-env="OLLAMA_FIXUP_STRIP_TOOL_PREAMBLE" onchange="markDirty()">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+        </div>
       </div>
     </section>
 
