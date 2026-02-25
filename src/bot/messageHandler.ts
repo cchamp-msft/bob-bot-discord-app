@@ -10,11 +10,11 @@ import { requestQueue } from '../utils/requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { fileHandler } from '../utils/fileHandler';
 import { memeClient } from '../api/memeClient';
-import { ChatMessage, NFLResponse, MemeResponse, MediaFollowUp, ComfyUIMediaFollowUp, UrlMediaFollowUp } from '../types';
+import { ChatMessage, NFLResponse, MemeResponse, MediaFollowUp, ComfyUIMediaFollowUp, UrlMediaFollowUp, PipelineContext, ToolInvocation } from '../types';
 import { chunkText } from '../utils/chunkText';
 import { executeRoutedRequest, inferAbilityParameters, formatApiResultAsExternalData } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
-import { assemblePrompt, assembleReprompt, parseFirstLineTool } from '../utils/promptBuilder';
+import { assemblePrompt, assembleReprompt, assembleUnifiedReprompt, parseFirstLineTool } from '../utils/promptBuilder';
 import type { ToolParseResult } from '../utils/promptBuilder';
 import { buildOllamaToolsSchema, resolveToolNameToTool, toolArgumentsToContent } from '../utils/toolsSchema';
 import { activityEvents } from '../utils/activityEvents';
@@ -33,6 +33,20 @@ class ApiDispatchError extends Error {
 
 class MessageHandler {
   private static readonly WORKING_EMOJI = '⏳';
+
+  // ── Dedup guards ──────────────────────────────────────────────
+  /** Messages currently being processed (catches concurrent shard replays, 8-18ms gap). */
+  private processingMessages = new Set<string>();
+  /** Recently processed messages with timestamp (catches late replays, 60s TTL). */
+  private processedMessages = new Map<string, number>();
+  /** TTL for processed message entries in milliseconds. */
+  private static readonly DEDUP_TTL_MS = 60_000;
+
+  /** Clear dedup state — exposed for testing. */
+  resetDedupState(): void {
+    this.processingMessages.clear();
+    this.processedMessages.clear();
+  }
 
   /**
    * Compare a tool name (from config — may or may not include the
@@ -268,6 +282,14 @@ class MessageHandler {
 
     // Guard: client.user should always exist after 'ready' but be defensive
     if (!message.client.user) return;
+
+    // ── Dedup guard: reject concurrent duplicates and late shard replays ──
+    this.pruneProcessedMessages();
+    if (this.processingMessages.has(message.id) || this.processedMessages.has(message.id)) {
+      logger.log('success', 'system', `DEDUP: Skipping duplicate message ${message.id} from ${message.author.username}`);
+      return;
+    }
+    this.processingMessages.add(message.id);
 
     // Determine if this is a DM
     const isDM = message.channel.type === ChannelType.DM;
@@ -553,8 +575,26 @@ class MessageHandler {
           isDM,
           routedResult.media
         );
+      } else if (config.getPipelineMode() === 'unified') {
+        // ── Unified pipeline: cumulative context, fewer Ollama calls ──
+        const ctx: PipelineContext = {
+          messageId: message.id,
+          requester,
+          botDisplayName,
+          isDM,
+          rawContent: content,
+          imagePayloads,
+          sourceMessage: message,
+          conversationHistory,
+          stage1ToolInvocations: [],
+          toolResults: [],
+          mediaFollowUps: [],
+          ollamaCallCount: 0,
+          startedAt: Date.now(),
+        };
+        await this.executeUnifiedPipeline(ctx, toolConfig);
       } else {
-        // ── Ollama path: chat with abilities context, then second evaluation ──
+        // ── Legacy Ollama path: chat with abilities context, then second evaluation ──
         await this.executeWithTwoStageEvaluation(
           content,
           toolConfig,
@@ -585,6 +625,20 @@ class MessageHandler {
 
       const failedApi = error instanceof ApiDispatchError ? error.api : undefined;
       await this.markRequestFailed(message, failedApi);
+    } finally {
+      // Move from processing → processed for late-replay dedup
+      this.processingMessages.delete(message.id);
+      this.processedMessages.set(message.id, Date.now());
+    }
+  }
+
+  /** Remove expired entries from the processed messages cache. */
+  private pruneProcessedMessages(): void {
+    const now = Date.now();
+    for (const [id, ts] of this.processedMessages) {
+      if (now - ts > MessageHandler.DEDUP_TTL_MS) {
+        this.processedMessages.delete(id);
+      }
     }
   }
 
@@ -1127,7 +1181,311 @@ class MessageHandler {
   }
 
   /**
-   * Execute the Ollama evaluation flow:
+   * Unified pipeline: cumulative context building with 1-2 Ollama calls.
+   *
+   * Stage 1 — Draft + Tool Selection (1 Ollama call):
+   *   Full conversation history + abilities in a single call. The model
+   *   produces a draft response and any tool selections via native tool_calls.
+   *
+   * Stage 2 — Parallel Tool Execution (0 Ollama calls):
+   *   All tool invocations run in parallel via Promise.all (requestQueue
+   *   enforces per-API serialization internally).
+   *
+   * Stage 3 — Final Pass with Cumulative Context (0-1 Ollama calls):
+   *   Only runs when the final pass model differs from the tool model,
+   *   or when tools produced external data. Uses a lightweight prompt
+   *   that excludes conversation history (already baked into Stage 1 draft).
+   */
+  private async executeUnifiedPipeline(
+    ctx: PipelineContext,
+    toolConfig: ToolConfig
+  ): Promise<void> {
+    const timeout = toolConfig.timeout || config.getDefaultTimeout();
+
+    // Append the triggering message to context so the model knows who is asking.
+    const historyWithTrigger: ChatMessage[] = [
+      ...ctx.conversationHistory,
+      {
+        role: 'user' as const,
+        content: `${ctx.requester}: ${ctx.rawContent}`,
+        contextSource: 'trigger' as const,
+        hasNamePrefix: true,
+        createdAtMs: ctx.sourceMessage.createdTimestamp,
+      },
+    ];
+
+    // ── Stage 1: Draft + Tool Selection ──────────────────────────
+    logger.log('success', 'system', 'UNIFIED: Stage 1 — Draft + tool selection');
+
+    const tools = buildOllamaToolsSchema(config.getTools());
+    const useToolsPath = tools.length > 0;
+
+    const assembled = assemblePrompt({
+      userMessage: ctx.rawContent,
+      conversationHistory: historyWithTrigger,
+      botDisplayName: ctx.botDisplayName,
+      ...(useToolsPath ? { enabledTools: [] } : {}),
+    });
+
+    if (useToolsPath) {
+      logger.log('success', 'system', `UNIFIED: Stage 1 — ${tools.length} native tool(s) available`);
+    }
+
+    const ollamaResult = await requestQueue.execute(
+      'ollama',
+      ctx.requester,
+      'unified:stage1',
+      timeout,
+      (signal) =>
+        apiManager.executeRequest(
+          'ollama',
+          ctx.requester,
+          assembled.userContent,
+          timeout,
+          config.getOllamaToolModel(),
+          [{ role: 'system', content: assembled.systemContent }],
+          signal,
+          undefined,
+          {
+            includeSystemPrompt: false,
+            contextSize: config.getOllamaToolContextSize(),
+            timeout: config.getOllamaToolTimeout(),
+            ...(useToolsPath ? { tools } : {}),
+            ...(ctx.imagePayloads.length > 0 ? { images: ctx.imagePayloads } : {}),
+          }
+        )
+    ) as OllamaResponse;
+    ctx.ollamaCallCount++;
+
+    if (!ollamaResult.success) {
+      await this.dispatchResponse(ollamaResult, 'ollama', ctx.sourceMessage, ctx.requester, ctx.isDM);
+      return;
+    }
+
+    ctx.stage1Draft = ollamaResult.data?.text ?? '';
+
+    // Collect tool calls from native tool_calls
+    const toolCalls = (useToolsPath && ollamaResult.data?.tool_calls) ? ollamaResult.data.tool_calls : [];
+
+    // If no native tool_calls, try legacy first-line parsing (text-based directives)
+    let legacyParsedTool: ToolParseResult | null = null;
+    if (toolCalls.length === 0 && ctx.stage1Draft) {
+      const parsed = parseFirstLineTool(ctx.stage1Draft);
+      if (parsed.matched && parsed.toolConfig) {
+        legacyParsedTool = parsed;
+      }
+    }
+
+    const hasTools = toolCalls.length > 0 || legacyParsedTool !== null;
+
+    // ── Fast path: no tools, same model → Stage 1 draft IS the final response ──
+    if (!hasTools && !config.needsSeparateFinalPass()) {
+      logger.log('success', 'system', `UNIFIED: Fast path — no tools, same model → 1 Ollama call total`);
+      await this.dispatchResponse(ollamaResult, 'ollama', ctx.sourceMessage, ctx.requester, ctx.isDM);
+      return;
+    }
+
+    // ── No tools, different final model → Stage 3 personality refinement only ──
+    if (!hasTools) {
+      logger.log('success', 'system', 'UNIFIED: No tools, different final model — running Stage 3 for personality');
+      const finalResult = await this.runUnifiedFinalPass(ctx, undefined, timeout);
+      await this.dispatchResponse(finalResult ?? ollamaResult, 'ollama', ctx.sourceMessage, ctx.requester, ctx.isDM);
+      return;
+    }
+
+    // ── Stage 2: Parallel Tool Execution ─────────────────────────
+    logger.log('success', 'system', 'UNIFIED: Stage 2 — Parallel tool execution');
+
+    const configuredTools = config.getTools();
+    const toolPromises: Promise<ToolInvocation>[] = [];
+
+    if (toolCalls.length > 0) {
+      // Native tool_calls path
+      for (const tc of toolCalls) {
+        const resolvedTool = resolveToolNameToTool(tc.function.name, configuredTools);
+        if (!resolvedTool) {
+          logger.logWarn('system', `UNIFIED: Unknown tool name "${tc.function.name}" — skipping`);
+          continue;
+        }
+        const args = typeof tc.function.arguments === 'object' && tc.function.arguments !== null
+          ? (tc.function.arguments as Record<string, unknown>)
+          : {};
+        const contentStr = toolArgumentsToContent(resolvedTool, args);
+        activityEvents.emitRoutingDecision(resolvedTool.api, resolvedTool.name, 'tool-call');
+
+        toolPromises.push(this.executeToolInvocation(resolvedTool, contentStr, ctx, timeout));
+      }
+    } else if (legacyParsedTool?.toolConfig) {
+      // Legacy text-based directive path
+      const tool = legacyParsedTool.toolConfig;
+      const routedInput = (legacyParsedTool.inferredInput?.trim() || ctx.rawContent);
+      activityEvents.emitRoutingDecision(tool.api, tool.name, 'two-stage-parse');
+
+      toolPromises.push(this.executeToolInvocation(tool, routedInput, ctx, timeout));
+    }
+
+    // Run all tool invocations in parallel — requestQueue handles per-API serialization
+    const results = await Promise.all(toolPromises);
+
+    for (const result of results) {
+      ctx.toolResults.push(result);
+      if (result.media) ctx.mediaFollowUps.push(result.media);
+    }
+
+    // Collect external data from successful tool results
+    const externalDataParts = ctx.toolResults
+      .filter(r => r.externalData)
+      .map(r => r.externalData!);
+
+    if (externalDataParts.length === 0 && toolCalls.length > 0) {
+      // All tools failed — return the Stage 1 draft as-is
+      logger.logWarn('system', 'UNIFIED: All tool calls failed — returning Stage 1 draft');
+      await this.dispatchResponse(ollamaResult, 'ollama', ctx.sourceMessage, ctx.requester, ctx.isDM);
+      return;
+    }
+
+    // ── Stage 3: Final Pass with Cumulative Context ──────────────
+    const combinedExternalData = externalDataParts.join('\n\n');
+    logger.log('success', 'system', `UNIFIED: Stage 3 — Final pass with ${externalDataParts.length} external data fragment(s)`);
+
+    const finalResult = await this.runUnifiedFinalPass(ctx, combinedExternalData, timeout);
+
+    await this.dispatchResponse(
+      finalResult ?? ollamaResult,
+      'ollama',
+      ctx.sourceMessage,
+      ctx.requester,
+      ctx.isDM,
+      ctx.mediaFollowUps.length > 0 ? ctx.mediaFollowUps : undefined
+    );
+
+    logger.log('success', 'system',
+      `UNIFIED: Pipeline complete — ${ctx.ollamaCallCount} Ollama call(s), ${ctx.toolResults.length} tool(s), ${Date.now() - ctx.startedAt}ms`);
+  }
+
+  /**
+   * Execute a single tool invocation for the unified pipeline.
+   * Returns a ToolInvocation result with external data and media.
+   */
+  private async executeToolInvocation(
+    tool: ToolConfig,
+    contentStr: string,
+    ctx: PipelineContext,
+    _timeout: number
+  ): Promise<ToolInvocation> {
+    try {
+      const apiResult = await executeRoutedRequest(
+        tool,
+        contentStr,
+        ctx.requester,
+        ctx.conversationHistory.length > 0
+          ? [...ctx.conversationHistory, {
+              role: 'user' as const,
+              content: `${ctx.requester}: ${ctx.rawContent}`,
+              contextSource: 'trigger' as const,
+              hasNamePrefix: true,
+              createdAtMs: ctx.sourceMessage.createdTimestamp,
+            }]
+          : undefined,
+        ctx.botDisplayName,
+        undefined,
+        { skipFinalPass: true }
+      );
+
+      const externalData = formatApiResultAsExternalData(tool, apiResult.finalResponse, contentStr);
+
+      // Capture media follow-ups
+      let media: MediaFollowUp | undefined;
+      if (tool.api === 'comfyui' && apiResult.finalResponse.success) {
+        media = { kind: 'comfyui', response: apiResult.finalResponse as ComfyUIResponse };
+      }
+      if (tool.api === 'meme' && apiResult.finalResponse.success) {
+        const url = (apiResult.finalResponse as MemeResponse).data?.imageUrl;
+        if (url) media = { kind: 'url', url, label: 'meme' };
+      }
+
+      return {
+        toolName: tool.name,
+        api: tool.api,
+        input: contentStr,
+        externalData,
+        media,
+        success: apiResult.finalResponse.success,
+      };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.logError('system', `UNIFIED: Tool "${tool.name}" failed: ${errMsg}`);
+      return {
+        toolName: tool.name,
+        api: tool.api,
+        input: contentStr,
+        success: false,
+      };
+    }
+  }
+
+  /**
+   * Run the unified pipeline's Stage 3 final pass.
+   * Uses a lightweight prompt without full conversation history.
+   */
+  private async runUnifiedFinalPass(
+    ctx: PipelineContext,
+    externalData: string | undefined,
+    timeout: number
+  ): Promise<OllamaResponse | null> {
+    logger.log('success', 'system', 'UNIFIED-FINAL: Running Stage 3 final pass');
+    activityEvents.emitFinalPassThought(externalData ? 'tools' : 'chat');
+
+    const reprompt = assembleUnifiedReprompt({
+      userMessage: ctx.rawContent,
+      draftResponse: ctx.stage1Draft,
+      externalData,
+      botDisplayName: ctx.botDisplayName,
+      requesterName: ctx.requester,
+    });
+
+    const finalPassPrompt = config.getOllamaFinalPassPrompt();
+    const finalSystemContent = finalPassPrompt
+      ? `${reprompt.systemContent}\n\n${finalPassPrompt}`
+      : reprompt.systemContent;
+
+    try {
+      const finalResult = await requestQueue.execute(
+        'ollama',
+        ctx.requester,
+        'unified:final',
+        timeout,
+        (sig) =>
+          apiManager.executeRequest(
+            'ollama',
+            ctx.requester,
+            reprompt.userContent,
+            timeout,
+            config.getOllamaFinalPassModel() ?? undefined,
+            [{ role: 'system', content: finalSystemContent }],
+            sig,
+            undefined,
+            { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: config.getOllamaFinalPassTimeout() }
+          )
+      ) as OllamaResponse;
+      ctx.ollamaCallCount++;
+
+      if (!finalResult.success) {
+        logger.logWarn('system', `UNIFIED-FINAL: Final pass failed: ${finalResult.error} — falling back to Stage 1 draft`);
+        return null;
+      }
+
+      logger.log('success', 'system', 'UNIFIED-FINAL: Stage 3 complete');
+      return finalResult;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.logError('system', `UNIFIED-FINAL: Final pass error: ${msg} — falling back to Stage 1 draft`);
+      return null;
+    }
+  }
+
+  /**
+   * Execute the Ollama evaluation flow (legacy pipeline):
    * 1. Build XML-tagged prompt with abilities context and conversation history
    * 2. Call Ollama — model outputs either a tool-only line or a normal answer
    * 3. Parse the first non-empty line for an exact tool match

@@ -694,6 +694,30 @@ class Config {
   }
 
   /**
+   * Pipeline execution mode: 'unified' (default) or 'legacy'.
+   * 'unified' uses cumulative context building with fewer Ollama calls.
+   * 'legacy' preserves the original two-stage evaluation flow.
+   */
+  getPipelineMode(): 'unified' | 'legacy' {
+    const raw = (process.env.PIPELINE_MODE || '').trim().toLowerCase();
+    if (raw === 'legacy') return 'legacy';
+    return 'unified';
+  }
+
+  /**
+   * Whether the final pass requires a separate Ollama call.
+   * Returns false when the tool model and final pass model are the same
+   * (or when final pass model is unset), meaning Stage 1's draft can
+   * serve as the final response directly.
+   */
+  needsSeparateFinalPass(): boolean {
+    const toolModel = this.getOllamaToolModel().toLowerCase().trim();
+    const finalModel = this.getOllamaFinalPassModel().toLowerCase().trim();
+    // When both resolve to the same model, no separate call is needed
+    return toolModel !== finalModel;
+  }
+
+  /**
    * Instruction appended to the system content for every final Ollama pass.
    * Configurable via the configurator UI. Clear to disable.
    */
@@ -1287,6 +1311,7 @@ class Config {
         includeEmbed: this.getImageResponseIncludeEmbed(),
       },
       configuratorTheme: this.getConfiguratorTheme(),
+      pipelineMode: this.getPipelineMode(),
     };
   }
 }

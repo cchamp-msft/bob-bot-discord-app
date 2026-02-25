@@ -58,6 +58,8 @@ jest.mock('../src/utils/config', () => ({
     getImageAttachmentMaxSize: jest.fn(() => 5 * 1024 * 1024),
     getImageAttachmentMaxCount: jest.fn(() => 4),
     getReplyChainImageMaxDepth: jest.fn(() => 5),
+    getPipelineMode: jest.fn(() => 'legacy'),
+    needsSeparateFinalPass: jest.fn(() => false),
   },
 }));
 
@@ -172,6 +174,11 @@ import type { Message } from 'discord.js';
 // We need to test the rate-limit behavior. The MessageHandler class is not
 // exported directly, but the singleton is. We can access its private method.
 import { messageHandler } from '../src/bot/messageHandler';
+
+// Reset dedup state between every test to prevent cross-test interference
+beforeEach(() => {
+  messageHandler.resetDedupState();
+});
 
 describe('MessageHandler error rate limiting', () => {
   beforeEach(() => {

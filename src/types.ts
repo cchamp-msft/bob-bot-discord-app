@@ -354,6 +354,58 @@ export interface MemeHealthResult {
   error?: string;
 }
 
+// ── Unified pipeline types ──────────────────────────────────────
+
+/** Result of a single tool invocation within the unified pipeline. */
+export interface ToolInvocation {
+  /** The tool config that was invoked. */
+  toolName: string;
+  /** API type of the tool. */
+  api: ApiType;
+  /** Raw content/parameters sent to the tool. */
+  input: string;
+  /** Formatted external data fragment from the tool result. */
+  externalData?: string;
+  /** Media follow-up produced by this tool (ComfyUI images, meme URLs, etc.). */
+  media?: MediaFollowUp;
+  /** Whether the tool call succeeded. */
+  success: boolean;
+}
+
+/** Tracks state across pipeline stages without re-fetching. */
+export interface PipelineContext {
+  /** Discord message snowflake — used for dedup and logging. */
+  messageId: string;
+  /** Display name of the user who sent the message. */
+  requester: string;
+  /** Bot's Discord display name (fallback for prompt participant blocks). */
+  botDisplayName?: string;
+  /** Whether the message arrived via DM. */
+  isDM: boolean;
+  /** Cleaned message content (mentions stripped, etc.). */
+  rawContent: string;
+  /** Base64-encoded image attachments for vision models. */
+  imagePayloads: string[];
+  /** The original Discord message object. */
+  sourceMessage: import('discord.js').Message;
+  /** Conversation history (oldest→newest), built once at pipeline start. */
+  conversationHistory: ChatMessage[];
+  /** Stage 1 draft response text from Ollama. */
+  stage1Draft?: string;
+  /** Tool invocations requested by Stage 1. */
+  stage1ToolInvocations: ToolInvocation[];
+  /** Completed tool results from Stage 2. */
+  toolResults: ToolInvocation[];
+  /** Media attachments to send after the text reply. */
+  mediaFollowUps: MediaFollowUp[];
+  /** The final response text after all stages. */
+  finalResponse?: string;
+  /** Running count of Ollama API calls made in this pipeline run. */
+  ollamaCallCount: number;
+  /** Timestamp (ms) when the pipeline started. */
+  startedAt: number;
+}
+
 // ── Media follow-up types ───────────────────────────────────────
 
 /** Media follow-up sent after the Ollama text reply. */
@@ -496,4 +548,6 @@ export interface PublicConfig {
   };
   /** Configurator UI theme preference (persisted in .env). */
   configuratorTheme: string;
+  /** Pipeline execution mode: 'unified' or 'legacy'. */
+  pipelineMode: 'unified' | 'legacy';
 }

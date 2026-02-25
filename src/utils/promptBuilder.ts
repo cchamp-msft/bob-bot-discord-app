@@ -817,6 +817,75 @@ export function assembleReprompt(options: PromptBuildOptions): AssembledPrompt {
   return { systemContent, userContent, messages };
 }
 
+// ── Unified pipeline reprompt builder ─────────────────────────────
+
+/**
+ * Options for building the lightweight unified pipeline Stage 3 prompt.
+ */
+export interface UnifiedRepromptOptions {
+  /** The original user message. */
+  userMessage: string;
+  /** Stage 1 draft response from the tool-evaluation model. */
+  draftResponse?: string;
+  /** Combined external data from tool invocations. */
+  externalData?: string;
+  /** Bot display name from the Discord client. */
+  botDisplayName?: string;
+  /** Requester display name. */
+  requesterName?: string;
+}
+
+/**
+ * Build a lightweight reprompt for the unified pipeline's Stage 3.
+ *
+ * Unlike `assembleReprompt()`, this does NOT re-pass the full
+ * conversation history — the Stage 1 draft already incorporated that
+ * context. Stage 3 receives only:
+ * - `<current_question>` — original user message
+ * - `<draft_response>` — Stage 1's draft
+ * - `<external_data>` — combined tool results
+ * - Requester/bot identity + datetime
+ * - System prompt + OLLAMA_FINAL_PASS_PROMPT
+ */
+export function assembleUnifiedReprompt(options: UnifiedRepromptOptions): AssembledPrompt {
+  const { userMessage, draftResponse, externalData, botDisplayName, requesterName } = options;
+  const persona = config.getOllamaSystemPrompt();
+  const systemContent = persona;
+
+  const botName = inferBotName(botDisplayName);
+
+  const parts: string[] = [];
+
+  // ── <current_question> (what to answer) ──
+  parts.push(`<current_question>\n${escapeXmlContent(userMessage)}\n</current_question>`);
+
+  // ── Identity tags ──
+  parts.push(`<requester_name>${escapeXmlContent(requesterName ?? 'unknown')}</requester_name>`);
+  parts.push(`<bot_name>${escapeXmlContent(botName)}</bot_name>`);
+
+  // ── <current_datetime> ──
+  parts.push(getCurrentDateTimeTag());
+
+  // ── <draft_response> (Stage 1's initial answer/plan) ──
+  if (draftResponse) {
+    parts.push(`<draft_response>\n${escapeXmlContent(draftResponse)}\n</draft_response>`);
+  }
+
+  // ── <external_data> (tool results from Stage 2) ──
+  if (externalData) {
+    parts.push(`<external_data>\n${externalData}\n</external_data>`);
+  }
+
+  const userContent = parts.join('\n');
+
+  const messages: ChatMessage[] = [
+    { role: 'system', content: systemContent },
+    { role: 'user', content: userContent },
+  ];
+
+  return { systemContent, userContent, messages };
+}
+
 // ── Deprecated aliases (will be removed in a future release) ─────
 
 /** @deprecated Use ToolParseResult instead. */
