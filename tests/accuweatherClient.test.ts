@@ -533,18 +533,18 @@ describe('AccuWeatherClient', () => {
     });
   });
 
-  // ---- get5DayForecast ----
+  // ---- get10DayForecast ----
 
-  describe('get5DayForecast', () => {
+  describe('get10DayForecast', () => {
     it('should return forecast data for a valid location key', async () => {
       mockInstance.get.mockResolvedValueOnce({
         status: 200,
         data: sampleForecastResponse,
       });
 
-      const result = await accuweatherClient.get5DayForecast('351409');
+      const result = await accuweatherClient.get10DayForecast('351409');
       expect(result).toEqual(sampleForecastResponse);
-      expect(mockInstance.get).toHaveBeenCalledWith('/forecasts/v1/daily/5day/351409', {
+      expect(mockInstance.get).toHaveBeenCalledWith('/forecasts/v1/daily/10day/351409', {
         params: { apikey: 'test-api-key' },
       });
     });
@@ -555,13 +555,13 @@ describe('AccuWeatherClient', () => {
         data: {},
       });
 
-      const result = await accuweatherClient.get5DayForecast('351409');
+      const result = await accuweatherClient.get10DayForecast('351409');
       expect(result).toBeNull();
     });
 
     it('should return null and log error on failure', async () => {
       mockInstance.get.mockRejectedValueOnce(new Error('API Error'));
-      const result = await accuweatherClient.get5DayForecast('351409');
+      const result = await accuweatherClient.get10DayForecast('351409');
       expect(result).toBeNull();
     });
   });
@@ -611,20 +611,20 @@ describe('AccuWeatherClient', () => {
       expect(result.data?.current).toBeDefined();
       expect(result.data?.forecast).toBeUndefined();
       expect(result.data?.text).toContain('Current Conditions');
-      expect(result.data?.text).not.toContain('5-Day Forecast');
+      expect(result.data?.text).not.toContain('10-Day Forecast');
     });
 
     it('should fetch forecast in "forecast" mode', async () => {
       // resolveLocation — city search
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: [sampleLocation] });
-      // get5DayForecast
+      // get10DayForecast
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleForecastResponse });
 
       const result = await accuweatherClient.getWeather('forecast for Seattle', 'testuser', 'forecast');
       expect(result.success).toBe(true);
       expect(result.data?.current).toBeUndefined();
       expect(result.data?.forecast).toBeDefined();
-      expect(result.data?.text).toContain('5-Day Forecast');
+      expect(result.data?.text).toContain('10-Day Forecast');
       expect(result.data?.text).not.toContain('Current Conditions');
     });
 
@@ -633,7 +633,7 @@ describe('AccuWeatherClient', () => {
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: [sampleLocation] });
       // getCurrentConditions
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: [sampleCurrentConditions] });
-      // get5DayForecast
+      // get10DayForecast
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleForecastResponse });
 
       const result = await accuweatherClient.getWeather('weather in Seattle', 'testuser', 'full');
@@ -641,7 +641,7 @@ describe('AccuWeatherClient', () => {
       expect(result.data?.current).toBeDefined();
       expect(result.data?.forecast).toBeDefined();
       expect(result.data?.text).toContain('Current Conditions');
-      expect(result.data?.text).toContain('5-Day Forecast');
+      expect(result.data?.text).toContain('10-Day Forecast');
     });
 
     it('should use default location when prompt has no location', async () => {
@@ -649,7 +649,7 @@ describe('AccuWeatherClient', () => {
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: [sampleLocation] });
       // getCurrentConditions
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: [sampleCurrentConditions] });
-      // get5DayForecast
+      // get10DayForecast
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: sampleForecastResponse });
 
       const result = await accuweatherClient.getWeather('weather', 'testuser');
@@ -671,7 +671,7 @@ describe('AccuWeatherClient', () => {
     it('should return error when forecast fetch fails', async () => {
       // resolveLocation — city search
       mockInstance.get.mockResolvedValueOnce({ status: 200, data: [sampleLocation] });
-      // get5DayForecast — fail
+      // get10DayForecast — fail
       mockInstance.get.mockRejectedValueOnce(new Error('API Error'));
 
       const result = await accuweatherClient.getWeather('forecast for Seattle', 'testuser', 'forecast');
@@ -710,7 +710,7 @@ describe('AccuWeatherClient', () => {
         'forecast'
       );
 
-      expect(text).toContain('5-Day Forecast');
+      expect(text).toContain('10-Day Forecast');
       expect(text).toContain('Expect nice weather next week');
       expect(text).toContain(' 55-75°F ');
       expect(text).toContain('🌤️ ` Day: Partly sunny');
@@ -726,7 +726,7 @@ describe('AccuWeatherClient', () => {
       );
 
       expect(text).toContain('Current Conditions');
-      expect(text).toContain('5-Day Forecast');
+      expect(text).toContain('10-Day Forecast');
     });
 
     it('should show precipitation when present', () => {
@@ -782,7 +782,7 @@ describe('AccuWeatherClient', () => {
         sampleForecastResponse as any
       );
 
-      expect(context).toContain('5-DAY FORECAST:');
+      expect(context).toContain('10-DAY FORECAST:');
       expect(context).toContain('Headline: Expect nice weather next week');
       expect(context).toContain('High: 75°F | Low: 55°F');
       expect(context).toContain('Day: Partly sunny');

@@ -67,7 +67,7 @@ export interface AccuWeatherCurrentConditions {
   Link: string;
 }
 
-/** Single day in AccuWeather 5-day forecast. */
+/** Single day in AccuWeather 10-day forecast. */
 export interface AccuWeatherDailyForecast {
   Date: string;
   Temperature: {
@@ -78,7 +78,7 @@ export interface AccuWeatherDailyForecast {
   Night: { Icon: number; IconPhrase: string; HasPrecipitation: boolean; PrecipitationType?: string; PrecipitationIntensity?: string };
 }
 
-/** AccuWeather 5-day forecast response. */
+/** AccuWeather 10-day forecast response. */
 export interface AccuWeatherForecastResponse {
   Headline: { Text: string; Category: string };
   DailyForecasts: AccuWeatherDailyForecast[];

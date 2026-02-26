@@ -141,7 +141,7 @@ A single weather keyword is configured in `config/tools.default.xml`, routing th
 |---------|----------|
 | `!weather <location>` | Weather details — output type controlled by `ACCUWEATHER_DEFAULT_WEATHER_TYPE` (full, current, or forecast) |
 
-The default weather output type can be changed in the configurator dropdown or via the `ACCUWEATHER_DEFAULT_WEATHER_TYPE` environment variable. It defaults to `full` (current conditions + 5-day forecast).
+The default weather output type can be changed in the configurator dropdown or via the `ACCUWEATHER_DEFAULT_WEATHER_TYPE` environment variable. It defaults to `full` (current conditions + 10-day forecast).
 
 > **Note:** Unlike the `/weather` slash command which falls back to `ACCUWEATHER_DEFAULT_LOCATION`, keyword-based weather commands require a location. Sending just `!weather` with no location will prompt the user to include a query.
 
