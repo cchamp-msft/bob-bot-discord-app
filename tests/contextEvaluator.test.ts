@@ -231,7 +231,7 @@ describe('ContextEvaluator', () => {
     });
 
     it('should return empty array for empty history', async () => {
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+      const tc = makeTool();
 
       const result = await evaluateContextWindow([], 'hello', tc, 'user1');
 
@@ -240,8 +240,8 @@ describe('ContextEvaluator', () => {
     });
 
     it('should return history unchanged when history length <= minDepth', async () => {
-      const history = makeHistory(2);
-      const tc = makeTool({ contextFilterMinDepth: 3, contextFilterMaxDepth: 5 });
+      const history = makeHistory(1);
+      const tc = makeTool();
 
       const result = await evaluateContextWindow(history, 'hello', tc, 'user1');
 
@@ -251,7 +251,7 @@ describe('ContextEvaluator', () => {
 
     it('should select sparse messages via JSON array response', async () => {
       const history = makeHistory(6);
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 6 });
+      const tc = makeTool();
 
       // Select indices 1 and 3 (newest and third-newest)
       mockGenerate.mockResolvedValue({
@@ -271,7 +271,7 @@ describe('ContextEvaluator', () => {
     it('should emit context decision activity event on successful filtering', async () => {
       const { activityEvents } = require('../src/utils/activityEvents');
       const history = makeHistory(6);
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 6 });
+      const tc = makeTool();
 
       mockGenerate.mockResolvedValue({
         success: true,
@@ -287,7 +287,7 @@ describe('ContextEvaluator', () => {
 
     it('should handle legacy integer response (contiguous window)', async () => {
       const history = makeHistory(6);
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 6 });
+      const tc = makeTool();
 
       // Ollama says include 3 messages (legacy integer)
       mockGenerate.mockResolvedValue({
@@ -304,41 +304,40 @@ describe('ContextEvaluator', () => {
       expect(result[2].content).toBe('message 6');
     });
 
-    it('should clamp to minDepth when Ollama returns value below min', async () => {
+    it('should clamp to minDepth=1 when Ollama returns 0', async () => {
       const history = makeHistory(6);
-      const tc = makeTool({ contextFilterMinDepth: 3, contextFilterMaxDepth: 6 });
+      const tc = makeTool();
 
-      // Ollama says include 1, but minDepth is 3
       mockGenerate.mockResolvedValue({
         success: true,
-        data: { text: '1' },
+        data: { text: '0' },
       });
 
       const result = await evaluateContextWindow(history, 'hello', tc, 'user1');
 
-      expect(result).toHaveLength(3);
-      expect(result[0].content).toBe('message 4');
+      expect(result).toHaveLength(1);
+      expect(result[0].content).toBe('message 6');
     });
 
-    it('should clamp to maxDepth when Ollama returns value above max', async () => {
-      const history = makeHistory(10);
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+    it('should clamp to global maxDepth when Ollama returns value above max', async () => {
+      const history = makeHistory(15);
+      const tc = makeTool();
+      // global maxDepth is 10 (mocked)
 
-      // Ollama says include 8, but maxDepth is 5
       mockGenerate.mockResolvedValue({
         success: true,
-        data: { text: '8' },
+        data: { text: '12' },
       });
 
       const result = await evaluateContextWindow(history, 'hello', tc, 'user1');
 
-      expect(result).toHaveLength(5);
+      expect(result).toHaveLength(10);
       expect(result[0].content).toBe('message 6');
     });
 
     it('should fall back to full non-system history when Ollama returns unparseable text', async () => {
       const history = makeHistory(5);
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+      const tc = makeTool();
 
       mockGenerate.mockResolvedValue({
         success: true,
@@ -352,7 +351,7 @@ describe('ContextEvaluator', () => {
 
     it('should fall back to full non-system history when Ollama request fails', async () => {
       const history = makeHistory(5);
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+      const tc = makeTool();
 
       mockGenerate.mockResolvedValue({
         success: false,
@@ -366,7 +365,7 @@ describe('ContextEvaluator', () => {
 
     it('should fall back to full non-system history when requestQueue throws', async () => {
       const history = makeHistory(5);
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+      const tc = makeTool();
 
       mockExecute.mockRejectedValue(new Error('Queue timeout'));
 
@@ -383,7 +382,7 @@ describe('ContextEvaluator', () => {
         { role: 'user', content: 'msg 3' },
         { role: 'assistant', content: 'msg 4' },
       ];
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 4 });
+      const tc = makeTool();
 
       // Select indices 1 and 2 (newest two non-system messages)
       mockGenerate.mockResolvedValue({
@@ -405,7 +404,7 @@ describe('ContextEvaluator', () => {
         { role: 'system', content: 'system msg 1' },
         { role: 'system', content: 'system msg 2' },
       ];
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+      const tc = makeTool();
 
       const result = await evaluateContextWindow(history, 'hello', tc, 'user1');
 
@@ -414,9 +413,9 @@ describe('ContextEvaluator', () => {
       expect(mockExecute).not.toHaveBeenCalled();
     });
 
-    it('should use global maxDepth when contextFilterMaxDepth is not set', async () => {
+    it('should use global maxDepth for candidate window', async () => {
       const history = makeHistory(15);
-      const tc = makeTool({ contextFilterMinDepth: 1 });
+      const tc = makeTool();
       // config.getReplyChainMaxDepth returns 10 (mocked default)
 
       // Ollama says include 7
@@ -427,14 +426,14 @@ describe('ContextEvaluator', () => {
 
       const result = await evaluateContextWindow(history, 'hello', tc, 'user1');
 
-      // Should get 7 messages from the candidate window of 10 (mock default)
+      // Should get 7 messages from the candidate window of 10 (global max)
       expect(result).toHaveLength(7);
       expect(result[0].content).toBe('message 9');
     });
 
-    it('should default minDepth to 1 when not set', async () => {
+    it('should clamp to minDepth=1 when Ollama returns 0 (with 5 messages)', async () => {
       const history = makeHistory(5);
-      const tc = makeTool({ contextFilterMaxDepth: 5 });
+      const tc = makeTool();
 
       // Ollama says include 0
       mockGenerate.mockResolvedValue({
@@ -451,7 +450,7 @@ describe('ContextEvaluator', () => {
 
     it('should use __ctx_eval__ as the queue keyword', async () => {
       const history = makeHistory(5);
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+      const tc = makeTool();
 
       mockGenerate.mockResolvedValue({
         success: true,
@@ -472,7 +471,7 @@ describe('ContextEvaluator', () => {
     it('should select sparse non-contiguous messages correctly', async () => {
       // 6 messages: msg1 (oldest) through msg6 (newest)
       const history = makeHistory(6);
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 6 });
+      const tc = makeTool();
 
       // Select indices 1, 4, 6 — newest, 4th newest, 6th newest (oldest)
       mockGenerate.mockResolvedValue({
@@ -570,8 +569,9 @@ describe('ContextEvaluator', () => {
         })),
       ];
 
-      // maxDepth=5 means candidate window is 5 slots
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 5 });
+      // Set global maxDepth=5 for this test so candidate window is 5 slots
+      jest.mocked(config).getReplyChainMaxDepth.mockReturnValue(5);
+      const tc = makeTool();
 
       // Ollama selects all 5 candidates
       mockGenerate.mockResolvedValue({
@@ -588,7 +588,8 @@ describe('ContextEvaluator', () => {
 
     it('should work correctly with no source metadata (backwards compatible)', async () => {
       const history = makeHistory(6);
-      const tc = makeTool({ contextFilterMinDepth: 1, contextFilterMaxDepth: 4 });
+      jest.mocked(config).getReplyChainMaxDepth.mockReturnValue(4);
+      const tc = makeTool();
 
       mockGenerate.mockResolvedValue({
         success: true,

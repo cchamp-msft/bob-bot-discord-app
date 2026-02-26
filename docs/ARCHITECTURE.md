@@ -197,21 +197,12 @@ Context evaluation is controlled by a **global toggle** (`CONTEXT_EVAL_ENABLED`,
 
 1. After the reply chain / channel / DM history is collected and collated, the context evaluator sends the messages to Ollama along with the current user prompt — when `CONTEXT_EVAL_ENABLED` is `true`.
 2. Ollama determines which of the most recent messages are topically relevant. Messages tagged as primary (reply chain / thread) are signaled as higher-importance.
-3. The most recent `contextFilterMinDepth` messages are **always included**, even if off-topic — this guarantees a baseline of context.
-4. Ollama may include up to `contextFilterMaxDepth` messages total if they remain on-topic.
+3. The most recent message is **always included**, even if off-topic — this guarantees a baseline of context.
+4. Ollama may include up to `REPLY_CHAIN_MAX_DEPTH` messages total if they remain on-topic.
 5. If topics diverge significantly, Ollama is instructed to use the most recent topic and transition naturally.
 6. The evaluator uses **only** its own system prompt — the global persona/system prompt is not included in internal evaluation calls.
 
 Depth is counted from the **newest** message (newest = depth 1), matching the "prioritize newest to oldest" design.
-
-### Per-Tool Depth Overrides
-
-These optional fields in `config/tools.xml` override the global depth defaults for a specific tool:
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `contextFilterMinDepth` | `integer` | `1` | Minimum most-recent messages to always include (>= 1) |
-| `contextFilterMaxDepth` | `integer` | Global `REPLY_CHAIN_MAX_DEPTH` | Maximum messages eligible for inclusion (>= 1) |
 
 ### Where the Evaluator Applies
 

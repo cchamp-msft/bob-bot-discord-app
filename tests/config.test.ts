@@ -1255,66 +1255,6 @@ describe('Config', () => {
     });
   });
 
-  describe('contextFilterMaxDepth normalization on load', () => {
-    const { config } = require('../src/utils/config');
-    const kwPath = path.join(__dirname, '../config/tools.xml');
-    let originalContent: string;
-
-    beforeEach(() => {
-      originalContent = fs.readFileSync(kwPath, 'utf-8');
-    });
-
-    afterEach(() => {
-      // Restore runtime tools.xml and reload
-      fs.writeFileSync(kwPath, originalContent);
-      config.reload();
-    });
-
-    it('should normalize contextFilterMaxDepth of 0 to undefined and log a warning', () => {
-      fs.writeFileSync(
-        kwPath,
-        rawToolsXml(`  <tool>
-    <name>testdepth</name>
-    <api>ollama</api>
-    <timeout>30</timeout>
-    <description>test</description>
-    <contextFilterMaxDepth>0</contextFilterMaxDepth>
-  </tool>`)
-      );
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-
-      config.reload();
-
-      const kw = config.getToolConfig('testdepth');
-      expect(kw).toBeDefined();
-      expect(kw!.contextFilterMaxDepth).toBeUndefined();
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('contextFilterMaxDepth=0 is invalid')
-      );
-
-      warnSpy.mockRestore();
-    });
-
-    it('should accept contextFilterMaxDepth >= 1', () => {
-      fs.writeFileSync(
-        kwPath,
-        rawToolsXml(`  <tool>
-    <name>testdepth</name>
-    <api>ollama</api>
-    <timeout>30</timeout>
-    <description>test</description>
-    <contextFilterMaxDepth>3</contextFilterMaxDepth>
-  </tool>`)
-      );
-
-      config.reload();
-
-      const kw = config.getToolConfig('testdepth');
-      expect(kw).toBeDefined();
-      expect(kw!.contextFilterMaxDepth).toBe(3);
-    });
-  });
-
   describe('default workflow getters', () => {
     const { config } = require('../src/utils/config');
 
