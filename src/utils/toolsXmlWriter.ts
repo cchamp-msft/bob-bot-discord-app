@@ -53,10 +53,6 @@ function buildToolObject(tc: ToolConfig): Record<string, unknown> {
     obj.parameters = buildParametersObject(tc.abilityInputs, tc.parameters);
   }
 
-  // Context filter
-  if (tc.contextFilterMinDepth !== undefined) obj.contextFilterMinDepth = tc.contextFilterMinDepth;
-  if (tc.contextFilterMaxDepth !== undefined) obj.contextFilterMaxDepth = tc.contextFilterMaxDepth;
-
   // Retry
   if (tc.retry) {
     const r: Record<string, unknown> = {};

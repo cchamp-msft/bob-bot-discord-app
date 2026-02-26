@@ -69,7 +69,6 @@
         <example>get_current_weather London, UK</example>
       </examples>
     </parameters>
-    <contextFilterMaxDepth>1</contextFilterMaxDepth>
   </tool>
 
   <!-- NFL tool -->
@@ -120,7 +119,6 @@
         <example>web_search Super Bowl winner 2026</example>
       </examples>
     </parameters>
-    <contextFilterMaxDepth>1</contextFilterMaxDepth>
   </tool>
 
   <!-- Meme tools -->
@@ -144,7 +142,6 @@
         <example>generate_meme one does not simply | walk into mordor</example>
       </examples>
     </parameters>
-    <contextFilterMaxDepth>1</contextFilterMaxDepth>
   </tool>
 
   <tool>
