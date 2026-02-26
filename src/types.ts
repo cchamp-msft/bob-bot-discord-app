@@ -390,7 +390,7 @@ export interface PipelineContext {
   sourceMessage: import('discord.js').Message;
   /** Conversation history (oldest→newest), built once at pipeline start. */
   conversationHistory: ChatMessage[];
-  /** Stage 1 draft response text from Ollama. */
+  /** Stage 1 response text from Ollama (captured for final-pass context). */
   stage1Draft?: string;
   /** Tool invocations requested by Stage 1. */
   stage1ToolInvocations: ToolInvocation[];

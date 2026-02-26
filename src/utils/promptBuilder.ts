@@ -820,12 +820,12 @@ export function assembleReprompt(options: PromptBuildOptions): AssembledPrompt {
 // ── Unified pipeline reprompt builder ─────────────────────────────
 
 /**
- * Options for building the lightweight unified pipeline Stage 3 prompt.
+ * Options for building the unified pipeline Stage 3 prompt.
  */
 export interface UnifiedRepromptOptions {
   /** The original user message. */
   userMessage: string;
-  /** Stage 1 draft response from the tool-evaluation model. */
+  /** Stage 1 response text captured from the tool-evaluation model (may be empty). */
   draftResponse?: string;
   /** Combined external data from tool invocations. */
   externalData?: string;
@@ -833,26 +833,31 @@ export interface UnifiedRepromptOptions {
   botDisplayName?: string;
   /** Requester display name. */
   requesterName?: string;
+  /** Full conversation history (oldest-to-newest) for context continuity. */
+  conversationHistory?: ChatMessage[];
 }
 
 /**
- * Build a lightweight reprompt for the unified pipeline's Stage 3.
+ * Build the reprompt for the unified pipeline's Stage 3.
  *
- * Unlike `assembleReprompt()`, this does NOT re-pass the full
- * conversation history — the Stage 1 draft already incorporated that
- * context. Stage 3 receives only:
+ * Includes full conversation history (when provided) so the final-pass
+ * model has the same context breadth as Stage 1. Additionally receives:
  * - `<current_question>` — original user message
- * - `<draft_response>` — Stage 1's draft
+ * - `<draft_response>` — Stage 1 response (when captured)
  * - `<external_data>` — combined tool results
  * - Requester/bot identity + datetime
  * - System prompt + OLLAMA_FINAL_PASS_PROMPT
  */
 export function assembleUnifiedReprompt(options: UnifiedRepromptOptions): AssembledPrompt {
-  const { userMessage, draftResponse, externalData, botDisplayName, requesterName } = options;
+  const { userMessage, draftResponse, externalData, botDisplayName, requesterName, conversationHistory } = options;
   const persona = config.getOllamaSystemPrompt();
   const systemContent = persona;
 
-  const botName = inferBotName(botDisplayName);
+  const filtered = (conversationHistory ?? []).filter(m => m.role !== 'system');
+  const { historyInnerXml, botName } = formatConversationHistoryForReprompt(
+    filtered,
+    botDisplayName,
+  );
 
   const parts: string[] = [];
 
@@ -866,7 +871,7 @@ export function assembleUnifiedReprompt(options: UnifiedRepromptOptions): Assemb
   // ── <current_datetime> ──
   parts.push(getCurrentDateTimeTag());
 
-  // ── <draft_response> (Stage 1's initial answer/plan) ──
+  // ── <draft_response> (Stage 1 response, when captured) ──
   if (draftResponse) {
     parts.push(`<draft_response>\n${escapeXmlContent(draftResponse)}\n</draft_response>`);
   }
@@ -874,6 +879,14 @@ export function assembleUnifiedReprompt(options: UnifiedRepromptOptions): Assemb
   // ── <external_data> (tool results from Stage 2) ──
   if (externalData) {
     parts.push(`<external_data>\n${externalData}\n</external_data>`);
+  }
+
+  // ── <conversation_history> (full context for continuity) ──
+  if (historyInnerXml) {
+    const epochSeconds = Math.floor(Date.now() / 1000);
+    parts.push(`<conversation_history current_timestamp="${epochSeconds}">\n${historyInnerXml}\n</conversation_history>`);
+  } else {
+    parts.push('<conversation_history>\n</conversation_history>');
   }
 
   const userContent = parts.join('\n');
