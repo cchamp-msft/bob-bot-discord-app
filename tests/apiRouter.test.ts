@@ -1518,7 +1518,6 @@ describe('ApiRouter', () => {
           validation: 'Output must be: templateName | top text | bottom text.',
           examples: ['meme drake | studying for exams | browsing memes'],
         },
-        contextFilterMaxDepth: 1,
       };
 
       it('should include template list in system prompt for meme tool', async () => {

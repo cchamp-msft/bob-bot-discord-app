@@ -21,8 +21,6 @@ Tools define how the bot routes requests to different APIs. They can be configur
 | `<enabled>` | `boolean` | Whether the tool is active (default: `true`). |
 | `<builtin>` | `boolean` | Built-in tools cannot be edited or deleted — only toggled on/off. |
 | `<retry>` | `element` | Per-tool retry override. Child elements: `<enabled>`, `<maxRetries>` (0-10), `<model>`, `<prompt>`. |
-| `<contextFilterMinDepth>` | `number` | Per-tool override: minimum context messages to always include (>= 1). |
-| `<contextFilterMaxDepth>` | `number` | Maximum context messages eligible for inclusion (>= 1). |
 
 ### Parameters Configuration
 
@@ -75,7 +73,6 @@ Named parameters are child elements within `<parameters>`, each containing `<typ
       <example>weather 90210</example>
     </examples>
   </parameters>
-  <contextFilterMaxDepth>1</contextFilterMaxDepth>
 </tool>
 ```
 
@@ -100,19 +97,6 @@ Example with final Ollama pass:
   </parameters>
   <finalOllamaPass>true</finalOllamaPass>
   <allowEmptyContent>true</allowEmptyContent>
-</tool>
-```
-
-Example with per-tool context depth overrides (context evaluation is a global toggle — see [Context Evaluation](#context-evaluation)):
-
-```xml
-<tool>
-  <name>nfl scores</name>
-  <api>nfl</api>
-  <timeout>30</timeout>
-  <description>Get current NFL game scores</description>
-  <contextFilterMinDepth>2</contextFilterMinDepth>
-  <contextFilterMaxDepth>8</contextFilterMaxDepth>
 </tool>
 ```
 
@@ -149,29 +133,20 @@ Context evaluation is controlled by **global** environment variables (or the con
 | `CONTEXT_EVAL_PROMPT` | Built-in relevance prompt | System prompt for the context evaluator |
 | `CONTEXT_EVAL_CONTEXT_SIZE` | `2048` | `num_ctx` context window size for evaluation (256–131072) |
 
-### Per-Tool Depth Overrides
-
-Individual tools can override the default min/max depth via `<contextFilterMinDepth>` and `<contextFilterMaxDepth>` in `config/tools.xml`. These only take effect when context evaluation is globally enabled.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `contextFilterMinDepth` | `integer` | `1` | Minimum recent messages to always include |
-| `contextFilterMaxDepth` | `integer` | Global `REPLY_CHAIN_MAX_DEPTH` | Maximum messages eligible for inclusion |
-
 ### How It Works
 
 1. The bot collects reply chain, channel, and/or DM history as usual
 2. If `CONTEXT_EVAL_ENABLED` is `true`, the context evaluator analyzes the collected history
 3. Ollama determines which recent messages are topically relevant
-4. The most recent `contextFilterMinDepth` messages are **always included**
-5. Up to `contextFilterMaxDepth` messages total may be included if they remain on-topic
+4. The most recent message is **always included**, even if off-topic
+5. Up to `REPLY_CHAIN_MAX_DEPTH` messages total may be included if they remain on-topic
 6. If topics diverge, Ollama uses the most recent topic and transitions naturally
 
 ### Best Practices
 
 - **Leave enabled for conversational use**: Context evaluation benefits multi-turn conversations the most
 - **Disable for performance**: If latency is critical, disable globally — the full history is passed through instead
-- **Tune depth limits**: Higher `contextFilterMaxDepth` allows more context but adds processing time
+- **Tune depth via `REPLY_CHAIN_MAX_DEPTH`**: Higher values allow more context but add processing time
 - **Consider token budgets**: Context evaluation adds one Ollama call per request
 
 ## Debug Logging

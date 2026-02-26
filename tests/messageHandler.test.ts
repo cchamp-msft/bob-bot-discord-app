@@ -1861,7 +1861,7 @@ describe('MessageHandler SerpAPI second opinion — AIO fallback behavior', () =
 describe('MessageHandler SerpAPI find content tool routing', () => {
   const mockExecuteRoutedRequest = executeRoutedRequest as jest.MockedFunction<typeof executeRoutedRequest>;
 
-  const findContentKw = { name: '!find content', api: 'serpapi' as const, timeout: 60, description: 'Find pertinent web content', contextFilterMaxDepth: 1 };
+  const findContentKw = { name: '!find content', api: 'serpapi' as const, timeout: 60, description: 'Find pertinent web content' };
 
   function createMentionedMessage(content: string): any {
     const botUserId = 'bot-123';
@@ -2713,8 +2713,6 @@ describe('MessageHandler — Context Evaluation integration', () => {
     api: 'ollama' as const,
     timeout: 300,
     description: 'Chat',
-    contextFilterMinDepth: 1,
-    contextFilterMaxDepth: 5,
   };
 
   function createMentionedMsg(content: string, hasReference = false) {
@@ -3160,7 +3158,7 @@ describe('MessageHandler collectChannelHistory — parameterized depth', () => {
   });
 });
 
-describe('MessageHandler guild context — maxContextDepth = min(tool, global)', () => {
+describe('MessageHandler guild context — uses global maxDepth', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
@@ -3168,14 +3166,12 @@ describe('MessageHandler guild context — maxContextDepth = min(tool, global)',
     (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
   });
 
-  it('should cap collated context at min(toolMax, globalMax)', async () => {
-    // Tool has contextFilterMaxDepth = 5, global = 30 → effective = 5
+  it('should use global maxDepth for context collection', async () => {
     const kw = {
       name: '!chat',
       api: 'ollama' as const,
       timeout: 300,
       description: 'Chat',
-      contextFilterMaxDepth: 5,
     };
     (config.getTools as jest.Mock).mockReturnValue([kw]);
 
@@ -3194,7 +3190,6 @@ describe('MessageHandler guild context — maxContextDepth = min(tool, global)',
       data: { text: 'Response!' },
     });
 
-    // Create 10 channel messages — more than the tool max of 5
     const channelMessages = new Map(
       Array.from({ length: 10 }, (_, i) => [
         `ch-${i}`,
@@ -3237,15 +3232,9 @@ describe('MessageHandler guild context — maxContextDepth = min(tool, global)',
 
     await messageHandler.handleMessage(msg as any);
 
-    // The evaluator should have been called with at most 5 messages
-    if (mockEvaluate.mock.calls.length > 0) {
-      const historyArg = mockEvaluate.mock.calls[0][0];
-      expect(historyArg.length).toBeLessThanOrEqual(5);
-    }
-
-    // channel.messages.fetch should use tool max (5+1=6), not global (30+1=31)
+    // channel.messages.fetch should use global max (30+1=31)
     expect(msg.channel.messages.fetch).toHaveBeenCalledWith({
-      limit: 6,
+      limit: 31,
       before: 'trigger-msg',
     });
   });
