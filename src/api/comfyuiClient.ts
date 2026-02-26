@@ -1081,20 +1081,29 @@ class ComfyUIClient {
       const promptId: string = submitResponse.data.prompt_id;
       logger.logReply(requester, `ComfyUI prompt submitted: ${promptId}`);
 
-      // Step 2: Wait for execution via WebSocket (real-time updates)
-      // Falls back to HTTP polling if WebSocket is unavailable or fails
+      // Step 2: Wait for execution via WebSocket + polling in parallel.
+      // WebSocket gives real-time progress; polling is the reliable fallback.
+      // We race both so that if the WS silently fails to deliver messages,
+      // polling picks up the completed result within seconds.
       const executionTimeoutMs = timeoutSeconds
         ? timeoutSeconds * 1000
         : ComfyUIClient.EXECUTION_TIMEOUT_MS;
 
       let historyData: Record<string, unknown> | null = null;
 
+      // Controller to cancel the losing branch of the race
+      const raceController = new AbortController();
+      const raceSignal = signal
+        ? AbortSignal.any([signal, raceController.signal])
+        : raceController.signal;
+
       if (wsConnected) {
+        // ── Parallel: WS wait + polling race ──
         let lastLoggedPercent = -1;
-        const executionResult = await this.wsManager.waitForExecution({
+        const wsPromise = this.wsManager.waitForExecution({
           promptId,
           timeoutMs: executionTimeoutMs,
-          signal,
+          signal: raceSignal,
           onProgress: (value, max, nodeId) => {
             // Throttle progress logging: only log at 0%, every 25%, and 100%
             const percent = max > 0 ? Math.floor((value / max) * 100) : 0;
@@ -1111,49 +1120,60 @@ class ComfyUIClient {
           },
         });
 
-        if (executionResult.success && executionResult.completed) {
-          // WebSocket confirmed completion — fetch history
-          historyData = await this.fetchHistory(promptId, signal);
-          if (!historyData) {
-            // History may not be available yet (race between WS completion and /history);
-            // fall back to polling with the remaining budget.
-            const remainingMs = Math.max(0, executionTimeoutMs - (executionResult.elapsedMs ?? 0));
-            if (remainingMs > 0) {
-              logger.log('success', requester, `History not yet available after WS completion, polling (${Math.round(remainingMs / 1000)}s remaining)`);
-              historyData = await this.pollForCompletion(promptId, signal, remainingMs);
-            }
-          }
-        } else if (executionResult.completed && executionResult.error) {
-          // ComfyUI reported an execution error (e.g. missing model) — terminal, no fallback
-          logger.logError(requester, executionResult.error);
-          return { success: false, error: executionResult.error };
-        } else if (executionResult.error === 'Execution aborted') {
-          // User/system abort — terminal, no fallback
-          logger.logError(requester, 'ComfyUI generation aborted');
-          return { success: false, error: 'ComfyUI generation aborted' };
-        } else {
-          // WS transport failure or WS timeout — fall back to polling with remaining time
-          const remainingMs = Math.max(0, executionTimeoutMs - (executionResult.elapsedMs ?? 0));
-          if (remainingMs <= 0) {
-            const errorMsg = 'ComfyUI generation timed out waiting for results';
-            logger.logError(requester, errorMsg);
-            return { success: false, error: errorMsg };
-          }
+        const pollPromise = this.pollForCompletion(promptId, raceSignal, executionTimeoutMs);
 
-          // Before polling, check if ComfyUI is still alive — if the server crashed
-          // (e.g. WS close code 1006), polling will never succeed.
-          const healthy = await this.isHealthy();
-          if (!healthy) {
-            const errorMsg = 'ComfyUI server is unreachable after WebSocket disconnection — the server likely crashed during execution';
-            logger.logError(requester, errorMsg);
-            return { success: false, error: errorMsg };
-          }
+        // Wrap each branch into a common result shape for Promise.race
+        type RaceResult =
+          | { source: 'ws'; history: Record<string, unknown> | null; error?: string }
+          | { source: 'poll'; history: Record<string, unknown> | null }
+          | { source: 'ws-error'; error: string; terminal: boolean };
 
-          logger.logError(requester, `WebSocket wait failed (${executionResult.error}), falling back to polling (${Math.round(remainingMs / 1000)}s remaining)`);
-          historyData = await this.pollForCompletion(promptId, signal, remainingMs);
+        const wsBranch: Promise<RaceResult> = wsPromise.then(async (executionResult) => {
+          if (executionResult.completed && executionResult.error) {
+            // Execution error (missing model, etc.) — terminal
+            return { source: 'ws-error' as const, error: executionResult.error, terminal: true };
+          }
+          if (executionResult.error === 'Execution aborted') {
+            return { source: 'ws-error' as const, error: 'ComfyUI generation aborted', terminal: true };
+          }
+          if (executionResult.success && executionResult.completed) {
+            logger.log('success', requester, 'WebSocket detected completion, fetching history');
+            const history = await this.fetchHistory(promptId, signal);
+            return { source: 'ws' as const, history };
+          }
+          // WS transport failure or timeout — don't resolve the race,
+          // let the poll branch win (it's already running).
+          // But log it so we have diagnostics.
+          logger.logError(requester, `WebSocket wait ended without completion: ${executionResult.error ?? 'unknown'}`);
+          // Return a non-winning result; poll branch will win the race
+          return new Promise<RaceResult>(() => {});
+        });
+
+        const pollBranch: Promise<RaceResult> = pollPromise.then((history) => {
+          if (history) {
+            logger.log('success', requester, 'Polling detected completion');
+          }
+          return { source: 'poll' as const, history };
+        });
+
+        const raceResult = await Promise.race([wsBranch, pollBranch]);
+        // Cancel the losing branch
+        raceController.abort();
+
+        if (raceResult.source === 'ws-error') {
+          logger.logError(requester, raceResult.error);
+          return { success: false, error: raceResult.error };
+        }
+
+        historyData = raceResult.history;
+
+        // If WS won but history wasn't ready yet, do a quick poll
+        if (!historyData && raceResult.source === 'ws') {
+          logger.log('success', requester, 'History not yet available after WS completion, brief poll');
+          historyData = await this.pollForCompletion(promptId, signal, 15_000);
         }
       } else {
-        // No WebSocket available — use polling
+        // No WebSocket available — use polling only
         logger.log('success', requester, 'Using HTTP polling for ComfyUI execution tracking');
         historyData = await this.pollForCompletion(promptId, signal, executionTimeoutMs);
       }

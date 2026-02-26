@@ -913,8 +913,8 @@ describe('ComfyUIClient', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Model not found');
-      // Should NOT have attempted polling
-      expect(mockInstance.get).not.toHaveBeenCalled();
+      // Polling runs in parallel but should be aborted quickly after WS error wins the race.
+      // The important assertion is the correct error above — polling may have started before abort.
     });
 
     it('should return abort-specific error when generation is aborted', async () => {
@@ -941,8 +941,7 @@ describe('ComfyUIClient', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('ComfyUI generation aborted');
-      // Should NOT have attempted polling
-      expect(mockInstance.get).not.toHaveBeenCalled();
+      // Polling runs in parallel but should be aborted quickly after WS abort wins the race.
     });
 
     it('should reject workflow with no output nodes before submitting to ComfyUI', async () => {
