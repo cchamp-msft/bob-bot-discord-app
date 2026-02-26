@@ -510,9 +510,7 @@ class MessageHandler {
         conversationHistory = await this.collectDmHistory(message);
       } else {
         // Guild: collect reply chain + channel history
-        const toolMax = toolConfig.contextFilterMaxDepth ?? config.getReplyChainMaxDepth();
-        const globalMax = config.getReplyChainMaxDepth();
-        const maxContextDepth = Math.min(toolMax, globalMax);
+        const maxContextDepth = config.getReplyChainMaxDepth();
         const maxTotalChars = config.getReplyChainMaxTokens();
 
         let replyChain: ChatMessage[] = [];
@@ -1183,18 +1181,18 @@ class MessageHandler {
   /**
    * Unified pipeline: cumulative context building with 1-2 Ollama calls.
    *
-   * Stage 1 — Draft + Tool Selection (1 Ollama call):
+   * Stage 1 — Tool Evaluation + Response (1 Ollama call):
    *   Full conversation history + abilities in a single call. The model
-   *   produces a draft response and any tool selections via native tool_calls.
+   *   produces a response and any tool selections via native tool_calls.
    *
    * Stage 2 — Parallel Tool Execution (0 Ollama calls):
    *   All tool invocations run in parallel via Promise.all (requestQueue
    *   enforces per-API serialization internally).
    *
-   * Stage 3 — Final Pass with Cumulative Context (0-1 Ollama calls):
+   * Stage 3 — Final Pass with Full Context (0-1 Ollama calls):
    *   Only runs when the final pass model differs from the tool model,
-   *   or when tools produced external data. Uses a lightweight prompt
-   *   that excludes conversation history (already baked into Stage 1 draft).
+   *   or when tools produced external data. Includes full conversation
+   *   history alongside any captured Stage 1 response and tool results.
    */
   private async executeUnifiedPipeline(
     ctx: PipelineContext,
@@ -1214,8 +1212,8 @@ class MessageHandler {
       },
     ];
 
-    // ── Stage 1: Draft + Tool Selection ──────────────────────────
-    logger.log('success', 'system', 'UNIFIED: Stage 1 — Draft + tool selection');
+    // ── Stage 1: Tool Evaluation + Response ─────────────────────
+    logger.log('success', 'system', 'UNIFIED: Stage 1 — Tool evaluation + response');
 
     const tools = buildOllamaToolsSchema(config.getTools());
     const useToolsPath = tools.length > 0;
@@ -1278,7 +1276,7 @@ class MessageHandler {
 
     const hasTools = toolCalls.length > 0 || legacyParsedTool !== null;
 
-    // ── Fast path: no tools, same model → Stage 1 draft IS the final response ──
+    // ── Fast path: no tools, same model → Stage 1 response IS the final response ──
     if (!hasTools && !config.needsSeparateFinalPass()) {
       logger.log('success', 'system', `UNIFIED: Fast path — no tools, same model → 1 Ollama call total`);
       await this.dispatchResponse(ollamaResult, 'ollama', ctx.sourceMessage, ctx.requester, ctx.isDM);
@@ -1338,8 +1336,8 @@ class MessageHandler {
       .map(r => r.externalData!);
 
     if (externalDataParts.length === 0 && toolCalls.length > 0) {
-      // All tools failed — return the Stage 1 draft as-is
-      logger.logWarn('system', 'UNIFIED: All tool calls failed — returning Stage 1 draft');
+      // All tools failed — return the Stage 1 response as-is
+      logger.logWarn('system', 'UNIFIED: All tool calls failed — returning Stage 1 response');
       await this.dispatchResponse(ollamaResult, 'ollama', ctx.sourceMessage, ctx.requester, ctx.isDM);
       return;
     }
@@ -1426,7 +1424,7 @@ class MessageHandler {
 
   /**
    * Run the unified pipeline's Stage 3 final pass.
-   * Uses a lightweight prompt without full conversation history.
+   * Includes full conversation history for context continuity.
    */
   private async runUnifiedFinalPass(
     ctx: PipelineContext,
@@ -1436,12 +1434,24 @@ class MessageHandler {
     logger.log('success', 'system', 'UNIFIED-FINAL: Running Stage 3 final pass');
     activityEvents.emitFinalPassThought(externalData ? 'tools' : 'chat');
 
+    const historyWithTrigger: ChatMessage[] = [
+      ...ctx.conversationHistory,
+      {
+        role: 'user' as const,
+        content: `${ctx.requester}: ${ctx.rawContent}`,
+        contextSource: 'trigger' as const,
+        hasNamePrefix: true,
+        createdAtMs: ctx.sourceMessage.createdTimestamp,
+      },
+    ];
+
     const reprompt = assembleUnifiedReprompt({
       userMessage: ctx.rawContent,
       draftResponse: ctx.stage1Draft,
       externalData,
       botDisplayName: ctx.botDisplayName,
       requesterName: ctx.requester,
+      conversationHistory: historyWithTrigger,
     });
 
     const finalPassPrompt = config.getOllamaFinalPassPrompt();
@@ -1471,7 +1481,7 @@ class MessageHandler {
       ctx.ollamaCallCount++;
 
       if (!finalResult.success) {
-        logger.logWarn('system', `UNIFIED-FINAL: Final pass failed: ${finalResult.error} — falling back to Stage 1 draft`);
+        logger.logWarn('system', `UNIFIED-FINAL: Final pass failed: ${finalResult.error} — falling back to Stage 1 response`);
         return null;
       }
 
@@ -1479,7 +1489,7 @@ class MessageHandler {
       return finalResult;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      logger.logError('system', `UNIFIED-FINAL: Final pass error: ${msg} — falling back to Stage 1 draft`);
+      logger.logError('system', `UNIFIED-FINAL: Final pass error: ${msg} — falling back to Stage 1 response`);
       return null;
     }
   }
