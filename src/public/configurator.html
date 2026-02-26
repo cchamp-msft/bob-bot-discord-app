@@ -512,10 +512,6 @@
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
   .bot-controls .spacer { flex: 1; }
   .btn-ok { background: var(--ok); color: #fff; }
-  .kw-ctx-label { font-size: 0.72em; color: var(--text-dim); vertical-align: middle; }
-  .kw-ctx-depth-stacked { display: flex; flex-direction: column; gap: 4px; }
-  .kw-ctx-row { display: flex; align-items: center; gap: 4px; }
-  .kw-ctx-row .kw-ctx-label { min-width: 26px; text-align: right; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 </head>
@@ -638,7 +634,7 @@
 
         <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px;padding-left:8px">Context Evaluation</div>
         <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
-          When enabled, the bot uses Ollama to filter collected conversation history to the messages most relevant to the current prompt before building the two-stage (abilities) prompt. This is a <strong>global</strong> setting; per-tool Ctx Eval has been removed.
+          When enabled, the bot uses Ollama to filter collected conversation history to the messages most relevant to the current prompt before building the two-stage (abilities) prompt. Depth limits are controlled globally via Reply Chain Max Depth.
         </p>
         <div class="field-row">
           <div class="field narrow">
@@ -1249,8 +1245,7 @@ flowchart TD
               <th title="Request timeout in seconds">Timeout (s)</th>
               <th title="Human-readable description; used as ability context when Ability is checked">Description</th>
               <th title="When checked, this tool's description is included in Ollama's abilities context so it can suggest using this API without the tool being typed" style="text-align:center">Ability ℹ️</th>
-              <!-- Removed per-tool Ctx Eval column -->
-              <th title="Per-tool min/max depth overrides for Ollama context evaluation" style="text-align:center">Ctx Depth ℹ️</th>
+              <!-- Removed per-tool Ctx Eval and Ctx Depth columns -->
               <th></th>
               <th></th>
             </tr>
@@ -1718,13 +1713,7 @@ flowchart TD
       <td><input type="number" class="kw-timeout" value="${kw?.timeout || 300}" style="width:70px"></td>
       <td><input type="text" class="kw-desc" value="${esc(kw?.description || '')}" placeholder="description"></td>
       <td style="text-align:center"><input type="checkbox" class="kw-ability" ${kw?.abilityText ? 'checked' : ''} title="Include this tool as an ability in Ollama context"></td>
-      <!-- Removed per-tool Ctx Eval checkbox -->
-      <td style="text-align:center">
-        <span class="kw-ctx-depth kw-ctx-depth-stacked">
-          <span class="kw-ctx-row"><span class="kw-ctx-label">Min</span> <input type="number" class="kw-ctxMin" value="${kw?.contextFilterMinDepth ?? ''}" min="1" style="width:50px" title="Min depth — always included (default: 1)" placeholder="1"></span>
-          <span class="kw-ctx-row"><span class="kw-ctx-label">Max</span> <input type="number" class="kw-ctxMax" value="${kw?.contextFilterMaxDepth ?? ''}" min="1" style="width:50px" title="Max depth — max messages eligible (default: global reply chain max)" placeholder="auto"></span>
-        </span>
-      </td>
+      <!-- Removed per-tool Ctx Eval and Ctx Depth controls -->
       <td>${isBuiltin ? '' : '<button class="btn-danger btn-sm" onclick="removeToolRow(this)">✕</button>'}</td>
       <td><button class="kw-expand-btn" title="Show/hide advanced fields" onclick="toggleKwDetails(this)">▸</button></td>
     `;
@@ -1888,8 +1877,6 @@ flowchart TD
       if (kw.description) xml += `    <description>${escXml(kw.description)}</description>\n`;
       if (kw.builtin) xml += '    <builtin>true</builtin>\n';
       if (kw.enabled === false) xml += '    <enabled>false</enabled>\n';
-      if (kw.contextFilterMinDepth) xml += `    <contextFilterMinDepth>${kw.contextFilterMinDepth}</contextFilterMinDepth>\n`;
-      if (kw.contextFilterMaxDepth) xml += `    <contextFilterMaxDepth>${kw.contextFilterMaxDepth}</contextFilterMaxDepth>\n`;
       if (kw.allowEmptyContent === true) xml += '    <allowEmptyContent>true</allowEmptyContent>\n';
       else if (kw.allowEmptyContent === false) xml += '    <allowEmptyContent>false</allowEmptyContent>\n';
       if (kw.abilityText) xml += `    <abilityText>${escXml(kw.abilityText)}</abilityText>\n`;
@@ -1978,10 +1965,6 @@ flowchart TD
 
       // Main row fields
       const isAbility = row.querySelector('.kw-ability').checked;
-      const minD = parseInt(row.querySelector('.kw-ctxMin').value, 10);
-      const maxD = parseInt(row.querySelector('.kw-ctxMax').value, 10);
-      if (!isNaN(minD) && minD >= 1) entry.contextFilterMinDepth = minD;
-      if (!isNaN(maxD) && maxD >= 1) entry.contextFilterMaxDepth = maxD;
       if (isBuiltin) entry.builtin = true;
       if (!isEnabled) entry.enabled = false;
 

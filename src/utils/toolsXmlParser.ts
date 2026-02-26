@@ -110,36 +110,6 @@ function parseToolElement(raw: Record<string, unknown>, index: number): ToolConf
     tc.builtin = parseBool(raw.builtin, `tool "${name}" <builtin>`);
   }
 
-  // Context filter fields
-  if (raw.contextFilterMinDepth !== undefined) {
-    const v = Number(raw.contextFilterMinDepth);
-    if (isNaN(v) || v < 1 || !Number.isInteger(v)) {
-      throw new Error(`tools.xml: tool "${name}" has invalid <contextFilterMinDepth> — must be a positive integer (>= 1)`);
-    }
-    tc.contextFilterMinDepth = v;
-  }
-  if (raw.contextFilterMaxDepth !== undefined) {
-    const v = Number(raw.contextFilterMaxDepth);
-    if (isNaN(v) || !Number.isInteger(v)) {
-      throw new Error(`tools.xml: tool "${name}" has invalid <contextFilterMaxDepth> — must be a positive integer (>= 1)`);
-    }
-    tc.contextFilterMaxDepth = v;
-  }
-  if (raw.contextFilterMinDepth !== undefined) {
-    const v = Number(raw.contextFilterMinDepth);
-    if (isNaN(v) || v < 1 || !Number.isInteger(v)) {
-      throw new Error(`tools.xml: tool "${name}" has invalid <contextFilterMinDepth> — must be a positive integer (>= 1)`);
-    }
-    tc.contextFilterMinDepth = v;
-  }
-  if (raw.contextFilterMaxDepth !== undefined) {
-    const v = Number(raw.contextFilterMaxDepth);
-    if (isNaN(v) || !Number.isInteger(v)) {
-      throw new Error(`tools.xml: tool "${name}" has invalid <contextFilterMaxDepth> — must be an integer`);
-    }
-    tc.contextFilterMaxDepth = v;
-  }
-
   // Retry block
   if (raw.retry !== undefined) {
     const r = raw.retry as Record<string, unknown>;

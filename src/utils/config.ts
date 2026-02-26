@@ -83,10 +83,6 @@ export interface ToolConfig {
   /** OpenAI-style parameter definitions for the XML tools format.
    *  Stored for faithful round-trip when writing back to tools.xml. */
   parameters?: Record<string, ToolParameter>;
-  /** Minimum number of most-recent context messages to always include (depth counted from newest). Must be >= 1. Defaults to 1. */
-  contextFilterMinDepth?: number;
-  /** Maximum number of context messages eligible for inclusion (depth counted from newest). Defaults to global reply-chain max depth. */
-  contextFilterMaxDepth?: number;
 }
 
 /** @deprecated Use ToolConfig instead. */
@@ -142,19 +138,6 @@ class Config {
     try {
       const data = fs.readFileSync(toolsPath, 'utf-8');
       const configData: ConfigData = { tools: parseToolsXml(data) };
-
-      for (const entry of configData.tools) {
-        // Post-parse validation: contextFilterMaxDepth < 1 treated as unset
-        if (entry.contextFilterMaxDepth !== undefined && entry.contextFilterMaxDepth < 1) {
-          logger.logWarn('config', `tool "${entry.name}": contextFilterMaxDepth=${entry.contextFilterMaxDepth} is invalid (≥ 1 required) — treating as unset (global default will be used)`);
-          delete entry.contextFilterMaxDepth;
-        }
-        if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMaxDepth !== undefined) {
-          if (entry.contextFilterMinDepth > entry.contextFilterMaxDepth) {
-            throw new Error(`tools.xml: tool "${entry.name}" has contextFilterMinDepth (${entry.contextFilterMinDepth}) greater than contextFilterMaxDepth (${entry.contextFilterMaxDepth})`);
-          }
-        }
-      }
 
       // Enforce: custom "help" tool is only allowed when the built-in help tool is disabled
       const helpTool = `${COMMAND_PREFIX}help`;

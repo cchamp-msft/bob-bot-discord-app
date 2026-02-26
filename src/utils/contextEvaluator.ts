@@ -185,8 +185,8 @@ export async function evaluateContextWindow(
     return [];
   }
 
-  const minDepth = toolConfig.contextFilterMinDepth ?? 1;
-  const maxDepth = toolConfig.contextFilterMaxDepth ?? config.getReplyChainMaxDepth();
+  const minDepth = 1;
+  const maxDepth = config.getReplyChainMaxDepth();
 
   // If history is already within minDepth, no filtering needed
   if (nonSystemMessages.length <= minDepth) {

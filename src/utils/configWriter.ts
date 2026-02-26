@@ -270,21 +270,6 @@ class ConfigWriter {
         if (entry.builtin !== undefined && typeof entry.builtin !== 'boolean') {
           throw new Error(`Tool "${entry.name}" has invalid builtin — must be a boolean`);
         }
-        if (entry.contextFilterMinDepth !== undefined) {
-          if (typeof entry.contextFilterMinDepth !== 'number' || entry.contextFilterMinDepth < 1 || !Number.isInteger(entry.contextFilterMinDepth)) {
-            throw new Error(`Tool "${entry.name}" has invalid contextFilterMinDepth — must be a positive integer (>= 1)`);
-          }
-        }
-        if (entry.contextFilterMaxDepth !== undefined) {
-          if (typeof entry.contextFilterMaxDepth !== 'number' || entry.contextFilterMaxDepth < 1 || !Number.isInteger(entry.contextFilterMaxDepth)) {
-            throw new Error(`Tool "${entry.name}" has invalid contextFilterMaxDepth — must be a positive integer (>= 1)`);
-          }
-        }
-        if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMaxDepth !== undefined) {
-          if (entry.contextFilterMinDepth > entry.contextFilterMaxDepth) {
-            throw new Error(`Tool "${entry.name}" has contextFilterMinDepth (${entry.contextFilterMinDepth}) greater than contextFilterMaxDepth (${entry.contextFilterMaxDepth})`);
-          }
-        }
       }
 
       // Enforce: custom "help" tool is only allowed when the built-in help tool is disabled
@@ -323,8 +308,6 @@ class ConfigWriter {
           if (Object.keys(cleanRetry).length > 0) clean.retry = cleanRetry;
         }
         if (entry.builtin) clean.builtin = true;
-        if (entry.contextFilterMinDepth !== undefined && entry.contextFilterMinDepth >= 1) clean.contextFilterMinDepth = entry.contextFilterMinDepth;
-        if (entry.contextFilterMaxDepth !== undefined && entry.contextFilterMaxDepth >= 1) clean.contextFilterMaxDepth = entry.contextFilterMaxDepth;
         return clean;
       });
 
