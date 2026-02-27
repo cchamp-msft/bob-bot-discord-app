@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   test-build:
+    # Skip release commits to avoid redundant CI runs
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
 
     steps:
