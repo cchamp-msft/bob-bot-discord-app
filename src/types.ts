@@ -8,7 +8,7 @@ export interface ChatMessage {
    */
   images?: string[];
   /** How this message was sourced. */
-  contextSource?: 'reply' | 'channel' | 'thread' | 'dm' | 'trigger';
+  contextSource?: 'reply' | 'channel' | 'thread' | 'dm' | 'dm_private' | 'trigger';
   /** Discord message snowflake — used for deduplication when merging contexts. */
   discordMessageId?: string;
   /** Message creation timestamp (ms) — used for stable chronological merge. */
@@ -399,6 +399,8 @@ export interface PipelineContext {
   sourceMessage: import('discord.js').Message;
   /** Conversation history (oldest→newest), built once at pipeline start. */
   conversationHistory: ChatMessage[];
+  /** Private DM history with the requesting user (guild messages only). */
+  dmHistory?: ChatMessage[];
   /** Stage 1 response text from Ollama (captured for final-pass context). */
   stage1Draft?: string;
   /** Tool invocations requested by Stage 1. */
@@ -559,6 +561,10 @@ export interface PublicConfig {
   configuratorTheme: string;
   /** Pipeline execution mode: 'unified' or 'legacy'. */
   pipelineMode: 'unified' | 'legacy';
+  dmContext: {
+    enabled: boolean;
+    maxMessages: number;
+  };
   ollamaFixup: {
     enabled: boolean;
     extractXmlTools: boolean;

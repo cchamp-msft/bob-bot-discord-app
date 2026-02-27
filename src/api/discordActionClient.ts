@@ -4,7 +4,6 @@ import {
   TextChannel,
   ChannelType,
   PermissionFlagsBits,
-  GuildMember,
 } from 'discord.js';
 import { logger } from '../utils/logger';
 import type { DiscordActionResponse } from '../types';
@@ -83,7 +82,6 @@ export async function sendToUser(
   client: Client,
   args: SendToUserArgs,
   requester: string,
-  sourceMessage: Message,
 ): Promise<DiscordActionResponse> {
   const { user: userQuery, content } = args;
 

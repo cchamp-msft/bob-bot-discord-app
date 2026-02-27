@@ -60,6 +60,8 @@ jest.mock('../src/utils/config', () => ({
     getReplyChainImageMaxDepth: jest.fn(() => 5),
     getPipelineMode: jest.fn(() => 'legacy'),
     needsSeparateFinalPass: jest.fn(() => false),
+    getDmContextEnabled: jest.fn(() => false),
+    getDmContextMaxMessages: jest.fn(() => 10),
   },
 }));
 
@@ -1583,7 +1585,10 @@ describe('MessageHandler first-word tool routing', () => {
       '45403',
       'testuser',
       [{ role: 'user', content: 'testuser: 45403', contextSource: 'trigger', hasNamePrefix: true }],
-      'BotUser'
+      'BotUser',
+      undefined,
+      undefined,
+      []
     );
   });
 
@@ -1603,7 +1608,10 @@ describe('MessageHandler first-word tool routing', () => {
       '20251116',
       'testuser',
       [{ role: 'user', content: 'testuser: 20251116', contextSource: 'trigger', hasNamePrefix: true }],
-      'BotUser'
+      'BotUser',
+      undefined,
+      undefined,
+      []
     );
   });
 
@@ -1703,7 +1711,10 @@ describe('MessageHandler first-word tool routing', () => {
       expect.arrayContaining([
         expect.objectContaining({ role: 'user', contextSource: 'trigger' }),
       ]),
-      'BotUser'
+      'BotUser',
+      undefined,
+      undefined,
+      []
     );
   });
 
@@ -1727,7 +1738,10 @@ describe('MessageHandler first-word tool routing', () => {
       'about AI',
       'testuser',
       expect.any(Array),
-      'BotUser'
+      'BotUser',
+      undefined,
+      undefined,
+      []
     );
   });
 
@@ -1922,7 +1936,10 @@ describe('MessageHandler SerpAPI find content tool routing', () => {
       'TypeScript generics',
       'testuser',
       expect.any(Array),
-      'BotUser'
+      'BotUser',
+      undefined,
+      undefined,
+      []
     );
   });
 
@@ -2122,7 +2139,10 @@ describe('MessageHandler two-stage evaluation', () => {
       'Seattle, WA',
       'testuser',
       [{ role: 'user', content: 'testuser: is it going to rain in Seattle', contextSource: 'trigger', hasNamePrefix: true }],
-      'BotUser'
+      'BotUser',
+      undefined,
+      undefined,
+      []
     );
   });
 
@@ -2207,7 +2227,10 @@ describe('MessageHandler two-stage evaluation', () => {
       'alien guy saying "whoa, aliens"',
       'testuser',
       [{ role: 'user', content: 'testuser: generate_image', contextSource: 'trigger', hasNamePrefix: true }],
-      'BotUser'
+      'BotUser',
+      undefined,
+      undefined,
+      []
     );
   });
 
@@ -2437,7 +2460,10 @@ describe('MessageHandler trigger message attribution', () => {
           contextSource: 'trigger',
         }),
       ]),
-      'BotUser'
+      'BotUser',
+      undefined,
+      undefined,
+      []
     );
   });
 
@@ -4472,7 +4498,10 @@ describe('MessageHandler meme two-stage routing fallback', () => {
       'fwp | Just got my license | Now every road is a final boss',
       'testuser',
       [{ role: 'user', content: 'testuser: can you make a meme about a kid learning to drive', contextSource: 'trigger', hasNamePrefix: true }],
-      'BotUser'
+      'BotUser',
+      undefined,
+      undefined,
+      []
     );
 
     expect(msg.reply).toHaveBeenCalledWith(
@@ -4520,7 +4549,10 @@ describe('MessageHandler meme two-stage routing fallback', () => {
       'fwp | line 1 | line 2',
       'testuser',
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
-      'BotUser'
+      'BotUser',
+      undefined,
+      undefined,
+      []
     );
   });
 
@@ -4572,7 +4604,10 @@ describe('MessageHandler meme two-stage routing fallback', () => {
       'fwp | inferred top | inferred bottom',
       'testuser',
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
-      'BotUser'
+      'BotUser',
+      undefined,
+      undefined,
+      []
     );
   });
 

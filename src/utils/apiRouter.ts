@@ -384,7 +384,8 @@ export async function executeRoutedRequest(
   conversationHistory?: ChatMessage[],
   botDisplayName?: string,
   signal?: AbortSignal,
-  options?: { skipFinalPass?: boolean }
+  options?: { skipFinalPass?: boolean },
+  dmHistory?: ChatMessage[]
 ): Promise<RoutedResult> {
   const stages: StageResult[] = [];
 
@@ -580,6 +581,7 @@ export async function executeRoutedRequest(
     conversationHistory: filteredHistory,
     externalData: externalDataBlock,
     botDisplayName,
+    dmHistory,
   });
 
   // Append final-pass prompt to persona so OLLAMA_FINAL_PASS_PROMPT

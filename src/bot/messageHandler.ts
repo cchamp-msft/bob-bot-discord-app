@@ -540,6 +540,12 @@ class MessageHandler {
       }
     }
 
+    // Optionally fetch the bot's private DM history with this user for guild messages
+    let dmHistory: ChatMessage[] = [];
+    if (!isDM && config.getDmContextEnabled() && config.getDmContextMaxMessages() > 0) {
+      dmHistory = await this.fetchUserDmHistory(message);
+    }
+
     // Log the request
     logger.logRequest(
       requester,
@@ -563,7 +569,10 @@ class MessageHandler {
           content,
           requester,
           historyWithTrigger,
-          botDisplayName
+          botDisplayName,
+          undefined, // signal
+          undefined, // options
+          dmHistory
         );
 
         await this.dispatchResponse(
@@ -585,6 +594,7 @@ class MessageHandler {
           imagePayloads,
           sourceMessage: message,
           conversationHistory,
+          dmHistory,
           stage1ToolInvocations: [],
           toolResults: [],
           mediaFollowUps: [],
@@ -603,7 +613,8 @@ class MessageHandler {
           isDM,
           botDisplayName,
           startsWithCommandPrefix && !toolMatched,
-          imagePayloads
+          imagePayloads,
+          dmHistory
         );
       }
 
@@ -848,6 +859,65 @@ class MessageHandler {
       return kept;
     } catch (error) {
       logger.logError('system', `DM-HISTORY: Failed to fetch DM history: ${error}`);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch the bot's DM history with the requesting user for use as
+   * background context in guild channel messages.
+   * Returns an empty array when DMs are disabled or on any error.
+   */
+  async fetchUserDmHistory(message: Message): Promise<ChatMessage[]> {
+    const limit = config.getDmContextMaxMessages();
+    if (limit <= 0) return [];
+
+    const botId = message.client.user?.id;
+
+    try {
+      const dmChannel = await message.author.createDM();
+      const fetched = await dmChannel.messages.fetch({ limit });
+
+      if (!fetched || fetched.size === 0) return [];
+
+      // Sort oldest-first
+      const sorted = [...fetched.values()].reverse();
+
+      const results: ChatMessage[] = [];
+      for (const msg of sorted) {
+        const isThisBot = msg.author.id === botId;
+        if (msg.author.bot && !isThisBot) continue;
+
+        let content = msg.content || '';
+        if (botId) {
+          const mentionRegex = new RegExp(`<@!?${botId}>`, 'g');
+          content = content.replace(mentionRegex, '').trim();
+        }
+        if (!content) continue;
+
+        const role = isThisBot ? 'assistant' as const : 'user' as const;
+        const isUserMsg = role === 'user';
+        if (isUserMsg) {
+          const dmDisplayName = msg.author.displayName ?? msg.author.username;
+          content = `${dmDisplayName}: ${content}`;
+        }
+
+        results.push({
+          role,
+          content,
+          contextSource: 'dm_private',
+          createdAtMs: msg.createdTimestamp,
+          ...(isUserMsg && { hasNamePrefix: true }),
+        });
+      }
+
+      if (results.length > 0) {
+        logger.log('success', 'system', `DM-CONTEXT: Fetched ${results.length} private DM message(s) for guild context`);
+      }
+
+      return results;
+    } catch (error) {
+      logger.log('success', 'system', `DM-CONTEXT: Could not fetch DM history (user may have DMs disabled): ${error}`);
       return [];
     }
   }
@@ -1223,6 +1293,7 @@ class MessageHandler {
       userMessage: ctx.rawContent,
       conversationHistory: historyWithTrigger,
       botDisplayName: ctx.botDisplayName,
+      dmHistory: ctx.dmHistory,
       ...(useToolsPath ? { enabledTools: [] } : {}),
     });
 
@@ -1393,7 +1464,8 @@ class MessageHandler {
           : undefined,
         ctx.botDisplayName,
         undefined,
-        { skipFinalPass: true }
+        { skipFinalPass: true },
+        ctx.dmHistory
       );
 
       const externalData = formatApiResultAsExternalData(tool, apiResult.finalResponse, contentStr);
@@ -1462,7 +1534,6 @@ class MessageHandler {
             client,
             { user: args.user ?? '', content: args.content ?? '' },
             ctx.requester,
-            ctx.sourceMessage,
           );
           break;
         case 'get_discord_artifact':
@@ -1536,6 +1607,7 @@ class MessageHandler {
       botDisplayName: ctx.botDisplayName,
       requesterName: ctx.requester,
       conversationHistory: historyWithTrigger,
+      dmHistory: ctx.dmHistory,
     });
 
     const finalPassPrompt = config.getOllamaFinalPassPrompt();
@@ -1596,7 +1668,8 @@ class MessageHandler {
     isDM: boolean,
     botDisplayName?: string,
     strictNoApiRoutingFromInference: boolean = false,
-    imagePayloads: string[] = []
+    imagePayloads: string[] = [],
+    dmHistory: ChatMessage[] = []
   ): Promise<void> {
     const timeout = toolConfig.timeout || config.getDefaultTimeout();
 
@@ -1635,6 +1708,7 @@ class MessageHandler {
       userMessage: content,
       conversationHistory: filteredHistory,
       botDisplayName,
+      dmHistory,
       ...(useToolsPath ? { enabledTools: [] } : {}),
     });
 
@@ -1705,7 +1779,8 @@ class MessageHandler {
           filteredHistory.length > 0 ? filteredHistory : undefined,
           botDisplayName,
           undefined,
-          { skipFinalPass: true }
+          { skipFinalPass: true },
+          dmHistory
         );
         // Capture media follow-ups for attachment after the text reply
         if (resolvedTool.api === 'comfyui' && apiResult.finalResponse.success
@@ -1847,7 +1922,10 @@ class MessageHandler {
           routedInput,
           requester,
           filteredHistory.length > 0 ? filteredHistory : undefined,
-          botDisplayName
+          botDisplayName,
+          undefined,
+          undefined,
+          dmHistory
         );
 
         await this.dispatchResponse(
@@ -1881,7 +1959,10 @@ class MessageHandler {
             inferredPrompt,
             requester,
             filteredHistory.length > 0 ? filteredHistory : undefined,
-            botDisplayName
+            botDisplayName,
+            undefined,
+            undefined,
+            dmHistory
           );
 
           await this.dispatchResponse(
@@ -1917,7 +1998,10 @@ class MessageHandler {
             inferred,
             requester,
             filteredHistory.length > 0 ? filteredHistory : undefined,
-            botDisplayName
+            botDisplayName,
+            undefined,
+            undefined,
+            dmHistory
           );
 
           await this.dispatchResponse(

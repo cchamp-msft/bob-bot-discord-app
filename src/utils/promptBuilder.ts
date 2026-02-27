@@ -41,6 +41,8 @@ export interface PromptBuildOptions {
   enabledTools?: ToolConfig[];
   /** Bot display name from the Discord client (used when no explicit override is configured). */
   botDisplayName?: string;
+  /** Private DM history with the requesting user (guild messages only). */
+  dmHistory?: ChatMessage[];
 }
 
 /**
@@ -478,6 +480,23 @@ export function getCurrentTimestampTag(now?: Date): string {
   return `<current_timestamp>${epochSeconds}</current_timestamp>`;
 }
 
+// ── DM history formatter ─────────────────────────────────────────
+
+/**
+ * Format DM history messages as XML `<message>` tags for the
+ * `<private_direct_messages>` block.
+ */
+function formatDmHistoryMessages(dmHistory: ChatMessage[], botName: string): string {
+  return dmHistory.map(msg => {
+    const speaker = msg.role === 'assistant'
+      ? botName
+      : (parseSpeakerPrefix(msg.content, msg.hasNamePrefix)?.speaker ?? 'user');
+    const text = msg.role === 'user' ? stripSpeakerPrefix(msg.content, msg.hasNamePrefix) : msg.content;
+    const tsAttr = msg.createdAtMs != null ? ` timestamp="${Math.floor(msg.createdAtMs / 1000)}"` : '';
+    return `<message role="${msg.role}" speaker="${escapeXmlAttribute(speaker)}"${tsAttr}>${escapeXmlContent(text)}</message>`;
+  }).join('\n');
+}
+
 // ── XML user content builder ─────────────────────────────────────
 
 /**
@@ -486,7 +505,7 @@ export function getCurrentTimestampTag(now?: Date): string {
  * <current_question>, and <thinking_and_output_rules> blocks.
  */
 export function buildUserContent(options: PromptBuildOptions): string {
-  const { userMessage, conversationHistory, externalData, enabledTools, botDisplayName } = options;
+  const { userMessage, conversationHistory, externalData, enabledTools, botDisplayName, dmHistory } = options;
   const routable = getRoutableTools(enabledTools);
 
   const parts: string[] = [];
@@ -505,6 +524,15 @@ export function buildUserContent(options: PromptBuildOptions): string {
     parts.push(`<conversation_history>\n${historyText}\n</conversation_history>`);
   } else {
     parts.push('<conversation_history>\n</conversation_history>');
+  }
+
+  // ── <private_direct_messages> (only for guild messages with DM context) ──
+  if (dmHistory && dmHistory.length > 0) {
+    const inferredBotName = inferBotName(botDisplayName);
+    const dmLines = formatDmHistoryMessages(dmHistory, inferredBotName);
+    parts.push(
+      `<private_direct_messages note="Background context from private DMs with the requester. Do not mention or reference these unless the user explicitly refers to a prior DM conversation.">\n${dmLines}\n</private_direct_messages>`
+    );
   }
 
   // ── <external_data> (only when present) ──
@@ -774,7 +802,7 @@ export function assembleReprompt(options: PromptBuildOptions): AssembledPrompt {
   const systemContent = persona;
 
   // Build user content with external data but WITHOUT thinking_and_output_rules
-  const { userMessage, conversationHistory, externalData, botDisplayName } = options;
+  const { userMessage, conversationHistory, externalData, botDisplayName, dmHistory } = options;
 
   const filtered = (conversationHistory ?? []).filter(m => m.role !== 'system');
   const { historyInnerXml, botName, requesterName } = formatConversationHistoryForReprompt(
@@ -797,6 +825,14 @@ export function assembleReprompt(options: PromptBuildOptions): AssembledPrompt {
   // ── <external_data> (data needed to formulate the answer) ──
   if (externalData) {
     parts.push(`<external_data>\n${externalData}\n</external_data>`);
+  }
+
+  // ── <private_direct_messages> (only for guild messages with DM context) ──
+  if (dmHistory && dmHistory.length > 0) {
+    const dmLines = formatDmHistoryMessages(dmHistory, botName);
+    parts.push(
+      `<private_direct_messages note="Background context from private DMs with the requester. Do not mention or reference these unless the user explicitly refers to a prior DM conversation.">\n${dmLines}\n</private_direct_messages>`
+    );
   }
 
   // ── <conversation_history> (background context, lowest priority) ──
@@ -835,6 +871,8 @@ export interface UnifiedRepromptOptions {
   requesterName?: string;
   /** Full conversation history (oldest-to-newest) for context continuity. */
   conversationHistory?: ChatMessage[];
+  /** Private DM history with the requesting user (guild messages only). */
+  dmHistory?: ChatMessage[];
 }
 
 /**
@@ -849,7 +887,7 @@ export interface UnifiedRepromptOptions {
  * - System prompt + OLLAMA_FINAL_PASS_PROMPT
  */
 export function assembleUnifiedReprompt(options: UnifiedRepromptOptions): AssembledPrompt {
-  const { userMessage, draftResponse, externalData, botDisplayName, requesterName, conversationHistory } = options;
+  const { userMessage, draftResponse, externalData, botDisplayName, requesterName, conversationHistory, dmHistory } = options;
   const persona = config.getOllamaSystemPrompt();
   const systemContent = persona;
 
@@ -879,6 +917,14 @@ export function assembleUnifiedReprompt(options: UnifiedRepromptOptions): Assemb
   // ── <external_data> (tool results from Stage 2) ──
   if (externalData) {
     parts.push(`<external_data>\n${externalData}\n</external_data>`);
+  }
+
+  // ── <private_direct_messages> (only for guild messages with DM context) ──
+  if (dmHistory && dmHistory.length > 0) {
+    const dmLines = formatDmHistoryMessages(dmHistory, botName);
+    parts.push(
+      `<private_direct_messages note="Background context from private DMs with the requester. Do not mention or reference these unless the user explicitly refers to a prior DM conversation.">\n${dmLines}\n</private_direct_messages>`
+    );
   }
 
   // ── <conversation_history> (full context for continuity) ──

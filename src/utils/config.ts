@@ -846,6 +846,26 @@ class Config {
     return Math.max(0, Math.min(raw, 50));
   }
 
+  // ── DM Context configuration ────────────────────────────────
+
+  /**
+   * Whether to fetch the bot's DM history with the requesting user
+   * and include it as background context for guild channel messages.
+   * Default: false (opt-in).
+   */
+  getDmContextEnabled(): boolean {
+    return process.env.DM_CONTEXT_ENABLED === 'true';
+  }
+
+  /**
+   * Maximum number of DM messages to fetch for guild context.
+   * Clamped 0–50, default 10. Setting to 0 effectively disables.
+   */
+  getDmContextMaxMessages(): number {
+    const raw = this.parseIntEnv('DM_CONTEXT_MAX_MESSAGES', 10);
+    return Math.max(0, Math.min(raw, 50));
+  }
+
   /**
    * Whether to include the embed block (with internal View link) in image
    * generation responses.  Default: false — only the image attachment is sent.
@@ -1053,6 +1073,8 @@ class Config {
     const prevReplyChainMaxDepth = this.getReplyChainMaxDepth();
     const prevReplyChainMaxTokens = this.getReplyChainMaxTokens();
     const prevReplyChainImageMaxDepth = this.getReplyChainImageMaxDepth();
+    const prevDmContextEnabled = this.getDmContextEnabled();
+    const prevDmContextMaxMessages = this.getDmContextMaxMessages();
     const prevImageResponseIncludeEmbed = this.getImageResponseIncludeEmbed();
     const prevOllamaFinalPassModel = this.getOllamaFinalPassModel();
     const prevDebugLogging = this.getDebugLogging();
@@ -1152,6 +1174,8 @@ class Config {
     if (this.getReplyChainMaxDepth() !== prevReplyChainMaxDepth) reloaded.push('REPLY_CHAIN_MAX_DEPTH');
     if (this.getReplyChainMaxTokens() !== prevReplyChainMaxTokens) reloaded.push('REPLY_CHAIN_MAX_TOKENS');
     if (this.getReplyChainImageMaxDepth() !== prevReplyChainImageMaxDepth) reloaded.push('REPLY_CHAIN_IMAGE_MAX_DEPTH');
+    if (this.getDmContextEnabled() !== prevDmContextEnabled) reloaded.push('DM_CONTEXT_ENABLED');
+    if (this.getDmContextMaxMessages() !== prevDmContextMaxMessages) reloaded.push('DM_CONTEXT_MAX_MESSAGES');
     if (this.getImageResponseIncludeEmbed() !== prevImageResponseIncludeEmbed) reloaded.push('IMAGE_RESPONSE_INCLUDE_EMBED');
     if (this.getOllamaFinalPassModel() !== prevOllamaFinalPassModel) reloaded.push('OLLAMA_FINAL_PASS_MODEL');
     if (this.getDebugLogging() !== prevDebugLogging) reloaded.push('DEBUG_LOGGING');
@@ -1313,6 +1337,10 @@ class Config {
         contextSize: this.getContextEvalContextSize(),
         timeout: this.getContextEvalTimeout(),
         prompt: this.getContextEvalPrompt(),
+      },
+      dmContext: {
+        enabled: this.getDmContextEnabled(),
+        maxMessages: this.getDmContextMaxMessages(),
       },
       debugLogging: this.getDebugLogging(),
       nflLogging: {
