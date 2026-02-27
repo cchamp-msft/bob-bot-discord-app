@@ -1,6 +1,6 @@
 {
   "name": "bob-bot-discord-app",
-  "version": "1.0.0",
+  "version": "0.9.0",
   "description": "Discord bot with ComfyUI, Ollama, AccuWeather, and NFL integration",
   "main": "dist/index.js",
   "scripts": {
@@ -13,7 +13,8 @@
     "test:watch": "jest --watch",
     "test:e2e": "jest --config jest.e2e.config.ts --verbose",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "release:dry-run": "semantic-release --dry-run"
   },
   "keywords": [
     "discord",
@@ -41,13 +42,17 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@microsoft/eslint-formatter-sarif": "^3.1.0",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.2.3",
     "@types/ws": "^8.18.1",
+    "conventional-changelog-conventionalcommits": "^9.1.0",
     "eslint": "^10.0.2",
     "jest": "^30.2.0",
     "nodemon": "^3.1.14",
+    "semantic-release": "^25.0.3",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3",
