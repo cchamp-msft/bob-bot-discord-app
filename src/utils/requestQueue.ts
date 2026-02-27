@@ -1,8 +1,12 @@
 import { logger } from './logger';
 import { generateThreadId, getThreadId, runWithThreadId } from './threadContext';
 
+/** API types that have their own serialized queue. Discord is handled inline (no queue). */
+type QueuedApi = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
+type AnyApi = QueuedApi | 'discord';
+
 interface QueueEntry<T = unknown> {
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
+  api: QueuedApi;
   requester: string;
   keyword: string;
   timeout: number;
@@ -29,7 +33,7 @@ class RequestQueue {
   private serpapiQueue: QueueEntry[] = [];
   private memeQueue: QueueEntry[] = [];
 
-  isApiAvailable(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme'): boolean {
+  isApiAvailable(api: QueuedApi): boolean {
     if (api === 'comfyui') return !this.comfyuiActive;
     if (api === 'accuweather') return !this.accuweatherActive;
     if (api === 'nfl') return !this.nflActive;
@@ -39,7 +43,7 @@ class RequestQueue {
   }
 
   /** Number of pending (waiting) entries for an API. */
-  pending(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme'): number {
+  pending(api: QueuedApi): number {
     if (api === 'comfyui') return this.comfyuiQueue.length;
     if (api === 'accuweather') return this.accuweatherQueue.length;
     if (api === 'nfl') return this.nflQueue.length;
@@ -48,7 +52,7 @@ class RequestQueue {
     return this.ollamaQueue.length;
   }
 
-  private setActive(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme', active: boolean): void {
+  private setActive(api: QueuedApi, active: boolean): void {
     if (api === 'comfyui') {
       this.comfyuiActive = active;
     } else if (api === 'accuweather') {
@@ -64,7 +68,7 @@ class RequestQueue {
     }
   }
 
-  private getQueue(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme'): QueueEntry[] {
+  private getQueue(api: QueuedApi): QueueEntry[] {
     if (api === 'comfyui') return this.comfyuiQueue;
     if (api === 'accuweather') return this.accuweatherQueue;
     if (api === 'nfl') return this.nflQueue;
@@ -82,13 +86,20 @@ class RequestQueue {
    * cooperative callers can stop work early.
    */
   execute<T>(
-    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme',
+    api: AnyApi,
     requester: string,
     keyword: string,
     timeout: number,
     executor: ((signal: AbortSignal) => Promise<T>) | (() => Promise<T>),
     callerSignal?: AbortSignal
   ): Promise<T> {
+    // Discord tools run inline — no serialized queue needed
+    if (api === 'discord') {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), timeout);
+      return (executor as (signal: AbortSignal) => Promise<T>)(ac.signal).finally(() => clearTimeout(timer));
+    }
+
     return new Promise<T>((resolve, reject) => {
       const parentThreadId = getThreadId();
       const entry: QueueEntry<T> = {
@@ -115,7 +126,7 @@ class RequestQueue {
   /**
    * Drain the queue for a given API — runs entries one at a time.
    */
-  private async drain(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme'): Promise<void> {
+  private async drain(api: QueuedApi): Promise<void> {
     const queue = this.getQueue(api);
 
     while (queue.length > 0) {

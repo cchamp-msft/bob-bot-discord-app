@@ -170,6 +170,8 @@ export function toolArgumentsToContent(
       if (template && (top || bottom)) return `${template} | ${top} | ${bottom}`;
       return get('input') || '';
     }
+    case 'discord':
+      return JSON.stringify(args);
     default:
       return get('input') || get('content') || Object.values(args).filter(v => typeof v === 'string').join(' ') || '';
   }

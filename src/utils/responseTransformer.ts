@@ -1,13 +1,13 @@
 import { ComfyUIResponse } from '../api/comfyuiClient';
 import { OllamaResponse } from '../api/ollamaClient';
-import { AccuWeatherResponse, NFLResponse, SerpApiResponse, MemeResponse } from '../types';
+import { AccuWeatherResponse, NFLResponse, SerpApiResponse, MemeResponse, DiscordActionResponse } from '../types';
 
 /**
  * Unified result from any API stage in a routed pipeline.
  */
 export interface StageResult {
   /** The type of API that produced this result. */
-  sourceApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'external';
+  sourceApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'external';
   /** Extracted text content (from Ollama, AccuWeather, NFL, or future text-based APIs). */
   text?: string;
   /** Extracted image URLs (from ComfyUI). */
@@ -99,8 +99,8 @@ export function extractFromMeme(response: MemeResponse): StageResult {
  * Extract a StageResult from any API response based on the API type.
  */
 export function extractStageResult(
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme',
-  response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord',
+  response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse
 ): StageResult {
   if (api === 'comfyui') {
     return extractFromComfyUI(response as ComfyUIResponse);
@@ -116,6 +116,10 @@ export function extractStageResult(
   }
   if (api === 'meme') {
     return extractFromMeme(response as MemeResponse);
+  }
+  if (api === 'discord') {
+    const dr = response as DiscordActionResponse;
+    return { sourceApi: 'discord', text: dr.data?.text ?? dr.error ?? 'No data.', rawResponse: dr };
   }
   return extractFromOllama(response as OllamaResponse);
 }

@@ -10,7 +10,8 @@ import { requestQueue } from '../utils/requestQueue';
 import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { fileHandler } from '../utils/fileHandler';
 import { memeClient } from '../api/memeClient';
-import { ChatMessage, NFLResponse, MemeResponse, MediaFollowUp, ComfyUIMediaFollowUp, UrlMediaFollowUp, PipelineContext, ToolInvocation } from '../types';
+import { ChatMessage, NFLResponse, MemeResponse, DiscordActionResponse, MediaFollowUp, ComfyUIMediaFollowUp, UrlMediaFollowUp, PipelineContext, ToolInvocation } from '../types';
+import * as discordActionClient from '../api/discordActionClient';
 import { chunkText } from '../utils/chunkText';
 import { executeRoutedRequest, inferAbilityParameters, formatApiResultAsExternalData } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
@@ -1371,6 +1372,11 @@ class MessageHandler {
     ctx: PipelineContext,
     _timeout: number
   ): Promise<ToolInvocation> {
+    // Discord tools bypass executeRoutedRequest — handled directly
+    if (tool.api === 'discord') {
+      return this.executeDiscordTool(tool, contentStr, ctx);
+    }
+
     try {
       const apiResult = await executeRoutedRequest(
         tool,
@@ -1413,6 +1419,84 @@ class MessageHandler {
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       logger.logError('system', `UNIFIED: Tool "${tool.name}" failed: ${errMsg}`);
+      return {
+        toolName: tool.name,
+        api: tool.api,
+        input: contentStr,
+        success: false,
+      };
+    }
+  }
+
+  /**
+   * Execute a Discord-native tool (send message, DM, get artifact, react).
+   * Bypasses the external API routing — uses the bot's own discord.js Client.
+   */
+  private async executeDiscordTool(
+    tool: ToolConfig,
+    contentStr: string,
+    ctx: PipelineContext,
+  ): Promise<ToolInvocation> {
+    try {
+      let args: Record<string, string>;
+      try {
+        args = JSON.parse(contentStr);
+      } catch {
+        args = {};
+      }
+
+      const client = ctx.sourceMessage.client;
+      const toolName = tool.name.replace(/^!\s*/, '').trim().toLowerCase();
+      let result: DiscordActionResponse;
+
+      switch (toolName) {
+        case 'send_to_discord_guild':
+          result = await discordActionClient.sendToGuildChannel(
+            client,
+            { guild: args.guild ?? '', channel: args.channel ?? '', content: args.content ?? '' },
+            ctx.requester,
+          );
+          break;
+        case 'send_to_discord_user':
+          result = await discordActionClient.sendToUser(
+            client,
+            { user: args.user ?? '', content: args.content ?? '' },
+            ctx.requester,
+            ctx.sourceMessage,
+          );
+          break;
+        case 'get_discord_artifact':
+          result = await discordActionClient.getArtifact(
+            client,
+            { channel: args.channel, message_id: args.message_id, search: args.search },
+            ctx.requester,
+            ctx.sourceMessage,
+          );
+          break;
+        case 'react_to_message':
+          result = await discordActionClient.reactToMessage(
+            client,
+            { emoji: args.emoji ?? '', target: args.target, message_id: args.message_id },
+            ctx.requester,
+            ctx.sourceMessage,
+          );
+          break;
+        default:
+          result = { success: false, error: `Unknown discord tool "${tool.name}".` };
+      }
+
+      const externalData = formatApiResultAsExternalData(tool, result, contentStr);
+
+      return {
+        toolName: tool.name,
+        api: tool.api,
+        input: contentStr,
+        externalData,
+        success: result.success,
+      };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.logError('system', `UNIFIED: Discord tool "${tool.name}" failed: ${errMsg}`);
       return {
         toolName: tool.name,
         api: tool.api,
@@ -1925,8 +2009,8 @@ class MessageHandler {
    * Handles error responses uniformly.
    */
   private async dispatchResponse(
-    response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse,
-    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme',
+    response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse,
+    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord',
     sourceMessage: Message,
     requester: string,
     isDM: boolean,

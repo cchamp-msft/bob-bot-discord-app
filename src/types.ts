@@ -24,7 +24,16 @@ export interface ChatMessage {
 }
 
 /** Recognized API backend identifiers. */
-export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
+export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord';
+
+// ── Discord action response types ───────────────────────────────
+
+/** Standard response from Discord action tool methods. */
+export interface DiscordActionResponse {
+  success: boolean;
+  data?: { text: string };
+  error?: string;
+}
 
 // ── AccuWeather response types ─────────────────────────────────
 

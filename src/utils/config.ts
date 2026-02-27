@@ -54,7 +54,7 @@ export interface AbilityInputs {
 
 export interface ToolConfig {
   name: string;
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord';
   timeout: number;
   description: string;
   /** Human-readable description of this tool's API ability, provided to Ollama as context so it can suggest using this API when relevant. */
@@ -1004,12 +1004,13 @@ class Config {
     return parsed;
   }
 
-  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme'): string {
+  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord'): string {
     if (api === 'comfyui') return this.getComfyUIEndpoint();
     if (api === 'accuweather') return this.getAccuWeatherEndpoint();
     if (api === 'nfl') return this.getNflEndpoint();
     if (api === 'serpapi') return this.getSerpApiEndpoint();
     if (api === 'meme') return this.getMemeEndpoint();
+    if (api === 'discord') return '';
     return this.getOllamaEndpoint();
   }
 

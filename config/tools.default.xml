@@ -152,4 +152,108 @@
     <abilityWhen>User asks what meme templates are available or wants to see a list of meme templates.</abilityWhen>
     <allowEmptyContent>true</allowEmptyContent>
   </tool>
+
+  <!-- Discord-native action tools -->
+  <tool>
+    <name>send_to_discord_guild</name>
+    <api>discord</api>
+    <timeout>15</timeout>
+    <description>Send a message to a specific channel in a Discord server. Use when the user asks to post or say something in another channel or server.</description>
+    <abilityWhen>User wants to send a message to a specific Discord channel or server.</abilityWhen>
+    <parameters>
+      <mode>explicit</mode>
+      <guild>
+        <type>string</type>
+        <description>Server/guild name or ID to send the message to</description>
+        <required>true</required>
+      </guild>
+      <channel>
+        <type>string</type>
+        <description>Channel name (without #) or ID within the guild</description>
+        <required>true</required>
+      </channel>
+      <content>
+        <type>string</type>
+        <description>The message text to send (max 2000 characters)</description>
+        <required>true</required>
+      </content>
+      <validation>Guild and channel must be names or IDs the bot has access to. Content must not be empty.</validation>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>send_to_discord_user</name>
+    <api>discord</api>
+    <timeout>15</timeout>
+    <description>Send a direct message (DM) to a Discord user. Use when the user asks to DM or privately message someone.</description>
+    <abilityWhen>User wants to send a direct message or DM to another Discord user.</abilityWhen>
+    <parameters>
+      <mode>explicit</mode>
+      <user>
+        <type>string</type>
+        <description>Target user's @mention, username, or Discord ID</description>
+        <required>true</required>
+      </user>
+      <content>
+        <type>string</type>
+        <description>The message text to send (max 2000 characters)</description>
+        <required>true</required>
+      </content>
+      <validation>User must share a server with the bot. Cannot DM other bots.</validation>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>get_discord_artifact</name>
+    <api>discord</api>
+    <timeout>15</timeout>
+    <description>Retrieve a message from Discord channel history by ID or text search. Use when the user asks to find, look up, or recall a specific message.</description>
+    <abilityWhen>User wants to find or retrieve a specific message from Discord history.</abilityWhen>
+    <parameters>
+      <mode>mixed</mode>
+      <channel>
+        <type>string</type>
+        <description>Channel name or ID to search in (defaults to current channel)</description>
+        <required>false</required>
+      </channel>
+      <message_id>
+        <type>string</type>
+        <description>Exact Discord message ID to retrieve</description>
+        <required>false</required>
+      </message_id>
+      <search>
+        <type>string</type>
+        <description>Text to search for in recent messages (case-insensitive substring match)</description>
+        <required>false</required>
+      </search>
+      <validation>Provide either message_id or search. At least one must be specified.</validation>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>react_to_message</name>
+    <api>discord</api>
+    <timeout>15</timeout>
+    <description>Add an emoji reaction to a message. Use when the user asks to react to a message with an emoji.</description>
+    <abilityWhen>User wants to react to a Discord message with an emoji.</abilityWhen>
+    <parameters>
+      <mode>mixed</mode>
+      <emoji>
+        <type>string</type>
+        <description>Emoji to react with — unicode emoji (e.g. 👍) or custom emoji name:id</description>
+        <required>true</required>
+      </emoji>
+      <target>
+        <type>string</type>
+        <description>Text to search for to identify the target message, or "last" for the most recent non-bot message</description>
+        <required>false</required>
+      </target>
+      <message_id>
+        <type>string</type>
+        <description>Exact Discord message ID to react to</description>
+        <required>false</required>
+      </message_id>
+      <validation>Emoji is required. If neither target nor message_id is provided, reacts to the most recent non-bot message.</validation>
+    </parameters>
+  </tool>
 </tools>

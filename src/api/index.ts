@@ -26,7 +26,7 @@ export interface OllamaRequestOptions {
 
 class ApiManager {
   async executeRequest(
-    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'external',
+    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'external',
     requester: string,
     data: string,
     _timeout: number,
