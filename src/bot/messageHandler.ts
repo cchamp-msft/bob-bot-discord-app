@@ -2094,7 +2094,7 @@ class MessageHandler {
    */
   private async dispatchResponse(
     response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse,
-    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord',
+    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai',
     sourceMessage: Message,
     requester: string,
     isDM: boolean,

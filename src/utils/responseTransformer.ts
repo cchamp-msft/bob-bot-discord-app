@@ -99,7 +99,7 @@ export function extractFromMeme(response: MemeResponse): StageResult {
  * Extract a StageResult from any API response based on the API type.
  */
 export function extractStageResult(
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord',
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai',
   response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse
 ): StageResult {
   if (api === 'comfyui') {

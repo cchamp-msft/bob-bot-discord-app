@@ -24,7 +24,10 @@ export interface ChatMessage {
 }
 
 /** Recognized API backend identifiers. */
-export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord';
+export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai';
+
+/** LLM provider identifiers used for per-stage model dispatch. */
+export type LlmProvider = 'ollama' | 'xai';
 
 // ── Discord action response types ───────────────────────────────
 
@@ -415,6 +418,8 @@ export interface PipelineContext {
   ollamaCallCount: number;
   /** Timestamp (ms) when the pipeline started. */
   startedAt: number;
+  /** When true, forces the final pass to use Ollama regardless of provider config (set by delegate_to_local). */
+  forceOllamaFinalPass?: boolean;
 }
 
 // ── Media follow-up types ───────────────────────────────────────
@@ -571,5 +576,20 @@ export interface PublicConfig {
     extractJsonTools: boolean;
     repairUrls: boolean;
     stripToolPreamble: boolean;
+  };
+  xai: {
+    endpoint: string;
+    apiKeyConfigured: boolean;
+    model: string;
+    imageEnabled: boolean;
+    videoEnabled: boolean;
+    encourageBuiltinTools: boolean;
+  };
+  /** LLM provider selection for each pipeline stage. */
+  provider: {
+    toolEval: import('./types').LlmProvider;
+    finalPass: import('./types').LlmProvider;
+    contextEval: import('./types').LlmProvider;
+    retry: import('./types').LlmProvider;
   };
 }

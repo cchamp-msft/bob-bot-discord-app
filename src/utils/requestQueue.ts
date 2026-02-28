@@ -2,7 +2,7 @@ import { logger } from './logger';
 import { generateThreadId, getThreadId, runWithThreadId } from './threadContext';
 
 /** API types that have their own serialized queue. Discord is handled inline (no queue). */
-type QueuedApi = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
+type QueuedApi = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'xai';
 type AnyApi = QueuedApi | 'discord';
 
 interface QueueEntry<T = unknown> {

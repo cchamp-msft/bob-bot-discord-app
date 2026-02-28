@@ -5,7 +5,7 @@ import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpA
 import { accuweatherClient } from '../api/accuweatherClient';
 import { serpApiClient } from '../api/serpApiClient';
 import { memeClient } from '../api/memeClient';
-import { ChatMessage, NFLResponse, MemeResponse, DiscordActionResponse, MediaFollowUp } from '../types';
+import { ApiType, ChatMessage, NFLResponse, MemeResponse, DiscordActionResponse, MediaFollowUp } from '../types';
 import {
   StageResult,
   extractStageResult,
@@ -311,7 +311,7 @@ export interface RoutedResult {
   /** The final API response to present to the user. */
   finalResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse;
   /** The API type that produced the final response (for handler dispatch). */
-  finalApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord';
+  finalApi: ApiType;
   /** Intermediate stage results (for debugging/logging). */
   stages: StageResult[];
   /** Media follow-ups to send after the text reply (ComfyUI attachments, meme URLs, etc.). */
@@ -391,7 +391,7 @@ export async function executeRoutedRequest(
 
   // ── Primary API request ───────────────────────────────────────
   logger.log('success', 'system', `API-ROUTING: Executing ${keywordConfig.api} request for "${keywordConfig.name}"`);
-  const apiType = keywordConfig.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord';
+  const apiType = keywordConfig.api as ApiType;
   const originalContent = content;
   let attemptContent = content;
   const attemptedInputs = new Set<string>([attemptContent.trim().toLowerCase()]);

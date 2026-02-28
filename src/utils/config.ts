@@ -5,7 +5,7 @@ import { logger } from './logger';
 import { readEnvVar } from './dotenvCodec';
 import { parseToolsXml } from './toolsXmlParser';
 import type { ToolParameter } from './toolsXmlParser';
-import type { PublicConfig } from '../types';
+import type { PublicConfig, LlmProvider } from '../types';
 
 dotenv.config();
 
@@ -54,7 +54,7 @@ export interface AbilityInputs {
 
 export interface ToolConfig {
   name: string;
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord';
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai';
   timeout: number;
   description: string;
   /** Human-readable description of this tool's API ability, provided to Ollama as context so it can suggest using this API when relevant. */
@@ -345,6 +345,87 @@ class Config {
    */
   getSerpApiLocation(): string {
     return process.env.SERPAPI_LOCATION || '';
+  }
+
+  // ── xAI configuration ─────────────────────────────────────────
+
+  getXaiApiKey(): string {
+    return process.env.XAI_API_KEY || '';
+  }
+
+  getXaiEndpoint(): string {
+    return process.env.XAI_BASE_URL || 'https://api.x.ai/v1';
+  }
+
+  getXaiModel(): string {
+    return process.env.XAI_MODEL || '';
+  }
+
+  getXaiImageEnabled(): boolean {
+    return process.env.XAI_IMAGE_ENABLED === 'true';
+  }
+
+  getXaiVideoEnabled(): boolean {
+    return process.env.XAI_VIDEO_ENABLED === 'true';
+  }
+
+  /** When true, appends a system prompt encouraging xAI built-in tool use. */
+  getXaiEncourageBuiltinTools(): boolean {
+    return process.env.XAI_ENCOURAGE_BUILTIN_TOOLS === 'true';
+  }
+
+  /** HTTP timeout in milliseconds for xAI requests. Default: 120000 (2 min). */
+  getXaiTimeout(): number {
+    return this.clampTimeout(this.parseIntEnv('XAI_TIMEOUT', 120_000));
+  }
+
+  // ── Provider stage selectors ────────────────────────────────
+
+  private parseLlmProvider(envKey: string, fallback: LlmProvider = 'ollama'): LlmProvider {
+    const raw = (process.env[envKey] || '').trim().toLowerCase();
+    if (raw === 'xai') return 'xai';
+    if (raw === 'ollama') return 'ollama';
+    return fallback;
+  }
+
+  /** Provider for tool evaluation stage. Default: ollama. */
+  getProviderToolEval(): LlmProvider {
+    return this.parseLlmProvider('PROVIDER_TOOL_EVAL');
+  }
+
+  /** Provider for final pass stage. Default: ollama. */
+  getProviderFinalPass(): LlmProvider {
+    return this.parseLlmProvider('PROVIDER_FINAL_PASS');
+  }
+
+  /** Provider for context evaluation stage. Default: ollama. */
+  getProviderContextEval(): LlmProvider {
+    return this.parseLlmProvider('PROVIDER_CONTEXT_EVAL');
+  }
+
+  /** Provider for ability retry/refinement stage. Default: ollama. */
+  getProviderRetry(): LlmProvider {
+    return this.parseLlmProvider('PROVIDER_RETRY');
+  }
+
+  /**
+   * Image generation backend: 'comfyui' or 'xai'.
+   * When 'xai', generate_image uses the xAI API instead of ComfyUI.
+   */
+  getImageGenerationBackend(): 'comfyui' | 'xai' {
+    const raw = (process.env.IMAGE_GENERATION_BACKEND || '').trim().toLowerCase();
+    if (raw === 'xai') return 'xai';
+    return 'comfyui';
+  }
+
+  /**
+   * Web search backend: 'serpapi' or 'xai'.
+   * When 'xai', web_search uses the xAI built-in web_search tool instead of SerpAPI.
+   */
+  getWebSearchBackend(): 'serpapi' | 'xai' {
+    const raw = (process.env.WEB_SEARCH_BACKEND || '').trim().toLowerCase();
+    if (raw === 'xai') return 'xai';
+    return 'serpapi';
   }
 
   /**
@@ -1024,13 +1105,14 @@ class Config {
     return parsed;
   }
 
-  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord'): string {
+  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai'): string {
     if (api === 'comfyui') return this.getComfyUIEndpoint();
     if (api === 'accuweather') return this.getAccuWeatherEndpoint();
     if (api === 'nfl') return this.getNflEndpoint();
     if (api === 'serpapi') return this.getSerpApiEndpoint();
     if (api === 'meme') return this.getMemeEndpoint();
     if (api === 'discord') return '';
+    if (api === 'xai') return this.getXaiEndpoint();
     return this.getOllamaEndpoint();
   }
 
@@ -1122,6 +1204,19 @@ class Config {
     const prevFixupExtractJson = this.getOllamaFixupExtractJsonTools();
     const prevFixupRepairUrls = this.getOllamaFixupRepairUrls();
     const prevFixupStripPreamble = this.getOllamaFixupStripToolPreamble();
+    const prevXaiEndpoint = this.getXaiEndpoint();
+    const prevXaiApiKey = this.getXaiApiKey();
+    const prevXaiModel = this.getXaiModel();
+    const prevXaiImageEnabled = this.getXaiImageEnabled();
+    const prevXaiVideoEnabled = this.getXaiVideoEnabled();
+    const prevXaiEncourageBuiltinTools = this.getXaiEncourageBuiltinTools();
+    const prevXaiTimeout = this.getXaiTimeout();
+    const prevProviderToolEval = this.getProviderToolEval();
+    const prevProviderFinalPass = this.getProviderFinalPass();
+    const prevProviderContextEval = this.getProviderContextEval();
+    const prevProviderRetry = this.getProviderRetry();
+    const prevImageGenerationBackend = this.getImageGenerationBackend();
+    const prevWebSearchBackend = this.getWebSearchBackend();
 
     // Re-parse .env into process.env
     const envPath = path.join(__dirname, '../../.env');
@@ -1223,6 +1318,19 @@ class Config {
     if (this.getOllamaFixupExtractJsonTools() !== prevFixupExtractJson) reloaded.push('OLLAMA_FIXUP_EXTRACT_JSON_TOOLS');
     if (this.getOllamaFixupRepairUrls() !== prevFixupRepairUrls) reloaded.push('OLLAMA_FIXUP_REPAIR_URLS');
     if (this.getOllamaFixupStripToolPreamble() !== prevFixupStripPreamble) reloaded.push('OLLAMA_FIXUP_STRIP_TOOL_PREAMBLE');
+    if (this.getXaiEndpoint() !== prevXaiEndpoint) reloaded.push('XAI_BASE_URL');
+    if (this.getXaiApiKey() !== prevXaiApiKey) reloaded.push('XAI_API_KEY');
+    if (this.getXaiModel() !== prevXaiModel) reloaded.push('XAI_MODEL');
+    if (this.getXaiImageEnabled() !== prevXaiImageEnabled) reloaded.push('XAI_IMAGE_ENABLED');
+    if (this.getXaiVideoEnabled() !== prevXaiVideoEnabled) reloaded.push('XAI_VIDEO_ENABLED');
+    if (this.getXaiEncourageBuiltinTools() !== prevXaiEncourageBuiltinTools) reloaded.push('XAI_ENCOURAGE_BUILTIN_TOOLS');
+    if (this.getXaiTimeout() !== prevXaiTimeout) reloaded.push('XAI_TIMEOUT');
+    if (this.getProviderToolEval() !== prevProviderToolEval) reloaded.push('PROVIDER_TOOL_EVAL');
+    if (this.getProviderFinalPass() !== prevProviderFinalPass) reloaded.push('PROVIDER_FINAL_PASS');
+    if (this.getProviderContextEval() !== prevProviderContextEval) reloaded.push('PROVIDER_CONTEXT_EVAL');
+    if (this.getProviderRetry() !== prevProviderRetry) reloaded.push('PROVIDER_RETRY');
+    if (this.getImageGenerationBackend() !== prevImageGenerationBackend) reloaded.push('IMAGE_GENERATION_BACKEND');
+    if (this.getWebSearchBackend() !== prevWebSearchBackend) reloaded.push('WEB_SEARCH_BACKEND');
 
     // Reload tools
     this.loadTools();
@@ -1367,6 +1475,20 @@ class Config {
         extractJsonTools: this.getOllamaFixupExtractJsonTools(),
         repairUrls: this.getOllamaFixupRepairUrls(),
         stripToolPreamble: this.getOllamaFixupStripToolPreamble(),
+      },
+      xai: {
+        endpoint: this.getXaiEndpoint(),
+        apiKeyConfigured: !!this.getXaiApiKey(),
+        model: this.getXaiModel(),
+        imageEnabled: this.getXaiImageEnabled(),
+        videoEnabled: this.getXaiVideoEnabled(),
+        encourageBuiltinTools: this.getXaiEncourageBuiltinTools(),
+      },
+      provider: {
+        toolEval: this.getProviderToolEval(),
+        finalPass: this.getProviderFinalPass(),
+        contextEval: this.getProviderContextEval(),
+        retry: this.getProviderRetry(),
       },
     };
   }
