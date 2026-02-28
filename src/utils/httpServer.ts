@@ -157,9 +157,9 @@ class HttpServer {
 
     // GET test API connectivity
     this.app.get('/api/config/test-connection/:api', ...adminGuard, safeHandler(async (req, res) => {
-      const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
-      if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather' && api !== 'nfl' && api !== 'serpapi' && api !== 'meme') {
-        res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", "accuweather", "nfl", "serpapi", or "meme"' });
+      const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'xai';
+      if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather' && api !== 'nfl' && api !== 'serpapi' && api !== 'meme' && api !== 'xai') {
+        res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", "accuweather", "nfl", "serpapi", "meme", or "xai"' });
         return;
       }
 
@@ -212,6 +212,15 @@ class HttpServer {
             logger.logError('configurator', `Connection test: meme — FAILED${result.error ? ': ' + result.error : ''}`);
           }
           res.json({ api, endpoint, healthy: result.healthy, templateCount: result.templateCount, error: result.error });
+        } else if (api === 'xai') {
+          const result = await apiManager.testXaiConnection();
+          const endpoint = config.getApiEndpoint('xai');
+          if (result.healthy) {
+            logger.log('success', 'configurator', `Connection test: xai at ${endpoint} — OK (${result.models.length} model(s) found)`);
+          } else {
+            logger.logError('configurator', `Connection test: xai at ${endpoint} — FAILED${result.error ? ': ' + result.error : ''}`);
+          }
+          res.json({ api, endpoint, healthy: result.healthy, models: result.models, error: result.error });
         } else {
           const healthy = await apiManager.checkApiHealth(api);
           const endpoint = config.getApiEndpoint(api as 'comfyui' | 'ollama' | 'accuweather');
@@ -477,7 +486,7 @@ class HttpServer {
         // Update .env values if provided
         if (env && typeof env === 'object') {
           // Build a safe list of key names for logging (never log token values)
-          const sensitiveKeys = ['DISCORD_TOKEN', 'ACCUWEATHER_API_KEY', 'SERPAPI_API_KEY'];
+          const sensitiveKeys = ['DISCORD_TOKEN', 'ACCUWEATHER_API_KEY', 'SERPAPI_API_KEY', 'XAI_API_KEY'];
           const safeKeyNames = Object.keys(env).map(k =>
             sensitiveKeys.includes(k) ? `${k} (changed)` : k
           );

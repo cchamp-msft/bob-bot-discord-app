@@ -1,5 +1,6 @@
 import { comfyuiClient, ComfyUIResponse } from './comfyuiClient';
 import { ollamaClient, OllamaResponse, OllamaHealthResult } from './ollamaClient';
+import { xaiClient, XaiResponse, XaiHealthResult } from './xaiClient';
 import { accuweatherClient } from './accuweatherClient';
 import { nflClient } from './nflClient';
 import { serpApiClient } from './serpApiClient';
@@ -8,7 +9,7 @@ import { config } from '../utils/config';
 import { ChatMessage, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult } from '../types';
 import type { OllamaTool } from '../utils/toolsSchema';
 
-export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult };
+export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, XaiResponse, XaiHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult };
 
 /** Options forwarded to ollamaClient.generate() when api === 'ollama'. */
 export interface OllamaRequestOptions {
@@ -49,8 +50,9 @@ class ApiManager {
       return await serpApiClient.handleRequest(data, toolName || 'web_search', signal);
     } else if (api === 'meme') {
       return await memeClient.handleRequest(data, toolName || 'meme', signal);
+    } else if (api === 'xai') {
+      return await xaiClient.generate(data, requester, model || config.getXaiModel(), conversationHistory, signal, ollamaOptions);
     } else if (api === 'external') {
-      // Stub for future external API integrations
       throw new Error('External API routing is not yet implemented');
     } else {
       return await ollamaClient.generate(data, requester, model || config.getOllamaModel(), conversationHistory, signal, ollamaOptions, ollamaOptions?.images);
@@ -73,6 +75,7 @@ class ApiManager {
    */
   refreshClients(): void {
     ollamaClient.refresh();
+    xaiClient.refresh();
     comfyuiClient.refresh();
     accuweatherClient.refresh();
     nflClient.refresh();
@@ -110,6 +113,13 @@ class ApiManager {
    */
   async checkMemeHealth(): Promise<MemeHealthResult> {
     return await memeClient.testConnection();
+  }
+
+  /**
+   * Test xAI connection and return health status with available models.
+   */
+  async testXaiConnection(): Promise<XaiHealthResult> {
+    return await xaiClient.testConnection();
   }
 
   /**
