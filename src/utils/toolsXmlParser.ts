@@ -72,7 +72,7 @@ function parseToolElement(raw: Record<string, unknown>, index: number): ToolConf
   }
 
   const api = raw.api;
-  const validApis = ['comfyui', 'ollama', 'accuweather', 'nfl', 'serpapi', 'meme', 'discord'];
+  const validApis = ['comfyui', 'ollama', 'accuweather', 'nfl', 'serpapi', 'meme', 'discord', 'xai'];
   if (!api || typeof api !== 'string' || !validApis.includes(api)) {
     throw new Error(`tools.xml: tool "${name}" has invalid <api> "${api}" — must be one of: ${validApis.join(', ')}`);
   }

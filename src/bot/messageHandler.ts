@@ -17,7 +17,7 @@ import { executeRoutedRequest, inferAbilityParameters, formatApiResultAsExternal
 import { evaluateContextWindow } from '../utils/contextEvaluator';
 import { assemblePrompt, assembleReprompt, assembleUnifiedReprompt, parseFirstLineTool } from '../utils/promptBuilder';
 import type { ToolParseResult } from '../utils/promptBuilder';
-import { buildOllamaToolsSchema, resolveToolNameToTool, toolArgumentsToContent } from '../utils/toolsSchema';
+import { buildOllamaToolsSchema, resolveToolNameToTool, toolArgumentsToContent, validateToolBatch } from '../utils/toolsSchema';
 import { activityEvents } from '../utils/activityEvents';
 import { activityKeyManager } from '../utils/activityKeyManager';
 
@@ -1286,7 +1286,8 @@ class MessageHandler {
     // ── Stage 1: Tool Evaluation + Response ─────────────────────
     logger.log('success', 'system', 'UNIFIED: Stage 1 — Tool evaluation + response');
 
-    const tools = buildOllamaToolsSchema(config.getTools());
+    const toolProvider = config.getProviderToolEval();
+    const tools = buildOllamaToolsSchema(config.getTools(), toolProvider);
     const useToolsPath = tools.length > 0;
 
     const assembled = assemblePrompt({
@@ -1294,14 +1295,13 @@ class MessageHandler {
       conversationHistory: historyWithTrigger,
       botDisplayName: ctx.botDisplayName,
       dmHistory: ctx.dmHistory,
+      provider: toolProvider,
       ...(useToolsPath ? { enabledTools: [] } : {}),
     });
 
     if (useToolsPath) {
       logger.log('success', 'system', `UNIFIED: Stage 1 — ${tools.length} native tool(s) available`);
     }
-
-    const toolProvider = config.getProviderToolEval();
     const toolApi = toolProvider === 'xai' ? 'xai' as const : 'ollama' as const;
     const toolModel = toolProvider === 'xai' ? config.getXaiModel() : config.getOllamaToolModel();
 
@@ -1371,10 +1371,11 @@ class MessageHandler {
     logger.log('success', 'system', 'UNIFIED: Stage 2 — Parallel tool execution');
 
     const configuredTools = config.getTools();
-    const toolPromises: Promise<ToolInvocation>[] = [];
+
+    // Resolve tool calls to configs and content, then apply batch policy
+    const resolvedBatch: { tool: ToolConfig; content: string; source: string }[] = [];
 
     if (toolCalls.length > 0) {
-      // Native tool_calls path
       for (const tc of toolCalls) {
         const normalizedName = tc.function.name.replace(/^!\s*/, '').trim().toLowerCase();
         if (normalizedName === 'delegate_to_local') {
@@ -1390,30 +1391,32 @@ class MessageHandler {
         const args = typeof tc.function.arguments === 'object' && tc.function.arguments !== null
           ? (tc.function.arguments as Record<string, unknown>)
           : {};
-        const contentStr = toolArgumentsToContent(resolvedTool, args);
-        activityEvents.emitRoutingDecision(resolvedTool.api, resolvedTool.name, 'tool-call');
-
-        toolPromises.push(this.executeToolInvocation(resolvedTool, contentStr, ctx, timeout));
+        resolvedBatch.push({ tool: resolvedTool, content: toolArgumentsToContent(resolvedTool, args), source: 'tool-call' });
       }
     } else if (legacyParsedTool?.toolConfig) {
-      // Legacy text-based directive path
       const tool = legacyParsedTool.toolConfig;
       const routedInput = (legacyParsedTool.inferredInput?.trim() || ctx.rawContent);
-      activityEvents.emitRoutingDecision(tool.api, tool.name, 'two-stage-parse');
+      resolvedBatch.push({ tool, content: routedInput, source: 'two-stage-parse' });
+    }
 
-      toolPromises.push(this.executeToolInvocation(tool, routedInput, ctx, timeout));
+    // Policy gate: validate batch before execution
+    const { allowed, blocked } = validateToolBatch(
+      resolvedBatch.map(r => r.tool),
+      toolProvider
+    );
+    const blockedNames = new Set(blocked.map(b => b.tool.name));
+    const filteredBatch = resolvedBatch.filter(r => !blockedNames.has(r.tool.name));
+
+    const toolPromises: Promise<ToolInvocation>[] = [];
+    for (const { tool, content, source } of filteredBatch) {
+      activityEvents.emitRoutingDecision(tool.api, tool.name, source as 'tool-call' | 'two-stage-parse');
+      toolPromises.push(this.executeToolInvocation(tool, content, ctx, timeout));
     }
 
     // Run all tool invocations in parallel — requestQueue handles per-API serialization
     const results = await Promise.all(toolPromises);
 
     for (const result of results) {
-      // Check for delete_to_local: set ephemeral flag to force Ollama final pass
-      if (result.toolName.replace(/^!\s*/, '').trim().toLowerCase() === 'delete_to_local') {
-        ctx.forceOllamaFinalPass = true;
-        logger.log('success', 'system', 'UNIFIED: delete_to_local invoked — final pass will use Ollama');
-        continue;
-      }
       ctx.toolResults.push(result);
       if (result.media) ctx.mediaFollowUps.push(result.media);
     }
@@ -1726,7 +1729,8 @@ class MessageHandler {
     ];
 
     // Native tools path: when tools are available, use Ollama tool_calls (max 3) and one final pass.
-    const tools = buildOllamaToolsSchema(config.getTools());
+    const legacyToolProvider = config.getProviderToolEval();
+    const tools = buildOllamaToolsSchema(config.getTools(), legacyToolProvider);
     const useToolsPath = tools.length > 0;
 
     const assembled = assemblePrompt({
@@ -1734,6 +1738,7 @@ class MessageHandler {
       conversationHistory: filteredHistory,
       botDisplayName,
       dmHistory,
+      provider: legacyToolProvider,
       ...(useToolsPath ? { enabledTools: [] } : {}),
     });
 
@@ -1747,8 +1752,6 @@ class MessageHandler {
     } else {
       logger.log('success', 'system', `TWO-STAGE: Native tools mode — ${tools.length} tool(s), max 3 calls per turn`);
     }
-
-    const legacyToolProvider = config.getProviderToolEval();
     const legacyToolApi = legacyToolProvider === 'xai' ? 'xai' as const : 'ollama' as const;
     const legacyToolModel = legacyToolProvider === 'xai' ? config.getXaiModel() : config.getOllamaToolModel();
 
@@ -1807,7 +1810,18 @@ class MessageHandler {
         const args = typeof tc.function.arguments === 'object' && tc.function.arguments !== null
           ? (tc.function.arguments as Record<string, unknown>)
           : {};
-        const contentStr = toolArgumentsToContent(resolvedTool, args);
+        legacyResolved.push({ tool: resolvedTool, content: toolArgumentsToContent(resolvedTool, args) });
+      }
+
+      // Policy gate
+      const legacyPolicy = validateToolBatch(
+        legacyResolved.map(r => r.tool),
+        legacyToolProvider
+      );
+      const legacyBlockedNames = new Set(legacyPolicy.blocked.map(b => b.tool.name));
+      const legacyFiltered = legacyResolved.filter(r => !legacyBlockedNames.has(r.tool.name));
+
+      for (const { tool: resolvedTool, content: contentStr } of legacyFiltered) {
         activityEvents.emitRoutingDecision(resolvedTool.api, resolvedTool.name, 'tool-call');
 
         const apiResult = await executeRoutedRequest(

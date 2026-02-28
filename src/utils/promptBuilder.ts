@@ -1,6 +1,6 @@
 import { config, ToolConfig, AbilityInputs, COMMAND_PREFIX } from './config';
 import { logger } from './logger';
-import { ChatMessage } from '../types';
+import { ChatMessage, LlmProvider } from '../types';
 import { groupMessagesBySource } from './contextFormatter';
 
 // ── XML sanitization ─────────────────────────────────────────────
@@ -43,6 +43,8 @@ export interface PromptBuildOptions {
   botDisplayName?: string;
   /** Private DM history with the requesting user (guild messages only). */
   dmHistory?: ChatMessage[];
+  /** LLM provider for policy hints and provider-specific guidance. */
+  provider?: LlmProvider;
 }
 
 /**
@@ -179,7 +181,7 @@ function buildAbilitiesBlock(routableTools: ToolConfig[]): string {
  * This replaces both the old `config.getOllamaSystemPrompt()` injection
  * and the `buildAbilitiesContext()` system message.
  */
-export function buildSystemPrompt(routableTools?: ToolConfig[]): string {
+export function buildSystemPrompt(routableTools?: ToolConfig[], provider?: LlmProvider): string {
   const persona = config.getOllamaSystemPrompt();
   const routable = routableTools ?? getRoutableTools();
   const abilities = buildAbilitiesBlock(routable);
@@ -189,6 +191,19 @@ export function buildSystemPrompt(routableTools?: ToolConfig[]): string {
   if (abilities) {
     parts.push('');
     parts.push(abilities);
+  }
+
+  // Append consult_grok guidance when the tool is available (Ollama-only)
+  if (provider === 'ollama' && routable.some(t => t.name.replace(/^!\s*/, '').trim().toLowerCase() === 'consult_grok')) {
+    parts.push('');
+    parts.push(CONSULT_GROK_GUIDANCE);
+  }
+
+  // Append batch-policy hints when relevant tools coexist
+  const policyHints = buildPolicyHints(routable, provider);
+  if (policyHints) {
+    parts.push('');
+    parts.push(policyHints);
   }
 
   // Only add tool-output rules when there are routable abilities
@@ -211,6 +226,26 @@ export function buildSystemPrompt(routableTools?: ToolConfig[]): string {
   }
 
   return parts.join('\n');
+}
+
+/**
+ * Build provider-specific policy hints to include in the system prompt.
+ * Helps the model avoid generating tool batches that will be blocked at runtime.
+ */
+function buildPolicyHints(tools: ToolConfig[], provider?: LlmProvider): string | null {
+  const hasSerpapi = tools.some(t => t.api === 'serpapi');
+  const hasXaiTool = tools.some(t => t.api === 'xai');
+
+  if (provider === 'ollama' && hasSerpapi && hasXaiTool) {
+    return (
+      'Tool policy constraint:\n' +
+      'Do NOT call web_search (SerpAPI) and consult_grok (xAI) in the same response. ' +
+      'If the query needs both a web search and a deeper analysis, prefer consult_grok — ' +
+      'it can perform its own web searches internally. Image and video generation tools are exempt from this rule.'
+    );
+  }
+
+  return null;
 }
 
 // ── Conversation history formatter ───────────────────────────────
@@ -588,7 +623,7 @@ export function buildUserContent(options: PromptBuildOptions): string {
  */
 export function assemblePrompt(options: PromptBuildOptions): AssembledPrompt {
   const routable = getRoutableTools(options.enabledTools);
-  const systemContent = buildSystemPrompt(routable);
+  const systemContent = buildSystemPrompt(routable, options.provider);
   const userContent = buildUserContent(options); // botDisplayName flows via options
 
   const messages: ChatMessage[] = [
