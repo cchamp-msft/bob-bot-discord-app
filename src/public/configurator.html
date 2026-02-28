@@ -570,7 +570,7 @@
 
     <!-- Ollama Section -->
     <section>
-      <h2 class="open" onclick="toggleSection(this)">Ollama</h2>
+      <h2 class="open" onclick="toggleSection(this)">Ollama Connection</h2>
       <div class="body open">
         <div class="field-row">
           <div class="field">
@@ -591,6 +591,40 @@
             <input type="number" id="ollama_vision_timeout" data-env="OLLAMA_VISION_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- xAI API Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">xAI API (Grok)</h2>
+      <div class="body">
+        <div class="field-row">
+          <div class="field">
+            <label>xAI Base URL</label>
+            <input type="text" id="xai_base_url" data-env="XAI_BASE_URL" placeholder="https://api.x.ai/v1">
+          </div>
+          <div class="field tiny">
+            <button class="btn-test btn-sm" onclick="testConnection('xai')">Test</button>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>API Key</label>
+            <input type="password" id="xai_api_key" placeholder="Paste xAI API key" autocomplete="off">
+          </div>
+          <div class="field narrow">
+            <label>Timeout <span class="note">seconds, 5–600</span></label>
+            <input type="number" id="xai_timeout" data-env="XAI_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
+          </div>
+        </div>
+        <div id="xaiTestResult" style="font-size:0.85em;margin:8px 0;min-height:1.2em"></div>
+      </div>
+    </section>
+
+    <!-- Prompt & Runtime Section -->
+    <section>
+      <h2 class="open" onclick="toggleSection(this)">Prompt &amp; Runtime</h2>
+      <div class="body open">
 
         <div class="field">
           <label>
@@ -1580,6 +1614,27 @@ flowchart TD
       document.getElementById('serpapi_api_key').placeholder =
         cfg.apis.serpapiApiKeyConfigured ? 'API key configured ✓ — paste new value to change' : 'Paste SerpAPI key';
 
+      // Populate xAI fields
+      if (cfg.xai) {
+        document.getElementById('xai_base_url').value = cfg.xai.endpoint || '';
+        document.getElementById('xai_api_key').value = '';
+        document.getElementById('xai_api_key').placeholder =
+          cfg.xai.apiKeyConfigured ? 'API key configured ✓ — paste new value to change' : 'Paste xAI API key';
+        document.getElementById('xai_timeout').value = cfg.xai.timeout ?? '';
+        // xAI model (saved selection)
+        const xaiModelSelect = document.getElementById('xai_model');
+        if (xaiModelSelect && cfg.xai.model) {
+          const exists = Array.from(xaiModelSelect.options).some(o => o.value === cfg.xai.model);
+          if (!exists) {
+            const opt = document.createElement('option');
+            opt.value = cfg.xai.model;
+            opt.textContent = cfg.xai.model + ' (saved)';
+            xaiModelSelect.appendChild(opt);
+          }
+          xaiModelSelect.value = cfg.xai.model;
+        }
+      }
+
       // Populate NFL logging level
       const nflLogLevel = document.getElementById('nfl_logging_level');
       nflLogLevel.value = String(cfg.nflLogging?.level ?? 1);
@@ -2080,6 +2135,13 @@ flowchart TD
         env['SERPAPI_API_KEY'] = serpKeyVal;
       }
 
+      // Include xAI API key only if user typed a new value (write-only field)
+      const xaiKeyInput = document.getElementById('xai_api_key');
+      const xaiKeyVal = xaiKeyInput.value.trim();
+      if (xaiKeyVal) {
+        env['XAI_API_KEY'] = xaiKeyVal;
+      }
+
       // Include current theme preference
       env['CONFIGURATOR_THEME'] = _getCurrentTheme();
 
@@ -2239,6 +2301,20 @@ flowchart TD
           const resultEl = document.getElementById('serpapiTestResult');
           resultEl.innerHTML = '<span style="color:var(--ok)">✓ API key valid. SerpAPI is reachable.</span>';
         }
+
+        // For xAI, populate model dropdown and show status
+        if (api === 'xai' && data.models && data.models.length > 0) {
+          populateXaiModelDropdowns(data.models);
+          conLog(`  ✓ Found ${data.models.length} xAI model(s)`, 'ok');
+          for (const m of data.models) {
+            conLog(`    • ${m.id || m.name}`);
+          }
+          const resultEl = document.getElementById('xaiTestResult');
+          resultEl.innerHTML = `<span style="color:var(--ok)">✓ xAI API reachable. ${data.models.length} model(s) available.</span>`;
+        } else if (api === 'xai') {
+          const resultEl = document.getElementById('xaiTestResult');
+          resultEl.innerHTML = '<span style="color:var(--ok)">✓ xAI API reachable.</span>';
+        }
       } else {
         conLog(`  ✗ ${api} at ${data.endpoint} is not reachable`, 'err');
         if (data.error) conLog(`    ${data.error}`, 'err');
@@ -2255,10 +2331,37 @@ flowchart TD
           const resultEl = document.getElementById('serpapiTestResult');
           resultEl.innerHTML = `<span style="color:var(--err)">✗ ${data.error || 'Connection failed'}</span>`;
         }
+        if (api === 'xai') {
+          const resultEl = document.getElementById('xaiTestResult');
+          resultEl.innerHTML = `<span style="color:var(--err)">✗ ${data.error || 'Connection failed'}</span>`;
+        }
       }
       await pollStatus();
     } catch (e) {
       conLog(`  ✗ Test failed: ${e.message}`, 'err');
+    }
+  }
+
+  // ── xAI model dropdown population ──────────────────
+  function populateXaiModelDropdowns(models) {
+    const xaiModelSelect = document.getElementById('xai_model');
+    if (!xaiModelSelect) return;
+    const currentValue = xaiModelSelect.value;
+    xaiModelSelect.innerHTML = '';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = '— select a model —';
+    xaiModelSelect.appendChild(defaultOpt);
+    for (const model of models) {
+      const opt = document.createElement('option');
+      const modelId = model.id || model.name;
+      opt.value = modelId;
+      opt.textContent = modelId;
+      xaiModelSelect.appendChild(opt);
+    }
+    if (currentValue) {
+      const exists = Array.from(xaiModelSelect.options).some(o => o.value === currentValue);
+      if (exists) xaiModelSelect.value = currentValue;
     }
   }
 
