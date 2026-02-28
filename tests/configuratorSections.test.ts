@@ -50,8 +50,16 @@ describe('Configurator — section structure', () => {
     expect(headings).toContain('ComfyUI');
   });
 
-  it('has a top-level Ollama section', () => {
-    expect(headings).toContain('Ollama');
+  it('has a top-level Ollama Connection section', () => {
+    expect(headings).toContain('Ollama Connection');
+  });
+
+  it('has a top-level xAI API section', () => {
+    expect(headings).toContain('xAI API (Grok)');
+  });
+
+  it('has a top-level Prompt & Runtime section', () => {
+    expect(headings).toContain('Prompt &amp; Runtime');
   });
 
   it('does NOT have a combined "API Endpoints" section', () => {
@@ -77,30 +85,30 @@ describe('Configurator — embed toggle placement', () => {
   });
 });
 
-// ── Reply Chain Context fields inside Ollama section ─────────
+// ── Reply Chain Context fields inside Prompt & Runtime section ─
 
-describe('Configurator — Reply Chain Context in Ollama section', () => {
+describe('Configurator — Reply Chain Context in Prompt & Runtime section', () => {
   const sections = extractSections();
 
-  it('the Ollama section contains the reply chain image max depth field', () => {
-    const ollama = sections.find(s => s.heading === 'Ollama');
-    expect(ollama).toBeDefined();
-    expect(ollama!.body).toContain('reply_chain_image_max_depth');
-    expect(ollama!.body).toContain('REPLY_CHAIN_IMAGE_MAX_DEPTH');
+  it('the Prompt & Runtime section contains the reply chain image max depth field', () => {
+    const prompt = sections.find(s => s.heading === 'Prompt &amp; Runtime');
+    expect(prompt).toBeDefined();
+    expect(prompt!.body).toContain('reply_chain_image_max_depth');
+    expect(prompt!.body).toContain('REPLY_CHAIN_IMAGE_MAX_DEPTH');
   });
 
-  it('the Ollama section contains the context eval fields', () => {
-    const ollama = sections.find(s => s.heading === 'Ollama');
-    expect(ollama).toBeDefined();
-    expect(ollama!.body).toContain('context_eval_enabled');
-    expect(ollama!.body).toContain('context_eval_context_size');
+  it('the Prompt & Runtime section contains the context eval fields', () => {
+    const prompt = sections.find(s => s.heading === 'Prompt &amp; Runtime');
+    expect(prompt).toBeDefined();
+    expect(prompt!.body).toContain('context_eval_enabled');
+    expect(prompt!.body).toContain('context_eval_context_size');
   });
 
-  it('the Ollama section contains the tool and final pass context size fields', () => {
-    const ollama = sections.find(s => s.heading === 'Ollama');
-    expect(ollama).toBeDefined();
-    expect(ollama!.body).toContain('ollama_tool_context_size');
-    expect(ollama!.body).toContain('ollama_final_pass_context_size');
+  it('the Prompt & Runtime section contains the tool and final pass context size fields', () => {
+    const prompt = sections.find(s => s.heading === 'Prompt &amp; Runtime');
+    expect(prompt).toBeDefined();
+    expect(prompt!.body).toContain('ollama_tool_context_size');
+    expect(prompt!.body).toContain('ollama_final_pass_context_size');
   });
 
   it('there is no standalone Reply Chain Context section', () => {

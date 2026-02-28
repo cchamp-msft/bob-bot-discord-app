@@ -1,4 +1,14 @@
-import { buildOllamaToolsSchema, resolveToolNameToTool } from '../src/utils/toolsSchema';
+jest.mock('../src/utils/logger', () => ({
+  logger: {
+    log: jest.fn(),
+    logError: jest.fn(),
+    logWarn: jest.fn(),
+    logDebug: jest.fn(),
+    logDebugLazy: jest.fn(),
+  },
+}));
+
+import { buildOllamaToolsSchema, resolveToolNameToTool, validateToolBatch } from '../src/utils/toolsSchema';
 import type { ToolConfig } from '../src/utils/config';
 
 describe('toolsSchema', () => {
@@ -124,6 +134,97 @@ describe('toolsSchema', () => {
       const tools: ToolConfig[] = [{ ...baseTool, name: '!get_current_weather' }];
       expect(resolveToolNameToTool('get_current_weather', tools)?.name).toBe('!get_current_weather');
       expect(resolveToolNameToTool('!get_current_weather', tools)?.name).toBe('!get_current_weather');
+    });
+  });
+
+  describe('provider-aware filtering', () => {
+    it('excludes consult_grok when provider is xai', () => {
+      const tools: ToolConfig[] = [
+        { ...baseTool, name: 'consult_grok', api: 'xai' },
+        { ...baseTool, name: 'web_search', api: 'serpapi' },
+      ];
+      const schema = buildOllamaToolsSchema(tools, 'xai');
+      const names = schema.map(t => t.function.name);
+      expect(names).not.toContain('consult_grok');
+      expect(names).toContain('web_search');
+    });
+
+    it('includes consult_grok when provider is ollama', () => {
+      const tools: ToolConfig[] = [
+        { ...baseTool, name: 'consult_grok', api: 'xai' },
+      ];
+      const schema = buildOllamaToolsSchema(tools, 'ollama');
+      expect(schema.map(t => t.function.name)).toContain('consult_grok');
+    });
+
+    it('excludes delegate_to_local when provider is ollama', () => {
+      const tools: ToolConfig[] = [
+        { ...baseTool, name: 'delegate_to_local', api: 'xai' },
+      ];
+      const schema = buildOllamaToolsSchema(tools, 'ollama');
+      expect(schema).toHaveLength(0);
+    });
+
+    it('includes delegate_to_local when provider is xai', () => {
+      const tools: ToolConfig[] = [
+        { ...baseTool, name: 'delegate_to_local', api: 'xai' },
+      ];
+      const schema = buildOllamaToolsSchema(tools, 'xai');
+      expect(schema.map(t => t.function.name)).toContain('delegate_to_local');
+    });
+
+    it('resolveToolNameToTool respects provider filtering', () => {
+      const tools: ToolConfig[] = [
+        { ...baseTool, name: 'consult_grok', api: 'xai' },
+      ];
+      expect(resolveToolNameToTool('consult_grok', tools, 'ollama')).toBeDefined();
+      expect(resolveToolNameToTool('consult_grok', tools, 'xai')).toBeUndefined();
+    });
+  });
+
+  describe('validateToolBatch', () => {
+    const serpTool: ToolConfig = { ...baseTool, name: 'web_search', api: 'serpapi' };
+    const xaiTool: ToolConfig = { ...baseTool, name: 'consult_grok', api: 'xai' };
+    const imageTool: ToolConfig = { ...baseTool, name: 'generate_image', api: 'xai' };
+    const weatherTool: ToolConfig = { ...baseTool, name: 'weather', api: 'accuweather' };
+
+    it('blocks serpapi from xai provider tool calls', () => {
+      const { allowed, blocked } = validateToolBatch([serpTool, weatherTool], 'xai');
+      expect(blocked).toHaveLength(1);
+      expect(blocked[0].tool.name).toBe('web_search');
+      expect(allowed).toHaveLength(1);
+      expect(allowed[0].name).toBe('weather');
+    });
+
+    it('allows non-serpapi tools from xai provider', () => {
+      const { allowed, blocked } = validateToolBatch([weatherTool], 'xai');
+      expect(blocked).toHaveLength(0);
+      expect(allowed).toHaveLength(1);
+    });
+
+    it('blocks xai tools when mixed with serpapi in ollama batch', () => {
+      const { allowed, blocked } = validateToolBatch([serpTool, xaiTool, weatherTool], 'ollama');
+      expect(blocked).toHaveLength(1);
+      expect(blocked[0].tool.name).toBe('consult_grok');
+      expect(allowed).toHaveLength(2);
+    });
+
+    it('exempts image/video tools from serpapi+xai mixing restriction', () => {
+      const { allowed, blocked } = validateToolBatch([serpTool, imageTool], 'ollama');
+      expect(blocked).toHaveLength(0);
+      expect(allowed).toHaveLength(2);
+    });
+
+    it('allows all tools when no policy conflict exists', () => {
+      const { allowed, blocked } = validateToolBatch([weatherTool, serpTool], 'ollama');
+      expect(blocked).toHaveLength(0);
+      expect(allowed).toHaveLength(2);
+    });
+
+    it('returns empty batch unchanged', () => {
+      const { allowed, blocked } = validateToolBatch([], 'ollama');
+      expect(allowed).toHaveLength(0);
+      expect(blocked).toHaveLength(0);
     });
   });
 });
