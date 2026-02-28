@@ -1480,6 +1480,7 @@ class Config {
         endpoint: this.getXaiEndpoint(),
         apiKeyConfigured: !!this.getXaiApiKey(),
         model: this.getXaiModel(),
+        timeout: Math.round(this.getXaiTimeout() / 1000),
         imageEnabled: this.getXaiImageEnabled(),
         videoEnabled: this.getXaiVideoEnabled(),
         encourageBuiltinTools: this.getXaiEncourageBuiltinTools(),

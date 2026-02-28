@@ -617,6 +617,14 @@
             <input type="number" id="xai_timeout" data-env="XAI_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
           </div>
         </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Model <span class="note">click Test to populate</span></label>
+            <select id="xai_model" data-env="XAI_MODEL" onchange="markDirty()">
+              <option value="">— click Test to load models —</option>
+            </select>
+          </div>
+        </div>
         <div id="xaiTestResult" style="font-size:0.85em;margin:8px 0;min-height:1.2em"></div>
       </div>
     </section>
@@ -668,7 +676,7 @@
 
         <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px;padding-left:8px">Context Evaluation</div>
         <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
-          When enabled, the bot uses Ollama to filter collected conversation history to the messages most relevant to the current prompt before building the two-stage (abilities) prompt. Depth limits are controlled globally via Reply Chain Max Depth.
+          When enabled, the bot uses the selected provider to filter collected conversation history to the messages most relevant to the current prompt. Depth limits are controlled globally via Reply Chain Max Depth.
         </p>
         <div class="field-row">
           <div class="field narrow">
@@ -676,6 +684,13 @@
             <select id="context_eval_enabled" data-env="CONTEXT_EVAL_ENABLED" onchange="markDirty()">
               <option value="true">Yes</option>
               <option value="false">No</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Provider</label>
+            <select id="provider_context_eval" data-env="PROVIDER_CONTEXT_EVAL" onchange="markDirty()">
+              <option value="ollama">Ollama</option>
+              <option value="xai">xAI</option>
             </select>
           </div>
         </div>
@@ -706,9 +721,16 @@
         <hr style="border-color:var(--border);margin:16px 0">
         <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin:12px 0 8px">Tool Evaluation</div>
         <p class="help-text" style="margin-bottom:10px">
-          Select the model used for tool routing and ability evaluation. Click <strong>Test</strong> above to refresh the model list.
+          Select the provider and model used for tool routing and ability evaluation. Click <strong>Test</strong> in the corresponding connection section to populate available models.
         </p>
         <div class="field-row">
+          <div class="field narrow">
+            <label>Provider</label>
+            <select id="provider_tool_eval" data-env="PROVIDER_TOOL_EVAL" onchange="markDirty()">
+              <option value="ollama">Ollama</option>
+              <option value="xai">xAI</option>
+            </select>
+          </div>
           <div class="field">
             <label>Model</label>
             <select id="ollama_model" data-env="OLLAMA_MODEL" onchange="markDirty()">
@@ -753,11 +775,18 @@
         <hr style="border-color:var(--border);margin:16px 0">
         <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin:12px 0 8px">Final Pass</div>
         <p class="help-text" style="margin-bottom:10px">
-          Every response is refined through Ollama before being sent to Discord, ensuring consistent personality and tone.
-          Configure the model and prompt used for this mandatory refinement step.
-          Click <strong>Test</strong> above to populate the model list. Leave empty to use the default model.
+          Every response is refined through the selected provider before being sent to Discord, ensuring consistent personality and tone.
+          Configure the provider, model, and prompt used for this mandatory refinement step.
+          Click <strong>Test</strong> in the connection section to populate available models.
         </p>
         <div class="field-row">
+          <div class="field narrow">
+            <label>Provider</label>
+            <select id="provider_final_pass" data-env="PROVIDER_FINAL_PASS" onchange="markDirty()">
+              <option value="ollama">Ollama</option>
+              <option value="xai">xAI</option>
+            </select>
+          </div>
           <div class="field">
             <label>Model <span class="note">falls back to default model</span></label>
             <select id="ollama_final_pass_model" data-env="OLLAMA_FINAL_PASS_MODEL" onchange="markDirty()">
@@ -1633,6 +1662,13 @@ flowchart TD
           }
           xaiModelSelect.value = cfg.xai.model;
         }
+      }
+
+      // Populate provider selectors
+      if (cfg.provider) {
+        document.getElementById('provider_tool_eval').value = cfg.provider.toolEval || 'ollama';
+        document.getElementById('provider_final_pass').value = cfg.provider.finalPass || 'ollama';
+        document.getElementById('provider_context_eval').value = cfg.provider.contextEval || 'ollama';
       }
 
       // Populate NFL logging level
