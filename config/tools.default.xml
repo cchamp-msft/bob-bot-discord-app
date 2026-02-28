@@ -24,7 +24,7 @@
     <name>generate_image</name>
     <api>comfyui</api>
     <timeout>600</timeout>
-    <description>Generate image using ComfyUI</description>
+    <description>Generate an image from a text prompt</description>
     <abilityWhen>User wants an image generated.</abilityWhen>
     <parameters>
       <mode>implicit</mode>
