@@ -153,6 +153,37 @@
     <allowEmptyContent>true</allowEmptyContent>
   </tool>
 
+  <!-- Cross-provider tools -->
+  <tool>
+    <name>consult_grok</name>
+    <api>xai</api>
+    <timeout>120</timeout>
+    <description>Consult Grok (xAI) for a second opinion or deeper analysis on complex topics</description>
+    <abilityWhen>You need a second opinion on ambiguous or complex reasoning, a deeper dive into a topic beyond basic facts or web searches, or updated/real-time information on current events or evolving trends.</abilityWhen>
+    <parameters>
+      <mode>explicit</mode>
+      <query>
+        <type>string</type>
+        <description>The full query context to send to Grok, including all relevant details from the conversation</description>
+        <required>true</required>
+      </query>
+      <inferFrom>current_message, conversation_history</inferFrom>
+      <validation>Pass the full query context as input to ensure Grok has all necessary details. Do not send partial or vague requests.</validation>
+      <examples>
+        <example>consult_grok What are the latest developments in quantum computing and how do they compare to classical computing advances in 2026?</example>
+      </examples>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>delegate_to_local</name>
+    <api>xai</api>
+    <timeout>10</timeout>
+    <description>Delegate the final response pass to the local Ollama model instead of xAI for this turn</description>
+    <abilityWhen>The response should be delegated to and finalized by the local Ollama model rather than xAI, for example when the user prefers a local model perspective or when xAI tools have gathered data but the local model should synthesize.</abilityWhen>
+    <allowEmptyContent>true</allowEmptyContent>
+  </tool>
+
   <!-- Discord-native action tools -->
   <tool>
     <name>send_to_discord_guild</name>

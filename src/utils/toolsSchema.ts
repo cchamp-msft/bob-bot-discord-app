@@ -196,6 +196,8 @@ export function toolArgumentsToContent(
     }
     case 'discord':
       return JSON.stringify(args);
+    case 'xai':
+      return get('query') || get('input') || get('content') || '';
     default:
       return get('input') || get('content') || Object.values(args).filter(v => typeof v === 'string').join(' ') || '';
   }

@@ -91,6 +91,18 @@ export function getRoutableTools(overrides?: ToolConfig[]): ToolConfig[] {
 }
 
 /**
+ * Guidance prompt appended to tool descriptions when consult_grok is available.
+ * Only Ollama should receive this guidance (xAI cannot call consult_grok).
+ */
+export const CONSULT_GROK_GUIDANCE = [
+  'Use the consult_grok tool when:',
+  '- You need a second opinion on ambiguous or complex reasoning.',
+  '- A deeper dive into a topic is required beyond basic facts or web searches.',
+  '- Updated or real-time information might be available (e.g., current events, evolving trends).',
+  '- Pass the full query context as input to ensure Grok has all necessary details.',
+].join('\n');
+
+/**
  * Render the inputs sub-section for one tool's ability block.
  * Produces a compact, multi-line description the model can follow.
  */
