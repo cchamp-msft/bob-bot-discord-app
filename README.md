@@ -1,6 +1,6 @@
 # Bob Bot - Discord AI Integration
 
-A Discord bot that monitors @mentions and DMs, routes tool-matched requests to ComfyUI, Ollama, AccuWeather, ESPN NFL, SerpAPI (Google Search), and Memegen (meme images) APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
+A Discord bot that monitors @mentions and DMs, routes tool-matched requests to ComfyUI, Ollama, xAI (Grok), AccuWeather, ESPN NFL, SerpAPI (Google Search), and Memegen (meme images) APIs, and returns results as inline replies or ephemeral slash commands with organized file outputs and comprehensive logging.
 
 ## Features
 
@@ -10,6 +10,7 @@ A Discord bot that monitors @mentions and DMs, routes tool-matched requests to C
 - ✅ Slash commands with ephemeral responses
 - ✅ ComfyUI integration for AI image generation
 - ✅ Ollama integration for AI text generation and conversation
+- ✅ **xAI (Grok) integration** — select between Ollama and xAI per pipeline stage (tool eval, final pass, context eval)
 - ✅ **Image-to-text (vision)** — attach images to any @mention or DM and Ollama describes them automatically
 - ✅ AccuWeather integration for real-time weather data
 - ✅ **NFL game data** — live scores and news via ESPN
@@ -26,7 +27,7 @@ A Discord bot that monitors @mentions and DMs, routes tool-matched requests to C
 
 - Node.js 20+
 - A Discord Bot Token (configurable via web UI)
-- Optional: ComfyUI, Ollama, AccuWeather API key, SerpAPI key
+- Optional: ComfyUI, Ollama, xAI API key, AccuWeather API key, SerpAPI key
 
 ### Installation
 
@@ -49,7 +50,7 @@ src/
 ├── index.ts              # Main bot entry point
 ├── bot/                  # Discord client and message handling
 ├── commands/             # Slash command definitions
-├── api/                  # API clients (ComfyUI, Ollama, AccuWeather, NFL, SerpAPI, Meme)
+├── api/                  # API clients (ComfyUI, Ollama, xAI, AccuWeather, NFL, SerpAPI, Meme)
 ├── public/               # Web configurator and activity feed
 └── utils/                # Config, logging, file handling, routing, queuing
 
@@ -120,7 +121,7 @@ npm run test:watch
 - **[Quick Start Guide](docs/QUICKSTART.md)** — Get up and running in minutes
 - **[Complete Feature List](docs/FEATURES.md)** — All bot capabilities
 - **[Usage Guide](docs/USAGE.md)** — How to use the bot with examples
-- **[API Integration](docs/API_INTEGRATION.md)** — Configure ComfyUI, Ollama, AccuWeather, NFL, SerpAPI, Meme
+- **[API Integration](docs/API_INTEGRATION.md)** — Configure ComfyUI, Ollama, xAI, AccuWeather, NFL, SerpAPI, Meme
 - **[Web Configurator](docs/CONFIGURATOR.md)** — Web UI, activity feed, reverse proxy setup
 - **[Architecture](docs/ARCHITECTURE.md)** — Technical details, routing, context management
 - **[Advanced Features](docs/ADVANCED.md)** — Tool configuration, context evaluation, debugging

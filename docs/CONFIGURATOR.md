@@ -49,7 +49,9 @@ Events are written as sanitized first-person narratives (e.g. *"Someone wants my
 - **Start/Stop Controls**: Connect or disconnect the bot from Discord without restarting the process
 - **Connection Status**: Live indicator showing stopped / connecting / running / error
 - **ComfyUI**: Endpoint, workflow upload, default workflow builder, discovery, export, test image generation, and image response embed toggle
-- **Ollama**: Endpoint, model selection, system prompt, final pass model/prompt, and ability logging
+- **Ollama Connection**: Endpoint, timeout, vision timeout, and test connection
+- **xAI API (Grok)**: Base URL, API key (write-only), model selection, timeout, image/video toggles, built-in tool encouragement, and backend selectors for image generation and web search
+- **Prompt & Runtime**: System prompt, reply chain context, context evaluation, tool evaluation (with provider selection), final pass (with provider selection), and response fixup settings
 - **AccuWeather**: API key (write-only), default location, endpoint configuration, and test connection with location resolution
 - **NFL**: Enabled toggle, endpoint configuration, and test connection (no API key needed — ESPN public API)
 - **Error Handling**: Configure user-facing error message and rate limit interval
@@ -63,9 +65,10 @@ Events are written as sanitized first-person narratives (e.g. *"Someone wants my
 ## Hot-Reload vs Restart Required
 
 **Hot-Reload (no restart needed):**
-- ComfyUI/Ollama/AccuWeather/NFL endpoints
-- Ollama model selection
+- ComfyUI/Ollama/xAI/AccuWeather/NFL endpoints
+- Ollama and xAI model selection
 - Ollama system prompt
+- Provider selection (per pipeline stage)
 - AccuWeather API key and default location
 - NFL enabled state
 - Default workflow parameters (model, size, steps, sampler, scheduler, denoise, seed)

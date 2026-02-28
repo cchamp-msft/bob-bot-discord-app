@@ -57,6 +57,53 @@ Attach an image to any @mention or DM:
 
 If no text is provided with the image, the bot auto-generates a default prompt: "What do you see in this image?" (or "...these images?" for multiple).
 
+## xAI (Grok) Configuration
+
+The bot supports xAI as an alternative LLM provider alongside Ollama. Each pipeline stage (tool evaluation, final pass, context evaluation) can independently select between Ollama and xAI.
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `XAI_API_KEY` | Yes | API key from xAI |
+| `XAI_BASE_URL` | No | Base URL override (default: `https://api.x.ai/v1`) |
+| `XAI_MODEL` | No | Model to use (e.g. `grok-3-latest`) |
+| `XAI_TIMEOUT` | No | Request timeout in milliseconds (default: 120000) |
+| `XAI_IMAGE_ENABLED` | No | Enable xAI image generation (`true`/`false`) |
+| `XAI_VIDEO_ENABLED` | No | Enable xAI video generation (`true`/`false`) |
+| `XAI_ENCOURAGE_BUILTIN_TOOLS` | No | Append prompt encouraging built-in tool use (`true`/`false`) |
+
+### Provider Selection
+
+Each pipeline stage can use a different provider:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PROVIDER_TOOL_EVAL` | `ollama` | Provider for tool routing and ability evaluation |
+| `PROVIDER_FINAL_PASS` | `ollama` | Provider for the mandatory final refinement pass |
+| `PROVIDER_CONTEXT_EVAL` | `ollama` | Provider for context window evaluation |
+| `PROVIDER_RETRY` | `ollama` | Provider for ability retry refinement |
+
+### Backend Selection
+
+Image generation and web search can route to xAI instead of their default backends:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMAGE_GENERATION_BACKEND` | `comfyui` | Image generation backend (`comfyui` or `xai`) |
+| `WEB_SEARCH_BACKEND` | `serpapi` | Web search backend (`serpapi` or `xai`) |
+
+### Cross-Provider Tools
+
+- **`consult_grok`** — Ollama-only tool that routes to xAI for a second opinion or deeper analysis. Blocked from xAI tool calls.
+- **`delegate_to_local`** — xAI-only tool that delegates the final pass to Ollama for the current turn.
+
+### Tool Batch Policy
+
+- SerpAPI tools are blocked from xAI provider tool calls.
+- SerpAPI and xAI-routed tools (except image/video) cannot coexist in the same Ollama batch.
+- The system prompt includes policy hints to discourage disallowed combinations.
+
 ## ComfyUI Configuration
 
 ComfyUI uses workflow JSON files to define generation pipelines. There are two ways to configure a workflow:

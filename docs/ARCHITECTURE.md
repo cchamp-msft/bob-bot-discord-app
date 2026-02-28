@@ -20,7 +20,8 @@ src/
 │   ├── serpApiClient.ts   # SerpAPI client (Google Search + AI Overview)
 │   ├── comfyuiClient.ts  # ComfyUI API client (workflow execution)
 │   ├── comfyuiWebSocket.ts # ComfyUI WebSocket manager (real-time execution tracking)
-│   └── ollamaClient.ts   # Ollama API client
+│   ├── ollamaClient.ts   # Ollama API client
+│   └── xaiClient.ts      # xAI (Grok) API client (chat, models, image/video)
 ├── public/
 │   ├── configurator.html # Web-based configurator SPA
 │   └── activity.html     # Activity timeline page (key-protected)
