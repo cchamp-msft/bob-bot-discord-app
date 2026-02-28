@@ -1301,25 +1301,29 @@ class MessageHandler {
       logger.log('success', 'system', `UNIFIED: Stage 1 — ${tools.length} native tool(s) available`);
     }
 
+    const toolProvider = config.getProviderToolEval();
+    const toolApi = toolProvider === 'xai' ? 'xai' as const : 'ollama' as const;
+    const toolModel = toolProvider === 'xai' ? config.getXaiModel() : config.getOllamaToolModel();
+
     const ollamaResult = await requestQueue.execute(
-      'ollama',
+      toolApi,
       ctx.requester,
       'unified:stage1',
       timeout,
       (signal) =>
         apiManager.executeRequest(
-          'ollama',
+          toolApi,
           ctx.requester,
           assembled.userContent,
           timeout,
-          config.getOllamaToolModel(),
+          toolModel,
           [{ role: 'system', content: assembled.systemContent }],
           signal,
           undefined,
           {
             includeSystemPrompt: false,
             contextSize: config.getOllamaToolContextSize(),
-            timeout: config.getOllamaToolTimeout(),
+            timeout: toolProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaToolTimeout(),
             ...(useToolsPath ? { tools } : {}),
             ...(ctx.imagePayloads.length > 0 ? { images: ctx.imagePayloads } : {}),
           }
@@ -1615,23 +1619,32 @@ class MessageHandler {
       ? `${reprompt.systemContent}\n\n${finalPassPrompt}`
       : reprompt.systemContent;
 
+    const finalProvider = ctx.forceOllamaFinalPass ? 'ollama' : config.getProviderFinalPass();
+    const finalApi = finalProvider === 'xai' ? 'xai' as const : 'ollama' as const;
+    const finalModel = finalProvider === 'xai'
+      ? config.getXaiModel()
+      : (config.getOllamaFinalPassModel() ?? undefined);
+    const finalTimeout = finalProvider === 'xai'
+      ? config.getXaiTimeout()
+      : config.getOllamaFinalPassTimeout();
+
     try {
       const finalResult = await requestQueue.execute(
-        'ollama',
+        finalApi,
         ctx.requester,
         'unified:final',
         timeout,
         (sig) =>
           apiManager.executeRequest(
-            'ollama',
+            finalApi,
             ctx.requester,
             reprompt.userContent,
             timeout,
-            config.getOllamaFinalPassModel() ?? undefined,
+            finalModel,
             [{ role: 'system', content: finalSystemContent }],
             sig,
             undefined,
-            { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: config.getOllamaFinalPassTimeout() }
+            { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: finalTimeout }
           )
       ) as OllamaResponse;
       ctx.ollamaCallCount++;
@@ -1723,25 +1736,29 @@ class MessageHandler {
       logger.log('success', 'system', `TWO-STAGE: Native tools mode — ${tools.length} tool(s), max 3 calls per turn`);
     }
 
+    const legacyToolProvider = config.getProviderToolEval();
+    const legacyToolApi = legacyToolProvider === 'xai' ? 'xai' as const : 'ollama' as const;
+    const legacyToolModel = legacyToolProvider === 'xai' ? config.getXaiModel() : config.getOllamaToolModel();
+
     const ollamaResult = await requestQueue.execute(
-      'ollama',
+      legacyToolApi,
       requester,
       toolConfig.name,
       timeout,
       (signal) =>
         apiManager.executeRequest(
-          'ollama',
+          legacyToolApi,
           requester,
           assembled.userContent,
           timeout,
-          config.getOllamaToolModel(),
+          legacyToolModel,
           [{ role: 'system', content: assembled.systemContent }],
           signal,
           undefined,
           {
             includeSystemPrompt: false,
             contextSize: config.getOllamaToolContextSize(),
-            timeout: config.getOllamaToolTimeout(),
+            timeout: legacyToolProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaToolTimeout(),
             ...(useToolsPath ? { tools } : {}),
             ...(imagePayloads.length > 0 ? { images: imagePayloads } : {}),
           }
@@ -1812,22 +1829,27 @@ class MessageHandler {
         ? `${reprompt.systemContent}\n\n${finalPassPrompt}`
         : reprompt.systemContent;
 
+      const tsFpProvider = config.getProviderFinalPass();
+      const tsFpApi = tsFpProvider === 'xai' ? 'xai' as const : 'ollama' as const;
+      const tsFpModel = tsFpProvider === 'xai' ? config.getXaiModel() : (config.getOllamaFinalPassModel() ?? undefined);
+      const tsFpTimeout = tsFpProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaFinalPassTimeout();
+
       const finalResult = await requestQueue.execute(
-        'ollama',
+        tsFpApi,
         requester,
         'tools:final',
         timeout,
         (sig) =>
           apiManager.executeRequest(
-            'ollama',
+            tsFpApi,
             requester,
             reprompt.userContent,
             timeout,
-            config.getOllamaFinalPassModel() ?? undefined,
+            tsFpModel,
             [{ role: 'system', content: finalSystemContent }],
             sig,
             undefined,
-            { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: config.getOllamaFinalPassTimeout() }
+            { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: tsFpTimeout }
           )
       ) as OllamaResponse;
 
@@ -2054,23 +2076,28 @@ class MessageHandler {
       ? `${reprompt.systemContent}\n\n${finalPassPrompt}`
       : reprompt.systemContent;
 
+    const fpProvider = config.getProviderFinalPass();
+    const fpApi = fpProvider === 'xai' ? 'xai' as const : 'ollama' as const;
+    const fpModel = fpProvider === 'xai' ? config.getXaiModel() : (config.getOllamaFinalPassModel() ?? undefined);
+    const fpTimeout = fpProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaFinalPassTimeout();
+
     try {
       const finalResult = await requestQueue.execute(
-        'ollama',
+        fpApi,
         requester,
         'chat:final',
         timeout,
         (sig) =>
           apiManager.executeRequest(
-            'ollama',
+            fpApi,
             requester,
             reprompt.userContent,
             timeout,
-            config.getOllamaFinalPassModel() ?? undefined,
+            fpModel,
             [{ role: 'system', content: finalSystemContent }],
             sig,
             undefined,
-            { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: config.getOllamaFinalPassTimeout() }
+            { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: fpTimeout }
           )
       ) as OllamaResponse;
 

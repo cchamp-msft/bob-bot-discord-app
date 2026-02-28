@@ -591,22 +591,27 @@ export async function executeRoutedRequest(
     ? `${reprompt.systemContent}\n\n${finalPassPrompt}`
     : reprompt.systemContent;
 
+  const routerFpProvider = config.getProviderFinalPass();
+  const routerFpApi = routerFpProvider === 'xai' ? 'xai' as const : 'ollama' as const;
+  const routerFpModel = routerFpProvider === 'xai' ? config.getXaiModel() : (config.getOllamaFinalPassModel() || undefined);
+  const routerFpTimeout = routerFpProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaFinalPassTimeout();
+
   const finalResult = await requestQueue.execute(
-    'ollama',
+    routerFpApi,
     requester,
     `${keywordConfig.name}:final`,
     keywordConfig.timeout,
     (sig) =>
       apiManager.executeRequest(
-        'ollama',
+        routerFpApi,
         requester,
         reprompt.userContent,
         keywordConfig.timeout,
-        config.getOllamaFinalPassModel() || undefined,
+        routerFpModel,
         [{ role: 'system', content: finalSystemContent }],
         sig,
         undefined,
-        { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: config.getOllamaFinalPassTimeout() }
+        { includeSystemPrompt: false, contextSize: config.getOllamaFinalPassContextSize(), timeout: routerFpTimeout }
       ),
     signal
   ) as OllamaResponse;

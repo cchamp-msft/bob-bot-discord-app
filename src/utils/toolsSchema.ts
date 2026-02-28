@@ -1,7 +1,14 @@
 import type { ToolConfig } from './config';
+import type { LlmProvider } from '../types';
 
 /** Tool names that are internal-only (e.g. !help, !activity_key). Not sent to Ollama as tools. */
 const INTERNAL_ONLY_TOOLS = new Set(['help', 'activity_key']);
+
+/** Tools only available when the provider is Ollama (blocked from xAI). */
+const OLLAMA_ONLY_TOOLS = new Set(['consult_grok']);
+
+/** Tools only available when the provider is xAI (blocked from Ollama). */
+const XAI_ONLY_TOOLS = new Set(['delegate_to_local']);
 
 function isInternalOnlyTool(name: string): boolean {
   const normalized = name.replace(/^!\s*/, '').trim().toLowerCase();
@@ -26,20 +33,34 @@ export interface OllamaTool {
 }
 
 /**
- * Build OpenAI-compatible tool definitions from tool config for Ollama's native tools.
+ * Check whether a tool name is restricted to a specific provider.
+ * Returns true if the tool should be excluded for the given provider.
+ */
+function isProviderRestricted(name: string, provider?: LlmProvider): boolean {
+  const normalized = name.replace(/^!\s*/, '').trim().toLowerCase();
+  if (provider === 'xai' && OLLAMA_ONLY_TOOLS.has(normalized)) return true;
+  if (provider === 'ollama' && XAI_ONLY_TOOLS.has(normalized)) return true;
+  return false;
+}
+
+/**
+ * Build OpenAI-compatible tool definitions from tool config for native tools.
  * Excludes internal-only tools (help, activity_key) and non-routable
  * tools (disabled, builtin, api === 'ollama').
+ * When a provider is specified, also excludes tools restricted to the other provider.
  *
  * @param tools - Full tool list (e.g. from config).
+ * @param provider - Optional LLM provider to filter provider-restricted tools.
  * @returns Tool definitions suitable for the `tools` parameter of /api/chat.
  */
-export function buildOllamaToolsSchema(tools: ToolConfig[]): OllamaTool[] {
+export function buildOllamaToolsSchema(tools: ToolConfig[], provider?: LlmProvider): OllamaTool[] {
   const filtered = tools.filter(
     (k) =>
       k.enabled !== false &&
       !k.builtin &&
       k.api !== 'ollama' &&
-      !isInternalOnlyTool(k.name)
+      !isInternalOnlyTool(k.name) &&
+      !isProviderRestricted(k.name, provider)
   );
 
   const seen = new Set<string>();
@@ -117,12 +138,14 @@ function buildParameters(toolConfig: ToolConfig): OllamaTool['function']['parame
 }
 
 /**
- * Resolve a tool name (as returned by Ollama) back to the tool config.
+ * Resolve a tool name (as returned by the LLM) back to the tool config.
  * Tool name is the name normalized (no !, lowercased). First match wins.
+ * When a provider is specified, tools restricted to the other provider are excluded.
  */
 export function resolveToolNameToTool(
   toolName: string,
-  tools: ToolConfig[]
+  tools: ToolConfig[],
+  provider?: LlmProvider
 ): ToolConfig | undefined {
   const normalized = toolName.replace(/^!\s*/, '').trim().toLowerCase();
   return tools.find(
@@ -131,6 +154,7 @@ export function resolveToolNameToTool(
       !k.builtin &&
       k.api !== 'ollama' &&
       !isInternalOnlyTool(k.name) &&
+      !isProviderRestricted(k.name, provider) &&
       k.name.replace(/^!\s*/, '').trim().toLowerCase() === normalized
   );
 }

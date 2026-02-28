@@ -1,6 +1,7 @@
 import { config, ToolConfig } from './config';
 import { logger } from './logger';
-import { ollamaClient, OllamaResponse } from '../api/ollamaClient';
+import { OllamaResponse } from '../api/ollamaClient';
+import { apiManager } from '../api';
 import { requestQueue } from './requestQueue';
 import { ChatMessage } from '../types';
 import { formatSourceTag } from './contextFormatter';
@@ -238,8 +239,12 @@ export async function evaluateContextWindow(
     logger.logDebug('system', `CONTEXT-EVAL [system prompt]: ${systemPrompt}`);
     logger.logDebug('system', `CONTEXT-EVAL [eval prompt]: ${evalPrompt}`);
 
+    const provider = config.getProviderContextEval();
+    const queueApi = provider === 'xai' ? 'xai' : 'ollama';
+    const model = provider === 'xai' ? config.getXaiModel() : config.getContextEvalModel();
+
     const response: OllamaResponse = await requestQueue.execute(
-      'ollama',
+      queueApi,
       requester,
       '__ctx_eval__',
       toolConfig.timeout ?? config.getDefaultTimeout(),
@@ -248,12 +253,15 @@ export async function evaluateContextWindow(
           ? AbortSignal.any([signal, queueSignal])
           : queueSignal;
 
-        return ollamaClient.generate(
-          evalPrompt,
+        return apiManager.executeRequest(
+          queueApi,
           requester,
-          config.getContextEvalModel(),
+          evalPrompt,
+          toolConfig.timeout ?? config.getDefaultTimeout(),
+          model,
           [{ role: 'system', content: systemPrompt }],
           combinedSignal,
+          undefined,
           {
             includeSystemPrompt: false,
             contextSize: config.getContextEvalContextSize(),
@@ -261,7 +269,7 @@ export async function evaluateContextWindow(
           }
         );
       }
-    );
+    ) as OllamaResponse;
 
     if (!response.success || !response.data?.text) {
       logger.logWarn('system',
