@@ -1376,6 +1376,12 @@ class MessageHandler {
     if (toolCalls.length > 0) {
       // Native tool_calls path
       for (const tc of toolCalls) {
+        const normalizedName = tc.function.name.replace(/^!\s*/, '').trim().toLowerCase();
+        if (normalizedName === 'delegate_to_local') {
+          ctx.forceOllamaFinalPass = true;
+          logger.log('success', 'system', 'UNIFIED: delegate_to_local invoked — final pass will use Ollama');
+          continue;
+        }
         const resolvedTool = resolveToolNameToTool(tc.function.name, configuredTools);
         if (!resolvedTool) {
           logger.logWarn('system', `UNIFIED: Unknown tool name "${tc.function.name}" — skipping`);
@@ -1402,6 +1408,12 @@ class MessageHandler {
     const results = await Promise.all(toolPromises);
 
     for (const result of results) {
+      // Check for delete_to_local: set ephemeral flag to force Ollama final pass
+      if (result.toolName.replace(/^!\s*/, '').trim().toLowerCase() === 'delete_to_local') {
+        ctx.forceOllamaFinalPass = true;
+        logger.log('success', 'system', 'UNIFIED: delete_to_local invoked — final pass will use Ollama');
+        continue;
+      }
       ctx.toolResults.push(result);
       if (result.media) ctx.mediaFollowUps.push(result.media);
     }
@@ -1776,8 +1788,17 @@ class MessageHandler {
       const externalDataParts: string[] = [];
       const configuredTools = config.getTools();
       const mediaFollowUps: MediaFollowUp[] = [];
+      let forceOllamaFP = false;
 
+      // Resolve tools and extract delegate_to_local before policy check
+      const legacyResolved: { tool: ToolConfig; content: string }[] = [];
       for (const tc of toolCalls) {
+        const normalizedName = tc.function.name.replace(/^!\s*/, '').trim().toLowerCase();
+        if (normalizedName === 'delegate_to_local') {
+          forceOllamaFP = true;
+          logger.log('success', 'system', 'TWO-STAGE: delegate_to_local invoked — final pass will use Ollama');
+          continue;
+        }
         const resolvedTool = resolveToolNameToTool(tc.function.name, configuredTools);
         if (!resolvedTool) {
           logger.logWarn('system', `TWO-STAGE: Unknown tool name "${tc.function.name}" — skipping`);
@@ -1829,7 +1850,7 @@ class MessageHandler {
         ? `${reprompt.systemContent}\n\n${finalPassPrompt}`
         : reprompt.systemContent;
 
-      const tsFpProvider = config.getProviderFinalPass();
+      const tsFpProvider = forceOllamaFP ? 'ollama' : config.getProviderFinalPass();
       const tsFpApi = tsFpProvider === 'xai' ? 'xai' as const : 'ollama' as const;
       const tsFpModel = tsFpProvider === 'xai' ? config.getXaiModel() : (config.getOllamaFinalPassModel() ?? undefined);
       const tsFpTimeout = tsFpProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaFinalPassTimeout();
