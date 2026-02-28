@@ -53,6 +53,18 @@ jest.mock('../src/api/memeClient', () => {
   return { memeClient: client };
 });
 
+jest.mock('../src/api/xaiClient', () => {
+  const client = {
+    refresh: jest.fn(),
+    generate: jest.fn(),
+    isHealthy: jest.fn(),
+    testConnection: jest.fn(),
+    listModels: jest.fn(),
+    generateImage: jest.fn(),
+  };
+  return { xaiClient: client };
+});
+
 jest.mock('../src/utils/config', () => ({
   config: {
     getOllamaModel: jest.fn(() => 'llama2'),
@@ -66,6 +78,10 @@ jest.mock('../src/utils/config', () => ({
     getSerpApiKey: jest.fn(() => ''),
     getMemeEndpoint: jest.fn(() => 'https://api.memegen.link'),
     getMemeEnabled: jest.fn(() => true),
+    getXaiEndpoint: jest.fn(() => 'https://api.x.ai/v1'),
+    getXaiApiKey: jest.fn(() => ''),
+    getXaiModel: jest.fn(() => ''),
+    getXaiTimeout: jest.fn(() => 120000),
   },
 }));
 
@@ -266,6 +282,36 @@ describe('ApiManager', () => {
 
       expect(result).toEqual(mockResult);
       expect(comfyuiClient.validateWorkflow).toHaveBeenCalledWith('{"text": "%prompt%"}');
+    });
+  });
+
+  describe('xAI routing', () => {
+    it('should route xai requests to xaiClient.generate', async () => {
+      const { xaiClient } = require('../src/api/xaiClient');
+      (xaiClient.generate as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { text: 'grok response' },
+      });
+
+      const result = await apiManager.executeRequest('xai', 'user1', 'hello grok', 60);
+      expect(xaiClient.generate).toHaveBeenCalled();
+      expect(result.success).toBe(true);
+    });
+
+    it('should call xaiClient.refresh on refreshClients', () => {
+      const { xaiClient } = require('../src/api/xaiClient');
+      apiManager.refreshClients();
+      expect(xaiClient.refresh).toHaveBeenCalled();
+    });
+
+    it('should delegate testXaiConnection to xaiClient', async () => {
+      const { xaiClient } = require('../src/api/xaiClient');
+      const mockResult = { healthy: true, models: [{ id: 'grok-3' }] };
+      (xaiClient.testConnection as jest.Mock).mockResolvedValue(mockResult);
+
+      const result = await apiManager.testXaiConnection();
+      expect(result).toEqual(mockResult);
+      expect(xaiClient.testConnection).toHaveBeenCalledTimes(1);
     });
   });
 });

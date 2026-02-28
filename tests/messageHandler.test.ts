@@ -62,6 +62,12 @@ jest.mock('../src/utils/config', () => ({
     needsSeparateFinalPass: jest.fn(() => false),
     getDmContextEnabled: jest.fn(() => false),
     getDmContextMaxMessages: jest.fn(() => 10),
+    getProviderToolEval: jest.fn(() => 'ollama'),
+    getProviderFinalPass: jest.fn(() => 'ollama'),
+    getProviderContextEval: jest.fn(() => 'ollama'),
+    getProviderRetry: jest.fn(() => 'ollama'),
+    getXaiModel: jest.fn(() => ''),
+    getXaiTimeout: jest.fn(() => 120000),
   },
 }));
 

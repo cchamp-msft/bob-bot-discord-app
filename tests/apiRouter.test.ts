@@ -26,6 +26,10 @@ jest.mock('../src/utils/config', () => ({
     getOllamaFinalPassPrompt: jest.fn(() => ''),
     getOllamaFinalPassTimeout: jest.fn(() => 120000),
     getBotDisplayName: jest.fn(() => ''),
+    getProviderFinalPass: jest.fn(() => 'ollama'),
+    getProviderRetry: jest.fn(() => 'ollama'),
+    getXaiModel: jest.fn(() => ''),
+    getXaiTimeout: jest.fn(() => 120000),
   },
 }));
 

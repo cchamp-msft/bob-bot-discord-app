@@ -591,6 +591,138 @@ describe('Config', () => {
     });
   });
 
+  describe('xAI provider config', () => {
+    const { config } = require('../src/utils/config');
+
+    afterEach(() => {
+      delete process.env.XAI_API_KEY;
+      delete process.env.XAI_BASE_URL;
+      delete process.env.XAI_MODEL;
+      delete process.env.XAI_TIMEOUT;
+      delete process.env.XAI_IMAGE_ENABLED;
+      delete process.env.XAI_VIDEO_ENABLED;
+      delete process.env.XAI_ENCOURAGE_BUILTIN_TOOLS;
+      delete process.env.PROVIDER_TOOL_EVAL;
+      delete process.env.PROVIDER_FINAL_PASS;
+      delete process.env.PROVIDER_CONTEXT_EVAL;
+      delete process.env.PROVIDER_RETRY;
+      delete process.env.IMAGE_GENERATION_BACKEND;
+      delete process.env.WEB_SEARCH_BACKEND;
+    });
+
+    it('getXaiEndpoint should return default', () => {
+      delete process.env.XAI_BASE_URL;
+      expect(config.getXaiEndpoint()).toBe('https://api.x.ai/v1');
+    });
+
+    it('getXaiEndpoint should return env value', () => {
+      process.env.XAI_BASE_URL = 'https://custom.xai/v2';
+      expect(config.getXaiEndpoint()).toBe('https://custom.xai/v2');
+    });
+
+    it('getXaiApiKey should return empty string by default', () => {
+      delete process.env.XAI_API_KEY;
+      expect(config.getXaiApiKey()).toBe('');
+    });
+
+    it('getXaiModel should return empty string by default', () => {
+      delete process.env.XAI_MODEL;
+      expect(config.getXaiModel()).toBe('');
+    });
+
+    it('getXaiModel should return env value', () => {
+      process.env.XAI_MODEL = 'grok-2';
+      expect(config.getXaiModel()).toBe('grok-2');
+    });
+
+    it('getXaiTimeout should return default', () => {
+      delete process.env.XAI_TIMEOUT;
+      expect(config.getXaiTimeout()).toBe(120000);
+    });
+
+    it('getXaiTimeout should parse env value in ms', () => {
+      process.env.XAI_TIMEOUT = '60000';
+      expect(config.getXaiTimeout()).toBe(60000);
+    });
+
+    it('getXaiImageEnabled should default to false', () => {
+      delete process.env.XAI_IMAGE_ENABLED;
+      expect(config.getXaiImageEnabled()).toBe(false);
+    });
+
+    it('getXaiVideoEnabled should default to false', () => {
+      delete process.env.XAI_VIDEO_ENABLED;
+      expect(config.getXaiVideoEnabled()).toBe(false);
+    });
+
+    it('getXaiEncourageBuiltinTools should default to false', () => {
+      delete process.env.XAI_ENCOURAGE_BUILTIN_TOOLS;
+      expect(config.getXaiEncourageBuiltinTools()).toBe(false);
+    });
+
+    it('provider selectors should default to ollama', () => {
+      delete process.env.PROVIDER_TOOL_EVAL;
+      delete process.env.PROVIDER_FINAL_PASS;
+      delete process.env.PROVIDER_CONTEXT_EVAL;
+      delete process.env.PROVIDER_RETRY;
+      expect(config.getProviderToolEval()).toBe('ollama');
+      expect(config.getProviderFinalPass()).toBe('ollama');
+      expect(config.getProviderContextEval()).toBe('ollama');
+      expect(config.getProviderRetry()).toBe('ollama');
+    });
+
+    it('provider selectors should accept xai', () => {
+      process.env.PROVIDER_TOOL_EVAL = 'xai';
+      process.env.PROVIDER_FINAL_PASS = 'xai';
+      process.env.PROVIDER_CONTEXT_EVAL = 'xai';
+      process.env.PROVIDER_RETRY = 'xai';
+      expect(config.getProviderToolEval()).toBe('xai');
+      expect(config.getProviderFinalPass()).toBe('xai');
+      expect(config.getProviderContextEval()).toBe('xai');
+      expect(config.getProviderRetry()).toBe('xai');
+    });
+
+    it('provider selectors should default invalid values to ollama', () => {
+      process.env.PROVIDER_TOOL_EVAL = 'invalid';
+      expect(config.getProviderToolEval()).toBe('ollama');
+    });
+
+    it('getImageGenerationBackend should default to comfyui', () => {
+      delete process.env.IMAGE_GENERATION_BACKEND;
+      expect(config.getImageGenerationBackend()).toBe('comfyui');
+    });
+
+    it('getImageGenerationBackend should accept xai', () => {
+      process.env.IMAGE_GENERATION_BACKEND = 'xai';
+      expect(config.getImageGenerationBackend()).toBe('xai');
+    });
+
+    it('getWebSearchBackend should default to serpapi', () => {
+      delete process.env.WEB_SEARCH_BACKEND;
+      expect(config.getWebSearchBackend()).toBe('serpapi');
+    });
+
+    it('getWebSearchBackend should accept xai', () => {
+      process.env.WEB_SEARCH_BACKEND = 'xai';
+      expect(config.getWebSearchBackend()).toBe('xai');
+    });
+
+    it('getPublicConfig should include xai and provider objects', () => {
+      process.env.XAI_API_KEY = 'test-key';
+      process.env.XAI_MODEL = 'grok-2';
+      process.env.PROVIDER_TOOL_EVAL = 'xai';
+      const pub = config.getPublicConfig();
+      expect(pub.xai).toBeDefined();
+      expect(pub.xai.apiKeyConfigured).toBe(true);
+      expect(pub.xai.model).toBe('grok-2');
+      expect(pub.provider).toBeDefined();
+      expect(pub.provider.toolEval).toBe('xai');
+      expect(pub.backends).toBeDefined();
+      expect(pub.backends.imageGeneration).toBe('comfyui');
+      expect(pub.backends.webSearch).toBe('serpapi');
+    });
+  });
+
   describe('per-model-role HTTP timeouts', () => {
     const { config } = require('../src/utils/config');
 

@@ -13,6 +13,9 @@ jest.mock('../src/utils/config', () => ({
     getContextEvalPrompt: jest.fn(() => ''),
     getContextEvalContextSize: jest.fn(() => 2048),
     getContextEvalTimeout: jest.fn(() => 120000),
+    getProviderContextEval: jest.fn(() => 'ollama'),
+    getXaiModel: jest.fn(() => ''),
+    getXaiTimeout: jest.fn(() => 120000),
   },
 }));
 
@@ -32,6 +35,12 @@ jest.mock('../src/api/ollamaClient', () => ({
   },
 }));
 
+jest.mock('../src/api/index', () => ({
+  apiManager: {
+    executeRequest: jest.fn(),
+  },
+}));
+
 jest.mock('../src/utils/requestQueue', () => ({
   requestQueue: {
     execute: jest.fn(),
@@ -48,13 +57,13 @@ jest.mock('../src/utils/activityEvents', () => ({
 }));
 
 import { evaluateContextWindow, buildContextEvalPrompt, parseEvalResponse, formatHistoryForEval, extractJsonArray } from '../src/utils/contextEvaluator';
-import { ollamaClient } from '../src/api/ollamaClient';
+import { apiManager } from '../src/api/index';
 import { requestQueue } from '../src/utils/requestQueue';
 import { config } from '../src/utils/config';
 import { ChatMessage } from '../src/types';
 import { ToolConfig } from '../src/utils/config';
 
-const mockGenerate = ollamaClient.generate as jest.MockedFunction<typeof ollamaClient.generate>;
+const mockApiExecute = apiManager.executeRequest as jest.MockedFunction<typeof apiManager.executeRequest>;
 const mockExecute = requestQueue.execute as jest.MockedFunction<typeof requestQueue.execute>;
 
 // Helper to build a simple tool config
@@ -207,7 +216,7 @@ describe('ContextEvaluator', () => {
       const history = makeHistory(5);
       const tc = makeTool();
 
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '[1, 2, 3]' },
       });
@@ -254,7 +263,7 @@ describe('ContextEvaluator', () => {
       const tc = makeTool();
 
       // Select indices 1 and 3 (newest and third-newest)
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '[1, 3]' },
       });
@@ -273,7 +282,7 @@ describe('ContextEvaluator', () => {
       const history = makeHistory(6);
       const tc = makeTool();
 
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '[1, 3]' },
       });
@@ -290,7 +299,7 @@ describe('ContextEvaluator', () => {
       const tc = makeTool();
 
       // Ollama says include 3 messages (legacy integer)
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '3' },
       });
@@ -308,7 +317,7 @@ describe('ContextEvaluator', () => {
       const history = makeHistory(6);
       const tc = makeTool();
 
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '0' },
       });
@@ -324,7 +333,7 @@ describe('ContextEvaluator', () => {
       const tc = makeTool();
       // global maxDepth is 10 (mocked)
 
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '12' },
       });
@@ -339,7 +348,7 @@ describe('ContextEvaluator', () => {
       const history = makeHistory(5);
       const tc = makeTool();
 
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: 'three' },
       });
@@ -353,7 +362,7 @@ describe('ContextEvaluator', () => {
       const history = makeHistory(5);
       const tc = makeTool();
 
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: false,
         error: 'Ollama unavailable',
       });
@@ -385,7 +394,7 @@ describe('ContextEvaluator', () => {
       const tc = makeTool();
 
       // Select indices 1 and 2 (newest two non-system messages)
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '[1, 2]' },
       });
@@ -419,7 +428,7 @@ describe('ContextEvaluator', () => {
       // config.getReplyChainMaxDepth returns 10 (mocked default)
 
       // Ollama says include 7
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '7' },
       });
@@ -436,7 +445,7 @@ describe('ContextEvaluator', () => {
       const tc = makeTool();
 
       // Ollama says include 0
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '0' },
       });
@@ -452,7 +461,7 @@ describe('ContextEvaluator', () => {
       const history = makeHistory(5);
       const tc = makeTool();
 
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '[1, 2, 3]' },
       });
@@ -474,7 +483,7 @@ describe('ContextEvaluator', () => {
       const tc = makeTool();
 
       // Select indices 1, 4, 6 — newest, 4th newest, 6th newest (oldest)
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '[1, 4, 6]' },
       });
@@ -574,7 +583,7 @@ describe('ContextEvaluator', () => {
       const tc = makeTool();
 
       // Ollama selects all 5 candidates
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '[1, 2, 3, 4, 5]' },
       });
@@ -591,7 +600,7 @@ describe('ContextEvaluator', () => {
       jest.mocked(config).getReplyChainMaxDepth.mockReturnValue(4);
       const tc = makeTool();
 
-      mockGenerate.mockResolvedValue({
+      mockApiExecute.mockResolvedValue({
         success: true,
         data: { text: '[1, 2]' },
       });
