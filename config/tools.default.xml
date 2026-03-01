@@ -48,6 +48,52 @@
 
 
 
+  <!-- xAI image generation tool -->
+  <tool>
+    <name>generate_image_grok</name>
+    <api>xai-image</api>
+    <timeout>120</timeout>
+    <description>Generate an image using Grok (xAI) from a text prompt</description>
+    <abilityWhen>User wants an image generated using Grok or xAI.</abilityWhen>
+    <parameters>
+      <mode>implicit</mode>
+      <prompt>
+        <type>string</type>
+        <description>Detailed text description of the desired image.</description>
+        <required>true</required>
+      </prompt>
+      <inferFrom>reply_target, current_message</inferFrom>
+      <validation>Use the reply target text if present; otherwise use descriptive text from the current message.</validation>
+      <examples>
+        <example>generate_image_grok a sunset over mountains</example>
+      </examples>
+    </parameters>
+    <enabled>false</enabled>
+  </tool>
+
+  <!-- xAI video generation tool -->
+  <tool>
+    <name>generate_video_grok</name>
+    <api>xai-video</api>
+    <timeout>600</timeout>
+    <description>Generate a short video using Grok (xAI) from a text prompt</description>
+    <abilityWhen>User wants a video generated using Grok or xAI.</abilityWhen>
+    <parameters>
+      <mode>implicit</mode>
+      <prompt>
+        <type>string</type>
+        <description>Detailed text description of the desired video scene.</description>
+        <required>true</required>
+      </prompt>
+      <inferFrom>reply_target, current_message</inferFrom>
+      <validation>Use the reply target text if present; otherwise use descriptive text from the current message.</validation>
+      <examples>
+        <example>generate_video_grok a timelapse of a flower blooming</example>
+      </examples>
+    </parameters>
+    <enabled>false</enabled>
+  </tool>
+
   <!-- Weather tool -->
   <tool>
     <name>get_current_weather</name>

@@ -1,7 +1,7 @@
 import { config, ToolConfig } from './config';
 import { logger } from './logger';
 import { requestQueue } from './requestQueue';
-import { apiManager, ComfyUIResponse, XaiImageResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
+import { apiManager, ComfyUIResponse, XaiImageResponse, XaiVideoResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { accuweatherClient } from '../api/accuweatherClient';
 import { serpApiClient } from '../api/serpApiClient';
 import { memeClient } from '../api/memeClient';
@@ -629,14 +629,18 @@ export async function executeRoutedRequest(
   logger.log('success', 'system', 'API-ROUTING: Final Ollama pass complete');
   const media: MediaFollowUp[] = [];
   if (keywordConfig.api === 'comfyui') {
-    const imageBackend = config.getImageGenerationBackend();
-    if (imageBackend === 'xai') {
-      const xaiResp = primaryResult as XaiImageResponse;
-      if (xaiResp.data?.images?.length) {
-        media.push({ kind: 'xai-image', images: xaiResp.data.images });
-      }
-    } else {
-      media.push({ kind: 'comfyui', response: primaryResult as ComfyUIResponse });
+    media.push({ kind: 'comfyui', response: primaryResult as ComfyUIResponse });
+  }
+  if (keywordConfig.api === 'xai-image') {
+    const xaiResp = primaryResult as XaiImageResponse;
+    if (xaiResp.data?.images?.length) {
+      media.push({ kind: 'xai-image', images: xaiResp.data.images });
+    }
+  }
+  if (keywordConfig.api === 'xai-video') {
+    const xaiResp = primaryResult as XaiVideoResponse;
+    if (xaiResp.data?.url) {
+      media.push({ kind: 'xai-video', url: xaiResp.data.url, duration: xaiResp.data.duration });
     }
   }
   if (keywordConfig.api === 'meme') {

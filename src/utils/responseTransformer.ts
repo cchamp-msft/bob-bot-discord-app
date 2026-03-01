@@ -13,7 +13,7 @@ export interface StageResult {
   /** Extracted image URLs (from ComfyUI). */
   images?: string[];
   /** The raw API response for final handling. */
-  rawResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse;
+  rawResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | Record<string, unknown>;
 }
 
 /**
@@ -99,11 +99,20 @@ export function extractFromMeme(response: MemeResponse): StageResult {
  * Extract a StageResult from any API response based on the API type.
  */
 export function extractStageResult(
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai',
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video',
   response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse
 ): StageResult {
   if (api === 'comfyui') {
     return extractFromComfyUI(response as ComfyUIResponse);
+  }
+  if (api === 'xai-image') {
+    const r = response as { success: boolean; data?: { images: string[] }; error?: string };
+    const count = r.data?.images?.length ?? 0;
+    return { sourceApi: 'external', text: count > 0 ? `[Generated ${count} image(s) via xAI]` : 'No images generated.', rawResponse: r };
+  }
+  if (api === 'xai-video') {
+    const r = response as { success: boolean; data?: { url: string; duration?: number }; error?: string };
+    return { sourceApi: 'external', text: r.data?.url ? `[Generated video via xAI (${r.data.duration ?? '?'}s)]` : 'No video generated.', rawResponse: r };
   }
   if (api === 'accuweather') {
     return extractFromAccuWeather(response as AccuWeatherResponse);

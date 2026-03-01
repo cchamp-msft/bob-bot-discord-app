@@ -7,10 +7,10 @@ import axios from 'axios';
 import { config, ToolConfig, COMMAND_PREFIX } from '../utils/config';
 import { logger } from '../utils/logger';
 import { requestQueue } from '../utils/requestQueue';
-import { apiManager, ComfyUIResponse, XaiImageResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
+import { apiManager, ComfyUIResponse, XaiImageResponse, XaiVideoResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { fileHandler } from '../utils/fileHandler';
 import { memeClient } from '../api/memeClient';
-import { ChatMessage, NFLResponse, MemeResponse, DiscordActionResponse, MediaFollowUp, ComfyUIMediaFollowUp, XaiImageMediaFollowUp, UrlMediaFollowUp, PipelineContext, ToolInvocation } from '../types';
+import { ApiType, ChatMessage, NFLResponse, MemeResponse, DiscordActionResponse, MediaFollowUp, ComfyUIMediaFollowUp, XaiImageMediaFollowUp, XaiVideoMediaFollowUp, UrlMediaFollowUp, PipelineContext, ToolInvocation } from '../types';
 import * as discordActionClient from '../api/discordActionClient';
 import { chunkText } from '../utils/chunkText';
 import { executeRoutedRequest, inferAbilityParameters, formatApiResultAsExternalData } from '../utils/apiRouter';
@@ -1494,14 +1494,18 @@ class MessageHandler {
       // Capture media follow-ups
       let media: MediaFollowUp | undefined;
       if (tool.api === 'comfyui' && apiResult.finalResponse.success) {
-        const imageBackend = config.getImageGenerationBackend();
-        if (imageBackend === 'xai') {
-          const xaiResp = apiResult.finalResponse as XaiImageResponse;
-          if (xaiResp.data?.images?.length) {
-            media = { kind: 'xai-image', images: xaiResp.data.images };
-          }
-        } else {
-          media = { kind: 'comfyui', response: apiResult.finalResponse as ComfyUIResponse };
+        media = { kind: 'comfyui', response: apiResult.finalResponse as ComfyUIResponse };
+      }
+      if (tool.api === 'xai-image' && apiResult.finalResponse.success) {
+        const xaiResp = apiResult.finalResponse as XaiImageResponse;
+        if (xaiResp.data?.images?.length) {
+          media = { kind: 'xai-image', images: xaiResp.data.images };
+        }
+      }
+      if (tool.api === 'xai-video' && apiResult.finalResponse.success) {
+        const xaiResp = apiResult.finalResponse as XaiVideoResponse;
+        if (xaiResp.data?.url) {
+          media = { kind: 'xai-video', url: xaiResp.data.url, duration: xaiResp.data.duration };
         }
       }
       if (tool.api === 'meme' && apiResult.finalResponse.success) {
@@ -1848,15 +1852,19 @@ class MessageHandler {
         );
         // Capture media follow-ups for attachment after the text reply
         if (resolvedTool.api === 'comfyui' && apiResult.finalResponse.success
-            && !mediaFollowUps.some(m => m.kind === 'comfyui' || m.kind === 'xai-image')) {
-          const imageBackend = config.getImageGenerationBackend();
-          if (imageBackend === 'xai') {
-            const xaiResp = apiResult.finalResponse as XaiImageResponse;
-            if (xaiResp.data?.images?.length) {
-              mediaFollowUps.push({ kind: 'xai-image', images: xaiResp.data.images });
-            }
-          } else {
-            mediaFollowUps.push({ kind: 'comfyui', response: apiResult.finalResponse as ComfyUIResponse });
+            && !mediaFollowUps.some(m => m.kind === 'comfyui')) {
+          mediaFollowUps.push({ kind: 'comfyui', response: apiResult.finalResponse as ComfyUIResponse });
+        }
+        if (resolvedTool.api === 'xai-image' && apiResult.finalResponse.success) {
+          const xaiResp = apiResult.finalResponse as XaiImageResponse;
+          if (xaiResp.data?.images?.length) {
+            mediaFollowUps.push({ kind: 'xai-image', images: xaiResp.data.images });
+          }
+        }
+        if (resolvedTool.api === 'xai-video' && apiResult.finalResponse.success) {
+          const xaiResp = apiResult.finalResponse as XaiVideoResponse;
+          if (xaiResp.data?.url) {
+            mediaFollowUps.push({ kind: 'xai-video', url: xaiResp.data.url, duration: xaiResp.data.duration });
           }
         }
         if (resolvedTool.api === 'meme' && apiResult.finalResponse.success) {
@@ -2025,14 +2033,14 @@ class MessageHandler {
     // context-derived prompt. This avoids brittle dependency on strict
     // first-line directive formatting for natural-language image requests.
     if (!strictNoApiRoutingFromInference && this.isLikelyImageRequest(content)) {
-      const imageToolConfig = this.findEnabledToolByName('generate_image');
+      const imageToolConfig = this.findEnabledToolByName('generate_image')
+        || this.findEnabledToolByName('generate_image_grok');
 
-      if (imageToolConfig && (imageToolConfig.api === 'comfyui' || imageToolConfig.api === 'xai')) {
-        const imageBackend = config.getImageGenerationBackend();
+      if (imageToolConfig && (imageToolConfig.api === 'comfyui' || imageToolConfig.api === 'xai-image')) {
         const inferredPrompt = this.deriveImagePromptFromContext(content, filteredHistory);
         if (inferredPrompt) {
           logger.log('success', 'system',
-            `TWO-STAGE: Image fallback inference succeeded for "${imageToolConfig.name}" — executing ${imageBackend} backend`);
+            `TWO-STAGE: Image fallback inference succeeded for "${imageToolConfig.name}" — executing ${imageToolConfig.api} backend`);
 
           const imageResult = await executeRoutedRequest(
             imageToolConfig,
@@ -2181,7 +2189,7 @@ class MessageHandler {
    */
   private async dispatchResponse(
     response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse,
-    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai',
+    api: ApiType,
     sourceMessage: Message,
     requester: string,
     isDM: boolean,
@@ -2419,18 +2427,52 @@ class MessageHandler {
   ): Promise<void> {
     let text = apiResult.data?.text || 'No response generated.';
 
-    // When an xAI image media source is carried through, decode and attach base64 images
+    // When an xAI video media source is carried through, download and attach the video
+    const xaiVideoMedia = media?.find((m): m is XaiVideoMediaFollowUp => m.kind === 'xai-video');
+    if (xaiVideoMedia?.url) {
+      text = text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim();
+      try {
+        const videoResp = await axios.get(xaiVideoMedia.url, { responseType: 'arraybuffer', timeout: 60_000 });
+        const buf = Buffer.from(videoResp.data as ArrayBuffer);
+        const chunks = chunkText(text || 'Here is your generated video:');
+        await sourceMessage.reply({
+          content: chunks[0],
+          files: [{ attachment: buf, name: 'xai-video.mp4' }],
+        });
+        for (let i = 1; i < chunks.length; i++) {
+          if ('send' in sourceMessage.channel) {
+            await sourceMessage.channel.send(chunks[i]);
+          }
+        }
+        activityEvents.emitBotImageReply(1, ['xai-video.mp4']);
+        logger.logReply(requester, `xAI video response sent: ${text.length} chars text, ${xaiVideoMedia.duration ?? '?'}s video`);
+        return;
+      } catch (dlErr) {
+        logger.logError(requester, `Failed to download xAI video: ${dlErr instanceof Error ? dlErr.message : String(dlErr)}`);
+      }
+    }
+
+    // When an xAI image media source is carried through, download or decode and attach images
     const xaiImageMedia = media?.find((m): m is XaiImageMediaFollowUp => m.kind === 'xai-image');
     if (xaiImageMedia && xaiImageMedia.images.length > 0) {
       text = text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim();
       const attachments: { attachment: Buffer; name: string }[] = [];
       for (let i = 0; i < xaiImageMedia.images.length; i++) {
-        const dataUrl = xaiImageMedia.images[i];
-        const base64Match = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/s);
+        const src = xaiImageMedia.images[i];
+        const base64Match = src.match(/^data:image\/(\w+);base64,(.+)$/s);
         if (base64Match) {
           const ext = base64Match[1] === 'jpeg' ? 'jpg' : base64Match[1];
           const buf = Buffer.from(base64Match[2], 'base64');
           attachments.push({ attachment: buf, name: `xai-image-${i}.${ext}` });
+        } else if (src.startsWith('http')) {
+          try {
+            const imgResp = await axios.get(src, { responseType: 'arraybuffer', timeout: 30_000 });
+            const buf = Buffer.from(imgResp.data as ArrayBuffer);
+            const ext = src.match(/\.(\w{3,4})(\?|$)/)?.[1] || 'png';
+            attachments.push({ attachment: buf, name: `xai-image-${i}.${ext}` });
+          } catch (dlErr) {
+            logger.logError(requester, `Failed to download xAI image ${i}: ${dlErr instanceof Error ? dlErr.message : String(dlErr)}`);
+          }
         }
       }
       if (attachments.length > 0) {
@@ -2449,7 +2491,7 @@ class MessageHandler {
         for (let i = maxPerMessage; i < attachments.length; i += maxPerMessage) {
           const batch = attachments.slice(i, i + maxPerMessage);
           if ('send' in sourceMessage.channel) {
-            await sourceMessage.channel.send({ content: '📎 Additional files', files: batch });
+            await sourceMessage.channel.send({ content: 'Additional files', files: batch });
           }
         }
         const savedPaths = attachments.map(a => a.name);

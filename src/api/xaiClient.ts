@@ -33,6 +33,15 @@ export interface XaiImageResponse {
   error?: string;
 }
 
+export interface XaiVideoResponse {
+  success: boolean;
+  data?: {
+    url: string;
+    duration?: number;
+  };
+  error?: string;
+}
+
 /**
  * Map OllamaTool schema to OpenAI function-calling format used by xAI.
  * xAI uses the same OpenAI-compatible schema.
@@ -245,22 +254,24 @@ class XaiClient {
   }
 
   /**
-   * Generate an image using xAI's image generation API.
-   * Returns base64-encoded image data URLs.
+   * Generate an image using xAI's dedicated image generation endpoint.
+   * Uses POST /images/generations with the grok-imagine-image model.
+   * Returns image URLs (temporary — download or process promptly).
    */
   async generateImage(
     prompt: string,
     requester: string,
     signal?: AbortSignal,
   ): Promise<XaiImageResponse> {
-    const model = 'grok-2-image';
+    const model = config.getXaiImageModel();
 
     try {
       logger.logRequest(requester, `xAI image generation: ${prompt.substring(0, 80)}...`);
 
-      const requestBody = {
+      const requestBody: Record<string, unknown> = {
         model,
-        messages: [{ role: 'user', content: prompt }],
+        prompt,
+        response_format: 'url',
       };
 
       logger.logXaiDebugLazy(requester, () =>
@@ -270,21 +281,16 @@ class XaiClient {
       const reqConfig: Record<string, unknown> = {};
       if (signal) reqConfig.signal = signal;
 
-      const response = await this.client.post('/chat/completions', requestBody,
+      const response = await this.client.post('/images/generations', requestBody,
         Object.keys(reqConfig).length > 0 ? reqConfig : undefined);
 
-      if (response.status === 200 && response.data?.choices?.length > 0) {
-        const choice = response.data.choices[0];
-        const content = choice.message?.content;
+      if (response.status === 200 && Array.isArray(response.data?.data)) {
         const images: string[] = [];
-
-        if (typeof content === 'string' && content.startsWith('data:image')) {
-          images.push(content);
-        } else if (Array.isArray(content)) {
-          for (const part of content) {
-            if (part?.type === 'image_url' && part?.image_url?.url) {
-              images.push(part.image_url.url);
-            }
+        for (const item of response.data.data) {
+          if (item?.url) {
+            images.push(item.url);
+          } else if (item?.b64_json) {
+            images.push(`data:image/png;base64,${item.b64_json}`);
           }
         }
 
@@ -294,15 +300,92 @@ class XaiClient {
           return { success: true, data: { images } };
         }
 
-        logger.logXaiDebug(requester, `XAI-IMAGE-RESPONSE: No images found in response content`);
-
+        logger.logXaiDebug(requester, `XAI-IMAGE-RESPONSE: No images found in response data`);
         return { success: false, error: 'No images returned from xAI' };
       }
 
-      return { success: false, error: 'Failed to generate image from xAI' };
+      return { success: false, error: `xAI image generation failed with status ${response.status}` };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       logger.logError(requester, `xAI image error: ${errorMsg}`);
+      return { success: false, error: errorMsg };
+    }
+  }
+
+  /**
+   * Generate a video using xAI's video generation endpoint.
+   * Submits POST /videos/generations, then polls GET /videos/:requestId
+   * until status is 'done', 'expired', or timeout is reached.
+   */
+  async generateVideo(
+    prompt: string,
+    requester: string,
+    signal?: AbortSignal,
+  ): Promise<XaiVideoResponse> {
+    const model = config.getXaiVideoModel();
+    const pollIntervalMs = 5_000;
+    const maxPollMs = 10 * 60 * 1000;
+
+    try {
+      logger.logRequest(requester, `xAI video generation: ${prompt.substring(0, 80)}...`);
+
+      const requestBody: Record<string, unknown> = {
+        model,
+        prompt,
+      };
+
+      logger.logXaiDebugLazy(requester, () =>
+        `XAI-VIDEO-REQUEST: model=${model}, prompt=${prompt}`
+      );
+
+      const reqConfig: Record<string, unknown> = {};
+      if (signal) reqConfig.signal = signal;
+
+      const startResponse = await this.client.post('/videos/generations', requestBody,
+        Object.keys(reqConfig).length > 0 ? reqConfig : undefined);
+
+      const requestId = startResponse.data?.request_id;
+      if (!requestId) {
+        return { success: false, error: 'xAI video generation did not return a request_id' };
+      }
+
+      logger.logXaiDebug(requester, `XAI-VIDEO-POLL: started, request_id=${requestId}`);
+
+      const startTime = Date.now();
+      while (Date.now() - startTime < maxPollMs) {
+        if (signal?.aborted) {
+          return { success: false, error: 'xAI video generation aborted' };
+        }
+
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+
+        const pollResponse = await this.client.get(`/videos/${requestId}`,
+          signal ? { signal } : undefined);
+        const status = pollResponse.data?.status;
+
+        logger.logXaiDebug(requester, `XAI-VIDEO-POLL: status=${status}`);
+
+        if (status === 'done') {
+          const video = pollResponse.data?.video;
+          if (video?.url) {
+            logger.logReply(requester, `xAI video generated: ${video.duration ?? '?'}s`);
+            return {
+              success: true,
+              data: { url: video.url, duration: video.duration },
+            };
+          }
+          return { success: false, error: 'xAI video completed but returned no URL' };
+        }
+
+        if (status === 'expired') {
+          return { success: false, error: 'xAI video generation request expired' };
+        }
+      }
+
+      return { success: false, error: `xAI video generation timed out after ${maxPollMs / 1000}s` };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.logError(requester, `xAI video error: ${errorMsg}`);
       return { success: false, error: errorMsg };
     }
   }

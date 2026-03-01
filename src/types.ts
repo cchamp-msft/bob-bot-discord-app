@@ -24,7 +24,7 @@ export interface ChatMessage {
 }
 
 /** Recognized API backend identifiers. */
-export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai';
+export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video';
 
 /** LLM provider identifiers used for per-stage model dispatch. */
 export type LlmProvider = 'ollama' | 'xai';
@@ -428,6 +428,7 @@ export interface PipelineContext {
 export type MediaFollowUp =
   | ComfyUIMediaFollowUp
   | XaiImageMediaFollowUp
+  | XaiVideoMediaFollowUp
   | UrlMediaFollowUp;
 
 /** ComfyUI file attachments — needs the full response for file
@@ -441,10 +442,17 @@ export interface ComfyUIMediaFollowUp {
   };
 }
 
-/** xAI image generation — carries base64 data URLs for attachment. */
+/** xAI image generation — carries image URLs or base64 data URLs for attachment. */
 export interface XaiImageMediaFollowUp {
   kind: 'xai-image';
   images: string[];
+}
+
+/** xAI video generation — carries a temporary video URL for attachment. */
+export interface XaiVideoMediaFollowUp {
+  kind: 'xai-video';
+  url: string;
+  duration?: number;
 }
 
 /** A bare URL for Discord auto-embed (meme images, weather radar, etc.). */
@@ -588,6 +596,8 @@ export interface PublicConfig {
     endpoint: string;
     apiKeyConfigured: boolean;
     model: string;
+    imageModel: string;
+    videoModel: string;
     timeout: number;
     imageEnabled: boolean;
     videoEnabled: boolean;

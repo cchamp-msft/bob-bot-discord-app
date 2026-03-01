@@ -198,6 +198,9 @@ export function toolArgumentsToContent(
       return JSON.stringify(args);
     case 'xai':
       return get('query') || get('input') || get('content') || '';
+    case 'xai-image':
+    case 'xai-video':
+      return get('prompt') || get('input') || '';
     default:
       return get('input') || get('content') || Object.values(args).filter(v => typeof v === 'string').join(' ') || '';
   }

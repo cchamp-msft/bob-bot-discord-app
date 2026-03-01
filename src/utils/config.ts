@@ -54,7 +54,7 @@ export interface AbilityInputs {
 
 export interface ToolConfig {
   name: string;
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai';
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video';
   timeout: number;
   description: string;
   /** Human-readable description of this tool's API ability, provided to Ollama as context so it can suggest using this API when relevant. */
@@ -377,6 +377,16 @@ class Config {
   /** HTTP timeout in milliseconds for xAI requests. Default: 120000 (2 min). */
   getXaiTimeout(): number {
     return this.clampTimeout(this.parseIntEnv('XAI_TIMEOUT', 120_000));
+  }
+
+  /** xAI model for image generation. Default: grok-imagine-image. */
+  getXaiImageModel(): string {
+    return process.env.XAI_IMAGE_MODEL || 'grok-imagine-image';
+  }
+
+  /** xAI model for video generation. Default: grok-imagine-video. */
+  getXaiVideoModel(): string {
+    return process.env.XAI_VIDEO_MODEL || 'grok-imagine-video';
   }
 
   /**
@@ -1114,14 +1124,14 @@ class Config {
     return parsed;
   }
 
-  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai'): string {
+  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video'): string {
     if (api === 'comfyui') return this.getComfyUIEndpoint();
     if (api === 'accuweather') return this.getAccuWeatherEndpoint();
     if (api === 'nfl') return this.getNflEndpoint();
     if (api === 'serpapi') return this.getSerpApiEndpoint();
     if (api === 'meme') return this.getMemeEndpoint();
     if (api === 'discord') return '';
-    if (api === 'xai') return this.getXaiEndpoint();
+    if (api === 'xai' || api === 'xai-image' || api === 'xai-video') return this.getXaiEndpoint();
     return this.getOllamaEndpoint();
   }
 
@@ -1220,6 +1230,8 @@ class Config {
     const prevXaiVideoEnabled = this.getXaiVideoEnabled();
     const prevXaiEncourageBuiltinTools = this.getXaiEncourageBuiltinTools();
     const prevXaiTimeout = this.getXaiTimeout();
+    const prevXaiImageModel = this.getXaiImageModel();
+    const prevXaiVideoModel = this.getXaiVideoModel();
     const prevXaiDebugLogging = this.getXaiDebugLogging();
     const prevProviderToolEval = this.getProviderToolEval();
     const prevProviderFinalPass = this.getProviderFinalPass();
@@ -1335,6 +1347,8 @@ class Config {
     if (this.getXaiVideoEnabled() !== prevXaiVideoEnabled) reloaded.push('XAI_VIDEO_ENABLED');
     if (this.getXaiEncourageBuiltinTools() !== prevXaiEncourageBuiltinTools) reloaded.push('XAI_ENCOURAGE_BUILTIN_TOOLS');
     if (this.getXaiTimeout() !== prevXaiTimeout) reloaded.push('XAI_TIMEOUT');
+    if (this.getXaiImageModel() !== prevXaiImageModel) reloaded.push('XAI_IMAGE_MODEL');
+    if (this.getXaiVideoModel() !== prevXaiVideoModel) reloaded.push('XAI_VIDEO_MODEL');
     if (this.getXaiDebugLogging() !== prevXaiDebugLogging) reloaded.push('XAI_DEBUG_LOGGING');
     if (this.getProviderToolEval() !== prevProviderToolEval) reloaded.push('PROVIDER_TOOL_EVAL');
     if (this.getProviderFinalPass() !== prevProviderFinalPass) reloaded.push('PROVIDER_FINAL_PASS');
@@ -1491,6 +1505,8 @@ class Config {
         endpoint: this.getXaiEndpoint(),
         apiKeyConfigured: !!this.getXaiApiKey(),
         model: this.getXaiModel(),
+        imageModel: this.getXaiImageModel(),
+        videoModel: this.getXaiVideoModel(),
         timeout: Math.round(this.getXaiTimeout() / 1000),
         imageEnabled: this.getXaiImageEnabled(),
         videoEnabled: this.getXaiVideoEnabled(),

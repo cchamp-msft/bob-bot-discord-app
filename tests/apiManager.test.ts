@@ -61,6 +61,7 @@ jest.mock('../src/api/xaiClient', () => {
     testConnection: jest.fn(),
     listModels: jest.fn(),
     generateImage: jest.fn(),
+    generateVideo: jest.fn(),
   };
   return { xaiClient: client };
 });
@@ -123,22 +124,42 @@ describe('ApiManager', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should route comfyui requests to xaiClient when IMAGE_GENERATION_BACKEND is xai', async () => {
-      (config.getImageGenerationBackend as jest.Mock).mockReturnValue('xai');
-      try {
-        (xaiClient.generateImage as jest.Mock).mockResolvedValue({
-          success: true,
-          data: { images: ['data:image/png;base64,abc'] },
-        });
+    it('should route xai-image requests to xaiClient.generateImage', async () => {
+      (xaiClient.generateImage as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { images: ['https://example.com/image.png'] },
+      });
 
-        const result = await apiManager.executeRequest('comfyui', 'user1', 'a sunset', 300);
+      const result = await apiManager.executeRequest('xai-image', 'user1', 'a sunset', 300);
 
-        expect(xaiClient.generateImage).toHaveBeenCalledWith('a sunset', 'user1', undefined);
-        expect(comfyuiClient.generateImage).not.toHaveBeenCalled();
-        expect(result.success).toBe(true);
-      } finally {
-        (config.getImageGenerationBackend as jest.Mock).mockReturnValue('comfyui');
-      }
+      expect(xaiClient.generateImage).toHaveBeenCalledWith('a sunset', 'user1', undefined);
+      expect(comfyuiClient.generateImage).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+    });
+
+    it('should route xai-video requests to xaiClient.generateVideo', async () => {
+      (xaiClient.generateVideo as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { url: 'https://example.com/video.mp4', duration: 5 },
+      });
+
+      const result = await apiManager.executeRequest('xai-video', 'user1', 'a flower blooming', 600);
+
+      expect(xaiClient.generateVideo).toHaveBeenCalledWith('a flower blooming', 'user1', undefined);
+      expect(result.success).toBe(true);
+    });
+
+    it('should keep comfyui requests routed to comfyuiClient (no implicit xai fallback)', async () => {
+      (comfyuiClient.generateImage as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { images: ['http://comfy/img.png'], videos: [] },
+      });
+
+      const result = await apiManager.executeRequest('comfyui', 'user1', 'a sunset', 300);
+
+      expect(comfyuiClient.generateImage).toHaveBeenCalledWith('a sunset', 'user1', undefined, 300);
+      expect(xaiClient.generateImage).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
     });
 
     it('should route ollama requests to ollamaClient with configured model', async () => {

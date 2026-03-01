@@ -1,6 +1,6 @@
 import { comfyuiClient, ComfyUIResponse } from './comfyuiClient';
 import { ollamaClient, OllamaResponse, OllamaHealthResult } from './ollamaClient';
-import { xaiClient, XaiResponse, XaiHealthResult, XaiImageResponse } from './xaiClient';
+import { xaiClient, XaiResponse, XaiHealthResult, XaiImageResponse, XaiVideoResponse } from './xaiClient';
 import { accuweatherClient } from './accuweatherClient';
 import { nflClient } from './nflClient';
 import { serpApiClient } from './serpApiClient';
@@ -9,7 +9,7 @@ import { config } from '../utils/config';
 import { ChatMessage, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult } from '../types';
 import type { OllamaTool } from '../utils/toolsSchema';
 
-export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, XaiResponse, XaiImageResponse, XaiHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult };
+export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, XaiResponse, XaiImageResponse, XaiVideoResponse, XaiHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult };
 
 /** Options forwarded to ollamaClient.generate() when api === 'ollama'. */
 export interface OllamaRequestOptions {
@@ -27,7 +27,7 @@ export interface OllamaRequestOptions {
 
 class ApiManager {
   async executeRequest(
-    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'external',
+    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video' | 'external',
     requester: string,
     data: string,
     _timeout: number,
@@ -38,12 +38,13 @@ class ApiManager {
     ollamaOptions?: OllamaRequestOptions,
     /** Tool name — required when api is 'nfl'. */
     toolName?: string
-  ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | XaiImageResponse> {
+  ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | XaiImageResponse | XaiVideoResponse> {
     if (api === 'comfyui') {
-      if (config.getImageGenerationBackend() === 'xai') {
-        return await xaiClient.generateImage(data, requester, signal);
-      }
       return await comfyuiClient.generateImage(data, requester, signal, _timeout);
+    } else if (api === 'xai-image') {
+      return await xaiClient.generateImage(data, requester, signal);
+    } else if (api === 'xai-video') {
+      return await xaiClient.generateVideo(data, requester, signal);
     } else if (api === 'accuweather') {
       const mode = accuweatherMode ?? config.getAccuWeatherDefaultWeatherType();
       return await accuweatherClient.getWeather(data, requester, mode);
