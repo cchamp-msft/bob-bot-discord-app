@@ -8,7 +8,7 @@ jest.mock('../src/utils/logger', () => ({
   },
 }));
 
-import { buildOllamaToolsSchema, resolveToolNameToTool, validateToolBatch } from '../src/utils/toolsSchema';
+import { buildOllamaToolsSchema, resolveToolNameToTool, validateToolBatch, toolArgumentsToContent } from '../src/utils/toolsSchema';
 import type { ToolConfig } from '../src/utils/config';
 
 describe('toolsSchema', () => {
@@ -179,6 +179,32 @@ describe('toolsSchema', () => {
       ];
       expect(resolveToolNameToTool('consult_grok', tools, 'ollama')).toBeDefined();
       expect(resolveToolNameToTool('consult_grok', tools, 'xai')).toBeUndefined();
+    });
+  });
+
+  describe('toolArgumentsToContent — xai-image and xai-video', () => {
+    it('should extract prompt for xai-image', () => {
+      const tool: ToolConfig = { ...baseTool, name: 'generate_image_grok', api: 'xai-image' };
+      const result = toolArgumentsToContent(tool, { prompt: 'a sunset over mountains' });
+      expect(result).toBe('a sunset over mountains');
+    });
+
+    it('should fall back to input for xai-image', () => {
+      const tool: ToolConfig = { ...baseTool, name: 'generate_image_grok', api: 'xai-image' };
+      const result = toolArgumentsToContent(tool, { input: 'a cat photo' });
+      expect(result).toBe('a cat photo');
+    });
+
+    it('should extract prompt for xai-video', () => {
+      const tool: ToolConfig = { ...baseTool, name: 'generate_video_grok', api: 'xai-video' };
+      const result = toolArgumentsToContent(tool, { prompt: 'a flower blooming timelapse' });
+      expect(result).toBe('a flower blooming timelapse');
+    });
+
+    it('should return empty string when no matching arg for xai-image', () => {
+      const tool: ToolConfig = { ...baseTool, name: 'generate_image_grok', api: 'xai-image' };
+      const result = toolArgumentsToContent(tool, {});
+      expect(result).toBe('');
     });
   });
 

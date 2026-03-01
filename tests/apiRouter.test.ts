@@ -803,6 +803,112 @@ describe('ApiRouter', () => {
     });
   });
 
+  describe('executeRoutedRequest — xAI image routing', () => {
+    it('should produce xai-image media follow-up when tool api is xai-image', async () => {
+      const tool: ToolConfig = {
+        name: 'generate_image_grok',
+        api: 'xai-image',
+        timeout: 120,
+        description: 'Generate image via xAI',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { images: ['https://cdn.x.ai/img/abc.png'] },
+      });
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Here is your image!' },
+      });
+
+      const result = await executeRoutedRequest(tool, 'a sunset', 'testuser');
+
+      expect(result.finalApi).toBe('ollama');
+      expect(result.media).toHaveLength(1);
+      expect(result.media[0]).toEqual({
+        kind: 'xai-image',
+        images: ['https://cdn.x.ai/img/abc.png'],
+      });
+    });
+
+    it('should not produce comfyui media when tool api is xai-image', async () => {
+      const tool: ToolConfig = {
+        name: 'generate_image_grok',
+        api: 'xai-image',
+        timeout: 120,
+        description: 'Generate image via xAI',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { images: ['https://cdn.x.ai/img/abc.png'] },
+      });
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Done!' },
+      });
+
+      const result = await executeRoutedRequest(tool, 'a sunset', 'testuser');
+      expect(result.media.some(m => m.kind === 'comfyui')).toBe(false);
+    });
+  });
+
+  describe('executeRoutedRequest — xAI video routing', () => {
+    it('should produce xai-video media follow-up when tool api is xai-video', async () => {
+      const tool: ToolConfig = {
+        name: 'generate_video_grok',
+        api: 'xai-video',
+        timeout: 600,
+        description: 'Generate video via xAI',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { url: 'https://cdn.x.ai/vid/abc.mp4', duration: 5 },
+      });
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Here is your video!' },
+      });
+
+      const result = await executeRoutedRequest(tool, 'a flower blooming', 'testuser');
+
+      expect(result.finalApi).toBe('ollama');
+      expect(result.media).toHaveLength(1);
+      expect(result.media[0]).toEqual({
+        kind: 'xai-video',
+        url: 'https://cdn.x.ai/vid/abc.mp4',
+        duration: 5,
+      });
+    });
+  });
+
+  describe('executeRoutedRequest — comfyui isolation', () => {
+    it('should produce comfyui media when tool api is comfyui (no implicit xai)', async () => {
+      const tool: ToolConfig = {
+        name: 'generate_image',
+        api: 'comfyui',
+        timeout: 300,
+        description: 'Generate image',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { images: ['http://comfy/img.png'], videos: [] },
+      });
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Image done!' },
+      });
+
+      const result = await executeRoutedRequest(tool, 'a cat', 'testuser');
+      expect(result.media).toHaveLength(1);
+      expect(result.media[0].kind).toBe('comfyui');
+    });
+  });
+
   describe('executeRoutedRequest — AccuWeather with final Ollama pass', () => {
     it('should use formatWeatherContextForAI for AccuWeather final pass', async () => {
       const tool: ToolConfig = {
