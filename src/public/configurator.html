@@ -653,9 +653,19 @@
           </div>
         </div>
         <p class="help-text" style="margin:6px 0 12px">
-          <strong>Image/Video</strong>: enables xAI as an image or video generation backend.
+          <strong>Image/Video</strong>: enables xAI as an image or video generation backend (tools: <code>generate_image_grok</code>, <code>generate_video_grok</code>).
           <strong>Encourage Built-in Tools</strong>: appends a system prompt nudging Grok to use web_search, x_keyword_search, and code_execution when helpful.
         </p>
+        <div class="field-row">
+          <div class="field">
+            <label>Image Model <span class="note">used by generate_image_grok</span></label>
+            <input type="text" id="xai_image_model" data-env="XAI_IMAGE_MODEL" placeholder="grok-imagine-image" onchange="markDirty()">
+          </div>
+          <div class="field">
+            <label>Video Model <span class="note">used by generate_video_grok</span></label>
+            <input type="text" id="xai_video_model" data-env="XAI_VIDEO_MODEL" placeholder="grok-imagine-video" onchange="markDirty()">
+          </div>
+        </div>
 
         <hr style="border-color:var(--border);margin:16px 0">
         <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Logging</div>
@@ -675,13 +685,6 @@
         <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Backend Selection</div>
         <div class="field-row">
           <div class="field narrow">
-            <label>Image Generation Backend</label>
-            <select id="image_generation_backend" data-env="IMAGE_GENERATION_BACKEND" onchange="markDirty()">
-              <option value="comfyui">ComfyUI</option>
-              <option value="xai">xAI</option>
-            </select>
-          </div>
-          <div class="field narrow">
             <label>Web Search Backend</label>
             <select id="web_search_backend" data-env="WEB_SEARCH_BACKEND" onchange="markDirty()">
               <option value="serpapi">SerpAPI</option>
@@ -690,7 +693,7 @@
           </div>
         </div>
         <p class="help-text" style="margin:6px 0 0">
-          When set to xAI, generate_image routes to xAI instead of ComfyUI, and web_search routes to xAI instead of SerpAPI.
+          Image/video generation is now handled by explicit tools: <code>generate_image</code> (ComfyUI) and <code>generate_image_grok</code> / <code>generate_video_grok</code> (xAI). Enable them in the Tools section.
         </p>
       </div>
     </section>
@@ -1720,6 +1723,8 @@ flowchart TD
         document.getElementById('xai_video_enabled').value = cfg.xai.videoEnabled ? 'true' : 'false';
         document.getElementById('xai_encourage_builtin_tools').value = cfg.xai.encourageBuiltinTools ? 'true' : 'false';
         document.getElementById('xai_debug_logging').value = cfg.xai.debugLogging ? 'true' : 'false';
+        document.getElementById('xai_image_model').value = cfg.xai.imageModel || '';
+        document.getElementById('xai_video_model').value = cfg.xai.videoModel || '';
         // xAI model (saved selection)
         const xaiModelSelect = document.getElementById('xai_model');
         if (xaiModelSelect && cfg.xai.model) {
@@ -1736,7 +1741,6 @@ flowchart TD
 
       // Populate backend selectors
       if (cfg.backends) {
-        document.getElementById('image_generation_backend').value = cfg.backends.imageGeneration || 'comfyui';
         document.getElementById('web_search_backend').value = cfg.backends.webSearch || 'serpapi';
       }
 

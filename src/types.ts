@@ -611,9 +611,8 @@ export interface PublicConfig {
     contextEval: import('./types').LlmProvider;
     retry: import('./types').LlmProvider;
   };
-  /** Backend selections for image generation and web search. */
+  /** Backend selections for web search. */
   backends: {
-    imageGeneration: 'comfyui' | 'xai';
     webSearch: 'serpapi' | 'xai';
   };
 }

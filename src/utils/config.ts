@@ -1520,7 +1520,6 @@ class Config {
         retry: this.getProviderRetry(),
       },
       backends: {
-        imageGeneration: this.getImageGenerationBackend(),
         webSearch: this.getWebSearchBackend(),
       },
     };

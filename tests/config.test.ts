@@ -734,8 +734,9 @@ describe('Config', () => {
       expect(pub.provider).toBeDefined();
       expect(pub.provider.toolEval).toBe('xai');
       expect(pub.backends).toBeDefined();
-      expect(pub.backends.imageGeneration).toBe('comfyui');
       expect(pub.backends.webSearch).toBe('serpapi');
+      expect(pub.xai.imageModel).toBeDefined();
+      expect(pub.xai.videoModel).toBeDefined();
     });
   });
 
