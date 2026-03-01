@@ -43,6 +43,8 @@ The bot uses tool names prefixed with `!` to route requests to different APIs. T
 | Tool | API | Example |
 |---------|-----|---------|
 | `!generate`, `!draw`, `!image` | ComfyUI | `@BobBot !generate a sunset` |
+| `!generate_image_grok` | xAI | `@BobBot !generate_image_grok a sunset over mountains` |
+| `!generate_video_grok` | xAI | `@BobBot !generate_video_grok a flower blooming timelapse` |
 | `!ask`, `!tell me`, `!what` | Ollama | `@BobBot !ask what is recursion?` |
 | `!weather` | AccuWeather | `@BobBot !weather Seattle` |
 | `!nfl_scores`, `!nfl_news` | ESPN NFL | `@BobBot !nfl_scores` |

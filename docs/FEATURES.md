@@ -16,6 +16,8 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 - ✅ **Ollama model discovery** — test connection loads available models for selection
 - ✅ **Ollama system prompt** — configurable personality/context sent with every request
 - ✅ **Cross-provider tools** — `consult_grok` (Ollama→xAI) and `delegate_to_local` (xAI→Ollama final pass)
+- ✅ **xAI image generation** — `generate_image_grok` tool for image generation via xAI's `/images/generations` endpoint with configurable model
+- ✅ **xAI video generation** — `generate_video_grok` tool for video generation via xAI's `/videos/generations` endpoint with async polling
 - ✅ **Tool batch policy** — prevents SerpAPI+xAI mixing with prompt hints and runtime enforcement
 - ✅ **Image-to-text (vision)** — attach images to any @mention or DM; the bot downloads them, base64-encodes, and sends to a vision-capable Ollama model. Auto-switches to `OLLAMA_VISION_MODEL` when the default model lacks vision capability. Supports PNG, JPEG, GIF, and WebP up to configurable size and count limits.
 - ✅ **ComfyUI workflow upload** — upload JSON workflow with `%prompt%` placeholder substitution

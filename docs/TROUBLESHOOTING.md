@@ -194,6 +194,27 @@ curl -I https://bot.example.com/activity
 curl https://bot.example.com/api/activity
 ```
 
+## xAI Image/Video Generation Issues
+
+### xAI image generation returns HTTP 400
+
+- Verify that `XAI_IMAGE_MODEL` is set to a valid model (default: `grok-imagine-image`).
+- Make sure you're using the `generate_image_grok` tool (not `generate_image`, which routes to ComfyUI).
+- Check that `XAI_API_KEY` is configured and valid.
+- Enable `XAI_DEBUG_LOGGING=true` to see the full request/response payloads.
+
+### xAI video generation times out
+
+- Video generation uses async polling and can take several minutes. The default timeout is 10 minutes.
+- Check the logs for `XAI-VIDEO-POLL: status=` entries to see polling progress.
+- Verify `XAI_VIDEO_MODEL` is set correctly (default: `grok-imagine-video`).
+
+### Images not appearing in Discord
+
+- xAI returns temporary URLs that expire. The bot downloads images before sending to Discord.
+- Check logs for `Failed to download xAI image` errors — the URL may have expired before delivery.
+- Verify the bot has permission to send files in the channel.
+
 ## Deployment Notes
 
 - The configurator server binds to `127.0.0.1` by default; the outputs server binds to `0.0.0.0`

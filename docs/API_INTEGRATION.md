@@ -71,6 +71,8 @@ The bot supports xAI as an alternative LLM provider alongside Ollama. Each pipel
 | `XAI_TIMEOUT` | No | Request timeout in milliseconds (default: 120000) |
 | `XAI_IMAGE_ENABLED` | No | Enable xAI image generation (`true`/`false`) |
 | `XAI_VIDEO_ENABLED` | No | Enable xAI video generation (`true`/`false`) |
+| `XAI_IMAGE_MODEL` | No | Model for image generation (default: `grok-imagine-image`) |
+| `XAI_VIDEO_MODEL` | No | Model for video generation (default: `grok-imagine-video`) |
 | `XAI_ENCOURAGE_BUILTIN_TOOLS` | No | Append prompt encouraging built-in tool use (`true`/`false`) |
 
 ### Provider Selection
@@ -86,17 +88,25 @@ Each pipeline stage can use a different provider:
 
 ### Backend Selection
 
-Image generation and web search can route to xAI instead of their default backends:
+Web search can route to xAI instead of SerpAPI:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMAGE_GENERATION_BACKEND` | `comfyui` | Image generation backend (`comfyui` or `xai`) |
 | `WEB_SEARCH_BACKEND` | `serpapi` | Web search backend (`serpapi` or `xai`) |
+
+Image and video generation use explicit tools rather than a backend selector:
+- `generate_image` — routes to ComfyUI
+- `generate_image_grok` — routes to xAI image generation (`/images/generations`)
+- `generate_video_grok` — routes to xAI video generation (`/videos/generations`)
+
+Enable the xAI tools in the Tools section of the configurator, or set `<enabled>true</enabled>` in `config/tools.xml`.
 
 ### Cross-Provider Tools
 
 - **`consult_grok`** — Ollama-only tool that routes to xAI for a second opinion or deeper analysis. Blocked from xAI tool calls.
 - **`delegate_to_local`** — xAI-only tool that delegates the final pass to Ollama for the current turn.
+- **`generate_image_grok`** — generates images via xAI's image API. Uses model configured in `XAI_IMAGE_MODEL`.
+- **`generate_video_grok`** — generates videos via xAI's video API. Uses model configured in `XAI_VIDEO_MODEL`. Polls asynchronously until completion.
 
 ### Tool Batch Policy
 

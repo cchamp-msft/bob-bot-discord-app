@@ -50,7 +50,7 @@ Events are written as sanitized first-person narratives (e.g. *"Someone wants my
 - **Connection Status**: Live indicator showing stopped / connecting / running / error
 - **ComfyUI**: Endpoint, workflow upload, default workflow builder, discovery, export, test image generation, and image response embed toggle
 - **Ollama Connection**: Endpoint, timeout, vision timeout, and test connection
-- **xAI API (Grok)**: Base URL, API key (write-only), model selection, timeout, image/video toggles, built-in tool encouragement, and backend selectors for image generation and web search
+- **xAI API (Grok)**: Base URL, API key (write-only), model selection, timeout, image/video toggles with model selectors (`XAI_IMAGE_MODEL`, `XAI_VIDEO_MODEL`), built-in tool encouragement, and web search backend selector
 - **Prompt & Runtime**: System prompt, reply chain context, context evaluation, tool evaluation (with provider selection), final pass (with provider selection), and response fixup settings
 - **AccuWeather**: API key (write-only), default location, endpoint configuration, and test connection with location resolution
 - **NFL**: Enabled toggle, endpoint configuration, and test connection (no API key needed — ESPN public API)
