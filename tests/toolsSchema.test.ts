@@ -188,12 +188,10 @@ describe('toolsSchema', () => {
     const imageTool: ToolConfig = { ...baseTool, name: 'generate_image', api: 'xai' };
     const weatherTool: ToolConfig = { ...baseTool, name: 'weather', api: 'accuweather' };
 
-    it('blocks serpapi from xai provider tool calls', () => {
+    it('allows serpapi from xai provider tool calls', () => {
       const { allowed, blocked } = validateToolBatch([serpTool, weatherTool], 'xai');
-      expect(blocked).toHaveLength(1);
-      expect(blocked[0].tool.name).toBe('web_search');
-      expect(allowed).toHaveLength(1);
-      expect(allowed[0].name).toBe('weather');
+      expect(blocked).toHaveLength(0);
+      expect(allowed).toHaveLength(2);
     });
 
     it('allows non-serpapi tools from xai provider', () => {
@@ -202,20 +200,19 @@ describe('toolsSchema', () => {
       expect(allowed).toHaveLength(1);
     });
 
-    it('blocks xai tools when mixed with serpapi in ollama batch', () => {
+    it('allows xai tools mixed with serpapi in ollama batch', () => {
       const { allowed, blocked } = validateToolBatch([serpTool, xaiTool, weatherTool], 'ollama');
-      expect(blocked).toHaveLength(1);
-      expect(blocked[0].tool.name).toBe('consult_grok');
-      expect(allowed).toHaveLength(2);
+      expect(blocked).toHaveLength(0);
+      expect(allowed).toHaveLength(3);
     });
 
-    it('exempts image/video tools from serpapi+xai mixing restriction', () => {
+    it('allows image/video tools mixed with serpapi', () => {
       const { allowed, blocked } = validateToolBatch([serpTool, imageTool], 'ollama');
       expect(blocked).toHaveLength(0);
       expect(allowed).toHaveLength(2);
     });
 
-    it('allows all tools when no policy conflict exists', () => {
+    it('allows all tools regardless of combination', () => {
       const { allowed, blocked } = validateToolBatch([weatherTool, serpTool], 'ollama');
       expect(blocked).toHaveLength(0);
       expect(allowed).toHaveLength(2);

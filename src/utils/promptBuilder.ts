@@ -230,21 +230,11 @@ export function buildSystemPrompt(routableTools?: ToolConfig[], provider?: LlmPr
 
 /**
  * Build provider-specific policy hints to include in the system prompt.
- * Helps the model avoid generating tool batches that will be blocked at runtime.
+ * Currently no batch-mixing restrictions are enforced, so this always returns null.
+ * Provider-only visibility (consult_grok Ollama-only, delegate_to_local xAI-only)
+ * is handled by the tool schema builder, not prompt hints.
  */
-function buildPolicyHints(tools: ToolConfig[], provider?: LlmProvider): string | null {
-  const hasSerpapi = tools.some(t => t.api === 'serpapi');
-  const hasXaiTool = tools.some(t => t.api === 'xai');
-
-  if (provider === 'ollama' && hasSerpapi && hasXaiTool) {
-    return (
-      'Tool policy constraint:\n' +
-      'Do NOT call web_search (SerpAPI) and consult_grok (xAI) in the same response. ' +
-      'If the query needs both a web search and a deeper analysis, prefer consult_grok — ' +
-      'it can perform its own web searches internally. Image and video generation tools are exempt from this rule.'
-    );
-  }
-
+function buildPolicyHints(_tools: ToolConfig[], _provider?: LlmProvider): string | null {
   return null;
 }
 

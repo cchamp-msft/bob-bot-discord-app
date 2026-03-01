@@ -200,8 +200,9 @@ class ConfigWriter {
         }
         toolNames.add(normalized);
 
-        if (entry.api !== 'comfyui' && entry.api !== 'ollama' && entry.api !== 'accuweather' && entry.api !== 'nfl' && entry.api !== 'serpapi' && entry.api !== 'meme') {
-          throw new Error(`Tool "${entry.name}" has invalid api "${entry.api}" — must be "comfyui", "ollama", "accuweather", "nfl", "serpapi", or "meme"`);
+        const validApis = ['comfyui', 'ollama', 'accuweather', 'nfl', 'serpapi', 'meme', 'discord', 'xai'];
+        if (!validApis.includes(entry.api)) {
+          throw new Error(`Tool "${entry.name}" has invalid api "${entry.api}" — must be one of: ${validApis.join(', ')}`);
         }
         if (typeof entry.timeout !== 'number' || entry.timeout <= 0) {
           throw new Error(`Tool "${entry.name}" has invalid timeout — must be a positive number`);

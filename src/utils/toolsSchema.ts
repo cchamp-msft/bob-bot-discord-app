@@ -1,6 +1,5 @@
 import type { ToolConfig } from './config';
 import type { LlmProvider } from '../types';
-import { logger } from './logger';
 
 /** Tool names that are internal-only (e.g. !help, !activity_key). Not sent to Ollama as tools. */
 const INTERNAL_ONLY_TOOLS = new Set(['help', 'activity_key']);
@@ -206,8 +205,6 @@ export function toolArgumentsToContent(
 
 // ── Tool-batch policy validation ─────────────────────────────────
 
-const IMAGE_VIDEO_TOOLS = new Set(['generate_image', 'generate_video']);
-
 export interface BatchPolicyResult {
   /** Tools that passed policy validation. */
   allowed: ToolConfig[];
@@ -218,46 +215,10 @@ export interface BatchPolicyResult {
 /**
  * Validate a batch of resolved tools against cross-provider policy rules.
  *
- * Rules enforced:
- * 1. When the calling provider is xAI, serpapi tools are blocked.
- * 2. When the calling provider is Ollama, serpapi and xAI-routed tools
- *    (except image/video generation) cannot coexist in the same batch.
- *    If both are present, xAI-routed tools are dropped.
+ * All tools are currently allowed regardless of provider combination.
+ * Provider-only visibility (consult_grok Ollama-only, delegate_to_local
+ * xAI-only) is enforced earlier by buildOllamaToolsSchema / resolveToolNameToTool.
  */
-export function validateToolBatch(tools: ToolConfig[], callingProvider: LlmProvider): BatchPolicyResult {
-  const allowed: ToolConfig[] = [];
-  const blocked: BatchPolicyResult['blocked'] = [];
-
-  if (callingProvider === 'xai') {
-    for (const t of tools) {
-      if (t.api === 'serpapi') {
-        blocked.push({ tool: t, reason: 'SerpAPI is not permitted from xAI provider tool calls' });
-        logger.logWarn('system', `POLICY: Blocked ${t.name} — SerpAPI not allowed from xAI`);
-      } else {
-        allowed.push(t);
-      }
-    }
-    return { allowed, blocked };
-  }
-
-  // Ollama provider: check for serpapi + xai mixing
-  const hasSerpapi = tools.some(t => t.api === 'serpapi');
-  const hasNonMediaXai = tools.some(t =>
-    t.api === 'xai' && !IMAGE_VIDEO_TOOLS.has(t.name.replace(/^!\s*/, '').trim().toLowerCase())
-  );
-
-  if (hasSerpapi && hasNonMediaXai) {
-    for (const t of tools) {
-      const normalizedName = t.name.replace(/^!\s*/, '').trim().toLowerCase();
-      if (t.api === 'xai' && !IMAGE_VIDEO_TOOLS.has(normalizedName)) {
-        blocked.push({ tool: t, reason: 'xAI-routed tools (non-media) cannot mix with SerpAPI in an Ollama batch' });
-        logger.logWarn('system', `POLICY: Blocked ${t.name} — xAI+SerpAPI mixing disallowed in Ollama batch`);
-      } else {
-        allowed.push(t);
-      }
-    }
-    return { allowed, blocked };
-  }
-
+export function validateToolBatch(tools: ToolConfig[], _callingProvider: LlmProvider): BatchPolicyResult {
   return { allowed: [...tools], blocked: [] };
 }

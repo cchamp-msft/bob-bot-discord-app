@@ -100,9 +100,8 @@ Image generation and web search can route to xAI instead of their default backen
 
 ### Tool Batch Policy
 
-- SerpAPI tools are blocked from xAI provider tool calls.
-- SerpAPI and xAI-routed tools (except image/video) cannot coexist in the same Ollama batch.
-- The system prompt includes policy hints to discourage disallowed combinations.
+- All tool combinations are allowed in a single batch regardless of provider.
+- Provider-only visibility is still enforced: `consult_grok` is only available to Ollama, `delegate_to_local` is only available to xAI.
 
 ## ComfyUI Configuration
 
