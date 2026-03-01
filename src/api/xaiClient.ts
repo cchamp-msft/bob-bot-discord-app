@@ -171,9 +171,15 @@ class XaiClient {
         `xAI ${selectedModel}: ${prompt.substring(0, 100)}...`
       );
 
-      logger.logDebugLazy(requester, () =>
+      logger.logXaiDebugLazy(requester, () =>
         `XAI-REQUEST: model=${selectedModel}, messages=${JSON.stringify(messages, null, 2)}`
       );
+
+      if (options?.tools && options.tools.length > 0) {
+        logger.logXaiDebugLazy(requester, () =>
+          `XAI-TOOLS: ${JSON.stringify(requestBody.tools, null, 2)}`
+        );
+      }
 
       const reqConfig: Record<string, unknown> = {};
       if (signal) reqConfig.signal = signal;
@@ -195,7 +201,7 @@ class XaiClient {
           `xAI response received for prompt: ${prompt.substring(0, 50)}...`
         );
 
-        logger.logDebug(requester, `XAI-RESPONSE: ${responseText}`);
+        logger.logXaiDebug(requester, `XAI-RESPONSE: ${responseText}`);
 
         let tool_calls: OllamaToolCall[] | undefined;
         if (Array.isArray(rawToolCalls) && rawToolCalls.length > 0) {
@@ -215,6 +221,10 @@ class XaiClient {
             });
           }
           if (parsed.length > 0) tool_calls = parsed;
+
+          logger.logXaiDebugLazy(requester, () =>
+            `XAI-TOOL-CALLS: ${JSON.stringify(tool_calls, null, 2)}`
+          );
         }
 
         return {
@@ -253,6 +263,10 @@ class XaiClient {
         messages: [{ role: 'user', content: prompt }],
       };
 
+      logger.logXaiDebugLazy(requester, () =>
+        `XAI-IMAGE-REQUEST: model=${model}, prompt=${prompt}`
+      );
+
       const reqConfig: Record<string, unknown> = {};
       if (signal) reqConfig.signal = signal;
 
@@ -276,8 +290,11 @@ class XaiClient {
 
         if (images.length > 0) {
           logger.logReply(requester, `xAI image generated: ${images.length} image(s)`);
+          logger.logXaiDebug(requester, `XAI-IMAGE-RESPONSE: ${images.length} image(s) received`);
           return { success: true, data: { images } };
         }
+
+        logger.logXaiDebug(requester, `XAI-IMAGE-RESPONSE: No images found in response content`);
 
         return { success: false, error: 'No images returned from xAI' };
       }

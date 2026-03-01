@@ -1,6 +1,6 @@
 import { comfyuiClient, ComfyUIResponse } from './comfyuiClient';
 import { ollamaClient, OllamaResponse, OllamaHealthResult } from './ollamaClient';
-import { xaiClient, XaiResponse, XaiHealthResult } from './xaiClient';
+import { xaiClient, XaiResponse, XaiHealthResult, XaiImageResponse } from './xaiClient';
 import { accuweatherClient } from './accuweatherClient';
 import { nflClient } from './nflClient';
 import { serpApiClient } from './serpApiClient';
@@ -9,7 +9,7 @@ import { config } from '../utils/config';
 import { ChatMessage, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult } from '../types';
 import type { OllamaTool } from '../utils/toolsSchema';
 
-export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, XaiResponse, XaiHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult };
+export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, XaiResponse, XaiImageResponse, XaiHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult };
 
 /** Options forwarded to ollamaClient.generate() when api === 'ollama'. */
 export interface OllamaRequestOptions {
@@ -38,8 +38,11 @@ class ApiManager {
     ollamaOptions?: OllamaRequestOptions,
     /** Tool name — required when api is 'nfl'. */
     toolName?: string
-  ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse> {
+  ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | XaiImageResponse> {
     if (api === 'comfyui') {
+      if (config.getImageGenerationBackend() === 'xai') {
+        return await xaiClient.generateImage(data, requester, signal);
+      }
       return await comfyuiClient.generateImage(data, requester, signal, _timeout);
     } else if (api === 'accuweather') {
       const mode = accuweatherMode ?? config.getAccuWeatherDefaultWeatherType();

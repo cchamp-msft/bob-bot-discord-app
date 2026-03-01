@@ -427,6 +427,7 @@ export interface PipelineContext {
 /** Media follow-up sent after the Ollama text reply. */
 export type MediaFollowUp =
   | ComfyUIMediaFollowUp
+  | XaiImageMediaFollowUp
   | UrlMediaFollowUp;
 
 /** ComfyUI file attachments — needs the full response for file
@@ -438,6 +439,12 @@ export interface ComfyUIMediaFollowUp {
     data?: { text?: string; images?: string[]; videos?: string[] };
     error?: string;
   };
+}
+
+/** xAI image generation — carries base64 data URLs for attachment. */
+export interface XaiImageMediaFollowUp {
+  kind: 'xai-image';
+  images: string[];
 }
 
 /** A bare URL for Discord auto-embed (meme images, weather radar, etc.). */
@@ -585,6 +592,7 @@ export interface PublicConfig {
     imageEnabled: boolean;
     videoEnabled: boolean;
     encourageBuiltinTools: boolean;
+    debugLogging: boolean;
   };
   /** LLM provider selection for each pipeline stage. */
   provider: {

@@ -449,6 +449,83 @@ describe('Logger', () => {
     });
   });
 
+  describe('isXaiDebugEnabled', () => {
+    it('should return false when neither XAI_DEBUG_LOGGING nor DEBUG_LOGGING is set', () => {
+      delete process.env.XAI_DEBUG_LOGGING;
+      delete process.env.DEBUG_LOGGING;
+      expect(logger.isXaiDebugEnabled()).toBe(false);
+    });
+
+    it('should return true when XAI_DEBUG_LOGGING is true', () => {
+      process.env.XAI_DEBUG_LOGGING = 'true';
+      delete process.env.DEBUG_LOGGING;
+      try {
+        expect(logger.isXaiDebugEnabled()).toBe(true);
+      } finally {
+        delete process.env.XAI_DEBUG_LOGGING;
+      }
+    });
+
+    it('should return true when DEBUG_LOGGING is true (global override)', () => {
+      delete process.env.XAI_DEBUG_LOGGING;
+      process.env.DEBUG_LOGGING = 'true';
+      try {
+        expect(logger.isXaiDebugEnabled()).toBe(true);
+      } finally {
+        delete process.env.DEBUG_LOGGING;
+      }
+    });
+  });
+
+  describe('logXaiDebug', () => {
+    it('should not write when xAI debug is disabled', () => {
+      delete process.env.XAI_DEBUG_LOGGING;
+      delete process.env.DEBUG_LOGGING;
+      logger.logXaiDebug('alice', 'xai debug info');
+
+      const logFile = (logger as any).getLogFilePath();
+      expect(fs.existsSync(logFile)).toBe(false);
+    });
+
+    it('should write when XAI_DEBUG_LOGGING is true', () => {
+      process.env.XAI_DEBUG_LOGGING = 'true';
+      try {
+        logger.logXaiDebug('alice', 'xai debug info');
+
+        const content = readLatestLog();
+        expect(content).toContain('[debug]');
+        expect(content).toContain('DEBUG-XAI: xai debug info');
+      } finally {
+        delete process.env.XAI_DEBUG_LOGGING;
+      }
+    });
+  });
+
+  describe('logXaiDebugLazy', () => {
+    it('should not call builder when xAI debug is disabled', () => {
+      delete process.env.XAI_DEBUG_LOGGING;
+      delete process.env.DEBUG_LOGGING;
+      const builder = jest.fn(() => 'expensive xai string');
+      logger.logXaiDebugLazy('alice', builder);
+
+      expect(builder).not.toHaveBeenCalled();
+    });
+
+    it('should call builder when XAI_DEBUG_LOGGING is true', () => {
+      process.env.XAI_DEBUG_LOGGING = 'true';
+      try {
+        const builder = jest.fn(() => 'lazy xai data');
+        logger.logXaiDebugLazy('bob', builder);
+
+        expect(builder).toHaveBeenCalledTimes(1);
+        const content = readLatestLog();
+        expect(content).toContain('DEBUG-XAI: lazy xai data');
+      } finally {
+        delete process.env.XAI_DEBUG_LOGGING;
+      }
+    });
+  });
+
   describe('logReply with empty-string content', () => {
     it('should log content line for empty-string replyContent', () => {
       logger.logReply('eve', 'Response sent: 0 characters', '');

@@ -1,7 +1,7 @@
 import { config, ToolConfig } from './config';
 import { logger } from './logger';
 import { requestQueue } from './requestQueue';
-import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
+import { apiManager, ComfyUIResponse, XaiImageResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { accuweatherClient } from '../api/accuweatherClient';
 import { serpApiClient } from '../api/serpApiClient';
 import { memeClient } from '../api/memeClient';
@@ -593,7 +593,9 @@ export async function executeRoutedRequest(
 
   const routerFpProvider = config.getProviderFinalPass();
   const routerFpApi = routerFpProvider === 'xai' ? 'xai' as const : 'ollama' as const;
-  const routerFpModel = routerFpProvider === 'xai' ? config.getXaiModel() : (config.getOllamaFinalPassModel() || undefined);
+  const routerFpModel = routerFpProvider === 'xai'
+    ? (config.getOllamaFinalPassModel() || config.getXaiModel())
+    : (config.getOllamaFinalPassModel() || undefined);
   const routerFpTimeout = routerFpProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaFinalPassTimeout();
 
   const finalResult = await requestQueue.execute(
@@ -627,7 +629,15 @@ export async function executeRoutedRequest(
   logger.log('success', 'system', 'API-ROUTING: Final Ollama pass complete');
   const media: MediaFollowUp[] = [];
   if (keywordConfig.api === 'comfyui') {
-    media.push({ kind: 'comfyui', response: primaryResult as ComfyUIResponse });
+    const imageBackend = config.getImageGenerationBackend();
+    if (imageBackend === 'xai') {
+      const xaiResp = primaryResult as XaiImageResponse;
+      if (xaiResp.data?.images?.length) {
+        media.push({ kind: 'xai-image', images: xaiResp.data.images });
+      }
+    } else {
+      media.push({ kind: 'comfyui', response: primaryResult as ComfyUIResponse });
+    }
   }
   if (keywordConfig.api === 'meme') {
     const url = (primaryResult as MemeResponse).data?.imageUrl;

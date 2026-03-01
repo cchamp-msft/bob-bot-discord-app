@@ -30,6 +30,7 @@ jest.mock('../src/utils/config', () => ({
     getProviderRetry: jest.fn(() => 'ollama'),
     getXaiModel: jest.fn(() => ''),
     getXaiTimeout: jest.fn(() => 120000),
+    getImageGenerationBackend: jest.fn(() => 'comfyui'),
   },
 }));
 

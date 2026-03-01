@@ -379,6 +379,15 @@ class Config {
     return this.clampTimeout(this.parseIntEnv('XAI_TIMEOUT', 120_000));
   }
 
+  /**
+   * Whether xAI-specific debug logging is enabled.
+   * When true, logs detailed request/response payloads for xAI calls.
+   * Independent of the global DEBUG_LOGGING toggle.
+   */
+  getXaiDebugLogging(): boolean {
+    return process.env.XAI_DEBUG_LOGGING === 'true';
+  }
+
   // ── Provider stage selectors ────────────────────────────────
 
   private parseLlmProvider(envKey: string, fallback: LlmProvider = 'ollama'): LlmProvider {
@@ -1211,6 +1220,7 @@ class Config {
     const prevXaiVideoEnabled = this.getXaiVideoEnabled();
     const prevXaiEncourageBuiltinTools = this.getXaiEncourageBuiltinTools();
     const prevXaiTimeout = this.getXaiTimeout();
+    const prevXaiDebugLogging = this.getXaiDebugLogging();
     const prevProviderToolEval = this.getProviderToolEval();
     const prevProviderFinalPass = this.getProviderFinalPass();
     const prevProviderContextEval = this.getProviderContextEval();
@@ -1325,6 +1335,7 @@ class Config {
     if (this.getXaiVideoEnabled() !== prevXaiVideoEnabled) reloaded.push('XAI_VIDEO_ENABLED');
     if (this.getXaiEncourageBuiltinTools() !== prevXaiEncourageBuiltinTools) reloaded.push('XAI_ENCOURAGE_BUILTIN_TOOLS');
     if (this.getXaiTimeout() !== prevXaiTimeout) reloaded.push('XAI_TIMEOUT');
+    if (this.getXaiDebugLogging() !== prevXaiDebugLogging) reloaded.push('XAI_DEBUG_LOGGING');
     if (this.getProviderToolEval() !== prevProviderToolEval) reloaded.push('PROVIDER_TOOL_EVAL');
     if (this.getProviderFinalPass() !== prevProviderFinalPass) reloaded.push('PROVIDER_FINAL_PASS');
     if (this.getProviderContextEval() !== prevProviderContextEval) reloaded.push('PROVIDER_CONTEXT_EVAL');
@@ -1484,6 +1495,7 @@ class Config {
         imageEnabled: this.getXaiImageEnabled(),
         videoEnabled: this.getXaiVideoEnabled(),
         encourageBuiltinTools: this.getXaiEncourageBuiltinTools(),
+        debugLogging: this.getXaiDebugLogging(),
       },
       provider: {
         toolEval: this.getProviderToolEval(),

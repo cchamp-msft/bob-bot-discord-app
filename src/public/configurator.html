@@ -657,6 +657,21 @@
           <strong>Encourage Built-in Tools</strong>: appends a system prompt nudging Grok to use web_search, x_keyword_search, and code_execution when helpful.
         </p>
 
+        <hr style="border-color:var(--border);margin:16px 0">
+        <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Logging</div>
+        <div class="field-row">
+          <div class="field narrow">
+            <label>xAI Debug Logging</label>
+            <select id="xai_debug_logging" data-env="XAI_DEBUG_LOGGING" onchange="markDirty()">
+              <option value="false">Off</option>
+              <option value="true">On</option>
+            </select>
+          </div>
+        </div>
+        <p class="help-text" style="margin:6px 0 12px">
+          When enabled, logs detailed xAI request payloads, response text, and parsed tool calls. Independent of the global Debug Logging toggle.
+        </p>
+
         <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Backend Selection</div>
         <div class="field-row">
           <div class="field narrow">
@@ -1704,6 +1719,7 @@ flowchart TD
         document.getElementById('xai_image_enabled').value = cfg.xai.imageEnabled ? 'true' : 'false';
         document.getElementById('xai_video_enabled').value = cfg.xai.videoEnabled ? 'true' : 'false';
         document.getElementById('xai_encourage_builtin_tools').value = cfg.xai.encourageBuiltinTools ? 'true' : 'false';
+        document.getElementById('xai_debug_logging').value = cfg.xai.debugLogging ? 'true' : 'false';
         // xAI model (saved selection)
         const xaiModelSelect = document.getElementById('xai_model');
         if (xaiModelSelect && cfg.xai.model) {
@@ -2460,6 +2476,44 @@ flowchart TD
     if (currentValue) {
       const exists = Array.from(xaiModelSelect.options).some(o => o.value === currentValue);
       if (exists) xaiModelSelect.value = currentValue;
+    }
+
+    // Also populate per-stage model dropdowns when their provider is set to xAI
+    const stageDropdowns = [
+      { selectId: 'ollama_model', providerId: 'provider_tool_eval' },
+      { selectId: 'ollama_final_pass_model', providerId: 'provider_final_pass' },
+      { selectId: 'context_eval_model', providerId: 'provider_context_eval' },
+    ];
+    for (const { selectId, providerId } of stageDropdowns) {
+      const providerSelect = document.getElementById(providerId);
+      if (!providerSelect || providerSelect.value !== 'xai') continue;
+      const stageSelect = document.getElementById(selectId);
+      if (!stageSelect) continue;
+      const savedValue = stageSelect.value;
+      stageSelect.innerHTML = '';
+      const emptyOpt = document.createElement('option');
+      emptyOpt.value = '';
+      emptyOpt.textContent = '— select a model —';
+      stageSelect.appendChild(emptyOpt);
+      for (const model of models) {
+        const modelId = model.id || model.name;
+        const opt = document.createElement('option');
+        opt.value = modelId;
+        opt.textContent = modelId;
+        stageSelect.appendChild(opt);
+      }
+      if (savedValue) {
+        const exists = Array.from(stageSelect.options).some(o => o.value === savedValue);
+        if (exists) {
+          stageSelect.value = savedValue;
+        } else {
+          const savedOpt = document.createElement('option');
+          savedOpt.value = savedValue;
+          savedOpt.textContent = savedValue + ' (saved)';
+          stageSelect.appendChild(savedOpt);
+          stageSelect.value = savedValue;
+        }
+      }
     }
   }
 

@@ -660,6 +660,22 @@ describe('Config', () => {
       expect(config.getXaiEncourageBuiltinTools()).toBe(false);
     });
 
+    it('getXaiDebugLogging should default to false', () => {
+      delete process.env.XAI_DEBUG_LOGGING;
+      expect(config.getXaiDebugLogging()).toBe(false);
+    });
+
+    it('getXaiDebugLogging should return true when env is "true"', () => {
+      process.env.XAI_DEBUG_LOGGING = 'true';
+      expect(config.getXaiDebugLogging()).toBe(true);
+    });
+
+    it('getPublicConfig should include xai.debugLogging', () => {
+      process.env.XAI_DEBUG_LOGGING = 'true';
+      const pub = config.getPublicConfig();
+      expect(pub.xai.debugLogging).toBe(true);
+    });
+
     it('provider selectors should default to ollama', () => {
       delete process.env.PROVIDER_TOOL_EVAL;
       delete process.env.PROVIDER_FINAL_PASS;

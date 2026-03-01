@@ -7,10 +7,10 @@ import axios from 'axios';
 import { config, ToolConfig, COMMAND_PREFIX } from '../utils/config';
 import { logger } from '../utils/logger';
 import { requestQueue } from '../utils/requestQueue';
-import { apiManager, ComfyUIResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
+import { apiManager, ComfyUIResponse, XaiImageResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { fileHandler } from '../utils/fileHandler';
 import { memeClient } from '../api/memeClient';
-import { ChatMessage, NFLResponse, MemeResponse, DiscordActionResponse, MediaFollowUp, ComfyUIMediaFollowUp, UrlMediaFollowUp, PipelineContext, ToolInvocation } from '../types';
+import { ChatMessage, NFLResponse, MemeResponse, DiscordActionResponse, MediaFollowUp, ComfyUIMediaFollowUp, XaiImageMediaFollowUp, UrlMediaFollowUp, PipelineContext, ToolInvocation } from '../types';
 import * as discordActionClient from '../api/discordActionClient';
 import { chunkText } from '../utils/chunkText';
 import { executeRoutedRequest, inferAbilityParameters, formatApiResultAsExternalData } from '../utils/apiRouter';
@@ -1303,7 +1303,9 @@ class MessageHandler {
       logger.log('success', 'system', `UNIFIED: Stage 1 — ${tools.length} native tool(s) available`);
     }
     const toolApi = toolProvider === 'xai' ? 'xai' as const : 'ollama' as const;
-    const toolModel = toolProvider === 'xai' ? config.getXaiModel() : config.getOllamaToolModel();
+    const toolModel = toolProvider === 'xai'
+      ? (config.getOllamaToolModel() || config.getXaiModel())
+      : config.getOllamaToolModel();
 
     const ollamaResult = await requestQueue.execute(
       toolApi,
@@ -1492,7 +1494,15 @@ class MessageHandler {
       // Capture media follow-ups
       let media: MediaFollowUp | undefined;
       if (tool.api === 'comfyui' && apiResult.finalResponse.success) {
-        media = { kind: 'comfyui', response: apiResult.finalResponse as ComfyUIResponse };
+        const imageBackend = config.getImageGenerationBackend();
+        if (imageBackend === 'xai') {
+          const xaiResp = apiResult.finalResponse as XaiImageResponse;
+          if (xaiResp.data?.images?.length) {
+            media = { kind: 'xai-image', images: xaiResp.data.images };
+          }
+        } else {
+          media = { kind: 'comfyui', response: apiResult.finalResponse as ComfyUIResponse };
+        }
       }
       if (tool.api === 'meme' && apiResult.finalResponse.success) {
         const url = (apiResult.finalResponse as MemeResponse).data?.imageUrl;
@@ -1637,7 +1647,7 @@ class MessageHandler {
     const finalProvider = ctx.forceOllamaFinalPass ? 'ollama' : config.getProviderFinalPass();
     const finalApi = finalProvider === 'xai' ? 'xai' as const : 'ollama' as const;
     const finalModel = finalProvider === 'xai'
-      ? config.getXaiModel()
+      ? (config.getOllamaFinalPassModel() || config.getXaiModel())
       : (config.getOllamaFinalPassModel() ?? undefined);
     const finalTimeout = finalProvider === 'xai'
       ? config.getXaiTimeout()
@@ -1753,7 +1763,9 @@ class MessageHandler {
       logger.log('success', 'system', `TWO-STAGE: Native tools mode — ${tools.length} tool(s), max 3 calls per turn`);
     }
     const legacyToolApi = legacyToolProvider === 'xai' ? 'xai' as const : 'ollama' as const;
-    const legacyToolModel = legacyToolProvider === 'xai' ? config.getXaiModel() : config.getOllamaToolModel();
+    const legacyToolModel = legacyToolProvider === 'xai'
+      ? (config.getOllamaToolModel() || config.getXaiModel())
+      : config.getOllamaToolModel();
 
     const ollamaResult = await requestQueue.execute(
       legacyToolApi,
@@ -1836,8 +1848,16 @@ class MessageHandler {
         );
         // Capture media follow-ups for attachment after the text reply
         if (resolvedTool.api === 'comfyui' && apiResult.finalResponse.success
-            && !mediaFollowUps.some(m => m.kind === 'comfyui')) {
-          mediaFollowUps.push({ kind: 'comfyui', response: apiResult.finalResponse as ComfyUIResponse });
+            && !mediaFollowUps.some(m => m.kind === 'comfyui' || m.kind === 'xai-image')) {
+          const imageBackend = config.getImageGenerationBackend();
+          if (imageBackend === 'xai') {
+            const xaiResp = apiResult.finalResponse as XaiImageResponse;
+            if (xaiResp.data?.images?.length) {
+              mediaFollowUps.push({ kind: 'xai-image', images: xaiResp.data.images });
+            }
+          } else {
+            mediaFollowUps.push({ kind: 'comfyui', response: apiResult.finalResponse as ComfyUIResponse });
+          }
         }
         if (resolvedTool.api === 'meme' && apiResult.finalResponse.success) {
           const url = (apiResult.finalResponse as MemeResponse).data?.imageUrl;
@@ -1866,7 +1886,9 @@ class MessageHandler {
 
       const tsFpProvider = forceOllamaFP ? 'ollama' : config.getProviderFinalPass();
       const tsFpApi = tsFpProvider === 'xai' ? 'xai' as const : 'ollama' as const;
-      const tsFpModel = tsFpProvider === 'xai' ? config.getXaiModel() : (config.getOllamaFinalPassModel() ?? undefined);
+      const tsFpModel = tsFpProvider === 'xai'
+        ? (config.getOllamaFinalPassModel() || config.getXaiModel())
+        : (config.getOllamaFinalPassModel() ?? undefined);
       const tsFpTimeout = tsFpProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaFinalPassTimeout();
 
       const finalResult = await requestQueue.execute(
@@ -2005,11 +2027,12 @@ class MessageHandler {
     if (!strictNoApiRoutingFromInference && this.isLikelyImageRequest(content)) {
       const imageToolConfig = this.findEnabledToolByName('generate_image');
 
-      if (imageToolConfig && imageToolConfig.api === 'comfyui') {
+      if (imageToolConfig && (imageToolConfig.api === 'comfyui' || imageToolConfig.api === 'xai')) {
+        const imageBackend = config.getImageGenerationBackend();
         const inferredPrompt = this.deriveImagePromptFromContext(content, filteredHistory);
         if (inferredPrompt) {
           logger.log('success', 'system',
-            `TWO-STAGE: Image fallback inference succeeded for "${imageToolConfig.name}" — executing comfyui API`);
+            `TWO-STAGE: Image fallback inference succeeded for "${imageToolConfig.name}" — executing ${imageBackend} backend`);
 
           const imageResult = await executeRoutedRequest(
             imageToolConfig,
@@ -2113,7 +2136,9 @@ class MessageHandler {
 
     const fpProvider = config.getProviderFinalPass();
     const fpApi = fpProvider === 'xai' ? 'xai' as const : 'ollama' as const;
-    const fpModel = fpProvider === 'xai' ? config.getXaiModel() : (config.getOllamaFinalPassModel() ?? undefined);
+    const fpModel = fpProvider === 'xai'
+      ? (config.getOllamaFinalPassModel() || config.getXaiModel())
+      : (config.getOllamaFinalPassModel() ?? undefined);
     const fpTimeout = fpProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaFinalPassTimeout();
 
     try {
@@ -2393,6 +2418,46 @@ class MessageHandler {
     media?: MediaFollowUp[]
   ): Promise<void> {
     let text = apiResult.data?.text || 'No response generated.';
+
+    // When an xAI image media source is carried through, decode and attach base64 images
+    const xaiImageMedia = media?.find((m): m is XaiImageMediaFollowUp => m.kind === 'xai-image');
+    if (xaiImageMedia && xaiImageMedia.images.length > 0) {
+      text = text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim();
+      const attachments: { attachment: Buffer; name: string }[] = [];
+      for (let i = 0; i < xaiImageMedia.images.length; i++) {
+        const dataUrl = xaiImageMedia.images[i];
+        const base64Match = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/s);
+        if (base64Match) {
+          const ext = base64Match[1] === 'jpeg' ? 'jpg' : base64Match[1];
+          const buf = Buffer.from(base64Match[2], 'base64');
+          attachments.push({ attachment: buf, name: `xai-image-${i}.${ext}` });
+        }
+      }
+      if (attachments.length > 0) {
+        const chunks = chunkText(text || 'Here are your results:');
+        const maxPerMessage = config.getMaxAttachments();
+        const firstBatch = attachments.slice(0, maxPerMessage);
+        await sourceMessage.reply({
+          content: chunks[0],
+          files: firstBatch,
+        });
+        for (let i = 1; i < chunks.length; i++) {
+          if ('send' in sourceMessage.channel) {
+            await sourceMessage.channel.send(chunks[i]);
+          }
+        }
+        for (let i = maxPerMessage; i < attachments.length; i += maxPerMessage) {
+          const batch = attachments.slice(i, i + maxPerMessage);
+          if ('send' in sourceMessage.channel) {
+            await sourceMessage.channel.send({ content: '📎 Additional files', files: batch });
+          }
+        }
+        const savedPaths = attachments.map(a => a.name);
+        activityEvents.emitBotImageReply(attachments.length, savedPaths);
+        logger.logReply(requester, `xAI image response sent: ${text.length} chars text, ${attachments.length} image(s)`);
+        return;
+      }
+    }
 
     // When a ComfyUI media source is carried through, download/save files and attach them
     const comfyMedia = media?.find((m): m is ComfyUIMediaFollowUp => m.kind === 'comfyui');

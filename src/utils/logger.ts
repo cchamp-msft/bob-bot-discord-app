@@ -125,6 +125,14 @@ class Logger {
     return process.env.DEBUG_LOGGING === 'true';
   }
 
+  /**
+   * Check whether xAI-specific debug logging is enabled.
+   * Returns true when either XAI_DEBUG_LOGGING or global DEBUG_LOGGING is on.
+   */
+  isXaiDebugEnabled(): boolean {
+    return process.env.XAI_DEBUG_LOGGING === 'true' || this.isDebugEnabled();
+  }
+
   logIncoming(
     username: string,
     userId: string,
@@ -183,6 +191,23 @@ class Logger {
   logDebugLazy(requester: string, build: () => string): void {
     if (!this.isDebugEnabled()) return;
     this.log('debug', requester, `DEBUG: ${build()}`);
+  }
+
+  /**
+   * Log an xAI debug-level message. Written when XAI_DEBUG_LOGGING or DEBUG_LOGGING is enabled.
+   */
+  logXaiDebug(requester: string, data: string): void {
+    if (!this.isXaiDebugEnabled()) return;
+    this.log('debug', requester, `DEBUG-XAI: ${data}`);
+  }
+
+  /**
+   * Log an xAI debug-level message using a lazy builder function.
+   * The builder is only called when xAI debug is enabled.
+   */
+  logXaiDebugLazy(requester: string, build: () => string): void {
+    if (!this.isXaiDebugEnabled()) return;
+    this.log('debug', requester, `DEBUG-XAI: ${build()}`);
   }
 
   logError(requester: string, error: string): void {

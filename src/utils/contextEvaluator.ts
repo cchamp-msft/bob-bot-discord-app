@@ -241,7 +241,9 @@ export async function evaluateContextWindow(
 
     const provider = config.getProviderContextEval();
     const queueApi = provider === 'xai' ? 'xai' : 'ollama';
-    const model = provider === 'xai' ? config.getXaiModel() : config.getContextEvalModel();
+    const model = provider === 'xai'
+      ? (config.getContextEvalModel() || config.getXaiModel())
+      : config.getContextEvalModel();
 
     const response: OllamaResponse = await requestQueue.execute(
       queueApi,

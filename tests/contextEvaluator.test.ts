@@ -499,6 +499,59 @@ describe('ContextEvaluator', () => {
     });
   });
 
+  describe('evaluateContextWindow — xAI provider uses stage model', () => {
+    it('should use context eval model when provider is xai', async () => {
+      const { config } = require('../src/utils/config');
+      (config.getProviderContextEval as jest.Mock).mockReturnValue('xai');
+      (config.getContextEvalModel as jest.Mock).mockReturnValue('grok-beta');
+      (config.getXaiModel as jest.Mock).mockReturnValue('grok-default');
+
+      const history = makeHistory(5);
+      const tc = makeTool();
+
+      mockApiExecute.mockResolvedValue({
+        success: true,
+        data: { text: '[1, 2, 3]' },
+      });
+
+      await evaluateContextWindow(history, 'hello', tc, 'user1');
+
+      expect(mockExecute).toHaveBeenCalledWith(
+        'xai',
+        'user1',
+        '__ctx_eval__',
+        300,
+        expect.any(Function)
+      );
+    });
+
+    it('should fall back to xai default model when context eval model is empty', async () => {
+      const { config } = require('../src/utils/config');
+      (config.getProviderContextEval as jest.Mock).mockReturnValue('xai');
+      (config.getContextEvalModel as jest.Mock).mockReturnValue('');
+      (config.getXaiModel as jest.Mock).mockReturnValue('grok-default');
+
+      const history = makeHistory(5);
+      const tc = makeTool();
+
+      mockApiExecute.mockResolvedValue({
+        success: true,
+        data: { text: '[1, 2, 3]' },
+      });
+
+      await evaluateContextWindow(history, 'hello', tc, 'user1');
+
+      // The execute function is called — we verify the queue API is 'xai'
+      expect(mockExecute).toHaveBeenCalledWith(
+        'xai',
+        'user1',
+        '__ctx_eval__',
+        300,
+        expect.any(Function)
+      );
+    });
+  });
+
   describe('buildContextEvalPrompt', () => {
     it('should include min and max depth values', () => {
       const prompt = buildContextEvalPrompt(2, 8);

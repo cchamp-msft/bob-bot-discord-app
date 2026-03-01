@@ -82,14 +82,17 @@ jest.mock('../src/utils/config', () => ({
     getXaiApiKey: jest.fn(() => ''),
     getXaiModel: jest.fn(() => ''),
     getXaiTimeout: jest.fn(() => 120000),
+    getImageGenerationBackend: jest.fn(() => 'comfyui'),
   },
 }));
 
 import { apiManager } from '../src/api/index';
 import { ollamaClient } from '../src/api/ollamaClient';
 import { comfyuiClient } from '../src/api/comfyuiClient';
+import { xaiClient } from '../src/api/xaiClient';
 import { nflClient } from '../src/api/nflClient';
 import { memeClient } from '../src/api/memeClient';
+import { config } from '../src/utils/config';
 
 describe('ApiManager', () => {
   beforeEach(() => {
@@ -118,6 +121,24 @@ describe('ApiManager', () => {
 
       expect(comfyuiClient.generateImage).toHaveBeenCalledWith('test prompt', 'user1', undefined, 300);
       expect(result.success).toBe(true);
+    });
+
+    it('should route comfyui requests to xaiClient when IMAGE_GENERATION_BACKEND is xai', async () => {
+      (config.getImageGenerationBackend as jest.Mock).mockReturnValue('xai');
+      try {
+        (xaiClient.generateImage as jest.Mock).mockResolvedValue({
+          success: true,
+          data: { images: ['data:image/png;base64,abc'] },
+        });
+
+        const result = await apiManager.executeRequest('comfyui', 'user1', 'a sunset', 300);
+
+        expect(xaiClient.generateImage).toHaveBeenCalledWith('a sunset', 'user1', undefined);
+        expect(comfyuiClient.generateImage).not.toHaveBeenCalled();
+        expect(result.success).toBe(true);
+      } finally {
+        (config.getImageGenerationBackend as jest.Mock).mockReturnValue('comfyui');
+      }
     });
 
     it('should route ollama requests to ollamaClient with configured model', async () => {
