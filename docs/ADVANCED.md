@@ -136,11 +136,11 @@ Context evaluation is controlled by **global** environment variables (or the con
 ### How It Works
 
 1. The bot collects reply chain, channel, and/or DM history as usual
-2. If `CONTEXT_EVAL_ENABLED` is `true`, the context evaluator analyzes the collected history
-3. Ollama determines which recent messages are topically relevant
+2. If `CONTEXT_EVAL_ENABLED` is `true`, the context evaluator analyzes the collected history — this runs in both the **unified** and **legacy** pipeline modes
+3. The configured `PROVIDER_CONTEXT_EVAL` provider (default: `ollama`) determines which recent messages are topically relevant — this can differ from the tool/final-pass provider
 4. The most recent message is **always included**, even if off-topic
 5. Up to `REPLY_CHAIN_MAX_DEPTH` messages total may be included if they remain on-topic
-6. If topics diverge, Ollama uses the most recent topic and transitions naturally
+6. If topics diverge, the evaluator uses the most recent topic and transitions naturally
 
 ### Best Practices
 

@@ -12,6 +12,7 @@ This guide helps you resolve common issues with Bob Bot.
 - [Configuration Issues](#configuration-issues)
 - [SerpAPI / Web Search Issues](#serpapi--web-search-issues)
 - [Reverse Proxy / SSL Issues](#reverse-proxy--ssl-issues)
+- [Context Evaluation Issues](#context-evaluation-issues)
 
 ## Discord Connection Issues
 
@@ -193,6 +194,28 @@ curl -I https://bot.example.com/activity
 # Activity API without key — should return 401
 curl https://bot.example.com/api/activity
 ```
+
+## Context Evaluation Issues
+
+### No CONTEXT-EVAL logs appearing
+
+**Symptoms**: Logs show `UNIFIED: Stage 1` or `TWO-STAGE:` entries but no `CONTEXT-EVAL:` lines, even though `CONTEXT_EVAL_ENABLED=true`.
+
+**Solutions**:
+- Verify `CONTEXT_EVAL_ENABLED=true` in `.env` (default is `true`, but it may have been explicitly set to `false`)
+- Context eval only runs when conversation history is non-empty — single-message interactions with no channel context skip it
+- Check that `CONTEXT_EVAL_MODEL` is set to a valid model (falls back to `OLLAMA_MODEL`)
+- If `PROVIDER_CONTEXT_EVAL=xai`, ensure `XAI_API_KEY` and `XAI_BASE_URL` are configured
+- Enable `DEBUG_LOGGING=true` to see the full context-eval prompt and response
+
+### Context eval uses wrong provider
+
+**Symptoms**: Context eval routes to Ollama even though `PROVIDER_CONTEXT_EVAL=xai` is set.
+
+**Solutions**:
+- Check that the `.env` value is exactly `xai` (lowercase, no quotes or trailing spaces)
+- Reload config via the configurator or restart the bot — provider settings are read from `.env` on each request
+- Look for `CONTEXT-EVAL:` log lines followed by the queue API (`xai` or `ollama`) to confirm routing
 
 ## xAI Image/Video Generation Issues
 

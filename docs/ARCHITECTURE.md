@@ -207,9 +207,11 @@ Depth is counted from the **newest** message (newest = depth 1), matching the "p
 
 ### Where the Evaluator Applies
 
-- **Default path** (two-stage tool evaluation, stage 1) — filters history before the initial Ollama call, when `CONTEXT_EVAL_ENABLED` is `true`.
+- **Unified pipeline** (default) — filters history before Stage 1 tool evaluation + response, when `CONTEXT_EVAL_ENABLED` is `true`.
+- **Legacy pipeline** (two-stage tool evaluation, stage 1) — filters history before the initial Ollama call, when `CONTEXT_EVAL_ENABLED` is `true`.
 - **Final Ollama pass** (for non-Ollama API tools with `finalOllamaPass: true`) — also filters history before the refinement call.
 - If the primary API was already Ollama, the final pass is skipped (no double-filtering).
+- The context evaluation provider (`PROVIDER_CONTEXT_EVAL`) is independent of the tool/final-pass provider — e.g. context eval can run on xAI while tool eval and final pass use Ollama.
 
 ### Notes
 

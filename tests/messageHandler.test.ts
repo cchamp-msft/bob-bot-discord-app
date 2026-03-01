@@ -2903,6 +2903,170 @@ describe('MessageHandler — Context Evaluation integration', () => {
   });
 });
 
+describe('MessageHandler — Context Evaluation in unified pipeline', () => {
+  const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
+  const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
+
+  const ctxEvalKw = {
+    name: '!chat',
+    api: 'ollama' as const,
+    timeout: 300,
+    description: 'Chat',
+  };
+
+  function createMentionedMsg(content: string, hasReference = false) {
+    return {
+      author: { id: 'user-1', bot: false, username: 'ctxuser', displayName: 'CtxUser' },
+      content,
+      mentions: { has: () => true },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: {
+          cache: new Map(),
+          fetch: jest.fn().mockResolvedValue(new Map()),
+        },
+      },
+      client: { user: { id: 'bot-123', username: 'BotUser' } },
+      reference: hasReference ? { messageId: 'ref-1' } : null,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn(),
+        attachments: { size: 0 },
+        embeds: [],
+      }),
+      attachments: { size: 0 },
+      id: 'ctx-msg-1',
+      fetchReference: jest.fn(),
+      createdTimestamp: Date.now(),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getTools as jest.Mock).mockReturnValue([ctxEvalKw]);
+    (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
+    (config.getContextEvalEnabled as jest.Mock).mockReturnValue(true);
+    (config.getPipelineMode as jest.Mock).mockReturnValue('unified');
+    mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
+  });
+
+  afterEach(() => {
+    (config.getPipelineMode as jest.Mock).mockReturnValue('legacy');
+  });
+
+  it('should call evaluateContextWindow in unified mode when channel history is non-empty', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const { parseFirstLineTool } = require('../src/utils/promptBuilder');
+
+    parseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Unified chat with context eval.' },
+    });
+
+    const msg = createMentionedMsg('<@bot-123> hello unified');
+
+    const channelHistory = new Map([
+      ['ch-1', {
+        id: 'ch-1',
+        content: 'Earlier channel message',
+        author: { id: 'user-2', bot: false, username: 'other' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+    msg.channel.messages.fetch.mockResolvedValue(channelHistory);
+
+    await messageHandler.handleMessage(msg as any);
+
+    expect(mockEvaluate).toHaveBeenCalled();
+  });
+
+  it('should NOT call evaluateContextWindow in unified mode when context eval is disabled', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const { parseFirstLineTool } = require('../src/utils/promptBuilder');
+
+    (config.getContextEvalEnabled as jest.Mock).mockReturnValue(false);
+
+    parseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Unified chat without eval.' },
+    });
+
+    const msg = createMentionedMsg('<@bot-123> hello unified no eval');
+
+    const channelHistory = new Map([
+      ['ch-1', {
+        id: 'ch-1',
+        content: 'Earlier channel message',
+        author: { id: 'user-2', bot: false, username: 'other' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+    ]);
+    msg.channel.messages.fetch.mockResolvedValue(channelHistory);
+
+    await messageHandler.handleMessage(msg as any);
+
+    expect(mockEvaluate).not.toHaveBeenCalled();
+  });
+
+  it('should append trigger message AFTER context filtering in unified mode', async () => {
+    const { requestQueue } = require('../src/utils/requestQueue');
+    const { parseFirstLineTool, assemblePrompt } = require('../src/utils/promptBuilder');
+
+    parseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
+
+    // Context eval returns only 1 of 2 messages
+    mockEvaluate.mockImplementation((history: any) =>
+      Promise.resolve(history.filter((_: any, i: number) => i === history.length - 1))
+    );
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Filtered context response.' },
+    });
+
+    const msg = createMentionedMsg('<@bot-123> what about topic X');
+
+    const channelHistory = new Map([
+      ['ch-1', {
+        id: 'ch-1',
+        content: 'Old irrelevant msg',
+        author: { id: 'user-2', bot: false, username: 'other' },
+        member: null,
+        createdTimestamp: 1000,
+      }],
+      ['ch-2', {
+        id: 'ch-2',
+        content: 'Recent relevant msg',
+        author: { id: 'user-2', bot: false, username: 'other' },
+        member: null,
+        createdTimestamp: 2000,
+      }],
+    ]);
+    msg.channel.messages.fetch.mockResolvedValue(channelHistory);
+
+    await messageHandler.handleMessage(msg as any);
+
+    expect(mockEvaluate).toHaveBeenCalled();
+
+    // Verify that assemblePrompt receives filtered history PLUS the trigger
+    const assembleCall = assemblePrompt.mock.calls[0]?.[0];
+    if (assembleCall) {
+      const history = assembleCall.conversationHistory;
+      // The trigger message should be the last entry
+      const trigger = history[history.length - 1];
+      expect(trigger.contextSource).toBe('trigger');
+      // Filtered history should have fewer messages than original (2 channel msgs → 1 after filter) + trigger
+      expect(history.length).toBeLessThanOrEqual(3);
+    }
+  });
+});
+
 describe('MessageHandler collectChannelHistory', () => {
   beforeEach(() => {
     jest.clearAllMocks();

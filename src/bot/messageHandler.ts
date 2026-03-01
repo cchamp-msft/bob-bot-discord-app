@@ -1271,9 +1271,14 @@ class MessageHandler {
   ): Promise<void> {
     const timeout = toolConfig.timeout || config.getDefaultTimeout();
 
-    // Append the triggering message to context so the model knows who is asking.
+    // Apply context filter before building the prompt (matching legacy behavior).
+    const filteredHistory = await this.applyContextEvaluation(
+      ctx.conversationHistory, ctx.rawContent, toolConfig, ctx.requester, 'UNIFIED'
+    );
+
+    // Append the triggering message after filtering so it is never filtered out.
     const historyWithTrigger: ChatMessage[] = [
-      ...ctx.conversationHistory,
+      ...filteredHistory,
       {
         role: 'user' as const,
         content: `${ctx.requester}: ${ctx.rawContent}`,
@@ -1693,6 +1698,44 @@ class MessageHandler {
   }
 
   /**
+   * Shared context-evaluation step used by both unified and legacy pipelines.
+   * Runs `evaluateContextWindow` when context eval is globally enabled and
+   * the conversation history is non-empty. Returns the (possibly filtered)
+   * history without the trigger message appended — callers append it after.
+   *
+   * @param pipelineLabel - Log prefix for the calling pipeline (e.g. 'UNIFIED', 'TWO-STAGE').
+   */
+  private async applyContextEvaluation(
+    conversationHistory: ChatMessage[],
+    userPrompt: string,
+    toolConfig: ToolConfig,
+    requester: string,
+    pipelineLabel: string
+  ): Promise<ChatMessage[]> {
+    if (config.getContextEvalEnabled() && conversationHistory.length > 0) {
+      const preFilterCount = conversationHistory.filter(m => m.role !== 'system').length;
+      logger.log('success', 'system',
+        `${pipelineLabel}: Context before eval: ${conversationHistory.length} total (${preFilterCount} non-system)`);
+      const filtered = await evaluateContextWindow(
+        conversationHistory,
+        userPrompt,
+        toolConfig,
+        requester
+      );
+      logger.log('success', 'system',
+        `${pipelineLabel}: Context after eval: ${filtered.length} messages (system messages excluded)`);
+      return filtered;
+    }
+
+    if (!config.getContextEvalEnabled() && conversationHistory.length > 0) {
+      logger.log('success', 'system',
+        `${pipelineLabel}: Context eval skipped (global CONTEXT_EVAL_ENABLED is off)`);
+    }
+
+    return conversationHistory;
+  }
+
+  /**
    * Execute the Ollama evaluation flow (legacy pipeline):
    * 1. Build XML-tagged prompt with abilities context and conversation history
    * 2. Call Ollama — model outputs either a tool-only line or a normal answer
@@ -1715,29 +1758,13 @@ class MessageHandler {
   ): Promise<void> {
     const timeout = toolConfig.timeout || config.getDefaultTimeout();
 
-    // Apply context filter (Ollama-based relevance evaluation) before building the prompt,
-    // only when global context evaluation is enabled.
-    let filteredHistory = conversationHistory;
-    if (config.getContextEvalEnabled() && conversationHistory.length > 0) {
-      const preFilterCount = conversationHistory.filter(m => m.role !== 'system').length;
-      logger.log('success', 'system',
-        `TWO-STAGE: Context before eval: ${conversationHistory.length} total (${preFilterCount} non-system)`);
-      filteredHistory = await evaluateContextWindow(
-        conversationHistory,
-        content,
-        toolConfig,
-        requester
-      );
-      logger.log('success', 'system',
-        `TWO-STAGE: Context after eval: ${filteredHistory.length} messages (system messages excluded)`);
-    } else if (!config.getContextEvalEnabled() && conversationHistory.length > 0) {
-      logger.log('success', 'system',
-        `TWO-STAGE: Context eval skipped (global CONTEXT_EVAL_ENABLED is off)`);
-    }
+    // Apply context filter before building the prompt (shared with unified pipeline).
+    const filteredHistory = await this.applyContextEvaluation(
+      conversationHistory, content, toolConfig, requester, 'TWO-STAGE'
+    );
 
-    // Append the triggering message to context so the model knows who is asking.
-    // This is done after context evaluation so it is never filtered out.
-    filteredHistory = [
+    // Append the triggering message after filtering so it is never filtered out.
+    const historyWithTrigger = [
       ...filteredHistory,
       { role: 'user' as const, content: `${requester}: ${content}`, contextSource: 'trigger' as const, hasNamePrefix: true, createdAtMs: sourceMessage.createdTimestamp },
     ];
@@ -1749,7 +1776,7 @@ class MessageHandler {
 
     const assembled = assemblePrompt({
       userMessage: content,
-      conversationHistory: filteredHistory,
+      conversationHistory: historyWithTrigger,
       botDisplayName,
       dmHistory,
       provider: legacyToolProvider,
@@ -1844,7 +1871,7 @@ class MessageHandler {
           resolvedTool,
           contentStr,
           requester,
-          filteredHistory.length > 0 ? filteredHistory : undefined,
+          historyWithTrigger.length > 0 ? historyWithTrigger : undefined,
           botDisplayName,
           undefined,
           { skipFinalPass: true },
@@ -1883,7 +1910,7 @@ class MessageHandler {
       const combinedExternalData = externalDataParts.join('\n\n');
       const reprompt = assembleReprompt({
         userMessage: content,
-        conversationHistory: filteredHistory,
+        conversationHistory: historyWithTrigger,
         externalData: combinedExternalData,
         botDisplayName,
       });
@@ -1924,7 +1951,7 @@ class MessageHandler {
 
     // Tools path with no tool_calls: run mandatory final pass for consistent personality.
     if (useToolsPath) {
-      const finalResult = await this.runFinalPass(content, filteredHistory, botDisplayName, requester, timeout);
+      const finalResult = await this.runFinalPass(content, historyWithTrigger, botDisplayName, requester, timeout);
       await this.dispatchResponse(finalResult ?? ollamaResult, 'ollama', sourceMessage, requester, isDM);
       return;
     }
@@ -1978,7 +2005,7 @@ class MessageHandler {
           : (isImplicitOrMixed && !hasInlineInput);
         if (needsInference) {
           // Build reply-context string from conversation history for inference
-          const replyContext = filteredHistory
+          const replyContext = historyWithTrigger
             .filter(m => m.role !== 'system' && m.contextSource !== 'trigger')
             .map(m => m.content)
             .join('\n')
@@ -2008,7 +2035,7 @@ class MessageHandler {
           parseResult.toolConfig,
           routedInput,
           requester,
-          filteredHistory.length > 0 ? filteredHistory : undefined,
+          historyWithTrigger.length > 0 ? historyWithTrigger : undefined,
           botDisplayName,
           undefined,
           undefined,
@@ -2037,7 +2064,7 @@ class MessageHandler {
         || this.findEnabledToolByName('generate_image_grok');
 
       if (imageToolConfig && (imageToolConfig.api === 'comfyui' || imageToolConfig.api === 'xai-image')) {
-        const inferredPrompt = this.deriveImagePromptFromContext(content, filteredHistory);
+        const inferredPrompt = this.deriveImagePromptFromContext(content, historyWithTrigger);
         if (inferredPrompt) {
           logger.log('success', 'system',
             `TWO-STAGE: Image fallback inference succeeded for "${imageToolConfig.name}" — executing ${imageToolConfig.api} backend`);
@@ -2046,7 +2073,7 @@ class MessageHandler {
             imageToolConfig,
             inferredPrompt,
             requester,
-            filteredHistory.length > 0 ? filteredHistory : undefined,
+            historyWithTrigger.length > 0 ? historyWithTrigger : undefined,
             botDisplayName,
             undefined,
             undefined,
@@ -2085,7 +2112,7 @@ class MessageHandler {
             memeToolConfig,
             inferred,
             requester,
-            filteredHistory.length > 0 ? filteredHistory : undefined,
+            historyWithTrigger.length > 0 ? historyWithTrigger : undefined,
             botDisplayName,
             undefined,
             undefined,
@@ -2110,7 +2137,7 @@ class MessageHandler {
 
     // No ability tool detected — run mandatory final pass for consistent personality
     logger.log('success', 'system', 'TWO-STAGE: No ability directive in Ollama response — running final pass');
-    const finalResult = await this.runFinalPass(content, filteredHistory, botDisplayName, requester, timeout);
+    const finalResult = await this.runFinalPass(content, historyWithTrigger, botDisplayName, requester, timeout);
     await this.dispatchResponse(finalResult ?? ollamaResult, 'ollama', sourceMessage, requester, isDM);
   }
 
