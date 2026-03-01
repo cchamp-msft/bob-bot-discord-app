@@ -398,6 +398,14 @@ class Config {
     return process.env.XAI_DEBUG_LOGGING === 'true';
   }
 
+  /**
+   * Optional thraken ingest URL for xAI responses.
+   * When populated, thinking or response text is POSTed here.
+   */
+  getXaiThrakenUrl(): string {
+    return (process.env.XAI_THRAKEN_URL || '').trim();
+  }
+
   // ── Provider stage selectors ────────────────────────────────
 
   private parseLlmProvider(envKey: string, fallback: LlmProvider = 'ollama'): LlmProvider {
@@ -540,6 +548,14 @@ class Config {
    * After this duration a new key must be requested from Discord.
    * Default: 300 (5 minutes).  Configurable via ACTIVITY_KEY_TTL.
    */
+  /**
+   * Optional thraken ingest URL for Ollama responses.
+   * When populated, thinking or response text is POSTed here.
+   */
+  getOllamaThrakenUrl(): string {
+    return (process.env.OLLAMA_THRAKEN_URL || '').trim();
+  }
+
   getActivityKeyTtl(): number {
     return this.parseIntEnv('ACTIVITY_KEY_TTL', 300);
   }
@@ -1401,6 +1417,7 @@ class Config {
         ollamaVisionTimeout: this.getOllamaVisionTimeout(),
         ollamaToolTimeout: this.getOllamaToolTimeout(),
         ollamaFinalPassTimeout: this.getOllamaFinalPassTimeout(),
+        ollamaThrakenUrl: this.getOllamaThrakenUrl(),
         comfyuiWorkflowConfigured: this.hasComfyUIWorkflow(),
         accuweather: this.getAccuWeatherEndpoint(),
         accuweatherDefaultLocation: this.getAccuWeatherDefaultLocation(),
@@ -1512,6 +1529,7 @@ class Config {
         videoEnabled: this.getXaiVideoEnabled(),
         encourageBuiltinTools: this.getXaiEncourageBuiltinTools(),
         debugLogging: this.getXaiDebugLogging(),
+        thrakenUrl: this.getXaiThrakenUrl(),
       },
       provider: {
         toolEval: this.getProviderToolEval(),

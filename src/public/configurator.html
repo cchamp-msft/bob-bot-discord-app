@@ -591,6 +591,12 @@
             <input type="number" id="ollama_vision_timeout" data-env="OLLAMA_VISION_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
           </div>
         </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Thraken Ingest URL <span class="note">POST response text to listener (blank = disabled)</span></label>
+            <input type="text" id="ollama_thraken_url" data-env="OLLAMA_THRAKEN_URL" placeholder="http://localhost:9400/api/ingest">
+          </div>
+        </div>
       </div>
     </section>
 
@@ -681,6 +687,15 @@
         <p class="help-text" style="margin:6px 0 12px">
           When enabled, logs detailed xAI request payloads, response text, and parsed tool calls. Independent of the global Debug Logging toggle.
         </p>
+
+        <hr style="border-color:var(--border);margin:16px 0">
+        <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Thraken Ingest</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Thraken Ingest URL <span class="note">POST response text to listener (blank = disabled)</span></label>
+            <input type="text" id="xai_thraken_url" data-env="XAI_THRAKEN_URL" placeholder="http://localhost:9400/api/ingest">
+          </div>
+        </div>
 
         <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Backend Selection</div>
         <div class="field-row">
@@ -1725,6 +1740,7 @@ flowchart TD
         document.getElementById('xai_debug_logging').value = cfg.xai.debugLogging ? 'true' : 'false';
         document.getElementById('xai_image_model').value = cfg.xai.imageModel || '';
         document.getElementById('xai_video_model').value = cfg.xai.videoModel || '';
+        document.getElementById('xai_thraken_url').value = cfg.xai.thrakenUrl || '';
         // xAI model (saved selection)
         const xaiModelSelect = document.getElementById('xai_model');
         if (xaiModelSelect && cfg.xai.model) {
@@ -1807,6 +1823,7 @@ flowchart TD
       document.getElementById('ollama_vision_timeout').value = cfg.apis.ollamaVisionTimeout ? Math.round(cfg.apis.ollamaVisionTimeout / 1000) : '';
       document.getElementById('ollama_tool_timeout').value = cfg.apis.ollamaToolTimeout ? Math.round(cfg.apis.ollamaToolTimeout / 1000) : '';
       document.getElementById('ollama_final_pass_timeout').value = cfg.apis.ollamaFinalPassTimeout ? Math.round(cfg.apis.ollamaFinalPassTimeout / 1000) : '';
+      document.getElementById('ollama_thraken_url').value = cfg.apis.ollamaThrakenUrl || '';
       document.getElementById('context_eval_timeout').value = cfg.contextEval.timeout ? Math.round(cfg.contextEval.timeout / 1000) : '';
 
       // Populate tool prompt

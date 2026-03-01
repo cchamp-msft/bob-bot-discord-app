@@ -486,6 +486,7 @@ export interface PublicConfig {
     ollamaVisionTimeout: number;
     ollamaToolTimeout: number;
     ollamaFinalPassTimeout: number;
+    ollamaThrakenUrl: string;
     comfyuiWorkflowConfigured: boolean;
     accuweather: string;
     accuweatherDefaultLocation: string;
@@ -603,6 +604,7 @@ export interface PublicConfig {
     videoEnabled: boolean;
     encourageBuiltinTools: boolean;
     debugLogging: boolean;
+    thrakenUrl: string;
   };
   /** LLM provider selection for each pipeline stage. */
   provider: {

@@ -2418,6 +2418,23 @@ class MessageHandler {
   /** Regex to strip generated-image URL lines injected by the final Ollama pass. */
   private static readonly GENERATED_MEDIA_LINE_RE = /\[Generated \d+ (?:image|video)\(s\):[^\]]*\]\n?/g;
 
+  /**
+   * Fire-and-forget POST of response/thinking text to a thraken ingest listener.
+   * Uses the thraken URL configured for the active final-pass provider.
+   */
+  private sendToThraken(text: string, requester: string): void {
+    const provider = config.getProviderFinalPass();
+    const url = provider === 'xai'
+      ? config.getXaiThrakenUrl()
+      : config.getOllamaThrakenUrl();
+    if (!url) return;
+
+    const body = { type: 'response', content: `${text}\n`, done: true };
+    axios.post(url, body).catch(err => {
+      logger.logDebug(requester, `thraken ingest failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+
   private async handleOllamaResponse(
     apiResult: OllamaResponse,
     sourceMessage: Message,
@@ -2426,6 +2443,9 @@ class MessageHandler {
     media?: MediaFollowUp[]
   ): Promise<void> {
     let text = apiResult.data?.text || 'No response generated.';
+
+    // Send response text to thraken ingest listener (fire-and-forget)
+    this.sendToThraken(text, requester);
 
     // When an xAI video media source is carried through, download and attach the video
     const xaiVideoMedia = media?.find((m): m is XaiVideoMediaFollowUp => m.kind === 'xai-video');
