@@ -248,8 +248,8 @@ describe('ConfigWriter', () => {
       expect(content[1].api).toBe('ollama');
     });
 
-    it('should reject empty array (post-write validation catches unparseable output)', async () => {
-      await expect(configWriter.updateTools([])).rejects.toThrow('failed re-parse validation');
+    it('should reject empty array (pre-write sanity check catches unparseable output)', async () => {
+      await expect(configWriter.updateTools([])).rejects.toThrow('Missing root <tools> element');
     });
 
     it('should accept valid abilityText field', async () => {

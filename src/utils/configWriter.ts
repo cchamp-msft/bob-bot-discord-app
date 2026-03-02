@@ -315,6 +315,10 @@ class ConfigWriter {
 
       // Write to file as XML with backup and post-write validation
       const xmlContent = buildToolsXml(cleanTools);
+
+      // Pre-write sanity check: verify the generated XML is parseable before touching disk
+      parseToolsXml(xmlContent);
+
       const toolsFile = this.toolsPath;
       const backupFile = toolsFile + '.bak';
 
@@ -331,12 +335,28 @@ class ConfigWriter {
         const written = fs.readFileSync(toolsFile, 'utf-8');
         parseToolsXml(written);
       } catch (validationErr) {
+        // Dump the failing content and the pre-write XML for diagnostics
+        const debugFile = toolsFile + '.debug';
+        try {
+          const written = fs.readFileSync(toolsFile, 'utf-8');
+          fs.writeFileSync(debugFile, [
+            `=== POST-WRITE VALIDATION FAILURE (${new Date().toISOString()}) ===`,
+            `Error: ${validationErr instanceof Error ? validationErr.message : String(validationErr)}`,
+            `File length: ${written.length} bytes`,
+            `Pre-write XML length: ${xmlContent.length} bytes`,
+            `Tools count: ${cleanTools.length}`,
+            `\n=== FILE CONTENT (read back) ===\n${written}`,
+            `\n=== PRE-WRITE XML (in-memory) ===\n${xmlContent}`,
+          ].join('\n'), 'utf-8');
+        } catch { /* best-effort diagnostic */ }
+
         // Restore from backup if validation fails
         if (fs.existsSync(backupFile)) {
           fs.copyFileSync(backupFile, toolsFile);
         }
         throw new Error(
           `tools.xml was written but failed re-parse validation — restored from backup. ` +
+          `See ${path.basename(debugFile)} for diagnostics. ` +
           `Validation error: ${validationErr instanceof Error ? validationErr.message : String(validationErr)}`,
         );
       }
