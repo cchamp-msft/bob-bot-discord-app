@@ -1385,6 +1385,77 @@ describe('Config', () => {
       errorSpy.mockRestore();
     });
 
+    it('should set toolsLoadError when XML is malformed', () => {
+      fs.writeFileSync(
+        kwPath,
+        '<tools><tool><name>testkw</name><api>nfl</api>'
+      );
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      config.reload();
+      const pubCfg = config.getPublicConfig();
+      expect(pubCfg.toolsLoadError).not.toBeNull();
+      expect(pubCfg.toolsLoadError).toContain('tools.xml');
+      expect(pubCfg.tools).toEqual([]);
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+
+    it('should clear toolsLoadError after successful reload', () => {
+      // Break it first
+      fs.writeFileSync(kwPath, '<tools><tool><name>testkw</name>');
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      config.reload();
+      expect(config.getPublicConfig().toolsLoadError).not.toBeNull();
+
+      // Fix it
+      fs.writeFileSync(kwPath, originalContent);
+      config.reload();
+      expect(config.getPublicConfig().toolsLoadError).toBeNull();
+      expect(config.getTools().length).toBeGreaterThan(0);
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+
+    it('should mention debug file in toolsLoadError when it exists', () => {
+      const debugPath = kwPath + '.debug';
+      // Create a debug artifact as configWriter would
+      fs.writeFileSync(debugPath, 'diagnostic content');
+      // Break the tools.xml
+      fs.writeFileSync(kwPath, '<tools><tool><name>testkw</name>');
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        config.reload();
+        const pubCfg = config.getPublicConfig();
+        expect(pubCfg.toolsLoadError).toContain('.debug');
+      } finally {
+        if (fs.existsSync(debugPath)) fs.unlinkSync(debugPath);
+        warnSpy.mockRestore();
+        errorSpy.mockRestore();
+      }
+    });
+
+    it('should set toolsLoadError with custom TOOLS_CONFIG_PATH', () => {
+      const customPath = path.join(os.tmpdir(), 'config-test-custom-tools.xml');
+      fs.writeFileSync(customPath, '<bad xml');
+      process.env.TOOLS_CONFIG_PATH = customPath;
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        config.reload();
+        const pubCfg = config.getPublicConfig();
+        expect(pubCfg.toolsLoadError).not.toBeNull();
+        expect(pubCfg.tools).toEqual([]);
+      } finally {
+        delete process.env.TOOLS_CONFIG_PATH;
+        if (fs.existsSync(customPath)) fs.unlinkSync(customPath);
+        warnSpy.mockRestore();
+        errorSpy.mockRestore();
+      }
+    });
+
     it('should reject tool with invalid api', () => {
       fs.writeFileSync(
         kwPath,

@@ -239,6 +239,35 @@ describe('httpServer', () => {
     expect(res.status).toBe(200);
   });
 
+  it('/api/config surfaces toolsLoadError from getPublicConfig', async () => {
+    mockConfig.getPublicConfig.mockReturnValueOnce({
+      http: { port: 3000, httpHost: '127.0.0.1', outputsPort: 3003, outputsHost: '0.0.0.0' },
+      tools: [],
+      toolsLoadError: 'Failed to parse tools.xml: Unexpected end of XML',
+      defaultTools: [],
+    } as any);
+
+    const res = await fetch(`${baseUrl}/api/config`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.toolsLoadError).toBe('Failed to parse tools.xml: Unexpected end of XML');
+    expect(body.tools).toEqual([]);
+  });
+
+  it('/api/config returns null toolsLoadError on success', async () => {
+    mockConfig.getPublicConfig.mockReturnValueOnce({
+      http: { port: 3000, httpHost: '127.0.0.1', outputsPort: 3003, outputsHost: '0.0.0.0' },
+      tools: [{ name: '!test', api: 'ollama' }],
+      toolsLoadError: null,
+      defaultTools: [],
+    } as any);
+
+    const res = await fetch(`${baseUrl}/api/config`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.toolsLoadError).toBeNull();
+  });
+
   // ── Health endpoint (no auth) ────────────────────────────────
 
   it('/health responds without authentication', async () => {

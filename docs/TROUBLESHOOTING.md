@@ -9,6 +9,7 @@ This guide helps you resolve common issues with Bob Bot.
 - [File Access Issues](#file-access-issues)
 - [ComfyUI Issues](#comfyui-issues)
 - [Configurator Access Issues](#configurator-access-issues)
+- [Configurator Shows Empty Tools](#configurator-shows-empty-tools)
 - [Configuration Issues](#configuration-issues)
 - [SerpAPI / Web Search Issues](#serpapi--web-search-issues)
 - [Reverse Proxy / SSL Issues](#reverse-proxy--ssl-issues)
@@ -91,6 +92,20 @@ This guide helps you resolve common issues with Bob Bot.
 - If `ADMIN_TOKEN` is set, every configurator request must include an `Authorization: Bearer <token>` header
 
 ## Configuration Issues
+
+### Configurator Shows Empty Tools
+
+**Symptoms**: The **Tools → API Routing** section in the configurator is empty, or a red banner reads *"Tools failed to load"*.
+
+**Cause**: `config/tools.xml` (or the file at `TOOLS_CONFIG_PATH`) contains malformed XML. When parsing fails, tools fall back to an empty array and the configurator receives that empty list.
+
+**Solutions**:
+1. Check the red banner message — it includes the parse error and the failing file name.
+2. If a `.debug` artifact exists (e.g. `config/tools.xml.debug`), open it to inspect the raw content that failed validation. This file is created automatically when a configurator *save* operation produces invalid XML.
+3. Fix the XML manually, or click **Restore Defaults** in the configurator to replace the file with `config/tools.default.xml`.
+4. After fixing, click **Save Changes** or restart the bot — tools will reload and the error should clear.
+
+**Custom path**: If you set `TOOLS_CONFIG_PATH` to a non-default location, ensure that file exists and is valid XML. The auto-copy-from-defaults mechanism only applies to the default `config/tools.xml` path.
 
 ### Config changes not applying
 

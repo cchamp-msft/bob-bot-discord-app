@@ -542,6 +542,11 @@ export interface PublicConfig {
     maxToolCalls: number;
   };
   tools: import('./utils/config').ToolConfig[];
+  /**
+   * Non-null when `loadTools()` failed to parse `tools.xml`.
+   * Contains a human-readable diagnostic message for the configurator banner.
+   */
+  toolsLoadError: string | null;
   defaultTools: import('./utils/config').ToolConfig[];
   allowBotInteractions: boolean;
   replyChain: {

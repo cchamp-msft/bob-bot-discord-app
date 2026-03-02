@@ -1885,6 +1885,9 @@ flowchart TD
       // Populate tools
       renderTools(cfg.tools);
 
+      // Show diagnostic banner if tools failed to load
+      showToolsLoadError(cfg.toolsLoadError);
+
       // Check for missing default tools and show sync button if needed
       checkMissingDefaults(cfg.tools, cfg.defaultTools || []);
 
@@ -1906,6 +1909,28 @@ flowchart TD
       document.getElementById('statusDot').className = 'dot off';
       conLog(`[${new Date().toISOString()}] Failed to load config: ${e.message}`, 'err');
     }
+  }
+
+  // ── Tools load-error banner ──────────────────────
+  function showToolsLoadError(errorMsg) {
+    const bannerId = 'toolsLoadErrorBanner';
+    let banner = document.getElementById(bannerId);
+    if (!errorMsg) {
+      if (banner) banner.remove();
+      return;
+    }
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = bannerId;
+      banner.style.cssText = 'background:var(--danger,#d32f2f);color:#fff;padding:10px 14px;border-radius:6px;margin-bottom:10px;font-size:0.85em;line-height:1.4';
+      const table = document.querySelector('.kw-table');
+      if (table) table.parentNode.insertBefore(banner, table);
+    }
+    banner.innerHTML = '<strong>⚠ Tools failed to load</strong><br>'
+      + esc(errorMsg)
+      + '<br><span style="opacity:.8">The tools list below is empty because the XML could not be parsed. '
+      + 'Fix the file or use <em>Restore Defaults</em> to reset.</span>';
+    conLog(`[${new Date().toISOString()}] Tools load error: ${errorMsg}`, 'err');
   }
 
   // ── Tools table ─────────────────────────────────

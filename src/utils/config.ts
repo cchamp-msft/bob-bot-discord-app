@@ -99,6 +99,12 @@ export interface ConfigData {
 
 class Config {
   private tools: ToolConfig[] = [];
+  /**
+   * Human-readable error message when tools failed to load.
+   * `null` when tools loaded successfully; surfaced via `getPublicConfig()`
+   * so the configurator can display a diagnostic banner.
+   */
+  private toolsLoadError: string | null = null;
 
   constructor() {
     this.loadTools();
@@ -120,6 +126,16 @@ class Config {
    * If the runtime tools.xml does not exist and TOOLS_CONFIG_PATH is
    * not set, copy from the tracked tools.default.xml template — mirroring
    * the .env.example → .env pattern so the runtime file can be gitignored.
+   *
+   * **Design note – corrupt files are intentionally not auto-replaced.**
+   * `ensureToolsFile()` only handles the *missing-file* case. If the
+   * runtime file exists but contains malformed XML, `loadTools()` will
+   * catch the parse error, set `this.tools = []`, and populate
+   * `this.toolsLoadError` with diagnostic details so the configurator
+   * can surface the problem.  Auto-restoring from the default template
+   * on corruption was considered but rejected to avoid silently
+   * discarding user customisations.  A future enhancement could offer
+   * an explicit "repair from defaults" action in the configurator UI.
    */
   private ensureToolsFile(): void {
     // Skip when user specified a custom path via env.
@@ -157,6 +173,7 @@ class Config {
       }
 
       this.tools = configData.tools;
+      this.toolsLoadError = null;
       logger.log('success', 'config', `Loaded ${this.tools.length} tools from config`);
 
       // Merge missing default tools into runtime so newly added defaults
@@ -164,7 +181,15 @@ class Config {
       // Existing tools are intentionally NOT overwritten.
       this.mergeDefaultTools();
     } catch (error) {
-      logger.logError('config', `Failed to load tools config (${toolsPath}): ${error}`);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const debugFile = toolsPath + '.debug';
+      const hasDebug = fs.existsSync(debugFile);
+      this.toolsLoadError = `Failed to parse ${path.basename(toolsPath)}: ${errorMsg}`
+        + (hasDebug ? ` — see ${path.basename(debugFile)} for diagnostics` : '');
+      logger.logError('config', `Failed to load tools config (${toolsPath}): ${errorMsg}`);
+      if (hasDebug) {
+        logger.logWarn('config', `Debug artifact exists: ${debugFile}`);
+      }
       this.tools = [];
     }
   }
@@ -1536,6 +1561,7 @@ class Config {
         maxToolCalls: this.getMaxToolCalls(),
       },
       tools: this.getTools(),
+      toolsLoadError: this.toolsLoadError,
       defaultTools: this.getDefaultTools(),
       allowBotInteractions: this.getAllowBotInteractions(),
       replyChain: {
