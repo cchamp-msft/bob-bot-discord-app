@@ -583,11 +583,7 @@
         </div>
         <div class="field-row">
           <div class="field narrow">
-            <label>Timeout <span class="note">seconds, 5–600</span></label>
-            <input type="number" id="ollama_timeout" data-env="OLLAMA_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
-          </div>
-          <div class="field narrow">
-            <label>Vision Timeout <span class="note">falls back to global</span></label>
+            <label>Vision Timeout <span class="note">seconds, falls back to default</span></label>
             <input type="number" id="ollama_vision_timeout" data-env="OLLAMA_VISION_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
           </div>
         </div>
@@ -595,6 +591,61 @@
           <div class="field">
             <label>Thraken Ingest URL <span class="note">POST response text to listener (blank = disabled)</span></label>
             <input type="text" id="ollama_thraken_url" data-env="OLLAMA_THRAKEN_URL" placeholder="http://localhost:9400/api/ingest">
+          </div>
+        </div>
+
+        <hr style="border-color:var(--border);margin:16px 0">
+        <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Default / Tooling Model</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Model <span class="note">click Test to populate</span></label>
+            <select id="ollama_model" data-env="OLLAMA_MODEL" onchange="markDirty()">
+              <option value="">— click Test to load models —</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Context Size <span class="note">num_ctx</span></label>
+            <input type="number" id="ollama_tool_context_size" data-env="OLLAMA_TOOL_CONTEXT_SIZE" placeholder="4096" min="256" max="131072">
+          </div>
+          <div class="field narrow">
+            <label>Timeout <span class="note">seconds</span></label>
+            <input type="number" id="ollama_tool_timeout" data-env="OLLAMA_TOOL_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
+          </div>
+        </div>
+
+        <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Content Evaluation</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Model <span class="note">falls back to default</span></label>
+            <select id="context_eval_model" data-env="CONTEXT_EVAL_MODEL" onchange="markDirty()">
+              <option value="">— use default model —</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Context Size <span class="note">num_ctx</span></label>
+            <input type="number" id="context_eval_context_size" data-env="CONTEXT_EVAL_CONTEXT_SIZE" placeholder="2048" min="256" max="131072">
+          </div>
+          <div class="field narrow">
+            <label>Timeout <span class="note">seconds</span></label>
+            <input type="number" id="context_eval_timeout" data-env="CONTEXT_EVAL_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
+          </div>
+        </div>
+
+        <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Final Pass</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Model <span class="note">falls back to default</span></label>
+            <select id="ollama_final_pass_model" data-env="OLLAMA_FINAL_PASS_MODEL" onchange="markDirty()">
+              <option value="">— use default model —</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Context Size <span class="note">num_ctx</span></label>
+            <input type="number" id="ollama_final_pass_context_size" data-env="OLLAMA_FINAL_PASS_CONTEXT_SIZE" placeholder="4096" min="256" max="131072">
+          </div>
+          <div class="field narrow">
+            <label>Timeout <span class="note">seconds</span></label>
+            <input type="number" id="ollama_final_pass_timeout" data-env="OLLAMA_FINAL_PASS_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
           </div>
         </div>
       </div>
@@ -618,11 +669,11 @@
             <label>API Key</label>
             <input type="password" id="xai_api_key" placeholder="Paste xAI API key" autocomplete="off">
           </div>
-          <div class="field narrow">
-            <label>Timeout <span class="note">seconds, 5–600</span></label>
-            <input type="number" id="xai_timeout" data-env="XAI_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
-          </div>
         </div>
+        <div id="xaiTestResult" style="font-size:0.85em;margin:8px 0;min-height:1.2em"></div>
+
+        <hr style="border-color:var(--border);margin:16px 0">
+        <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Default / Tooling Model</div>
         <div class="field-row">
           <div class="field">
             <label>Model <span class="note">click Test to populate</span></label>
@@ -630,8 +681,39 @@
               <option value="">— click Test to load models —</option>
             </select>
           </div>
+          <div class="field narrow">
+            <label>Timeout <span class="note">seconds</span></label>
+            <input type="number" id="xai_timeout" data-env="XAI_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
+          </div>
         </div>
-        <div id="xaiTestResult" style="font-size:0.85em;margin:8px 0;min-height:1.2em"></div>
+
+        <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Content Evaluation</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Model <span class="note">falls back to default</span></label>
+            <select id="xai_context_eval_model" data-env="XAI_CONTEXT_EVAL_MODEL" onchange="markDirty()">
+              <option value="">— use default model —</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Timeout <span class="note">seconds</span></label>
+            <input type="number" id="xai_context_eval_timeout" data-env="XAI_CONTEXT_EVAL_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
+          </div>
+        </div>
+
+        <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Final Pass</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Model <span class="note">falls back to default</span></label>
+            <select id="xai_final_pass_model" data-env="XAI_FINAL_PASS_MODEL" onchange="markDirty()">
+              <option value="">— use default model —</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>Timeout <span class="note">seconds</span></label>
+            <input type="number" id="xai_final_pass_timeout" data-env="XAI_FINAL_PASS_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
+          </div>
+        </div>
 
         <hr style="border-color:var(--border);margin:16px 0">
         <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Media &amp; Tool Options</div>
@@ -760,7 +842,7 @@
 
         <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px;padding-left:8px">Context Evaluation</div>
         <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
-          When enabled, the bot uses the selected provider to filter collected conversation history to the messages most relevant to the current prompt. Depth limits are controlled globally via Reply Chain Max Depth.
+          When enabled, the bot uses the selected provider to filter collected conversation history to the messages most relevant to the current prompt. Model and timeout are configured in the provider's connection section above.
         </p>
         <div class="field-row">
           <div class="field narrow">
@@ -778,22 +860,6 @@
             </select>
           </div>
         </div>
-        <div class="field-row">
-          <div class="field">
-            <label>Model <span class="note">falls back to default model</span></label>
-            <select id="context_eval_model" data-env="CONTEXT_EVAL_MODEL" onchange="markDirty()">
-              <option value="">— use default model —</option>
-            </select>
-          </div>
-          <div class="field narrow">
-            <label>Context Size <span class="note">num_ctx</span></label>
-            <input type="number" id="context_eval_context_size" data-env="CONTEXT_EVAL_CONTEXT_SIZE" placeholder="2048" min="256" max="131072">
-          </div>
-          <div class="field narrow">
-            <label>Timeout <span class="note">seconds</span></label>
-            <input type="number" id="context_eval_timeout" data-env="CONTEXT_EVAL_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
-          </div>
-        </div>
         <div class="field">
           <label>Context Eval Prompt <span class="note">optional; leave empty to use built-in prompt</span></label>
           <p class="help-text">
@@ -805,7 +871,7 @@
         <hr style="border-color:var(--border);margin:16px 0">
         <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin:12px 0 8px">Tool Evaluation</div>
         <p class="help-text" style="margin-bottom:10px">
-          Select the provider and model used for tool routing and ability evaluation. Click <strong>Test</strong> in the corresponding connection section to populate available models.
+          Select the provider used for tool routing and ability evaluation. Model and timeout are configured in the provider's connection section above.
         </p>
         <div class="field-row">
           <div class="field narrow">
@@ -814,20 +880,6 @@
               <option value="ollama">Ollama</option>
               <option value="xai">xAI</option>
             </select>
-          </div>
-          <div class="field">
-            <label>Model</label>
-            <select id="ollama_model" data-env="OLLAMA_MODEL" onchange="markDirty()">
-              <option value="">— click Test to load models —</option>
-            </select>
-          </div>
-          <div class="field narrow">
-            <label>Context Size <span class="note">num_ctx</span></label>
-            <input type="number" id="ollama_tool_context_size" data-env="OLLAMA_TOOL_CONTEXT_SIZE" placeholder="4096" min="256" max="131072">
-          </div>
-          <div class="field narrow">
-            <label>Timeout <span class="note">seconds</span></label>
-            <input type="number" id="ollama_tool_timeout" data-env="OLLAMA_TOOL_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
           </div>
           <div class="field narrow">
             <label>Max Tool Calls <span class="note">per message (1-10)</span></label>
@@ -860,8 +912,7 @@
         <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin:12px 0 8px">Final Pass</div>
         <p class="help-text" style="margin-bottom:10px">
           Every response is refined through the selected provider before being sent to Discord, ensuring consistent personality and tone.
-          Configure the provider, model, and prompt used for this mandatory refinement step.
-          Click <strong>Test</strong> in the connection section to populate available models.
+          Model and timeout are configured in the provider's connection section above.
         </p>
         <div class="field-row">
           <div class="field narrow">
@@ -870,20 +921,6 @@
               <option value="ollama">Ollama</option>
               <option value="xai">xAI</option>
             </select>
-          </div>
-          <div class="field">
-            <label>Model <span class="note">falls back to default model</span></label>
-            <select id="ollama_final_pass_model" data-env="OLLAMA_FINAL_PASS_MODEL" onchange="markDirty()">
-              <option value="">— use default model —</option>
-            </select>
-          </div>
-          <div class="field narrow">
-            <label>Context Size <span class="note">num_ctx</span></label>
-            <input type="number" id="ollama_final_pass_context_size" data-env="OLLAMA_FINAL_PASS_CONTEXT_SIZE" placeholder="4096" min="256" max="131072">
-          </div>
-          <div class="field narrow">
-            <label>Timeout <span class="note">seconds</span></label>
-            <input type="number" id="ollama_final_pass_timeout" data-env="OLLAMA_FINAL_PASS_TIMEOUT" placeholder="120" min="5" max="600" data-unit="seconds">
           </div>
         </div>
         <div class="field">
@@ -1741,17 +1778,21 @@ flowchart TD
         document.getElementById('xai_image_model').value = cfg.xai.imageModel || '';
         document.getElementById('xai_video_model').value = cfg.xai.videoModel || '';
         document.getElementById('xai_thraken_url').value = cfg.xai.thrakenUrl || '';
-        // xAI model (saved selection)
-        const xaiModelSelect = document.getElementById('xai_model');
-        if (xaiModelSelect && cfg.xai.model) {
-          const exists = Array.from(xaiModelSelect.options).some(o => o.value === cfg.xai.model);
-          if (!exists) {
-            const opt = document.createElement('option');
-            opt.value = cfg.xai.model;
-            opt.textContent = cfg.xai.model + ' (saved)';
-            xaiModelSelect.appendChild(opt);
-          }
-          xaiModelSelect.value = cfg.xai.model;
+        // xAI model (saved selections)
+        restoreOptionalSelect('xai_model', cfg.xai.model);
+        restoreOptionalSelect('xai_context_eval_model', cfg.xai.contextEvalModel !== cfg.xai.model ? cfg.xai.contextEvalModel : '');
+        restoreOptionalSelect('xai_final_pass_model', cfg.xai.finalPassModel !== cfg.xai.model ? cfg.xai.finalPassModel : '');
+        // xAI per-stage timeouts (only set if different from default)
+        if (cfg.xai.toolTimeout && cfg.xai.toolTimeout !== cfg.xai.timeout) {
+          document.getElementById('xai_timeout').value = cfg.xai.toolTimeout;
+        }
+        const xaiCtxEvalTimeout = document.getElementById('xai_context_eval_timeout');
+        if (xaiCtxEvalTimeout && cfg.xai.contextEvalTimeout && cfg.xai.contextEvalTimeout !== cfg.xai.timeout) {
+          xaiCtxEvalTimeout.value = cfg.xai.contextEvalTimeout;
+        }
+        const xaiFpTimeout = document.getElementById('xai_final_pass_timeout');
+        if (xaiFpTimeout && cfg.xai.finalPassTimeout && cfg.xai.finalPassTimeout !== cfg.xai.timeout) {
+          xaiFpTimeout.value = cfg.xai.finalPassTimeout;
         }
       }
 
@@ -2479,60 +2520,37 @@ flowchart TD
 
   // ── xAI model dropdown population ──────────────────
   function populateXaiModelDropdowns(models) {
-    const xaiModelSelect = document.getElementById('xai_model');
-    if (!xaiModelSelect) return;
-    const currentValue = xaiModelSelect.value;
-    xaiModelSelect.innerHTML = '';
-    const defaultOpt = document.createElement('option');
-    defaultOpt.value = '';
-    defaultOpt.textContent = '— select a model —';
-    xaiModelSelect.appendChild(defaultOpt);
-    for (const model of models) {
-      const opt = document.createElement('option');
-      const modelId = model.id || model.name;
-      opt.value = modelId;
-      opt.textContent = modelId;
-      xaiModelSelect.appendChild(opt);
-    }
-    if (currentValue) {
-      const exists = Array.from(xaiModelSelect.options).some(o => o.value === currentValue);
-      if (exists) xaiModelSelect.value = currentValue;
-    }
-
-    // Also populate per-stage model dropdowns when their provider is set to xAI
-    const stageDropdowns = [
-      { selectId: 'ollama_model', providerId: 'provider_tool_eval' },
-      { selectId: 'ollama_final_pass_model', providerId: 'provider_final_pass' },
-      { selectId: 'context_eval_model', providerId: 'provider_context_eval' },
+    const dropdownIds = [
+      { id: 'xai_model', defaultLabel: '— select a model —' },
+      { id: 'xai_context_eval_model', defaultLabel: '— use default model —' },
+      { id: 'xai_final_pass_model', defaultLabel: '— use default model —' },
     ];
-    for (const { selectId, providerId } of stageDropdowns) {
-      const providerSelect = document.getElementById(providerId);
-      if (!providerSelect || providerSelect.value !== 'xai') continue;
-      const stageSelect = document.getElementById(selectId);
-      if (!stageSelect) continue;
-      const savedValue = stageSelect.value;
-      stageSelect.innerHTML = '';
-      const emptyOpt = document.createElement('option');
-      emptyOpt.value = '';
-      emptyOpt.textContent = '— select a model —';
-      stageSelect.appendChild(emptyOpt);
+    for (const { id, defaultLabel } of dropdownIds) {
+      const select = document.getElementById(id);
+      if (!select) continue;
+      const currentValue = select.value;
+      select.innerHTML = '';
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = defaultLabel;
+      select.appendChild(defaultOpt);
       for (const model of models) {
         const modelId = model.id || model.name;
         const opt = document.createElement('option');
         opt.value = modelId;
         opt.textContent = modelId;
-        stageSelect.appendChild(opt);
+        select.appendChild(opt);
       }
-      if (savedValue) {
-        const exists = Array.from(stageSelect.options).some(o => o.value === savedValue);
+      if (currentValue) {
+        const exists = Array.from(select.options).some(o => o.value === currentValue);
         if (exists) {
-          stageSelect.value = savedValue;
+          select.value = currentValue;
         } else {
           const savedOpt = document.createElement('option');
-          savedOpt.value = savedValue;
-          savedOpt.textContent = savedValue + ' (saved)';
-          stageSelect.appendChild(savedOpt);
-          stageSelect.value = savedValue;
+          savedOpt.value = currentValue;
+          savedOpt.textContent = currentValue + ' (saved)';
+          select.appendChild(savedOpt);
+          select.value = currentValue;
         }
       }
     }

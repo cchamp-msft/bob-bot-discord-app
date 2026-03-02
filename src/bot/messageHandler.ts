@@ -1309,7 +1309,7 @@ class MessageHandler {
     }
     const toolApi = toolProvider === 'xai' ? 'xai' as const : 'ollama' as const;
     const toolModel = toolProvider === 'xai'
-      ? (config.getOllamaToolModel() || config.getXaiModel())
+      ? config.getXaiToolModel()
       : config.getOllamaToolModel();
 
     const ollamaResult = await requestQueue.execute(
@@ -1330,7 +1330,7 @@ class MessageHandler {
           {
             includeSystemPrompt: false,
             contextSize: config.getOllamaToolContextSize(),
-            timeout: toolProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaToolTimeout(),
+            timeout: toolProvider === 'xai' ? config.getXaiToolTimeout() : config.getOllamaToolTimeout(),
             ...(useToolsPath ? { tools } : {}),
             ...(ctx.imagePayloads.length > 0 ? { images: ctx.imagePayloads } : {}),
           }
@@ -1656,10 +1656,10 @@ class MessageHandler {
     const finalProvider = ctx.forceOllamaFinalPass ? 'ollama' : config.getProviderFinalPass();
     const finalApi = finalProvider === 'xai' ? 'xai' as const : 'ollama' as const;
     const finalModel = finalProvider === 'xai'
-      ? (config.getOllamaFinalPassModel() || config.getXaiModel())
-      : (config.getOllamaFinalPassModel() ?? undefined);
+      ? config.getXaiFinalPassModel()
+      : (config.getOllamaFinalPassModel() || undefined);
     const finalTimeout = finalProvider === 'xai'
-      ? config.getXaiTimeout()
+      ? config.getXaiFinalPassTimeout()
       : config.getOllamaFinalPassTimeout();
 
     try {
@@ -1795,7 +1795,7 @@ class MessageHandler {
     }
     const legacyToolApi = legacyToolProvider === 'xai' ? 'xai' as const : 'ollama' as const;
     const legacyToolModel = legacyToolProvider === 'xai'
-      ? (config.getOllamaToolModel() || config.getXaiModel())
+      ? config.getXaiToolModel()
       : config.getOllamaToolModel();
 
     const ollamaResult = await requestQueue.execute(
@@ -1816,7 +1816,7 @@ class MessageHandler {
           {
             includeSystemPrompt: false,
             contextSize: config.getOllamaToolContextSize(),
-            timeout: legacyToolProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaToolTimeout(),
+            timeout: legacyToolProvider === 'xai' ? config.getXaiToolTimeout() : config.getOllamaToolTimeout(),
             ...(useToolsPath ? { tools } : {}),
             ...(imagePayloads.length > 0 ? { images: imagePayloads } : {}),
           }
@@ -1922,9 +1922,9 @@ class MessageHandler {
       const tsFpProvider = forceOllamaFP ? 'ollama' : config.getProviderFinalPass();
       const tsFpApi = tsFpProvider === 'xai' ? 'xai' as const : 'ollama' as const;
       const tsFpModel = tsFpProvider === 'xai'
-        ? (config.getOllamaFinalPassModel() || config.getXaiModel())
-        : (config.getOllamaFinalPassModel() ?? undefined);
-      const tsFpTimeout = tsFpProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaFinalPassTimeout();
+        ? config.getXaiFinalPassModel()
+        : (config.getOllamaFinalPassModel() || undefined);
+      const tsFpTimeout = tsFpProvider === 'xai' ? config.getXaiFinalPassTimeout() : config.getOllamaFinalPassTimeout();
 
       const finalResult = await requestQueue.execute(
         tsFpApi,
@@ -2172,9 +2172,9 @@ class MessageHandler {
     const fpProvider = config.getProviderFinalPass();
     const fpApi = fpProvider === 'xai' ? 'xai' as const : 'ollama' as const;
     const fpModel = fpProvider === 'xai'
-      ? (config.getOllamaFinalPassModel() || config.getXaiModel())
-      : (config.getOllamaFinalPassModel() ?? undefined);
-    const fpTimeout = fpProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaFinalPassTimeout();
+      ? config.getXaiFinalPassModel()
+      : (config.getOllamaFinalPassModel() || undefined);
+    const fpTimeout = fpProvider === 'xai' ? config.getXaiFinalPassTimeout() : config.getOllamaFinalPassTimeout();
 
     try {
       const finalResult = await requestQueue.execute(

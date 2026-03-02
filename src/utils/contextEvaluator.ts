@@ -242,7 +242,7 @@ export async function evaluateContextWindow(
     const provider = config.getProviderContextEval();
     const queueApi = provider === 'xai' ? 'xai' : 'ollama';
     const model = provider === 'xai'
-      ? (config.getContextEvalModel() || config.getXaiModel())
+      ? config.getXaiContextEvalModel()
       : config.getContextEvalModel();
 
     const response: OllamaResponse = await requestQueue.execute(
@@ -267,7 +267,7 @@ export async function evaluateContextWindow(
           {
             includeSystemPrompt: false,
             contextSize: config.getContextEvalContextSize(),
-            timeout: config.getContextEvalTimeout()
+            timeout: provider === 'xai' ? config.getXaiContextEvalTimeout() : config.getContextEvalTimeout()
           }
         );
       }

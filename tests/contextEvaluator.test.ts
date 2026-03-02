@@ -16,6 +16,8 @@ jest.mock('../src/utils/config', () => ({
     getProviderContextEval: jest.fn(() => 'ollama'),
     getXaiModel: jest.fn(() => ''),
     getXaiTimeout: jest.fn(() => 120000),
+    getXaiContextEvalModel: jest.fn(() => ''),
+    getXaiContextEvalTimeout: jest.fn(() => 120000),
   },
 }));
 
@@ -500,11 +502,10 @@ describe('ContextEvaluator', () => {
   });
 
   describe('evaluateContextWindow — xAI provider uses stage model', () => {
-    it('should use context eval model when provider is xai', async () => {
+    it('should use xai context eval model when provider is xai', async () => {
       const { config } = require('../src/utils/config');
       (config.getProviderContextEval as jest.Mock).mockReturnValue('xai');
-      (config.getContextEvalModel as jest.Mock).mockReturnValue('grok-beta');
-      (config.getXaiModel as jest.Mock).mockReturnValue('grok-default');
+      (config.getXaiContextEvalModel as jest.Mock).mockReturnValue('grok-beta');
 
       const history = makeHistory(5);
       const tc = makeTool();
@@ -525,11 +526,12 @@ describe('ContextEvaluator', () => {
       );
     });
 
-    it('should fall back to xai default model when context eval model is empty', async () => {
+    it('should fall back to xai default model when xai context eval model is empty', async () => {
       const { config } = require('../src/utils/config');
       (config.getProviderContextEval as jest.Mock).mockReturnValue('xai');
-      (config.getContextEvalModel as jest.Mock).mockReturnValue('');
-      (config.getXaiModel as jest.Mock).mockReturnValue('grok-default');
+      // getXaiContextEvalModel falls back to getXaiModel internally,
+      // so even when empty string is returned here the queue API should still be 'xai'
+      (config.getXaiContextEvalModel as jest.Mock).mockReturnValue('grok-default');
 
       const history = makeHistory(5);
       const tc = makeTool();

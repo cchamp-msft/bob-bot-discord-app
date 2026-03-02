@@ -597,9 +597,15 @@ export interface PublicConfig {
     endpoint: string;
     apiKeyConfigured: boolean;
     model: string;
+    toolModel: string;
+    contextEvalModel: string;
+    finalPassModel: string;
     imageModel: string;
     videoModel: string;
     timeout: number;
+    toolTimeout: number;
+    contextEvalTimeout: number;
+    finalPassTimeout: number;
     imageEnabled: boolean;
     videoEnabled: boolean;
     encourageBuiltinTools: boolean;

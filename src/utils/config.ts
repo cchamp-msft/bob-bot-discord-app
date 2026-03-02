@@ -406,6 +406,44 @@ class Config {
     return (process.env.XAI_THRAKEN_URL || '').trim();
   }
 
+  // ── xAI per-stage model / timeout overrides ────────────────
+
+  /** xAI model for tool evaluation. Falls back to XAI_MODEL. */
+  getXaiToolModel(): string {
+    return (process.env.XAI_TOOL_MODEL || '').trim() || this.getXaiModel();
+  }
+
+  /** xAI model for context evaluation. Falls back to XAI_MODEL. */
+  getXaiContextEvalModel(): string {
+    return (process.env.XAI_CONTEXT_EVAL_MODEL || '').trim() || this.getXaiModel();
+  }
+
+  /** xAI model for final pass. Falls back to XAI_MODEL. */
+  getXaiFinalPassModel(): string {
+    return (process.env.XAI_FINAL_PASS_MODEL || '').trim() || this.getXaiModel();
+  }
+
+  /** xAI HTTP timeout for tool evaluation (ms). Falls back to XAI_TIMEOUT. */
+  getXaiToolTimeout(): number {
+    const raw = process.env.XAI_TOOL_TIMEOUT;
+    if (raw) return this.clampTimeout(this.parseIntEnv('XAI_TOOL_TIMEOUT', this.getXaiTimeout()));
+    return this.getXaiTimeout();
+  }
+
+  /** xAI HTTP timeout for context evaluation (ms). Falls back to XAI_TIMEOUT. */
+  getXaiContextEvalTimeout(): number {
+    const raw = process.env.XAI_CONTEXT_EVAL_TIMEOUT;
+    if (raw) return this.clampTimeout(this.parseIntEnv('XAI_CONTEXT_EVAL_TIMEOUT', this.getXaiTimeout()));
+    return this.getXaiTimeout();
+  }
+
+  /** xAI HTTP timeout for final pass (ms). Falls back to XAI_TIMEOUT. */
+  getXaiFinalPassTimeout(): number {
+    const raw = process.env.XAI_FINAL_PASS_TIMEOUT;
+    if (raw) return this.clampTimeout(this.parseIntEnv('XAI_FINAL_PASS_TIMEOUT', this.getXaiTimeout()));
+    return this.getXaiTimeout();
+  }
+
   // ── Provider stage selectors ────────────────────────────────
 
   private parseLlmProvider(envKey: string, fallback: LlmProvider = 'ollama'): LlmProvider {
@@ -831,15 +869,23 @@ class Config {
   }
 
   /**
-   * Whether the final pass requires a separate Ollama call.
-   * Returns false when the tool model and final pass model are the same
-   * (or when final pass model is unset), meaning Stage 1's draft can
-   * serve as the final response directly.
+   * Whether the final pass requires a separate call.
+   * Returns true when the tool-eval and final-pass stages use different
+   * providers or different models within the same provider.
    */
   needsSeparateFinalPass(): boolean {
+    const toolProvider = this.getProviderToolEval();
+    const finalProvider = this.getProviderFinalPass();
+
+    // Different providers always need a separate final pass
+    if (toolProvider !== finalProvider) return true;
+
+    if (toolProvider === 'xai') {
+      return this.getXaiToolModel().toLowerCase().trim() !== this.getXaiFinalPassModel().toLowerCase().trim();
+    }
+
     const toolModel = this.getOllamaToolModel().toLowerCase().trim();
     const finalModel = this.getOllamaFinalPassModel().toLowerCase().trim();
-    // When both resolve to the same model, no separate call is needed
     return toolModel !== finalModel;
   }
 
@@ -1249,6 +1295,12 @@ class Config {
     const prevXaiImageModel = this.getXaiImageModel();
     const prevXaiVideoModel = this.getXaiVideoModel();
     const prevXaiDebugLogging = this.getXaiDebugLogging();
+    const prevXaiToolModel = this.getXaiToolModel();
+    const prevXaiContextEvalModel = this.getXaiContextEvalModel();
+    const prevXaiFinalPassModel = this.getXaiFinalPassModel();
+    const prevXaiToolTimeout = this.getXaiToolTimeout();
+    const prevXaiContextEvalTimeout = this.getXaiContextEvalTimeout();
+    const prevXaiFinalPassTimeout = this.getXaiFinalPassTimeout();
     const prevProviderToolEval = this.getProviderToolEval();
     const prevProviderFinalPass = this.getProviderFinalPass();
     const prevProviderContextEval = this.getProviderContextEval();
@@ -1366,6 +1418,12 @@ class Config {
     if (this.getXaiImageModel() !== prevXaiImageModel) reloaded.push('XAI_IMAGE_MODEL');
     if (this.getXaiVideoModel() !== prevXaiVideoModel) reloaded.push('XAI_VIDEO_MODEL');
     if (this.getXaiDebugLogging() !== prevXaiDebugLogging) reloaded.push('XAI_DEBUG_LOGGING');
+    if (this.getXaiToolModel() !== prevXaiToolModel) reloaded.push('XAI_TOOL_MODEL');
+    if (this.getXaiContextEvalModel() !== prevXaiContextEvalModel) reloaded.push('XAI_CONTEXT_EVAL_MODEL');
+    if (this.getXaiFinalPassModel() !== prevXaiFinalPassModel) reloaded.push('XAI_FINAL_PASS_MODEL');
+    if (this.getXaiToolTimeout() !== prevXaiToolTimeout) reloaded.push('XAI_TOOL_TIMEOUT');
+    if (this.getXaiContextEvalTimeout() !== prevXaiContextEvalTimeout) reloaded.push('XAI_CONTEXT_EVAL_TIMEOUT');
+    if (this.getXaiFinalPassTimeout() !== prevXaiFinalPassTimeout) reloaded.push('XAI_FINAL_PASS_TIMEOUT');
     if (this.getProviderToolEval() !== prevProviderToolEval) reloaded.push('PROVIDER_TOOL_EVAL');
     if (this.getProviderFinalPass() !== prevProviderFinalPass) reloaded.push('PROVIDER_FINAL_PASS');
     if (this.getProviderContextEval() !== prevProviderContextEval) reloaded.push('PROVIDER_CONTEXT_EVAL');
@@ -1522,9 +1580,15 @@ class Config {
         endpoint: this.getXaiEndpoint(),
         apiKeyConfigured: !!this.getXaiApiKey(),
         model: this.getXaiModel(),
+        toolModel: this.getXaiToolModel(),
+        contextEvalModel: this.getXaiContextEvalModel(),
+        finalPassModel: this.getXaiFinalPassModel(),
         imageModel: this.getXaiImageModel(),
         videoModel: this.getXaiVideoModel(),
         timeout: Math.round(this.getXaiTimeout() / 1000),
+        toolTimeout: Math.round(this.getXaiToolTimeout() / 1000),
+        contextEvalTimeout: Math.round(this.getXaiContextEvalTimeout() / 1000),
+        finalPassTimeout: Math.round(this.getXaiFinalPassTimeout() / 1000),
         imageEnabled: this.getXaiImageEnabled(),
         videoEnabled: this.getXaiVideoEnabled(),
         encourageBuiltinTools: this.getXaiEncourageBuiltinTools(),

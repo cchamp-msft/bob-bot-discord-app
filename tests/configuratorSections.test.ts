@@ -97,18 +97,29 @@ describe('Configurator — Reply Chain Context in Prompt & Runtime section', () 
     expect(prompt!.body).toContain('REPLY_CHAIN_IMAGE_MAX_DEPTH');
   });
 
-  it('the Prompt & Runtime section contains the context eval fields', () => {
+  it('the Prompt & Runtime section contains the context eval enabled toggle', () => {
     const prompt = sections.find(s => s.heading === 'Prompt &amp; Runtime');
     expect(prompt).toBeDefined();
     expect(prompt!.body).toContain('context_eval_enabled');
-    expect(prompt!.body).toContain('context_eval_context_size');
   });
 
-  it('the Prompt & Runtime section contains the tool and final pass context size fields', () => {
-    const prompt = sections.find(s => s.heading === 'Prompt &amp; Runtime');
-    expect(prompt).toBeDefined();
-    expect(prompt!.body).toContain('ollama_tool_context_size');
-    expect(prompt!.body).toContain('ollama_final_pass_context_size');
+  it('the Ollama section contains the per-stage model and context size fields', () => {
+    const ollama = sections.find(s => s.heading === 'Ollama Connection');
+    expect(ollama).toBeDefined();
+    expect(ollama!.body).toContain('ollama_model');
+    expect(ollama!.body).toContain('ollama_tool_context_size');
+    expect(ollama!.body).toContain('context_eval_model');
+    expect(ollama!.body).toContain('context_eval_context_size');
+    expect(ollama!.body).toContain('ollama_final_pass_model');
+    expect(ollama!.body).toContain('ollama_final_pass_context_size');
+  });
+
+  it('the xAI section contains per-stage model dropdowns', () => {
+    const xai = sections.find(s => s.heading === 'xAI API (Grok)');
+    expect(xai).toBeDefined();
+    expect(xai!.body).toContain('xai_model');
+    expect(xai!.body).toContain('xai_context_eval_model');
+    expect(xai!.body).toContain('xai_final_pass_model');
   });
 
   it('there is no standalone Reply Chain Context section', () => {

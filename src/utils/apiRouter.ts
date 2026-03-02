@@ -594,9 +594,9 @@ export async function executeRoutedRequest(
   const routerFpProvider = config.getProviderFinalPass();
   const routerFpApi = routerFpProvider === 'xai' ? 'xai' as const : 'ollama' as const;
   const routerFpModel = routerFpProvider === 'xai'
-    ? (config.getOllamaFinalPassModel() || config.getXaiModel())
+    ? config.getXaiFinalPassModel()
     : (config.getOllamaFinalPassModel() || undefined);
-  const routerFpTimeout = routerFpProvider === 'xai' ? config.getXaiTimeout() : config.getOllamaFinalPassTimeout();
+  const routerFpTimeout = routerFpProvider === 'xai' ? config.getXaiFinalPassTimeout() : config.getOllamaFinalPassTimeout();
 
   const finalResult = await requestQueue.execute(
     routerFpApi,
