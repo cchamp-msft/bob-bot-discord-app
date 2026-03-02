@@ -1940,6 +1940,8 @@ flowchart TD
         <option value="meme" ${kw?.api === 'meme' ? 'selected' : ''}>meme</option>
         <option value="discord" ${kw?.api === 'discord' ? 'selected' : ''}>discord</option>
         <option value="xai" ${kw?.api === 'xai' ? 'selected' : ''}>xai</option>
+        <option value="xai-image" ${kw?.api === 'xai-image' ? 'selected' : ''}>xai-image</option>
+        <option value="xai-video" ${kw?.api === 'xai-video' ? 'selected' : ''}>xai-video</option>
       </select></td>
       <td><input type="number" class="kw-timeout" value="${kw?.timeout || 300}" style="width:70px"></td>
       <td><input type="text" class="kw-desc" value="${esc(kw?.description || '')}" placeholder="description"></td>

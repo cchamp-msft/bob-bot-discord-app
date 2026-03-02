@@ -52,9 +52,14 @@ export interface AbilityInputs {
   examples?: string[];
 }
 
+/** Canonical list of valid tool API identifiers. Single source of truth for parser, writer, and UI. */
+export const VALID_TOOL_APIS = [
+  'comfyui', 'ollama', 'accuweather', 'nfl', 'serpapi', 'meme', 'discord', 'xai', 'xai-image', 'xai-video',
+] as const;
+
 export interface ToolConfig {
   name: string;
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video';
+  api: typeof VALID_TOOL_APIS[number];
   timeout: number;
   description: string;
   /** Human-readable description of this tool's API ability, provided to Ollama as context so it can suggest using this API when relevant. */

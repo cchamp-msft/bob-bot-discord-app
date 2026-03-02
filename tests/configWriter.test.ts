@@ -248,13 +248,8 @@ describe('ConfigWriter', () => {
       expect(content[1].api).toBe('ollama');
     });
 
-    it('should write empty array', async () => {
-      await configWriter.updateTools([]);
-
-      const raw = fs.readFileSync(toolsPath, 'utf-8');
-      // An empty tool list produces a valid XML doc with no <tool> elements
-      expect(raw).toContain('<tools');
-      expect(raw).not.toContain('<tool>');
+    it('should reject empty array (post-write validation catches unparseable output)', async () => {
+      await expect(configWriter.updateTools([])).rejects.toThrow('failed re-parse validation');
     });
 
     it('should accept valid abilityText field', async () => {
@@ -413,6 +408,35 @@ describe('ConfigWriter', () => {
       expect(content[0].retry!.maxRetries).toBe(3);
       expect(content[0].retry!.model).toBe('llama3');
       expect(content[0].retry!.prompt).toBe('try again');
+    });
+
+    it('should accept xai-image api', async () => {
+      await configWriter.updateTools([
+        { ...validTool, name: 'grok_image', api: 'xai-image' as const },
+      ]);
+      const content = parseToolsXml(fs.readFileSync(toolsPath, 'utf-8'));
+      expect(content[0].api).toBe('xai-image');
+    });
+
+    it('should accept xai-video api', async () => {
+      await configWriter.updateTools([
+        { ...validTool, name: 'grok_video', api: 'xai-video' as const },
+      ]);
+      const content = parseToolsXml(fs.readFileSync(toolsPath, 'utf-8'));
+      expect(content[0].api).toBe('xai-video');
+    });
+
+    it('should create .bak backup before writing', async () => {
+      // Write initial content
+      await configWriter.updateTools([validTool]);
+      const initialContent = fs.readFileSync(toolsPath, 'utf-8');
+
+      // Write again with different data
+      await configWriter.updateTools([{ ...validTool, description: 'Updated tool' }]);
+
+      const bakPath = toolsPath + '.bak';
+      expect(fs.existsSync(bakPath)).toBe(true);
+      expect(fs.readFileSync(bakPath, 'utf-8')).toBe(initialContent);
     });
 
     it('should reject custom help tool when built-in help is enabled', async () => {

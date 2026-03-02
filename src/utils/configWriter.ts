@@ -1,8 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ToolConfig, COMMAND_PREFIX } from './config';
+import { ToolConfig, COMMAND_PREFIX, VALID_TOOL_APIS } from './config';
 import { isUIFormat, convertUIToAPIFormat } from '../api/comfyuiClient';
 import { buildToolsXml } from './toolsXmlWriter';
+import { parseToolsXml } from './toolsXmlParser';
 
 interface EnvUpdate {
   [key: string]: string | number;
@@ -200,7 +201,7 @@ class ConfigWriter {
         }
         toolNames.add(normalized);
 
-        const validApis = ['comfyui', 'ollama', 'accuweather', 'nfl', 'serpapi', 'meme', 'discord', 'xai'];
+        const validApis: readonly string[] = VALID_TOOL_APIS;
         if (!validApis.includes(entry.api)) {
           throw new Error(`Tool "${entry.name}" has invalid api "${entry.api}" — must be one of: ${validApis.join(', ')}`);
         }
@@ -312,13 +313,33 @@ class ConfigWriter {
         return clean;
       });
 
-      // Write to file as XML
+      // Write to file as XML with backup and post-write validation
       const xmlContent = buildToolsXml(cleanTools);
-      fs.writeFileSync(
-        this.toolsPath,
-        xmlContent,
-        'utf-8'
-      );
+      const toolsFile = this.toolsPath;
+      const backupFile = toolsFile + '.bak';
+
+      // Step 1: Create backup of existing file (if it exists)
+      if (fs.existsSync(toolsFile)) {
+        fs.copyFileSync(toolsFile, backupFile);
+      }
+
+      // Step 2: Write the new content
+      fs.writeFileSync(toolsFile, xmlContent, 'utf-8');
+
+      // Step 3: Post-write validation — read back and parse to confirm integrity
+      try {
+        const written = fs.readFileSync(toolsFile, 'utf-8');
+        parseToolsXml(written);
+      } catch (validationErr) {
+        // Restore from backup if validation fails
+        if (fs.existsSync(backupFile)) {
+          fs.copyFileSync(backupFile, toolsFile);
+        }
+        throw new Error(
+          `tools.xml was written but failed re-parse validation — restored from backup. ` +
+          `Validation error: ${validationErr instanceof Error ? validationErr.message : String(validationErr)}`,
+        );
+      }
     } catch (error) {
       throw new Error(`Failed to update tools config: ${error}`, { cause: error });
     }
