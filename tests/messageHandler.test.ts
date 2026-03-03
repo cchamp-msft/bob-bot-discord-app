@@ -183,13 +183,49 @@ import type { Message } from 'discord.js';
 
 // We need to test the rate-limit behavior. The MessageHandler class is not
 // exported directly, but the singleton is. We can access its private method.
-import { messageHandler } from '../src/bot/messageHandler';
+import { messageHandler, normalizeDiscordArgs } from '../src/bot/messageHandler';
 
 // Reset dedup state between every test to prevent cross-test interference
 beforeEach(() => {
   messageHandler.resetDedupState();
 });
 
+// ── normalizeDiscordArgs ──────────────────────────────────────
+
+describe('normalizeDiscordArgs', () => {
+  it('should map channelId to channel', () => {
+    const args = { channelId: '876879065162858566' };
+    const result = normalizeDiscordArgs(args);
+    expect(result.channel).toBe('876879065162858566');
+    expect(result).not.toHaveProperty('channelId');
+  });
+
+  it('should map channel_id to channel', () => {
+    const args = { channel_id: '876879065162858566' };
+    const result = normalizeDiscordArgs(args);
+    expect(result.channel).toBe('876879065162858566');
+    expect(result).not.toHaveProperty('channel_id');
+  });
+
+  it('should map messageId to message_id', () => {
+    const args = { messageId: '123456' };
+    const result = normalizeDiscordArgs(args);
+    expect(result.message_id).toBe('123456');
+    expect(result).not.toHaveProperty('messageId');
+  });
+
+  it('should not overwrite existing canonical key with alias', () => {
+    const args = { channel: 'canonical', channelId: 'alias' };
+    const result = normalizeDiscordArgs(args);
+    expect(result.channel).toBe('canonical');
+  });
+
+  it('should pass through canonical keys unchanged', () => {
+    const args = { channel: '999', message_id: '42', search: 'hello' };
+    const result = normalizeDiscordArgs(args);
+    expect(result).toEqual({ channel: '999', message_id: '42', search: 'hello' });
+  });
+});
 describe('MessageHandler error rate limiting', () => {
   beforeEach(() => {
     // Reset the internal timestamp by accessing private field

@@ -312,4 +312,170 @@ describe('getArtifact', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('not found');
   });
+
+  // ── DM context: explicit channel resolution ─────────────────
+
+  it('should resolve explicit channel ID globally from DM context', async () => {
+    const targetMsgs = [
+      fakeMessage({ id: '50', content: 'cross-channel msg', createdTimestamp: 5000, createdAt: new Date(5000) }),
+    ];
+    const targetChannel = buildChannel(targetMsgs, { name: 'other-server', id: '876879065162858566' });
+
+    // DM source message: no guild
+    const dmChannel = buildChannel([], { name: 'dm-chan', id: '1469386495881249023', type: ChannelType.DM });
+    (dmChannel as any).recipient = { id: '100' };
+    const dmSource = {
+      channel: dmChannel,
+      guild: null,
+      author: { id: '100' },
+    } as unknown as Message;
+
+    // Client that resolves channel globally by ID
+    const clientWithFetch = {
+      user: { id: '999' },
+      channels: {
+        fetch: jest.fn().mockImplementation(async (id: string) => {
+          if (id === '876879065162858566') return targetChannel;
+          throw new Error('Unknown Channel');
+        }),
+      },
+      guilds: { cache: new Collection() },
+    } as unknown as Client;
+
+    const result = await discordActionClient.getArtifact(
+      clientWithFetch,
+      { channel: '876879065162858566' },
+      'alice',
+      dmSource,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.text).toContain('Channel: #other-server');
+    expect(result.data?.text).toContain('cross-channel msg');
+  });
+
+  it('should resolve explicit channel name globally from DM context', async () => {
+    const targetMsgs = [
+      fakeMessage({ id: '60', content: 'found by name', createdTimestamp: 6000, createdAt: new Date(6000) }),
+    ];
+    const targetChannel = buildChannel(targetMsgs, { name: 'irc-gateway', id: '876879065162858566' });
+
+    const dmChannel = buildChannel([], { name: 'dm-chan', id: '123', type: ChannelType.DM });
+    (dmChannel as any).recipient = { id: '100' };
+    const dmSource = {
+      channel: dmChannel,
+      guild: null,
+      author: { id: '100' },
+    } as unknown as Message;
+
+    const guildCache = new Collection<string, any>();
+    const fakeGuild = {
+      channels: {
+        cache: new Collection<string, any>([['876879065162858566', targetChannel]]),
+      },
+    };
+    guildCache.set('guild1', fakeGuild);
+
+    const clientWithGuilds = {
+      user: { id: '999' },
+      channels: {
+        fetch: jest.fn().mockRejectedValue(new Error('Not a snowflake')),
+      },
+      guilds: { cache: guildCache },
+    } as unknown as Client;
+
+    const result = await discordActionClient.getArtifact(
+      clientWithGuilds,
+      { channel: 'irc-gateway' },
+      'alice',
+      dmSource,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.text).toContain('Channel: #irc-gateway');
+    expect(result.data?.text).toContain('found by name');
+  });
+
+  it('should return error when channel not found globally from DM context', async () => {
+    const dmChannel = buildChannel([], { name: 'dm-chan', id: '123', type: ChannelType.DM });
+    (dmChannel as any).recipient = { id: '100' };
+    const dmSource = {
+      channel: dmChannel,
+      guild: null,
+      author: { id: '100' },
+    } as unknown as Message;
+
+    const clientEmpty = {
+      user: { id: '999' },
+      channels: {
+        fetch: jest.fn().mockRejectedValue(new Error('Unknown Channel')),
+      },
+      guilds: { cache: new Collection() },
+    } as unknown as Client;
+
+    const result = await discordActionClient.getArtifact(
+      clientEmpty,
+      { channel: 'nonexistent' },
+      'alice',
+      dmSource,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('not found');
+  });
+
+  it('should fall back to DM channel when no channel arg is provided', async () => {
+    const msgs = [
+      fakeMessage({ id: '70', content: 'dm message', createdTimestamp: 7000, createdAt: new Date(7000) }),
+    ];
+    const dmChannel = buildChannel(msgs, { name: 'dm-chan', id: '123', type: ChannelType.DM });
+    (dmChannel as any).recipient = { id: '100' };
+    const dmSource = {
+      channel: dmChannel,
+      guild: null,
+      author: { id: '100' },
+    } as unknown as Message;
+
+    const result = await discordActionClient.getArtifact(
+      fakeClient,
+      {},
+      'alice',
+      dmSource,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.text).toContain('dm message');
+  });
+
+  // ── type guard tests ────────────────────────────────────────
+
+  it('should reject non-string channel argument', async () => {
+    const channel = buildChannel([]);
+    const source = buildSourceMessage(channel);
+
+    const result = await discordActionClient.getArtifact(
+      fakeClient,
+      { channel: 12345 as unknown as string },
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Channel argument must be a string');
+  });
+
+  it('should reject non-string message_id argument', async () => {
+    const channel = buildChannel([]);
+    const source = buildSourceMessage(channel);
+
+    const result = await discordActionClient.getArtifact(
+      fakeClient,
+      { message_id: 42 as unknown as string },
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('message_id argument must be a string');
+  });
 });
