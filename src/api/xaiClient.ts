@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
+import { persistMedia, PersistedMedia } from '../utils/mediaPersistence';
 import { ChatMessage } from '../types';
 import type { OllamaTool } from '../utils/toolsSchema';
 import type { OllamaToolCall } from './ollamaClient';
@@ -29,6 +30,8 @@ export interface XaiImageResponse {
   success: boolean;
   data?: {
     images: string[];
+    /** Persisted output descriptors (populated when save succeeds). */
+    savedOutputs?: PersistedMedia[];
   };
   error?: string;
 }
@@ -38,6 +41,8 @@ export interface XaiVideoResponse {
   data?: {
     url: string;
     duration?: number;
+    /** Persisted output descriptors (populated when save succeeds). */
+    savedOutputs?: PersistedMedia[];
   };
   error?: string;
 }
@@ -297,7 +302,22 @@ class XaiClient {
         if (images.length > 0) {
           logger.logReply(requester, `xAI image generated: ${images.length} image(s)`);
           logger.logXaiDebug(requester, `XAI-IMAGE-RESPONSE: ${images.length} image(s) received`);
-          return { success: true, data: { images } };
+
+          // Persist generated images to outputs/
+          const savedOutputs = await persistMedia(
+            requester,
+            prompt,
+            images.map(src => ({
+              source: src,
+              defaultExtension: 'png',
+              mediaType: 'image' as const,
+            })),
+          );
+          if (savedOutputs.length > 0) {
+            logger.logDebug(requester, `xAI images persisted: ${savedOutputs.length} file(s)`);
+          }
+
+          return { success: true, data: { images, savedOutputs } };
         }
 
         logger.logXaiDebug(requester, `XAI-IMAGE-RESPONSE: No images found in response data`);
@@ -369,9 +389,20 @@ class XaiClient {
           const video = pollResponse.data?.video;
           if (video?.url) {
             logger.logReply(requester, `xAI video generated: ${video.duration ?? '?'}s`);
+
+            // Persist generated video to outputs/
+            const savedOutputs = await persistMedia(
+              requester,
+              prompt,
+              [{ source: video.url, defaultExtension: 'mp4', mediaType: 'video' as const }],
+            );
+            if (savedOutputs.length > 0) {
+              logger.logDebug(requester, `xAI video persisted: ${savedOutputs.length} file(s)`);
+            }
+
             return {
               success: true,
-              data: { url: video.url, duration: video.duration },
+              data: { url: video.url, duration: video.duration, savedOutputs },
             };
           }
           return { success: false, error: 'xAI video completed but returned no URL' };

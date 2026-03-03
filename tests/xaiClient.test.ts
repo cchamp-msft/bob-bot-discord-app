@@ -46,6 +46,11 @@ jest.mock('../src/utils/logger', () => ({
   },
 }));
 
+const mockPersistMedia = jest.fn().mockResolvedValue([]);
+jest.mock('../src/utils/mediaPersistence', () => ({
+  persistMedia: (...args: unknown[]) => mockPersistMedia(...args),
+}));
+
 import { xaiClient } from '../src/api/xaiClient';
 
 beforeEach(() => {
@@ -67,6 +72,12 @@ describe('XaiClient', () => {
       expect(result.success).toBe(true);
       expect(result.data?.images).toHaveLength(1);
       expect(result.data?.images[0]).toBe('https://cdn.x.ai/img/abc.png');
+      expect(result.data?.savedOutputs).toEqual([]);
+      expect(mockPersistMedia).toHaveBeenCalledWith(
+        'user1',
+        'a sunset over mountains',
+        [{ source: 'https://cdn.x.ai/img/abc.png', defaultExtension: 'png', mediaType: 'image' }],
+      );
 
       expect(mockPost).toHaveBeenCalledWith(
         '/images/generations',
@@ -91,6 +102,11 @@ describe('XaiClient', () => {
 
       expect(result.success).toBe(true);
       expect(result.data?.images[0]).toBe('data:image/png;base64,iVBORw0KGgo=');
+      expect(mockPersistMedia).toHaveBeenCalledWith(
+        'user1',
+        'a cat',
+        [{ source: 'data:image/png;base64,iVBORw0KGgo=', defaultExtension: 'png', mediaType: 'image' }],
+      );
     });
 
     it('should handle multiple images', async () => {
@@ -108,6 +124,14 @@ describe('XaiClient', () => {
 
       expect(result.success).toBe(true);
       expect(result.data?.images).toHaveLength(2);
+      expect(mockPersistMedia).toHaveBeenCalledWith(
+        'user1',
+        'two cats',
+        [
+          { source: 'https://cdn.x.ai/img/1.png', defaultExtension: 'png', mediaType: 'image' },
+          { source: 'https://cdn.x.ai/img/2.png', defaultExtension: 'png', mediaType: 'image' },
+        ],
+      );
     });
 
     it('should return error when response has no images', async () => {
@@ -187,6 +211,12 @@ describe('XaiClient', () => {
       expect(result.success).toBe(true);
       expect(result.data?.url).toBe('https://cdn.x.ai/vid/abc.mp4');
       expect(result.data?.duration).toBe(5);
+      expect(result.data?.savedOutputs).toEqual([]);
+      expect(mockPersistMedia).toHaveBeenCalledWith(
+        'user1',
+        'a flower blooming',
+        [{ source: 'https://cdn.x.ai/vid/abc.mp4', defaultExtension: 'mp4', mediaType: 'video' }],
+      );
 
       expect(mockPost).toHaveBeenCalledWith(
         '/videos/generations',
