@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { randomUUID } from 'crypto';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
+import { persistMedia, PersistedMedia } from '../utils/mediaPersistence';
 import { ComfyUIWebSocketManager } from './comfyuiWebSocket';
 
 export interface ComfyUIResponse {
@@ -10,6 +11,8 @@ export interface ComfyUIResponse {
     text?: string;
     images?: string[];
     videos?: string[];
+    /** Pre-persisted output descriptors (avoids re-downloading). */
+    savedOutputs?: PersistedMedia[];
   };
   error?: string;
 }
@@ -1234,11 +1237,22 @@ class ComfyUIClient {
       // DEBUG: log full output URLs
       logger.logDebugLazy(requester, () => `COMFYUI-RESPONSE: ${parts.join(', ')}: ${JSON.stringify({ images, videos })}`);
 
+      // Persist generated media to outputs/
+      const mediaSources = [
+        ...images.map(url => ({ source: url, defaultExtension: 'png', mediaType: 'image' as const })),
+        ...videos.map(url => ({ source: url, defaultExtension: 'mp4', mediaType: 'video' as const })),
+      ];
+      const savedOutputs = await persistMedia(requester, prompt, mediaSources);
+      if (savedOutputs.length > 0) {
+        logger.logDebug(requester, `ComfyUI outputs persisted: ${savedOutputs.length} file(s)`);
+      }
+
       return {
         success: true,
         data: {
           images,
           ...(videos.length > 0 ? { videos } : {}),
+          savedOutputs,
         },
       };
     } catch (error) {

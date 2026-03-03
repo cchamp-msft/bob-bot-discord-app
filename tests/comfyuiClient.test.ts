@@ -73,6 +73,10 @@ jest.mock('../src/utils/logger', () => ({
   },
 }));
 
+jest.mock('../src/utils/mediaPersistence', () => ({
+  persistMedia: jest.fn().mockResolvedValue([]),
+}));
+
 // Import after mocks — singleton captures mockInstance
 import { comfyuiClient } from '../src/api/comfyuiClient';
 import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode, resolveSeed, resolveWorkflowSeeds, parseNegativePrompt, resolveNegativePrompt, validateNodeReferences } from '../src/api/comfyuiClient';
