@@ -106,34 +106,56 @@ class GenerateCommand extends BaseCommand {
         .setTimestamp();
     }
 
-    // Process each output
+    // Process each output — prefer pre-persisted files from client
     let savedCount = 0;
     const attachments: { attachment: Buffer; name: string }[] = [];
 
-    const processOutputs = async (urls: string[], description: string, extension: string, label: string) => {
-      for (let i = 0; i < urls.length; i++) {
-        const fileOutput = await fileHandler.saveFromUrl(requester, description, urls[i], extension);
-        if (fileOutput) {
-          savedCount++;
-          if (embed) {
-            embed.addFields({
-              name: `${label} ${i + 1}`,
-              value: `[View](${fileOutput.url})`,
-              inline: false,
-            });
-          }
-          if (fileHandler.shouldAttachFile(fileOutput.size)) {
-            const fileBuffer = fileHandler.readFile(fileOutput.filePath);
-            if (fileBuffer) {
-              attachments.push({ attachment: fileBuffer, name: fileOutput.fileName });
-            }
+    const preSaved = apiResult.data?.savedOutputs || [];
+    if (preSaved.length > 0) {
+      for (const persisted of preSaved) {
+        savedCount++;
+        if (embed) {
+          const label = persisted.mediaType === 'video' ? 'Video' : 'Image';
+          embed.addFields({
+            name: `${label} ${savedCount}`,
+            value: `[View](${persisted.url})`,
+            inline: false,
+          });
+        }
+        if (fileHandler.shouldAttachFile(persisted.size)) {
+          const fileBuffer = fileHandler.readFile(persisted.filePath);
+          if (fileBuffer) {
+            attachments.push({ attachment: fileBuffer, name: persisted.fileName });
           }
         }
       }
-    };
+    } else {
+      // Fallback: download and save from original URLs (legacy path)
+      const processOutputs = async (urls: string[], description: string, extension: string, label: string) => {
+        for (let i = 0; i < urls.length; i++) {
+          const fileOutput = await fileHandler.saveFromUrl(requester, description, urls[i], extension);
+          if (fileOutput) {
+            savedCount++;
+            if (embed) {
+              embed.addFields({
+                name: `${label} ${i + 1}`,
+                value: `[View](${fileOutput.url})`,
+                inline: false,
+              });
+            }
+            if (fileHandler.shouldAttachFile(fileOutput.size)) {
+              const fileBuffer = fileHandler.readFile(fileOutput.filePath);
+              if (fileBuffer) {
+                attachments.push({ attachment: fileBuffer, name: fileOutput.fileName });
+              }
+            }
+          }
+        }
+      };
 
-    await processOutputs(images, 'generated_image', 'png', 'Image');
-    await processOutputs(videos, 'generated_video', 'mp4', 'Video');
+      await processOutputs(images, 'generated_image', 'png', 'Image');
+      await processOutputs(videos, 'generated_video', 'mp4', 'Video');
+    }
 
     if (savedCount === 0) {
       await interaction.editReply({

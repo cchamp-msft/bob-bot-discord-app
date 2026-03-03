@@ -634,13 +634,13 @@ export async function executeRoutedRequest(
   if (keywordConfig.api === 'xai-image') {
     const xaiResp = primaryResult as XaiImageResponse;
     if (xaiResp.data?.images?.length) {
-      media.push({ kind: 'xai-image', images: xaiResp.data.images });
+      media.push({ kind: 'xai-image', images: xaiResp.data.images, savedOutputs: xaiResp.data.savedOutputs });
     }
   }
   if (keywordConfig.api === 'xai-video') {
     const xaiResp = primaryResult as XaiVideoResponse;
     if (xaiResp.data?.url) {
-      media.push({ kind: 'xai-video', url: xaiResp.data.url, duration: xaiResp.data.duration });
+      media.push({ kind: 'xai-video', url: xaiResp.data.url, duration: xaiResp.data.duration, savedOutputs: xaiResp.data.savedOutputs });
     }
   }
   if (keywordConfig.api === 'meme') {

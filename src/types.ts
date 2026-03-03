@@ -446,6 +446,8 @@ export interface ComfyUIMediaFollowUp {
 export interface XaiImageMediaFollowUp {
   kind: 'xai-image';
   images: string[];
+  /** Pre-persisted output descriptors from xaiClient (avoids re-downloading). */
+  savedOutputs?: import('./utils/mediaPersistence').PersistedMedia[];
 }
 
 /** xAI video generation — carries a temporary video URL for attachment. */
@@ -453,6 +455,8 @@ export interface XaiVideoMediaFollowUp {
   kind: 'xai-video';
   url: string;
   duration?: number;
+  /** Pre-persisted output descriptors from xaiClient (avoids re-downloading). */
+  savedOutputs?: import('./utils/mediaPersistence').PersistedMedia[];
 }
 
 /** A bare URL for Discord auto-embed (meme images, weather radar, etc.). */

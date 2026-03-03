@@ -1504,13 +1504,13 @@ class MessageHandler {
       if (tool.api === 'xai-image' && apiResult.finalResponse.success) {
         const xaiResp = apiResult.finalResponse as XaiImageResponse;
         if (xaiResp.data?.images?.length) {
-          media = { kind: 'xai-image', images: xaiResp.data.images };
+          media = { kind: 'xai-image', images: xaiResp.data.images, savedOutputs: xaiResp.data.savedOutputs };
         }
       }
       if (tool.api === 'xai-video' && apiResult.finalResponse.success) {
         const xaiResp = apiResult.finalResponse as XaiVideoResponse;
         if (xaiResp.data?.url) {
-          media = { kind: 'xai-video', url: xaiResp.data.url, duration: xaiResp.data.duration };
+          media = { kind: 'xai-video', url: xaiResp.data.url, duration: xaiResp.data.duration, savedOutputs: xaiResp.data.savedOutputs };
         }
       }
       if (tool.api === 'meme' && apiResult.finalResponse.success) {
@@ -1885,13 +1885,13 @@ class MessageHandler {
         if (resolvedTool.api === 'xai-image' && apiResult.finalResponse.success) {
           const xaiResp = apiResult.finalResponse as XaiImageResponse;
           if (xaiResp.data?.images?.length) {
-            mediaFollowUps.push({ kind: 'xai-image', images: xaiResp.data.images });
+            mediaFollowUps.push({ kind: 'xai-image', images: xaiResp.data.images, savedOutputs: xaiResp.data.savedOutputs });
           }
         }
         if (resolvedTool.api === 'xai-video' && apiResult.finalResponse.success) {
           const xaiResp = apiResult.finalResponse as XaiVideoResponse;
           if (xaiResp.data?.url) {
-            mediaFollowUps.push({ kind: 'xai-video', url: xaiResp.data.url, duration: xaiResp.data.duration });
+            mediaFollowUps.push({ kind: 'xai-video', url: xaiResp.data.url, duration: xaiResp.data.duration, savedOutputs: xaiResp.data.savedOutputs });
           }
         }
         if (resolvedTool.api === 'meme' && apiResult.finalResponse.success) {
@@ -2329,10 +2329,39 @@ class MessageHandler {
   ): Promise<{ attachments: { attachment: Buffer; name: string }[]; savedFilePaths: string[]; savedCount: number; imageCount: number; videoCount: number }> {
     const images = comfyResult.data?.images || [];
     const videos = comfyResult.data?.videos || [];
+    const preSaved = comfyResult.data?.savedOutputs || [];
     let savedCount = 0;
     const attachments: { attachment: Buffer; name: string }[] = [];
     const savedFilePaths: string[] = [];
 
+    // When outputs were pre-persisted by the client, use them directly
+    if (preSaved.length > 0) {
+      for (const persisted of preSaved) {
+        if (embed) {
+          const label = persisted.mediaType === 'video' ? 'Video' : 'Image';
+          embed.addFields({
+            name: `${label} ${savedCount + 1}`,
+            value: `[View](${persisted.url})`,
+            inline: false,
+          });
+        }
+        if (fileHandler.shouldAttachFile(persisted.size)) {
+          const fileBuffer = fileHandler.readFile(persisted.filePath);
+          if (fileBuffer) {
+            attachments.push({ attachment: fileBuffer, name: persisted.fileName });
+          }
+        }
+        const baseUrl = config.getOutputBaseUrl();
+        const relativePath = persisted.url.startsWith(baseUrl)
+          ? persisted.url.slice(baseUrl.length)
+          : persisted.url;
+        savedFilePaths.push(relativePath);
+        savedCount++;
+      }
+      return { attachments, savedFilePaths, savedCount, imageCount: images.length, videoCount: videos.length };
+    }
+
+    // Fallback: download and save from original URLs (legacy path)
     const extensionFromUrl = (url: string, fallback: string): string => {
       try {
         const filename = new URL(url).searchParams.get('filename') || '';
@@ -2474,24 +2503,46 @@ class MessageHandler {
     // Send response text to thraken ingest listener (fire-and-forget)
     this.sendToThraken(text, requester);
 
-    // When an xAI video media source is carried through, download and attach the video
+    // When an xAI video media source is carried through, attach the video
+    // Prefer pre-persisted file from xaiClient; fall back to download.
     const xaiVideoMedia = media?.find((m): m is XaiVideoMediaFollowUp => m.kind === 'xai-video');
     if (xaiVideoMedia?.url) {
       text = text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim();
       try {
-        const videoResp = await axios.get(xaiVideoMedia.url, { responseType: 'arraybuffer', timeout: 60_000 });
-        const buf = Buffer.from(videoResp.data as ArrayBuffer);
+        let buf: Buffer;
+        let attachName: string;
+        const savedVideo = xaiVideoMedia.savedOutputs?.[0];
+        if (savedVideo) {
+          const readBuf = fileHandler.readFile(savedVideo.filePath);
+          if (readBuf) {
+            buf = readBuf;
+            attachName = savedVideo.fileName;
+          } else {
+            // Persisted file unreadable — fall back to download
+            const videoResp = await axios.get(xaiVideoMedia.url, { responseType: 'arraybuffer', timeout: 60_000 });
+            buf = Buffer.from(videoResp.data as ArrayBuffer);
+            attachName = 'xai-video.mp4';
+          }
+        } else {
+          // No persisted output — download directly
+          const videoResp = await axios.get(xaiVideoMedia.url, { responseType: 'arraybuffer', timeout: 60_000 });
+          buf = Buffer.from(videoResp.data as ArrayBuffer);
+          attachName = 'xai-video.mp4';
+        }
         const chunks = chunkText(text || 'Here is your generated video:');
         await sourceMessage.reply({
           content: chunks[0],
-          files: [{ attachment: buf, name: 'xai-video.mp4' }],
+          files: [{ attachment: buf, name: attachName }],
         });
         for (let i = 1; i < chunks.length; i++) {
           if ('send' in sourceMessage.channel) {
             await sourceMessage.channel.send(chunks[i]);
           }
         }
-        activityEvents.emitBotImageReply(1, ['xai-video.mp4']);
+        const savedPaths = savedVideo
+          ? [savedVideo.url.startsWith(config.getOutputBaseUrl()) ? savedVideo.url.slice(config.getOutputBaseUrl().length) : savedVideo.url]
+          : ['xai-video.mp4'];
+        activityEvents.emitBotImageReply(1, savedPaths);
         logger.logReply(requester, `xAI video response sent: ${text.length} chars text, ${xaiVideoMedia.duration ?? '?'}s video`);
         return;
       } catch (dlErr) {
@@ -2499,36 +2550,61 @@ class MessageHandler {
       }
     }
 
-    // When an xAI image media source is carried through, download or decode and attach images
+    // When an xAI image media source is carried through, attach images
+    // Prefer pre-persisted files from xaiClient; fall back to decode/download.
     const xaiImageMedia = media?.find((m): m is XaiImageMediaFollowUp => m.kind === 'xai-image');
     if (xaiImageMedia && xaiImageMedia.images.length > 0) {
       text = text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim();
       const attachments: { attachment: Buffer; name: string }[] = [];
+      const savedPaths: string[] = [];
+
+      const saved = xaiImageMedia.savedOutputs || [];
+
       for (let i = 0; i < xaiImageMedia.images.length; i++) {
+        // Try using persisted file first
+        const persisted = saved[i];
+        if (persisted) {
+          const readBuf = fileHandler.readFile(persisted.filePath);
+          if (readBuf) {
+            if (fileHandler.shouldAttachFile(persisted.size)) {
+              attachments.push({ attachment: readBuf, name: persisted.fileName });
+            }
+            const baseUrl = config.getOutputBaseUrl();
+            const relativePath = persisted.url.startsWith(baseUrl)
+              ? persisted.url.slice(baseUrl.length)
+              : persisted.url;
+            savedPaths.push(relativePath);
+            continue;
+          }
+        }
+
+        // Fallback: decode/download from original source
         const src = xaiImageMedia.images[i];
         const base64Match = src.match(/^data:image\/(\w+);base64,(.+)$/s);
         if (base64Match) {
           const ext = base64Match[1] === 'jpeg' ? 'jpg' : base64Match[1];
           const buf = Buffer.from(base64Match[2], 'base64');
           attachments.push({ attachment: buf, name: `xai-image-${i}.${ext}` });
+          savedPaths.push(`xai-image-${i}.${ext}`);
         } else if (src.startsWith('http')) {
           try {
             const imgResp = await axios.get(src, { responseType: 'arraybuffer', timeout: 30_000 });
             const buf = Buffer.from(imgResp.data as ArrayBuffer);
             const ext = src.match(/\.(\w{3,4})(\?|$)/)?.[1] || 'png';
             attachments.push({ attachment: buf, name: `xai-image-${i}.${ext}` });
+            savedPaths.push(`xai-image-${i}.${ext}`);
           } catch (dlErr) {
             logger.logError(requester, `Failed to download xAI image ${i}: ${dlErr instanceof Error ? dlErr.message : String(dlErr)}`);
           }
         }
       }
-      if (attachments.length > 0) {
+      if (attachments.length > 0 || savedPaths.length > 0) {
         const chunks = chunkText(text || 'Here are your results:');
         const maxPerMessage = config.getMaxAttachments();
         const firstBatch = attachments.slice(0, maxPerMessage);
         await sourceMessage.reply({
           content: chunks[0],
-          files: firstBatch,
+          ...(firstBatch.length > 0 ? { files: firstBatch } : {}),
         });
         for (let i = 1; i < chunks.length; i++) {
           if ('send' in sourceMessage.channel) {
@@ -2541,9 +2617,8 @@ class MessageHandler {
             await sourceMessage.channel.send({ content: 'Additional files', files: batch });
           }
         }
-        const savedPaths = attachments.map(a => a.name);
-        activityEvents.emitBotImageReply(attachments.length, savedPaths);
-        logger.logReply(requester, `xAI image response sent: ${text.length} chars text, ${attachments.length} image(s)`);
+        activityEvents.emitBotImageReply(savedPaths.length || attachments.length, savedPaths);
+        logger.logReply(requester, `xAI image response sent: ${text.length} chars text, ${savedPaths.length} image(s)`);
         return;
       }
     }

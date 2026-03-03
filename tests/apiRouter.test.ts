@@ -826,10 +826,10 @@ describe('ApiRouter', () => {
 
       expect(result.finalApi).toBe('ollama');
       expect(result.media).toHaveLength(1);
-      expect(result.media[0]).toEqual({
+      expect(result.media[0]).toEqual(expect.objectContaining({
         kind: 'xai-image',
         images: ['https://cdn.x.ai/img/abc.png'],
-      });
+      }));
     });
 
     it('should not produce comfyui media when tool api is xai-image', async () => {
@@ -877,11 +877,11 @@ describe('ApiRouter', () => {
 
       expect(result.finalApi).toBe('ollama');
       expect(result.media).toHaveLength(1);
-      expect(result.media[0]).toEqual({
+      expect(result.media[0]).toEqual(expect.objectContaining({
         kind: 'xai-video',
         url: 'https://cdn.x.ai/vid/abc.mp4',
         duration: 5,
-      });
+      }));
     });
   });
 

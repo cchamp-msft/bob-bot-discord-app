@@ -545,22 +545,29 @@ class HttpServer {
         return;
       }
 
-      // Download and save outputs to outputs/ with 'test' as requester
+      // Use pre-persisted outputs when available, fall back to manual save
       const savedFiles: Array<{ url: string; localUrl: string }> = [];
+      const preSaved = result.data?.savedOutputs || [];
       const images = result.data?.images || [];
       const videos = result.data?.videos || [];
 
-      for (const imageUrl of images) {
-        const saved = await fileHandler.saveFromUrl('test', prompt, imageUrl, 'png');
-        if (saved) {
-          savedFiles.push({ url: imageUrl, localUrl: saved.url });
+      if (preSaved.length > 0) {
+        for (const persisted of preSaved) {
+          savedFiles.push({ url: persisted.source, localUrl: persisted.url });
         }
-      }
+      } else {
+        for (const imageUrl of images) {
+          const saved = await fileHandler.saveFromUrl('test', prompt, imageUrl, 'png');
+          if (saved) {
+            savedFiles.push({ url: imageUrl, localUrl: saved.url });
+          }
+        }
 
-      for (const videoUrl of videos) {
-        const saved = await fileHandler.saveFromUrl('test', prompt, videoUrl, 'mp4');
-        if (saved) {
-          savedFiles.push({ url: videoUrl, localUrl: saved.url });
+        for (const videoUrl of videos) {
+          const saved = await fileHandler.saveFromUrl('test', prompt, videoUrl, 'mp4');
+          if (saved) {
+            savedFiles.push({ url: videoUrl, localUrl: saved.url });
+          }
         }
       }
 
