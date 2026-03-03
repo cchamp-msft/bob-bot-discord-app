@@ -1626,4 +1626,70 @@ describe('Config', () => {
       }
     });
   });
+
+  // ── Discord artifact tool-call limits ───────────────────────
+
+  describe('discord artifact config', () => {
+    const { config } = require('../src/utils/config');
+
+    afterEach(() => {
+      delete process.env.DISCORD_ARTIFACT_MAX_MESSAGES;
+      delete process.env.DISCORD_ARTIFACT_MAX_IMAGES;
+    });
+
+    it('getDiscordArtifactMaxMessages should default to 5', () => {
+      delete process.env.DISCORD_ARTIFACT_MAX_MESSAGES;
+      expect(config.getDiscordArtifactMaxMessages()).toBe(5);
+    });
+
+    it('getDiscordArtifactMaxMessages should parse valid int', () => {
+      process.env.DISCORD_ARTIFACT_MAX_MESSAGES = '10';
+      expect(config.getDiscordArtifactMaxMessages()).toBe(10);
+    });
+
+    it('getDiscordArtifactMaxMessages should clamp to 1 minimum', () => {
+      process.env.DISCORD_ARTIFACT_MAX_MESSAGES = '0';
+      expect(config.getDiscordArtifactMaxMessages()).toBe(1);
+    });
+
+    it('getDiscordArtifactMaxMessages should clamp to 20 maximum', () => {
+      process.env.DISCORD_ARTIFACT_MAX_MESSAGES = '50';
+      expect(config.getDiscordArtifactMaxMessages()).toBe(20);
+    });
+
+    it('getDiscordArtifactMaxImages should default to 1', () => {
+      delete process.env.DISCORD_ARTIFACT_MAX_IMAGES;
+      expect(config.getDiscordArtifactMaxImages()).toBe(1);
+    });
+
+    it('getDiscordArtifactMaxImages should parse valid int', () => {
+      process.env.DISCORD_ARTIFACT_MAX_IMAGES = '3';
+      expect(config.getDiscordArtifactMaxImages()).toBe(3);
+    });
+
+    it('getDiscordArtifactMaxImages should clamp to 0 minimum', () => {
+      process.env.DISCORD_ARTIFACT_MAX_IMAGES = '-1';
+      expect(config.getDiscordArtifactMaxImages()).toBe(0);
+    });
+
+    it('getDiscordArtifactMaxImages should clamp to 5 maximum', () => {
+      process.env.DISCORD_ARTIFACT_MAX_IMAGES = '10';
+      expect(config.getDiscordArtifactMaxImages()).toBe(5);
+    });
+
+    it('getDiscordArtifactMaxImages should allow 0 to disable image collection', () => {
+      process.env.DISCORD_ARTIFACT_MAX_IMAGES = '0';
+      expect(config.getDiscordArtifactMaxImages()).toBe(0);
+    });
+
+    it('getPublicConfig should include discordTools section', () => {
+      process.env.DISCORD_ARTIFACT_MAX_MESSAGES = '8';
+      process.env.DISCORD_ARTIFACT_MAX_IMAGES = '2';
+      const pub = config.getPublicConfig();
+      expect(pub.discordTools).toEqual({
+        artifactMaxMessages: 8,
+        artifactMaxImages: 2,
+      });
+    });
+  });
 });

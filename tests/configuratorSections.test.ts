@@ -85,6 +85,26 @@ describe('Configurator — embed toggle placement', () => {
   });
 });
 
+// ── Discord Tools inputs in Discord Connection section ────────
+
+describe('Configurator — Discord Tools subsection', () => {
+  const sections = extractSections();
+
+  it('the Discord Connection section contains artifact max messages input', () => {
+    const discord = sections.find(s => s.heading.includes('Discord'));
+    expect(discord).toBeDefined();
+    expect(discord!.body).toContain('discord_artifact_max_messages');
+    expect(discord!.body).toContain('DISCORD_ARTIFACT_MAX_MESSAGES');
+  });
+
+  it('the Discord Connection section contains artifact max images input', () => {
+    const discord = sections.find(s => s.heading.includes('Discord'));
+    expect(discord).toBeDefined();
+    expect(discord!.body).toContain('discord_artifact_max_images');
+    expect(discord!.body).toContain('DISCORD_ARTIFACT_MAX_IMAGES');
+  });
+});
+
 // ── Reply Chain Context fields inside Prompt & Runtime section ─
 
 describe('Configurator — Reply Chain Context in Prompt & Runtime section', () => {
