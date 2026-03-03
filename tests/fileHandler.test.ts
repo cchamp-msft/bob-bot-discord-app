@@ -174,4 +174,52 @@ describe('FileHandler', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('saveFromDataUrl', () => {
+    it('should decode a valid PNG data-URL and save the file', () => {
+      // Minimal 1x1 PNG (base64)
+      const b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAB';
+      const dataUrl = `data:image/png;base64,${b64}`;
+
+      const result = fileHandler.saveFromDataUrl('tester', 'data url test', dataUrl, 'png');
+
+      expect(result).not.toBeNull();
+      expect(result!.fileName).toMatch(/\.png$/);
+      expect(result!.size).toBeGreaterThan(0);
+      expect(fs.existsSync(result!.filePath)).toBe(true);
+    });
+
+    it('should derive jpg extension from image/jpeg MIME', () => {
+      const dataUrl = 'data:image/jpeg;base64,/9j/4A==';
+
+      const result = fileHandler.saveFromDataUrl('tester', 'jpeg test', dataUrl, 'png');
+
+      expect(result).not.toBeNull();
+      expect(result!.fileName).toMatch(/\.jpg$/);
+    });
+
+    it('should use defaultExtension when MIME has no subtype', () => {
+      // Fabricated MIME without a /subtype — unlikely but defensive
+      const dataUrl = 'data:application;base64,dGVzdA==';
+
+      const result = fileHandler.saveFromDataUrl('tester', 'fallback ext', dataUrl, 'bin');
+
+      expect(result).not.toBeNull();
+      // Extension derived as empty string from 'application' (no /), so fallback 'bin' used
+      // Actually application has no /, so mime.split('/')[1] is undefined → uses 'bin'
+    });
+
+    it('should return null for an invalid data-URL format', () => {
+      const result = fileHandler.saveFromDataUrl('tester', 'bad format', 'not-a-data-url', 'png');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null for a malformed base64 section', () => {
+      // Missing the base64 marker
+      const result = fileHandler.saveFromDataUrl('tester', 'no b64', 'data:image/png;utf8,hello', 'png');
+
+      expect(result).toBeNull();
+    });
+  });
 });

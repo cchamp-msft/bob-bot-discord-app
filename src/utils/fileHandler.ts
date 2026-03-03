@@ -4,7 +4,7 @@ import axios from 'axios';
 import { config } from './config';
 import { logger } from './logger';
 
-interface FileOutput {
+export interface FileOutput {
   filePath: string;
   fileName: string;
   url: string;
@@ -111,6 +111,34 @@ class FileHandler {
       logger.logError('system', `Failed to download file from URL: ${error}`);
       return null;
     }
+  }
+
+  /**
+   * Decode a `data:<mime>;base64,<payload>` URI and persist the binary content.
+   * Returns the same {@link FileOutput} shape as {@link saveFile}.
+   * Falls back to the given `defaultExtension` when the MIME type cannot be parsed.
+   */
+  saveFromDataUrl(
+    requester: string,
+    description: string,
+    dataUrl: string,
+    defaultExtension: string
+  ): FileOutput | null {
+    const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
+    if (!match) {
+      logger.logError('system', 'saveFromDataUrl: invalid data-URL format');
+      return null;
+    }
+
+    const mime = match[1];           // e.g. "image/png"
+    const base64 = match[2];
+    const buffer = Buffer.from(base64, 'base64');
+
+    // Derive extension from MIME — e.g. "image/jpeg" → "jpg", "video/mp4" → "mp4"
+    const mimeExt = mime.split('/')[1]?.replace('jpeg', 'jpg');
+    const extension = mimeExt || defaultExtension;
+
+    return this.saveFile(requester, description, buffer, extension);
   }
 
   shouldAttachFile(fileSize: number): boolean {
