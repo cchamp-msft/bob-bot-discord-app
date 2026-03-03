@@ -556,6 +556,20 @@
           <label>Bot Display Name <span class="note">override for prompt identity — blank uses Discord display name</span></label>
           <input type="text" id="bot_display_name" data-env="BOT_DISPLAY_NAME" placeholder="Blank uses Discord Display Name">
         </div>
+
+        <hr style="border-color:var(--border);margin:16px 0">
+        <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Discord Tools</div>
+        <div class="field-row">
+          <div class="field narrow">
+            <label>Artifact Max Messages <span class="note">channel-only retrieval, 1–20</span></label>
+            <input type="number" id="discord_artifact_max_messages" data-env="DISCORD_ARTIFACT_MAX_MESSAGES" placeholder="5" min="1" max="20">
+          </div>
+          <div class="field narrow">
+            <label>Artifact Max Images <span class="note">channel-only retrieval, 0–5</span></label>
+            <input type="number" id="discord_artifact_max_images" data-env="DISCORD_ARTIFACT_MAX_IMAGES" placeholder="1" min="0" max="5">
+          </div>
+        </div>
+
         <div class="bot-controls">
           <span class="status-label">
             <span class="dot stopped" id="botDot"></span>
@@ -1630,6 +1644,8 @@ flowchart TD
 
       // Populate env fields
       document.getElementById('discord_client_id').value = cfg.discord.clientId;
+      document.getElementById('discord_artifact_max_messages').value = cfg.discordTools?.artifactMaxMessages ?? '';
+      document.getElementById('discord_artifact_max_images').value = cfg.discordTools?.artifactMaxImages ?? '';
       document.getElementById('comfyui_endpoint').value = cfg.apis.comfyui;
       document.getElementById('ollama_endpoint').value = cfg.apis.ollama;
       document.getElementById('http_port').value = cfg.http.port;

@@ -284,8 +284,8 @@
     <name>get_discord_artifact</name>
     <api>discord</api>
     <timeout>15</timeout>
-    <description>Retrieve a message from Discord channel history by ID or text search. Use when the user asks to find, look up, or recall a specific message.</description>
-    <abilityWhen>User wants to find or retrieve a specific message from Discord history.</abilityWhen>
+    <description>Retrieve messages from a Discord channel. If message_id is given, returns that specific message. If search is given, finds a message matching the text. If only channel is provided, returns recent channel history (message and image counts governed by configured limits).</description>
+    <abilityWhen>User wants to find, retrieve, or review messages from Discord history or a channel.</abilityWhen>
     <parameters>
       <mode>mixed</mode>
       <channel>
@@ -303,7 +303,7 @@
         <description>Text to search for in recent messages (case-insensitive substring match)</description>
         <required>false</required>
       </search>
-      <validation>Provide either message_id or search. At least one must be specified.</validation>
+      <validation>Provide message_id for a specific message, search to find by text, or only channel to retrieve recent history.</validation>
     </parameters>
   </tool>
 

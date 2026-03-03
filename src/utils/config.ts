@@ -1086,6 +1086,28 @@ class Config {
     return Math.max(1, Math.min(raw, 10));
   }
 
+  // ── Discord tool-call limits ──────────────────────────────────
+
+  /**
+   * Maximum number of messages returned when `get_discord_artifact` is
+   * invoked with only a channel (no message_id/search).
+   * Clamped 1–20, default 5.
+   */
+  getDiscordArtifactMaxMessages(): number {
+    const raw = this.parseIntEnv('DISCORD_ARTIFACT_MAX_MESSAGES', 5);
+    return Math.max(1, Math.min(raw, 20));
+  }
+
+  /**
+   * Maximum number of image attachments surfaced in a channel-only
+   * `get_discord_artifact` response.
+   * Clamped 0–5, default 1.  Set to 0 to omit image URLs entirely.
+   */
+  getDiscordArtifactMaxImages(): number {
+    const raw = this.parseIntEnv('DISCORD_ARTIFACT_MAX_IMAGES', 1);
+    return Math.max(0, Math.min(raw, 5));
+  }
+
   // ── Default ComfyUI workflow parameters ───────────────────────
 
   /** Checkpoint model path for the default workflow. Empty = no default workflow. */
@@ -1261,6 +1283,8 @@ class Config {
     const prevErrorMsg = this.getErrorMessage();
     const prevErrorRate = this.getErrorRateLimitMinutes();
     const prevMaxAttach = this.getMaxAttachments();
+    const prevArtifactMaxMessages = this.getDiscordArtifactMaxMessages();
+    const prevArtifactMaxImages = this.getDiscordArtifactMaxImages();
     const prevAllowBotInteractions = this.getAllowBotInteractions();
     const prevReplyChainEnabled = this.getReplyChainEnabled();
     const prevReplyChainMaxDepth = this.getReplyChainMaxDepth();
@@ -1384,6 +1408,8 @@ class Config {
     if (this.getErrorMessage() !== prevErrorMsg) reloaded.push('ERROR_MESSAGE');
     if (this.getErrorRateLimitMinutes() !== prevErrorRate) reloaded.push('ERROR_RATE_LIMIT_MINUTES');
     if (this.getMaxAttachments() !== prevMaxAttach) reloaded.push('MAX_ATTACHMENTS');
+    if (this.getDiscordArtifactMaxMessages() !== prevArtifactMaxMessages) reloaded.push('DISCORD_ARTIFACT_MAX_MESSAGES');
+    if (this.getDiscordArtifactMaxImages() !== prevArtifactMaxImages) reloaded.push('DISCORD_ARTIFACT_MAX_IMAGES');
     if (this.getAllowBotInteractions() !== prevAllowBotInteractions) reloaded.push('ALLOW_BOT_INTERACTIONS');
     if (this.getReplyChainEnabled() !== prevReplyChainEnabled) reloaded.push('REPLY_CHAIN_ENABLED');
     if (this.getReplyChainMaxDepth() !== prevReplyChainMaxDepth) reloaded.push('REPLY_CHAIN_MAX_DEPTH');
@@ -1489,6 +1515,10 @@ class Config {
         clientId: process.env.DISCORD_CLIENT_ID || '',
         tokenConfigured: !!process.env.DISCORD_TOKEN,
         botDisplayName: this.getBotDisplayName(),
+      },
+      discordTools: {
+        artifactMaxMessages: this.getDiscordArtifactMaxMessages(),
+        artifactMaxImages: this.getDiscordArtifactMaxImages(),
       },
       apis: {
         comfyui: this.getComfyUIEndpoint(),

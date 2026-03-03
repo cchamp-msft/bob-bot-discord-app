@@ -5,6 +5,7 @@ import {
   ChannelType,
   PermissionFlagsBits,
 } from 'discord.js';
+import { config } from '../utils/config';
 import { logger } from '../utils/logger';
 import type { DiscordActionResponse } from '../types';
 
@@ -218,7 +219,48 @@ export async function getArtifact(
         return { success: false, error: `No message found matching "${search}" in recent history.` };
       }
     } else {
-      return { success: false, error: 'Provide either message_id or search to find a message.' };
+      // Channel-only: return a bounded summary of recent messages
+      const maxMessages = config.getDiscordArtifactMaxMessages();
+      const maxImages = config.getDiscordArtifactMaxImages();
+      const messages = await targetChannel.messages.fetch({ limit: maxMessages });
+      const sorted = [...messages.values()].sort(
+        (a, b) => a.createdTimestamp - b.createdTimestamp,
+      );
+
+      const messageParts: string[] = [];
+      let imageCount = 0;
+      const collectedImages: string[] = [];
+
+      for (const m of sorted) {
+        const line = `[${m.createdAt.toISOString()}] ${m.author.username}: ${m.content || '(no text content)'}`;
+        messageParts.push(line);
+
+        if (imageCount < maxImages) {
+          for (const att of m.attachments.values()) {
+            if (imageCount >= maxImages) break;
+            if (att.contentType?.startsWith('image/')) {
+              collectedImages.push(att.url);
+              imageCount++;
+            }
+          }
+        }
+      }
+
+      const summary = [
+        `Channel: #${(targetChannel as TextChannel).name ?? targetChannel.id}`,
+        `Messages returned: ${sorted.length}`,
+        '',
+        ...messageParts,
+      ];
+
+      if (collectedImages.length > 0) {
+        summary.push('', `Images (${collectedImages.length}): ${collectedImages.join(', ')}`);
+      }
+
+      return {
+        success: true,
+        data: { text: summary.join('\n') },
+      };
     }
 
     const attachments = targetMessage.attachments.map((a) => a.url);

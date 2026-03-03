@@ -475,6 +475,13 @@ export interface PublicConfig {
     /** Explicit bot display name override (empty = use Discord display name). */
     botDisplayName: string;
   };
+  /** Discord tool-call limits for channel-only artifact retrieval. */
+  discordTools: {
+    /** Max messages returned when get_discord_artifact is called with channel only. */
+    artifactMaxMessages: number;
+    /** Max image attachments returned for channel-only artifact retrieval. */
+    artifactMaxImages: number;
+  };
   apis: {
     comfyui: string;
     ollama: string;
