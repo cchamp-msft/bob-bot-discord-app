@@ -1,4 +1,5 @@
 import {
+  Client,
   Message,
   EmbedBuilder,
   ChannelType,
@@ -22,6 +23,59 @@ import { activityEvents } from '../utils/activityEvents';
 import { activityKeyManager } from '../utils/activityKeyManager';
 
 export type { ChatMessage };
+
+/**
+ * Dispatch a Discord-native tool action (send message, DM, get artifact, react).
+ * Standalone function so all call paths (keyword, two-stage, unified pipeline)
+ * route through one switch —  avoiding accidental fallthrough to Ollama/xAI.
+ */
+async function dispatchDiscordAction(
+  client: Client,
+  toolName: string,
+  contentStr: string,
+  requester: string,
+  sourceMessage: Message,
+): Promise<DiscordActionResponse> {
+  let args: Record<string, string>;
+  try {
+    args = JSON.parse(contentStr);
+  } catch {
+    args = {};
+  }
+
+  const normalized = toolName.replace(/^!\s*/, '').trim().toLowerCase();
+
+  switch (normalized) {
+    case 'send_to_discord_guild':
+      return discordActionClient.sendToGuildChannel(
+        client,
+        { guild: args.guild ?? '', channel: args.channel ?? '', content: args.content ?? '' },
+        requester,
+      );
+    case 'send_to_discord_user':
+      return discordActionClient.sendToUser(
+        client,
+        { user: args.user ?? '', content: args.content ?? '' },
+        requester,
+      );
+    case 'get_discord_artifact':
+      return discordActionClient.getArtifact(
+        client,
+        { channel: args.channel, message_id: args.message_id, search: args.search },
+        requester,
+        sourceMessage,
+      );
+    case 'react_to_message':
+      return discordActionClient.reactToMessage(
+        client,
+        { emoji: args.emoji ?? '', target: args.target, message_id: args.message_id },
+        requester,
+        sourceMessage,
+      );
+    default:
+      return { success: false, error: `Unknown discord tool "${toolName}".` };
+  }
+}
 
 class ApiDispatchError extends Error {
   /** The API that produced the error, when available. */
@@ -564,25 +618,37 @@ class MessageHandler {
         ];
         activityEvents.emitRoutingDecision(toolConfig.api, toolConfig.name, 'keyword');
 
-        const routedResult = await executeRoutedRequest(
-          toolConfig,
-          content,
-          requester,
-          historyWithTrigger,
-          botDisplayName,
-          undefined, // signal
-          undefined, // options
-          dmHistory
-        );
+        // Discord tools are dispatched directly — never routed to apiManager
+        if (toolConfig.api === 'discord') {
+          const discordResult = await dispatchDiscordAction(
+            message.client,
+            toolConfig.name,
+            content,
+            requester,
+            message,
+          );
+          await this.dispatchResponse(discordResult, 'discord', message, requester, isDM);
+        } else {
+          const routedResult = await executeRoutedRequest(
+            toolConfig,
+            content,
+            requester,
+            historyWithTrigger,
+            botDisplayName,
+            undefined, // signal
+            undefined, // options
+            dmHistory
+          );
 
-        await this.dispatchResponse(
-          routedResult.finalResponse,
-          routedResult.finalApi,
-          message,
-          requester,
-          isDM,
-          routedResult.media
-        );
+          await this.dispatchResponse(
+            routedResult.finalResponse,
+            routedResult.finalApi,
+            message,
+            requester,
+            isDM,
+            routedResult.media
+          );
+        }
       } else if (config.getPipelineMode() === 'unified') {
         // ── Unified pipeline: cumulative context, fewer Ollama calls ──
         const ctx: PipelineContext = {
@@ -834,6 +900,7 @@ class MessageHandler {
           role,
           content,
           contextSource: 'dm',
+          discordMessageId: msg.id,
           createdAtMs: msg.createdTimestamp,
           ...(isUserMsg && { hasNamePrefix: true }),
         });
@@ -906,6 +973,7 @@ class MessageHandler {
           role,
           content,
           contextSource: 'dm_private',
+          discordMessageId: msg.id,
           createdAtMs: msg.createdTimestamp,
           ...(isUserMsg && { hasNamePrefix: true }),
         });
@@ -1540,7 +1608,8 @@ class MessageHandler {
 
   /**
    * Execute a Discord-native tool (send message, DM, get artifact, react).
-   * Bypasses the external API routing — uses the bot's own discord.js Client.
+   * Delegates to the standalone `dispatchDiscordAction` so all paths share
+   * one switch.
    */
   private async executeDiscordTool(
     tool: ToolConfig,
@@ -1548,51 +1617,13 @@ class MessageHandler {
     ctx: PipelineContext,
   ): Promise<ToolInvocation> {
     try {
-      let args: Record<string, string>;
-      try {
-        args = JSON.parse(contentStr);
-      } catch {
-        args = {};
-      }
-
-      const client = ctx.sourceMessage.client;
-      const toolName = tool.name.replace(/^!\s*/, '').trim().toLowerCase();
-      let result: DiscordActionResponse;
-
-      switch (toolName) {
-        case 'send_to_discord_guild':
-          result = await discordActionClient.sendToGuildChannel(
-            client,
-            { guild: args.guild ?? '', channel: args.channel ?? '', content: args.content ?? '' },
-            ctx.requester,
-          );
-          break;
-        case 'send_to_discord_user':
-          result = await discordActionClient.sendToUser(
-            client,
-            { user: args.user ?? '', content: args.content ?? '' },
-            ctx.requester,
-          );
-          break;
-        case 'get_discord_artifact':
-          result = await discordActionClient.getArtifact(
-            client,
-            { channel: args.channel, message_id: args.message_id, search: args.search },
-            ctx.requester,
-            ctx.sourceMessage,
-          );
-          break;
-        case 'react_to_message':
-          result = await discordActionClient.reactToMessage(
-            client,
-            { emoji: args.emoji ?? '', target: args.target, message_id: args.message_id },
-            ctx.requester,
-            ctx.sourceMessage,
-          );
-          break;
-        default:
-          result = { success: false, error: `Unknown discord tool "${tool.name}".` };
-      }
+      const result = await dispatchDiscordAction(
+        ctx.sourceMessage.client,
+        tool.name,
+        contentStr,
+        ctx.requester,
+        ctx.sourceMessage,
+      );
 
       const externalData = formatApiResultAsExternalData(tool, result, contentStr);
 
@@ -1867,6 +1898,20 @@ class MessageHandler {
       for (const { tool: resolvedTool, content: contentStr } of legacyFiltered) {
         activityEvents.emitRoutingDecision(resolvedTool.api, resolvedTool.name, 'tool-call');
 
+        // Discord tools bypass executeRoutedRequest — dispatch directly
+        if (resolvedTool.api === 'discord') {
+          const discordResult = await dispatchDiscordAction(
+            sourceMessage.client,
+            resolvedTool.name,
+            contentStr,
+            requester,
+            sourceMessage,
+          );
+          const part = formatApiResultAsExternalData(resolvedTool, discordResult, contentStr);
+          externalDataParts.push(part);
+          continue;
+        }
+
         const apiResult = await executeRoutedRequest(
           resolvedTool,
           contentStr,
@@ -2030,6 +2075,19 @@ class MessageHandler {
         // if (commentaryPrelude) {
         //   await this.sendCommentaryPrelude(sourceMessage, requester, isDM, commentaryPrelude);
         // }
+
+        // Discord tools bypass executeRoutedRequest — dispatch directly
+        if (parseResult.toolConfig.api === 'discord') {
+          const discordResult = await dispatchDiscordAction(
+            sourceMessage.client,
+            parseResult.toolConfig.name,
+            routedInput,
+            requester,
+            sourceMessage,
+          );
+          await this.dispatchResponse(discordResult, 'discord', sourceMessage, requester, isDM);
+          return;
+        }
 
         const apiResult = await executeRoutedRequest(
           parseResult.toolConfig,

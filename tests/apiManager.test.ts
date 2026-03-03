@@ -356,4 +356,12 @@ describe('ApiManager', () => {
       expect(xaiClient.testConnection).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('discord guard', () => {
+    it('should throw when api is discord', async () => {
+      await expect(
+        apiManager.executeRequest('discord', 'user1', '{}', 60)
+      ).rejects.toThrow('Discord tools must be dispatched via dispatchDiscordAction');
+    });
+  });
 });

@@ -41,6 +41,8 @@ class ApiManager {
   ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | XaiImageResponse | XaiVideoResponse> {
     if (api === 'comfyui') {
       return await comfyuiClient.generateImage(data, requester, signal, _timeout);
+    } else if (api === 'discord') {
+      throw new Error('Discord tools must be dispatched via dispatchDiscordAction, not apiManager.executeRequest');
     } else if (api === 'xai-image') {
       return await xaiClient.generateImage(data, requester, signal);
     } else if (api === 'xai-video') {
