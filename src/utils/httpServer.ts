@@ -498,6 +498,10 @@ class HttpServer {
 
         // Update tools config if provided
         if (tools && Array.isArray(tools)) {
+          if (tools.length === 0) {
+            res.status(400).json({ success: false, error: 'At least one tool is required — use Restore Defaults to reset tools' });
+            return;
+          }
           await configWriter.updateTools(tools);
           messages.push(`Updated tools config: ${tools.length} tool(s)`);
           logger.log('success', 'configurator', `Config saved — ${tools.length} tool(s) written to tools config`);

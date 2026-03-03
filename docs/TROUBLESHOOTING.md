@@ -99,6 +99,8 @@ This guide helps you resolve common issues with Bob Bot.
 
 **Cause**: `config/tools.xml` (or the file at `TOOLS_CONFIG_PATH`) contains malformed XML. When parsing fails, tools fall back to an empty array and the configurator receives that empty list.
 
+> **Prevention**: The configurator now blocks saving when the tools table is empty, and the server rejects empty tools payloads with a `400` error. If you see *"Cannot save: no tools defined"*, use **Restore Defaults** to repopulate the table before saving.
+
 **Solutions**:
 1. Check the red banner message — it includes the parse error and the failing file name.
 2. If a `.debug` artifact exists (e.g. `config/tools.xml.debug`), open it to inspect the raw content that failed validation. This file is created automatically when a configurator *save* operation produces invalid XML.

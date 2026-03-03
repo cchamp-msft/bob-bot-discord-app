@@ -268,6 +268,37 @@ describe('httpServer', () => {
     expect(body.toolsLoadError).toBeNull();
   });
 
+  // ── Save endpoint validation ──────────────────────────────────
+
+  it('POST /api/config/save rejects empty tools array with 400', async () => {
+    const res = await fetch(`${baseUrl}/api/config/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tools: [] }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.success).toBe(false);
+    expect(body.error).toMatch(/at least one tool/i);
+  });
+
+  it('POST /api/config/save accepts non-empty tools array', async () => {
+    const { configWriter } = require('../src/utils/configWriter');
+    (configWriter.updateTools as jest.Mock).mockResolvedValue(undefined);
+
+    const res = await fetch(`${baseUrl}/api/config/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tools: [{ name: '!test', api: 'ollama', timeout: 300, description: 'Test tool' }] }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.success).toBe(true);
+    expect(configWriter.updateTools).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ name: '!test' })]),
+    );
+  });
+
   // ── Health endpoint (no auth) ────────────────────────────────
 
   it('/health responds without authentication', async () => {

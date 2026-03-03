@@ -2351,6 +2351,14 @@ flowchart TD
       // Collect tools
       const tools = collectTools();
 
+      if (tools.length === 0) {
+        saveMsg.textContent = 'Cannot save: no tools defined — use Restore Defaults to reset tools';
+        saveMsg.className = 'msg err';
+        saveBtn.disabled = false;
+        conLog(`[${new Date().toISOString()}] Save blocked: tools table is empty`, 'err');
+        return;
+      }
+
       const res = await fetch('/api/config/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2358,6 +2366,14 @@ flowchart TD
       });
 
       const result = await res.json();
+
+      if (!res.ok) {
+        saveMsg.textContent = result.error || `Save failed (HTTP ${res.status})`;
+        saveMsg.className = 'msg err';
+        saveBtn.disabled = false;
+        conLog(`[${new Date().toISOString()}] Save rejected (${res.status}): ${result.error || 'unknown'}`, 'err');
+        return;
+      }
 
       if (result.success) {
         document.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
