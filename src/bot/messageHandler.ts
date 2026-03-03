@@ -25,6 +25,27 @@ import { activityKeyManager } from '../utils/activityKeyManager';
 export type { ChatMessage };
 
 /**
+ * Normalize common argument aliases for Discord tool calls to canonical keys.
+ * Maps channelId / channel_id → channel, messageId → message_id.
+ * Mutates and returns the same object.
+ */
+export function normalizeDiscordArgs(args: Record<string, string>): Record<string, string> {
+  if ('channelId' in args && !('channel' in args)) {
+    args.channel = args.channelId;
+    delete args.channelId;
+  }
+  if ('channel_id' in args && !('channel' in args)) {
+    args.channel = args.channel_id;
+    delete args.channel_id;
+  }
+  if ('messageId' in args && !('message_id' in args)) {
+    args.message_id = args.messageId;
+    delete args.messageId;
+  }
+  return args;
+}
+
+/**
  * Dispatch a Discord-native tool action (send message, DM, get artifact, react).
  * Standalone function so all call paths (keyword, two-stage, unified pipeline)
  * route through one switch —  avoiding accidental fallthrough to Ollama/xAI.
@@ -42,6 +63,9 @@ async function dispatchDiscordAction(
   } catch {
     args = {};
   }
+
+  // Normalize common argument aliases to canonical keys
+  normalizeDiscordArgs(args);
 
   const normalized = toolName.replace(/^!\s*/, '').trim().toLowerCase();
 

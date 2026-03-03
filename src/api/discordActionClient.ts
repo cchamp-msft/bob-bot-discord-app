@@ -156,6 +156,44 @@ export async function sendToUser(
   }
 }
 
+// ── resolveChannelGlobally ──────────────────────────────────────
+
+/**
+ * Resolve a channel by ID or name across all guilds the bot is a member of.
+ * Tries `client.channels.fetch(id)` first (fast path for snowflake IDs),
+ * then falls back to a name-based cache search across all guilds.
+ */
+async function resolveChannelGlobally(
+  client: Client,
+  query: string,
+): Promise<TextChannel | null> {
+  // Fast path: try fetching by ID (works for snowflake IDs)
+  try {
+    const ch = await client.channels.fetch(query);
+    if (
+      ch &&
+      (ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildAnnouncement)
+    ) {
+      return ch as TextChannel;
+    }
+  } catch {
+    // Not a valid ID or bot lacks access — fall through to name search
+  }
+
+  // Slow path: search by name across all guilds
+  const normalized = query.toLowerCase().replace(/^#/, '');
+  for (const [, guild] of client.guilds.cache) {
+    const found = guild.channels.cache.find(
+      (c) =>
+        (c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement) &&
+        c.name.toLowerCase() === normalized,
+    );
+    if (found) return found as TextChannel;
+  }
+
+  return null;
+}
+
 // ── getArtifact ────────────────────────────────────────────────
 
 interface GetArtifactArgs {
@@ -172,11 +210,20 @@ export async function getArtifact(
 ): Promise<DiscordActionResponse> {
   const { channel: channelQuery, message_id: messageId, search } = args;
 
-  // Resolve channel: provided name/ID, or default to source channel
+  // Type-guard: reject non-string channel / message_id early
+  if (channelQuery !== undefined && typeof channelQuery !== 'string') {
+    return { success: false, error: 'Channel argument must be a string.' };
+  }
+  if (messageId !== undefined && typeof messageId !== 'string') {
+    return { success: false, error: 'message_id argument must be a string.' };
+  }
+
+  // Resolve channel: provided name/ID globally, or default to source channel
   let targetChannel = sourceMessage.channel;
   if (channelQuery) {
     const guild = sourceMessage.guild;
     if (guild) {
+      // Try within the source guild first
       const found = guild.channels.cache.find(
         (c) =>
           (c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement) &&
@@ -184,6 +231,14 @@ export async function getArtifact(
       );
       if (found) {
         targetChannel = found as TextChannel;
+      } else {
+        return { success: false, error: `Channel "${channelQuery}" not found.` };
+      }
+    } else {
+      // No guild context (e.g. DM) — resolve channel globally by ID or name
+      const resolved = await resolveChannelGlobally(client, channelQuery);
+      if (resolved) {
+        targetChannel = resolved;
       } else {
         return { success: false, error: `Channel "${channelQuery}" not found.` };
       }
