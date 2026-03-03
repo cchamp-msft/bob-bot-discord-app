@@ -1615,6 +1615,19 @@ flowchart TD
       const cfg = await res.json();
       originalConfig = cfg;
 
+      // Render tools early so they still appear even if later field mapping fails
+      const toolsFromConfig = Array.isArray(cfg.tools) ? cfg.tools : [];
+      const defaultToolsFromConfig = Array.isArray(cfg.defaultTools) ? cfg.defaultTools : [];
+      renderTools(toolsFromConfig);
+
+      const toolsPayloadError = Array.isArray(cfg.tools)
+        ? null
+        : `Invalid tools payload from /api/config (expected array, got ${typeof cfg.tools})`;
+      showToolsLoadError(cfg.toolsLoadError || toolsPayloadError);
+
+      // Check for missing default tools and show sync button if needed
+      checkMissingDefaults(toolsFromConfig, defaultToolsFromConfig);
+
       // Populate env fields
       document.getElementById('discord_client_id').value = cfg.discord.clientId;
       document.getElementById('comfyui_endpoint').value = cfg.apis.comfyui;
@@ -1865,7 +1878,7 @@ flowchart TD
       document.getElementById('ollama_tool_timeout').value = cfg.apis.ollamaToolTimeout ? Math.round(cfg.apis.ollamaToolTimeout / 1000) : '';
       document.getElementById('ollama_final_pass_timeout').value = cfg.apis.ollamaFinalPassTimeout ? Math.round(cfg.apis.ollamaFinalPassTimeout / 1000) : '';
       document.getElementById('ollama_thraken_url').value = cfg.apis.ollamaThrakenUrl || '';
-      document.getElementById('context_eval_timeout').value = cfg.contextEval.timeout ? Math.round(cfg.contextEval.timeout / 1000) : '';
+      document.getElementById('context_eval_timeout').value = cfg.contextEval?.timeout ? Math.round(cfg.contextEval.timeout / 1000) : '';
 
       // Populate tool prompt
       document.getElementById('ollama_tool_prompt').value = cfg.apis.ollamaToolPrompt || '';
@@ -1881,15 +1894,6 @@ flowchart TD
       document.getElementById('discord_token').value = '';
       document.getElementById('discord_token').placeholder =
         cfg.discord.tokenConfigured ? 'Token configured ✓ — paste new value to change' : 'Paste Discord bot token here';
-
-      // Populate tools
-      renderTools(cfg.tools);
-
-      // Show diagnostic banner if tools failed to load
-      showToolsLoadError(cfg.toolsLoadError);
-
-      // Check for missing default tools and show sync button if needed
-      checkMissingDefaults(cfg.tools, cfg.defaultTools || []);
 
       // Apply server-side theme preference
       if (cfg.configuratorTheme) {
