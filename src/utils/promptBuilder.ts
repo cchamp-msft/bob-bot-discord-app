@@ -283,7 +283,8 @@ function formatConversationHistory(history: ChatMessage[], discordBotName?: stri
       // that happens to start with "word: …" patterns.
       const text = msg.role === 'user' ? stripSpeakerPrefix(msg.content, msg.hasNamePrefix) : msg.content;
       const tsAttr = msg.createdAtMs != null ? ` timestamp="${Math.floor(msg.createdAtMs / 1000)}"` : '';
-      return `<message role="${msg.role}" speaker="${escapeXmlAttribute(speaker)}" speaker_type="${speakerType}"${tsAttr}>${escapeXmlContent(text)}</message>`;
+      const idAttr = msg.discordMessageId ? ` discord_message_id="${escapeXmlAttribute(msg.discordMessageId)}"` : '';
+      return `<message role="${msg.role}" speaker="${escapeXmlAttribute(speaker)}" speaker_type="${speakerType}"${tsAttr}${idAttr}>${escapeXmlContent(text)}</message>`;
     });
     blocks.push(`<context source="${source}">\n${lines.join('\n')}\n</context>`);
   }
@@ -317,7 +318,8 @@ function formatConversationHistoryForReprompt(
       const speakerType = inferSpeakerType(msg, speaker, requesterName);
       const text = msg.role === 'user' ? stripSpeakerPrefix(msg.content, msg.hasNamePrefix) : msg.content;
       const tsAttr = msg.createdAtMs != null ? ` timestamp="${Math.floor(msg.createdAtMs / 1000)}"` : '';
-      return `<message role="${msg.role}" speaker="${escapeXmlAttribute(speaker)}" speaker_type="${speakerType}"${tsAttr}>${escapeXmlContent(text)}</message>`;
+      const idAttr = msg.discordMessageId ? ` discord_message_id="${escapeXmlAttribute(msg.discordMessageId)}"` : '';
+      return `<message role="${msg.role}" speaker="${escapeXmlAttribute(speaker)}" speaker_type="${speakerType}"${tsAttr}${idAttr}>${escapeXmlContent(text)}</message>`;
     });
     blocks.push(`<context source="${source}">\n${lines.join('\n')}\n</context>`);
   }

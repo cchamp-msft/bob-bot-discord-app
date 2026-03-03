@@ -232,7 +232,7 @@ export async function getArtifact(
       const collectedImages: string[] = [];
 
       for (const m of sorted) {
-        const line = `[${m.createdAt.toISOString()}] ${m.author.username}: ${m.content || '(no text content)'}`;
+        const line = `[${m.createdAt.toISOString()}] [id:${m.id}] ${m.author.username}: ${m.content || '(no text content)'}`;
         messageParts.push(line);
 
         if (imageCount < maxImages) {
@@ -265,6 +265,7 @@ export async function getArtifact(
 
     const attachments = targetMessage.attachments.map((a) => a.url);
     const parts = [
+      `Message ID: ${targetMessage.id}`,
       `Author: ${targetMessage.author.username}`,
       `Timestamp: ${targetMessage.createdAt.toISOString()}`,
       `Content: ${targetMessage.content || '(no text content)'}`,

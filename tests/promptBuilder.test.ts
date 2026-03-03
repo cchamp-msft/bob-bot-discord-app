@@ -274,6 +274,20 @@ describe('PromptBuilder', () => {
       expect(content).toContain('<thinking_and_output_rules>');
     });
 
+    it('should include discord_message_id attribute when present on ChatMessage', () => {
+      const content = buildUserContent({
+        userMessage: 'Summarize',
+        conversationHistory: [
+          { role: 'user', content: 'Hello', discordMessageId: '123456789', contextSource: 'channel', createdAtMs: 1000000 },
+          { role: 'assistant', content: 'Hi there' },
+        ],
+      });
+
+      expect(content).toContain('discord_message_id="123456789"');
+      // Assistant message has no discordMessageId, so attribute should not appear for it
+      expect(content).not.toMatch(/speaker="Bob"[^>]*discord_message_id/);
+    });
+
     it('should include empty conversation_history when no history provided', () => {
       const content = buildUserContent({
         userMessage: 'Hello',

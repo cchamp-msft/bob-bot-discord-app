@@ -115,6 +115,7 @@ describe('getArtifact', () => {
     expect(result.success).toBe(true);
     expect(result.data?.text).toContain('target message');
     expect(result.data?.text).toContain('Author: alice');
+    expect(result.data?.text).toContain('Message ID: 42');
   });
 
   // ── search path ─────────────────────────────────────────────
@@ -172,6 +173,9 @@ describe('getArtifact', () => {
     expect(result.success).toBe(true);
     expect(result.data?.text).toContain('Channel: #general');
     expect(result.data?.text).toContain('Messages returned: 3');
+    expect(result.data?.text).toContain('[id:1]');
+    expect(result.data?.text).toContain('[id:2]');
+    expect(result.data?.text).toContain('[id:3]');
     expect(result.data?.text).toContain('first');
     expect(result.data?.text).toContain('second');
     expect(result.data?.text).toContain('third');
