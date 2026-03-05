@@ -333,4 +333,31 @@
       <validation>Emoji is required. If neither target nor message_id is provided, reacts to the most recent non-bot message.</validation>
     </parameters>
   </tool>
+
+  <tool>
+    <name>delete_discord_message</name>
+    <api>discord</api>
+    <timeout>15</timeout>
+    <description>Delete one of the bot's own messages. Can target by message_id, channel name/ID, or DM username. Only deletes messages authored by the bot — never other users' messages. When no selector is provided, deletes the bot's most recent message in the current conversation.</description>
+    <abilityWhen>User asks the bot to delete, remove, or unsend one of its own messages.</abilityWhen>
+    <parameters>
+      <mode>mixed</mode>
+      <message_id>
+        <type>string</type>
+        <description>Exact Discord message ID to delete</description>
+        <required>false</required>
+      </message_id>
+      <channel>
+        <type>string</type>
+        <description>Channel name (without #) or ID to find the bot's last message in</description>
+        <required>false</required>
+      </channel>
+      <username>
+        <type>string</type>
+        <description>Username for a DM conversation to find the bot's last message in</description>
+        <required>false</required>
+      </username>
+      <validation>Only the bot's own messages can be deleted. Provide message_id for a specific message, channel to delete the bot's last message in a guild channel, username for a DM, or nothing to delete the bot's last message in the current conversation.</validation>
+    </parameters>
+  </tool>
 </tools>

@@ -413,3 +413,179 @@ export async function reactToMessage(
     return { success: false, error: `Failed to react: ${msg}` };
   }
 }
+
+// ── deleteMessage ──────────────────────────────────────────────
+
+interface DeleteMessageArgs {
+  message_id?: string;
+  channel?: string;
+  username?: string;
+}
+
+/**
+ * Delete exactly one bot-authored message.
+ *
+ * Selector precedence:
+ *   1. Explicit `message_id`
+ *   2. Reply-target on the triggering message (`sourceMessage.reference`)
+ *   3. Last bot-authored message in the resolved scope
+ *      (channel by name/ID, DM by username, or current channel)
+ *
+ * Safety: the target message MUST be authored by the bot. Attempts to delete
+ * another user's message are rejected even if the bot has ManageMessages.
+ */
+export async function deleteMessage(
+  client: Client,
+  args: DeleteMessageArgs,
+  requester: string,
+  sourceMessage: Message,
+): Promise<DiscordActionResponse> {
+  const { message_id: messageId, channel: channelQuery, username } = args;
+
+  // ── Resolve target channel ──────────────────────────────────
+  let targetChannel = sourceMessage.channel;
+
+  if (channelQuery) {
+    const guild = sourceMessage.guild;
+    if (guild) {
+      // Search within the source guild only (current-guild scope)
+      const matches = guild.channels.cache.filter(
+        (c) =>
+          (c.type === ChannelType.GuildText ||
+            c.type === ChannelType.GuildAnnouncement ||
+            c.type === ChannelType.PublicThread ||
+            c.type === ChannelType.PrivateThread ||
+            c.type === ChannelType.AnnouncementThread) &&
+          (c.id === channelQuery ||
+            c.name.toLowerCase() === channelQuery.toLowerCase().replace(/^#/, '')),
+      );
+
+      if (matches.size === 0) {
+        return { success: false, error: `Channel "${channelQuery}" not found in this server.` };
+      }
+      if (matches.size > 1) {
+        const names = matches.map((c) => `#${c.name} (${c.id})`).join(', ');
+        return {
+          success: false,
+          error: `Ambiguous channel "${channelQuery}" — multiple matches: ${names}. Please use the channel ID instead.`,
+        };
+      }
+      targetChannel = matches.first()! as TextChannel;
+    } else {
+      // DM context — resolve globally
+      const resolved = await resolveChannelGlobally(client, channelQuery);
+      if (!resolved) {
+        return { success: false, error: `Channel "${channelQuery}" not found.` };
+      }
+      targetChannel = resolved;
+    }
+  } else if (username) {
+    // Resolve DM channel for the given username
+    let targetId: string | undefined;
+    for (const guild of client.guilds.cache.values()) {
+      const member = guild.members.cache.find(
+        (m) =>
+          m.user.username.toLowerCase() === username.toLowerCase() ||
+          m.displayName.toLowerCase() === username.toLowerCase(),
+      );
+      if (member) {
+        targetId = member.id;
+        break;
+      }
+    }
+    if (!targetId) {
+      return { success: false, error: `User "${username}" not found.` };
+    }
+
+    // Check for ambiguous username across guilds
+    const allMatches = new Set<string>();
+    for (const guild of client.guilds.cache.values()) {
+      const member = guild.members.cache.find(
+        (m) =>
+          m.user.username.toLowerCase() === username.toLowerCase() ||
+          m.displayName.toLowerCase() === username.toLowerCase(),
+      );
+      if (member) allMatches.add(member.id);
+    }
+    if (allMatches.size > 1) {
+      return {
+        success: false,
+        error: `Ambiguous username "${username}" — matches multiple users. Please use a message_id instead.`,
+      };
+    }
+
+    try {
+      const targetUser = await client.users.fetch(targetId);
+      const dmChannel = await targetUser.createDM();
+      targetChannel = dmChannel as any;
+    } catch {
+      return { success: false, error: `Could not open DM channel with "${username}".` };
+    }
+  }
+
+  if (!targetChannel.isTextBased()) {
+    return { success: false, error: 'Target channel is not text-based.' };
+  }
+
+  const botId = client.user?.id;
+  if (!botId) {
+    return { success: false, error: 'Bot user is not available.' };
+  }
+
+  // ── Resolve target message ──────────────────────────────────
+  try {
+    let targetMessage: Message | undefined;
+
+    if (messageId) {
+      // Priority 1: explicit message ID
+      targetMessage = await targetChannel.messages.fetch(messageId);
+    } else if (
+      !channelQuery &&
+      !username &&
+      sourceMessage.reference?.messageId
+    ) {
+      // Priority 2: reply target (only when no explicit channel/username selector)
+      try {
+        targetMessage = await targetChannel.messages.fetch(
+          sourceMessage.reference.messageId,
+        );
+      } catch {
+        // Reply target may be deleted — fall through to last-bot-message
+      }
+    }
+
+    if (!targetMessage) {
+      // Priority 3: last bot-authored message in target channel
+      const recent = await targetChannel.messages.fetch({ limit: 50 });
+      targetMessage = recent.find(
+        (m) => m.author.id === botId && m.id !== sourceMessage.id,
+      );
+    }
+
+    if (!targetMessage) {
+      return { success: false, error: 'No recent bot message found to delete.' };
+    }
+
+    // ── Safety: only delete bot-authored messages ──────────────
+    if (targetMessage.author.id !== botId) {
+      return {
+        success: false,
+        error: 'Cannot delete that message — it was not sent by the bot.',
+      };
+    }
+
+    await targetMessage.delete();
+    logger.log('success', 'system',
+      `DISCORD-ACTION: ${requester} deleted bot message ${targetMessage.id} from ${(targetChannel as TextChannel).name ?? targetChannel.id}`);
+    return {
+      success: true,
+      data: { text: `Deleted bot message (${targetMessage.id}).` },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('Unknown Message')) {
+      return { success: false, error: 'Message not found — it may have already been deleted.' };
+    }
+    return { success: false, error: `Failed to delete message: ${msg}` };
+  }
+}

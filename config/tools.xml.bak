@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tools>
+  <tool>
+    <name>help</name>
+    <api>ollama</api>
+    <timeout>120</timeout>
+    <description>Explain what the bot can help with and how to use each capability</description>
+    <builtin>true</builtin>
+    <allowEmptyContent>true</allowEmptyContent>
+  </tool>
+  <tool>
+    <name>activity_key</name>
+    <api>ollama</api>
+    <timeout>10</timeout>
+    <description>Request a temporary access key for the activity monitor</description>
+    <builtin>true</builtin>
+    <allowEmptyContent>true</allowEmptyContent>
+  </tool>
+  <tool>
+    <name>generate_image</name>
+    <api>comfyui</api>
+    <timeout>600</timeout>
+    <description>Generate an image from a text prompt</description>
+    <enabled>false</enabled>
+    <abilityWhen>User wants an image generated.</abilityWhen>
+    <parameters>
+      <mode>implicit</mode>
+      <prompt>
+        <type>string</type>
+        <description>prompt</description>
+        <required>true</required>
+      </prompt>
+      <negative_prompt>
+        <type>string</type>
+        <description>negative_prompt</description>
+        <required>false</required>
+      </negative_prompt>
+      <validation>Use the reply target text if present; otherwise use descriptive text from the current message. If no usable image prompt text can be inferred, ask the user what they want generated.</validation>
+      <examples>
+        <example>generate_image a sunset over mountains</example>
+      </examples>
+    </parameters>
+  </tool>
+  <tool>
+    <name>generate_image_grok</name>
+    <api>xai-image</api>
+    <timeout>120</timeout>
+    <description>Generate an image using Grok (xAI) from a text prompt</description>
+    <abilityWhen>User wants an image generated using Grok or xAI.</abilityWhen>
+    <parameters>
+      <mode>implicit</mode>
+      <prompt>
+        <type>string</type>
+        <description>prompt</description>
+        <required>true</required>
+      </prompt>
+      <validation>Use the reply target text if present; otherwise use descriptive text from the current message.</validation>
+      <examples>
+        <example>generate_image_grok a sunset over mountains</example>
+      </examples>
+    </parameters>
+  </tool>
+  <tool>
+    <name>generate_video_grok</name>
+    <api>xai-video</api>
+    <timeout>600</timeout>
+    <description>Generate a short video using Grok (xAI) from a text prompt</description>
+    <abilityWhen>User wants a video generated using Grok or xAI.</abilityWhen>
+    <parameters>
+      <mode>implicit</mode>
+      <prompt>
+        <type>string</type>
+        <description>prompt</description>
+        <required>true</required>
+      </prompt>
+      <validation>Use the reply target text if present; otherwise use descriptive text from the current message.</validation>
+      <examples>
+        <example>generate_video_grok a timelapse of a flower blooming</example>
+      </examples>
+    </parameters>
+  </tool>
+  <tool>
+    <name>get_current_weather</name>
+    <api>accuweather</api>
+    <timeout>60</timeout>
+    <description>Get weather details including current conditions and forecast</description>
+    <abilityWhen>User asks about weather details for a location, including temperature, precipitation, wind, and multi-day outlook.</abilityWhen>
+    <parameters>
+      <mode>explicit</mode>
+      <location>
+        <type>string</type>
+        <description>location</description>
+        <required>true</required>
+      </location>
+      <validation>Location must be a valid worldwide city name, region, or United States postal code.</validation>
+      <examples>
+        <example>get_current_weather Dallas</example>
+        <example>get_current_weather 90210</example>
+        <example>get_current_weather London</example>
+        <example>UK</example>
+      </examples>
+    </parameters>
+  </tool>
+  <tool>
+    <name>get_recent_nfl_data</name>
+    <api>nfl</api>
+    <timeout>30</timeout>
+    <description>Get recent NFL scores or news. Provide a data type: &quot;scores&quot; for game results, &quot;news&quot; for headlines. Optionally add a filter — a date (YYYYMMDD or YYYY-MM-DD) for scores, or a keyword (e.g. team name) for news.</description>
+    <allowEmptyContent>true</allowEmptyContent>
+    <abilityWhen>User asks about NFL scores, game results, news, or headlines.</abilityWhen>
+    <parameters>
+      <mode>mixed</mode>
+      <dataType>
+        <type>string</type>
+        <description>dataType</description>
+        <required>true</required>
+      </dataType>
+      <filter>
+        <type>string</type>
+        <description>filter</description>
+        <required>false</required>
+      </filter>
+      <validation>Type must be &quot;scores&quot; or &quot;news&quot;. Filter is optional: for scores a date in YYYYMMDD or YYYY-MM-DD format; for news a keyword to narrow results.</validation>
+    </parameters>
+  </tool>
+  <tool>
+    <name>web_search</name>
+    <api>serpapi</api>
+    <timeout>60</timeout>
+    <description>Search the web for current information using Google</description>
+    <abilityWhen>User needs current or real-time information from the web.</abilityWhen>
+    <parameters>
+      <mode>explicit</mode>
+      <query>
+        <type>string</type>
+        <description>query</description>
+        <required>true</required>
+      </query>
+      <validation>Query should be a concise search term or question suitable for a web search engine.</validation>
+      <examples>
+        <example>web_search latest TypeScript release</example>
+        <example>web_search Super Bowl winner 2026</example>
+      </examples>
+    </parameters>
+  </tool>
+  <tool>
+    <name>generate_meme</name>
+    <api>meme</api>
+    <timeout>60</timeout>
+    <description>Create meme images from popular templates</description>
+    <abilityWhen>User asks to create or generate a meme image.</abilityWhen>
+    <parameters>
+      <mode>implicit</mode>
+      <template_and_text>
+        <type>string</type>
+        <description>template_and_text</description>
+        <required>true</required>
+      </template_and_text>
+      <validation>Output must be: templateName | top text | bottom text. Pick the template whose tone and format best match the subject, mood, or joke the user is going for. If the user names a specific template, use it.</validation>
+      <examples>
+        <example>generate_meme success kid | finished all my tasks | on a Monday</example>
+        <example>generate_meme one does not simply | walk into mordor</example>
+      </examples>
+    </parameters>
+  </tool>
+  <tool>
+    <name>get_meme_templates</name>
+    <api>meme</api>
+    <timeout>30</timeout>
+    <description>Get available meme templates. Use when a user asks what meme templates are available or wants to see a list of meme templates.</description>
+    <allowEmptyContent>true</allowEmptyContent>
+    <abilityWhen>User asks what meme templates are available or wants to see a list of meme templates.</abilityWhen>
+  </tool>
+  <tool>
+    <name>consult_grok</name>
+    <api>xai</api>
+    <timeout>120</timeout>
+    <description>Consult Grok (xAI) for a second opinion or deeper analysis on complex topics</description>
+    <enabled>false</enabled>
+    <abilityWhen>You need a second opinion on ambiguous or complex reasoning, a deeper dive into a topic beyond basic facts or web searches, or updated/real-time information on current events or evolving trends.</abilityWhen>
+    <parameters>
+      <mode>explicit</mode>
+      <query>
+        <type>string</type>
+        <description>query</description>
+        <required>true</required>
+      </query>
+      <validation>Pass the full query context as input to ensure Grok has all necessary details. Do not send partial or vague requests.</validation>
+      <examples>
+        <example>consult_grok What are the latest developments in quantum computing and how do they compare to classical computing advances in 2026?</example>
+      </examples>
+    </parameters>
+  </tool>
+  <tool>
+    <name>delegate_to_local</name>
+    <api>xai</api>
+    <timeout>10</timeout>
+    <description>Delegate the final response pass to the local Ollama model instead of xAI for this turn</description>
+    <enabled>false</enabled>
+    <allowEmptyContent>true</allowEmptyContent>
+    <abilityWhen>The response should be delegated to and finalized by the local Ollama model rather than xAI, for example when the user prefers a local model perspective or when xAI tools have gathered data but the local model should synthesize.</abilityWhen>
+  </tool>
+  <tool>
+    <name>send_to_discord_guild</name>
+    <api>discord</api>
+    <timeout>15</timeout>
+    <description>Send a message to a specific channel in a Discord server. Use when the user asks to post or say something in another channel or server.</description>
+    <abilityWhen>User wants to send a message to a specific Discord channel or server.</abilityWhen>
+    <parameters>
+      <mode>explicit</mode>
+      <guild>
+        <type>string</type>
+        <description>guild</description>
+        <required>true</required>
+      </guild>
+      <channel>
+        <type>string</type>
+        <description>channel</description>
+        <required>true</required>
+      </channel>
+      <content>
+        <type>string</type>
+        <description>content</description>
+        <required>true</required>
+      </content>
+      <validation>Guild and channel must be names or IDs the bot has access to. Content must not be empty.</validation>
+    </parameters>
+  </tool>
+  <tool>
+    <name>send_to_discord_user</name>
+    <api>discord</api>
+    <timeout>15</timeout>
+    <description>Send a direct message (DM) to a Discord user. Use when the user asks to DM or privately message someone.</description>
+    <abilityWhen>User wants to send a direct message or DM to another Discord user.</abilityWhen>
+    <parameters>
+      <mode>explicit</mode>
+      <user>
+        <type>string</type>
+        <description>user</description>
+        <required>true</required>
+      </user>
+      <content>
+        <type>string</type>
+        <description>content</description>
+        <required>true</required>
+      </content>
+      <validation>User must share a server with the bot. Cannot DM other bots.</validation>
+    </parameters>
+  </tool>
+  <tool>
+    <name>get_discord_artifact</name>
+    <api>discord</api>
+    <timeout>15</timeout>
+    <description>Retrieve messages from a Discord channel. If message_id is given, returns that specific message. If search is given, finds a message matching the text. If only channel is provided, returns recent channel history (message and image counts governed by configured limits).</description>
+    <abilityWhen>User wants to find, retrieve, or review messages from Discord history or a channel.</abilityWhen>
+    <parameters>
+      <mode>mixed</mode>
+      <channel>
+        <type>string</type>
+        <description>channel</description>
+        <required>false</required>
+      </channel>
+      <message_id>
+        <type>string</type>
+        <description>message_id</description>
+        <required>false</required>
+      </message_id>
+      <search>
+        <type>string</type>
+        <description>search</description>
+        <required>false</required>
+      </search>
+      <validation>Provide message_id for a specific message, search to find by text, or only channel to retrieve recent history.</validation>
+    </parameters>
+  </tool>
+  <tool>
+    <name>react_to_message</name>
+    <api>discord</api>
+    <timeout>15</timeout>
+    <description>Add an emoji reaction to a message. Use when the user asks to react to a message with an emoji.</description>
+    <abilityWhen>User wants to react to a Discord message with an emoji.</abilityWhen>
+    <parameters>
+      <mode>mixed</mode>
+      <emoji>
+        <type>string</type>
+        <description>emoji</description>
+        <required>true</required>
+      </emoji>
+      <target>
+        <type>string</type>
+        <description>target</description>
+        <required>false</required>
+      </target>
+      <message_id>
+        <type>string</type>
+        <description>message_id</description>
+        <required>false</required>
+      </message_id>
+      <validation>Emoji is required. If neither target nor message_id is provided, reacts to the most recent non-bot message.</validation>
+    </parameters>
+  </tool>
+  <tool>
+    <name>delete_discord_message</name>
+    <api>discord</api>
+    <timeout>15</timeout>
+    <description>Delete one of the bot&apos;s own messages. Can target by message_id, channel name/ID, or DM username. Only deletes messages authored by the bot — never other users&apos; messages. When no selector is provided, deletes the bot&apos;s most recent message in the current conversation.</description>
+    <abilityWhen>User asks the bot to delete, remove, or unsend one of its own messages.</abilityWhen>
+    <parameters>
+      <mode>mixed</mode>
+      <message_id>
+        <type>string</type>
+        <description>message_id</description>
+        <required>false</required>
+      </message_id>
+      <channel>
+        <type>string</type>
+        <description>channel</description>
+        <required>false</required>
+      </channel>
+      <username>
+        <type>string</type>
+        <description>username</description>
+        <required>false</required>
+      </username>
+      <validation>Only the bot&apos;s own messages can be deleted. Provide message_id for a specific message, channel to delete the bot&apos;s last message in a guild channel, username for a DM, or nothing to delete the bot&apos;s last message in the current conversation.</validation>
+    </parameters>
+  </tool>
+</tools>

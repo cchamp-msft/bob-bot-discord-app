@@ -803,6 +803,161 @@ describe('ApiRouter', () => {
     });
   });
 
+  describe('executeRoutedRequest — raw finalPassIntent skips final pass', () => {
+    it('should skip final pass for non-Ollama API when finalPassIntent is raw', async () => {
+      const tool: ToolConfig = {
+        name: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Temperature: 72°F, Sunny' },
+      });
+
+      const result = await executeRoutedRequest(
+        tool, 'just the data for Dallas', 'testuser', undefined, undefined, undefined,
+        { finalPassIntent: 'raw' }
+      );
+
+      expect(result.finalApi).toBe('accuweather');
+      expect(result.finalResponse.success).toBe(true);
+      expect(result.stages).toHaveLength(1);
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+    });
+
+    it('should still run final pass for non-Ollama API when finalPassIntent is synthesize', async () => {
+      const tool: ToolConfig = {
+        name: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Temperature: 72°F, Sunny' },
+      });
+
+      // Final pass
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'It is a beautiful 72 degrees in Dallas!' },
+      });
+
+      const result = await executeRoutedRequest(
+        tool, 'what do you think about the weather in Dallas', 'testuser', undefined, undefined, undefined,
+        { finalPassIntent: 'synthesize' }
+      );
+
+      expect(result.finalApi).toBe('ollama');
+      expect(result.stages).toHaveLength(2);
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+    });
+
+    it('should still run final pass for non-Ollama API when finalPassIntent is auto', async () => {
+      const tool: ToolConfig = {
+        name: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Temperature: 72°F, Sunny' },
+      });
+
+      // Final pass
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'It is a beautiful 72 degrees in Dallas!' },
+      });
+
+      const result = await executeRoutedRequest(
+        tool, 'weather in Dallas', 'testuser', undefined, undefined, undefined,
+        { finalPassIntent: 'auto' }
+      );
+
+      expect(result.finalApi).toBe('ollama');
+      expect(result.stages).toHaveLength(2);
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+    });
+
+    it('should collect media follow-ups even when raw intent skips final pass', async () => {
+      const tool: ToolConfig = {
+        name: 'generate',
+        api: 'comfyui',
+        timeout: 300,
+        description: 'Generate image',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { images: ['http://localhost/img.png'] },
+      });
+
+      const result = await executeRoutedRequest(
+        tool, 'just the raw output', 'testuser', undefined, undefined, undefined,
+        { finalPassIntent: 'raw' }
+      );
+
+      expect(result.finalApi).toBe('comfyui');
+      expect(result.stages).toHaveLength(1);
+      expect(result.media).toHaveLength(1);
+      expect(result.media[0]).toEqual(expect.objectContaining({ kind: 'comfyui' }));
+    });
+
+    it('should infer raw intent from message text when no explicit intent is provided', async () => {
+      const tool: ToolConfig = {
+        name: 'nfl_scores',
+        api: 'nfl',
+        timeout: 30,
+        description: 'NFL scores',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Cowboys 24, Eagles 17' },
+      });
+
+      const result = await executeRoutedRequest(
+        tool, 'just the scores', 'testuser'
+      );
+
+      // inferFinalPassIntent("just the scores") returns 'raw', should skip final pass
+      expect(result.finalApi).toBe('nfl');
+      expect(result.stages).toHaveLength(1);
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+    });
+
+    it('should honor skipFinalPass over finalPassIntent', async () => {
+      const tool: ToolConfig = {
+        name: 'weather',
+        api: 'accuweather',
+        timeout: 60,
+        description: 'Get weather',
+      };
+
+      mockExecute.mockResolvedValueOnce({
+        success: true,
+        data: { text: 'Temperature: 72°F' },
+      });
+
+      const result = await executeRoutedRequest(
+        tool, 'analyze the weather data', 'testuser', undefined, undefined, undefined,
+        { skipFinalPass: true, finalPassIntent: 'synthesize' }
+      );
+
+      // skipFinalPass takes priority
+      expect(result.finalApi).toBe('accuweather');
+      expect(result.stages).toHaveLength(1);
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('executeRoutedRequest — xAI image routing', () => {
     it('should produce xai-image media follow-up when tool api is xai-image', async () => {
       const tool: ToolConfig = {

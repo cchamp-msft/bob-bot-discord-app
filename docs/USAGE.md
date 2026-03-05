@@ -18,6 +18,8 @@ Mention the bot with a tool name and prompt:
 @BobBot !web_search what is the weather like today
 @BobBot !meme success kid | finished all my tasks | on a Monday
 @BobBot !meme_templates
+@BobBot delete that message
+@BobBot delete your last message in #general
 ```
 
 The bot replies inline — the initial "Processing" message is edited in-place with the final response.
@@ -51,6 +53,8 @@ The bot uses tool names prefixed with `!` to route requests to different APIs. T
 | `!web_search` | SerpAPI | `@BobBot !web_search latest AI news` |
 | `!meme` | Memegen | `@BobBot !meme success kid \| finished all my tasks \| on a Monday` |
 | `!meme_templates` | Memegen | `@BobBot !meme_templates` |
+| *(implicit)* | Discord | `@BobBot delete that message` |
+| *(implicit)* | Discord | `@BobBot delete your last message in #general` |
 
 Use `!meme` to generate an image.
 Use `!meme_templates` (plural) to list template IDs.

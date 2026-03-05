@@ -119,7 +119,13 @@ jest.mock('../src/utils/promptBuilder', () => ({
     userContent: `<current_question>\n${opts.userMessage}\n</current_question>\n` + (opts.externalData ? `<external_data>\n${opts.externalData}\n</external_data>\n` : '') + '<conversation_history>\n</conversation_history>',
     messages: [],
   })),
+  assembleUnifiedReprompt: jest.fn((opts: any) => ({
+    systemContent: 'You are Bob.',
+    userContent: `<current_question>\n${opts.userMessage}\n</current_question>`,
+    messages: [],
+  })),
   parseFirstLineTool: jest.fn(() => ({ toolConfig: null, parsedLine: '', matched: false })),
+  inferFinalPassIntent: jest.fn(() => 'auto'),
 }));
 
 jest.mock('../src/utils/apiRouter', () => ({
@@ -1631,7 +1637,7 @@ describe('MessageHandler first-word tool routing', () => {
       [{ role: 'user', content: 'testuser: 45403', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser',
       undefined,
-      undefined,
+      expect.objectContaining({ finalPassIntent: 'auto' }),
       []
     );
   });
@@ -1654,7 +1660,7 @@ describe('MessageHandler first-word tool routing', () => {
       [{ role: 'user', content: 'testuser: 20251116', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser',
       undefined,
-      undefined,
+      expect.objectContaining({ finalPassIntent: 'auto' }),
       []
     );
   });
@@ -1757,7 +1763,7 @@ describe('MessageHandler first-word tool routing', () => {
       ]),
       'BotUser',
       undefined,
-      undefined,
+      expect.objectContaining({ finalPassIntent: 'auto' }),
       []
     );
   });
@@ -1784,7 +1790,7 @@ describe('MessageHandler first-word tool routing', () => {
       expect.any(Array),
       'BotUser',
       undefined,
-      undefined,
+      expect.objectContaining({ finalPassIntent: 'auto' }),
       []
     );
   });
@@ -1982,7 +1988,7 @@ describe('MessageHandler SerpAPI find content tool routing', () => {
       expect.any(Array),
       'BotUser',
       undefined,
-      undefined,
+      expect.objectContaining({ finalPassIntent: 'auto' }),
       []
     );
   });
@@ -2506,7 +2512,7 @@ describe('MessageHandler trigger message attribution', () => {
       ]),
       'BotUser',
       undefined,
-      undefined,
+      expect.objectContaining({ finalPassIntent: 'auto' }),
       []
     );
   });
@@ -3100,6 +3106,120 @@ describe('MessageHandler — Context Evaluation in unified pipeline', () => {
       // Filtered history should have fewer messages than original (2 channel msgs → 1 after filter) + trigger
       expect(history.length).toBeLessThanOrEqual(3);
     }
+  });
+});
+
+describe('MessageHandler unified pipeline — final-pass intent behavior', () => {
+  const { requestQueue } = require('../src/utils/requestQueue');
+  const { parseFirstLineTool, inferFinalPassIntent } = require('../src/utils/promptBuilder');
+  const { evaluateContextWindow } = require('../src/utils/contextEvaluator');
+  const mockEvaluate = evaluateContextWindow as jest.MockedFunction<typeof evaluateContextWindow>;
+  const mockInferIntent = inferFinalPassIntent as jest.MockedFunction<typeof inferFinalPassIntent>;
+
+  const chatKw = {
+    name: '!chat',
+    api: 'ollama' as const,
+    timeout: 300,
+    description: 'Chat',
+  };
+
+  function createUnifiedMsg(content: string) {
+    return {
+      author: { id: 'user-1', bot: false, username: 'unified-user', displayName: 'UnifiedUser' },
+      content,
+      mentions: { has: () => true },
+      channel: {
+        type: 0,
+        isThread: () => false,
+        messages: {
+          cache: new Map(),
+          fetch: jest.fn().mockResolvedValue(new Map()),
+        },
+      },
+      client: { user: { id: 'bot-123', username: 'BotUser' } },
+      reference: null,
+      reply: jest.fn().mockResolvedValue({
+        edit: jest.fn(),
+        attachments: { size: 0 },
+        embeds: [],
+      }),
+      attachments: { size: 0 },
+      id: 'unified-msg-1',
+      fetchReference: jest.fn(),
+      react: jest.fn().mockResolvedValue(undefined),
+      reactions: { resolve: jest.fn(() => ({ users: { remove: jest.fn().mockResolvedValue(undefined) } })) },
+      createdTimestamp: Date.now(),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (config.getTools as jest.Mock).mockReturnValue([chatKw]);
+    (config.getReplyChainEnabled as jest.Mock).mockReturnValue(true);
+    (config.getContextEvalEnabled as jest.Mock).mockReturnValue(false);
+    (config.getPipelineMode as jest.Mock).mockReturnValue('unified');
+    mockEvaluate.mockImplementation((history: any) => Promise.resolve(history));
+    parseFirstLineTool.mockReturnValue({ toolConfig: null, parsedLine: '', matched: false });
+  });
+
+  afterEach(() => {
+    (config.getPipelineMode as jest.Mock).mockReturnValue('legacy');
+  });
+
+  it('should return Stage 1 draft directly when no tools are invoked (no final pass)', async () => {
+    mockInferIntent.mockReturnValue('auto');
+
+    // Stage 1: Ollama returns text-only response (no tool_calls)
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Here is the direct answer from Stage 1.' },
+    });
+
+    const msg = createUnifiedMsg('<@bot-123> what is TypeScript');
+    await messageHandler.handleMessage(msg as any);
+
+    // Only one Ollama call should have been made (Stage 1)
+    expect(requestQueue.execute).toHaveBeenCalledTimes(1);
+    // The reply should contain the Stage 1 draft verbatim
+    expect(msg.reply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('direct answer from Stage 1') })
+    );
+  });
+
+  it('should return Stage 1 draft when no tools invoked even with raw intent', async () => {
+    mockInferIntent.mockReturnValue('raw');
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Draft answer for raw intent.' },
+    });
+
+    const msg = createUnifiedMsg('<@bot-123> just the data');
+    await messageHandler.handleMessage(msg as any);
+
+    // No-tool path always returns Stage 1 draft regardless of intent
+    expect(requestQueue.execute).toHaveBeenCalledTimes(1);
+    expect(msg.reply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('Draft answer for raw intent') })
+    );
+  });
+
+  it('should return Stage 1 draft when no tools invoked even with synthesize intent', async () => {
+    mockInferIntent.mockReturnValue('synthesize');
+
+    requestQueue.execute.mockResolvedValueOnce({
+      success: true,
+      data: { text: 'Synthesize-intent draft.' },
+    });
+
+    const msg = createUnifiedMsg('<@bot-123> summarize the topic');
+    await messageHandler.handleMessage(msg as any);
+
+    // Still only 1 Ollama call since there are no tools to invoke
+    expect(requestQueue.execute).toHaveBeenCalledTimes(1);
+    expect(msg.reply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('Synthesize-intent draft') })
+    );
   });
 });
 

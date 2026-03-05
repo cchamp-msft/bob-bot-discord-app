@@ -29,6 +29,21 @@ export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' |
 /** LLM provider identifiers used for per-stage model dispatch. */
 export type LlmProvider = 'ollama' | 'xai';
 
+/**
+ * Model-inferred intent for whether a final synthesis pass is needed.
+ *
+ * - `'synthesize'` — The user wants an opinionated, interpreted, or
+ *   conversationally refined answer. A final Ollama/xAI pass is run to
+ *   inject personality, formatting, and cross-tool synthesis.
+ * - `'raw'` — The user wants the data as-is (formatted but not
+ *   editorially rewritten). The final pass is skipped and the tool
+ *   result (or Stage 1 draft) is returned directly.
+ * - `'auto'` — No strong signal was detected; fall back to the
+ *   existing pipeline default (final pass runs when tool results exist
+ *   or a separate final-pass model is configured).
+ */
+export type FinalPassIntent = 'synthesize' | 'raw' | 'auto';
+
 // ── Discord action response types ───────────────────────────────
 
 /** Standard response from Discord action tool methods. */
@@ -420,6 +435,12 @@ export interface PipelineContext {
   startedAt: number;
   /** When true, forces the final pass to use Ollama regardless of provider config (set by delegate_to_local). */
   forceOllamaFinalPass?: boolean;
+  /**
+   * Model-inferred intent for the final synthesis pass.
+   * Set after Stage 1 based on the user's apparent request style.
+   * When `'raw'`, Stage 3 is skipped even if tool results exist.
+   */
+  finalPassIntent?: FinalPassIntent;
 }
 
 // ── Media follow-up types ───────────────────────────────────────

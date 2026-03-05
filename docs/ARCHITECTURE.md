@@ -106,7 +106,11 @@ When the config yields at least one routable tool (enabled, not builtin, api ≠
 1. **Tools schema** — `buildOllamaToolsSchema()` converts tool config into OpenAI-style tool definitions and passes them to Ollama as the `tools` parameter on `/api/chat`.
 2. **Ollama response** — The model may return structured `tool_calls` (max **3** per turn, enforced in code). If it returns only text, that is sent as the chat reply.
 3. **Tool execution** — Each tool call is resolved to a tool config; arguments are converted to the single content string each API expects. `executeRoutedRequest()` runs without a per-call final pass.
-4. **Single final pass** — All tool results are combined and sent to **one** final Ollama call for conversational refinement, then the reply is sent to the user.
+4. **Optional final pass** — All tool results are combined. The pipeline infers whether a final synthesis pass is needed based on the user's message intent:
+   - **`raw`** — User wants data as-is (e.g. "just the scores", "raw data"). The final pass is skipped and tool results are returned directly.
+   - **`synthesize`** — User wants opinionated/interpreted results (e.g. "what do you think", "summarize"). The final pass always runs.
+   - **`auto`** — No strong signal detected; falls back to existing behavior (final pass runs when tool results exist).
+   When no tools are invoked, the Stage 1 draft is returned directly without a final pass regardless of intent.
 
 Tools in `config/tools.xml` may be stored with or without the `!` prefix. The routing engine normalises all tool names to include the prefix before matching, ensuring `!activity_key` matches a config entry stored as `"activity_key"`.
 
@@ -127,6 +131,7 @@ Tools in config may be stored with or without the `!` prefix. The routing engine
 
 - **Direct**: `!weather Seattle` → AccuWeather
 - **Native tools**: User says "what's the weather in Dallas and generate a sunset image" → Ollama returns two tool_calls → both run → one final pass with combined results
+- **Native tools (raw)**: User says "just the scores" → Ollama returns nfl tool_call → NFL API → raw intent detected → final pass skipped, data returned as-is
 - **Legacy two-stage**: No tools configured → user says "is it going to rain?" → Ollama with abilities block → first line matches `weather` → AccuWeather → final Ollama pass
 - **Internal-only**: `!help` → handled directly, never sent to Ollama as a tool
 

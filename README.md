@@ -78,6 +78,8 @@ outputs/                  # Generated files and logs
 @BobBot !web_search latest AI news
 @BobBot !meme success kid | finished all my tasks | on a Monday
 @BobBot !meme_templates
+@BobBot delete that message
+@BobBot delete your last message in #general
 ```
 
 **Slash commands:**

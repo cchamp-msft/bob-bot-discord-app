@@ -16,7 +16,7 @@ import * as discordActionClient from '../api/discordActionClient';
 import { chunkText } from '../utils/chunkText';
 import { executeRoutedRequest, inferAbilityParameters, formatApiResultAsExternalData } from '../utils/apiRouter';
 import { evaluateContextWindow } from '../utils/contextEvaluator';
-import { assemblePrompt, assembleReprompt, assembleUnifiedReprompt, parseFirstLineTool } from '../utils/promptBuilder';
+import { assemblePrompt, assembleReprompt, assembleUnifiedReprompt, parseFirstLineTool, inferFinalPassIntent } from '../utils/promptBuilder';
 import type { ToolParseResult } from '../utils/promptBuilder';
 import { buildOllamaToolsSchema, resolveToolNameToTool, toolArgumentsToContent, validateToolBatch } from '../utils/toolsSchema';
 import { activityEvents } from '../utils/activityEvents';
@@ -93,6 +93,13 @@ async function dispatchDiscordAction(
       return discordActionClient.reactToMessage(
         client,
         { emoji: args.emoji ?? '', target: args.target, message_id: args.message_id },
+        requester,
+        sourceMessage,
+      );
+    case 'delete_discord_message':
+      return discordActionClient.deleteMessage(
+        client,
+        { message_id: args.message_id, channel: args.channel, username: args.username },
         requester,
         sourceMessage,
       );
@@ -653,6 +660,7 @@ class MessageHandler {
           );
           await this.dispatchResponse(discordResult, 'discord', message, requester, isDM);
         } else {
+          const directIntent = inferFinalPassIntent(content);
           const routedResult = await executeRoutedRequest(
             toolConfig,
             content,
@@ -660,7 +668,7 @@ class MessageHandler {
             historyWithTrigger,
             botDisplayName,
             undefined, // signal
-            undefined, // options
+            { finalPassIntent: directIntent },
             dmHistory
           );
 
@@ -1437,6 +1445,12 @@ class MessageHandler {
 
     ctx.stage1Draft = ollamaResult.data?.text ?? '';
 
+    // ── Infer final-pass intent from user message ──
+    ctx.finalPassIntent = inferFinalPassIntent(ctx.rawContent, ctx.stage1Draft);
+    if (ctx.finalPassIntent !== 'auto') {
+      logger.log('success', 'system', `UNIFIED: Final-pass intent inferred as '${ctx.finalPassIntent}'`);
+    }
+
     // Collect tool calls from native tool_calls
     const toolCalls = (useToolsPath && ollamaResult.data?.tool_calls) ? ollamaResult.data.tool_calls : [];
 
@@ -1451,18 +1465,13 @@ class MessageHandler {
 
     const hasTools = toolCalls.length > 0 || legacyParsedTool !== null;
 
-    // ── Fast path: no tools, same model → Stage 1 response IS the final response ──
-    if (!hasTools && !config.needsSeparateFinalPass()) {
-      logger.log('success', 'system', `UNIFIED: Fast path — no tools, same model → 1 Ollama call total`);
-      await this.dispatchResponse(ollamaResult, 'ollama', ctx.sourceMessage, ctx.requester, ctx.isDM);
-      return;
-    }
-
-    // ── No tools, different final model → Stage 3 personality refinement only ──
+    // ── No tools → Stage 1 response IS the final response (draft-only) ──
+    // When no tools are invoked the Stage 1 model already answered the
+    // question directly. A separate final pass is unnecessary regardless
+    // of model/provider configuration.
     if (!hasTools) {
-      logger.log('success', 'system', 'UNIFIED: No tools, different final model — running Stage 3 for personality');
-      const finalResult = await this.runUnifiedFinalPass(ctx, undefined, timeout);
-      await this.dispatchResponse(finalResult ?? ollamaResult, 'ollama', ctx.sourceMessage, ctx.requester, ctx.isDM);
+      logger.log('success', 'system', 'UNIFIED: No tools required — returning Stage 1 draft directly');
+      await this.dispatchResponse(ollamaResult, 'ollama', ctx.sourceMessage, ctx.requester, ctx.isDM);
       return;
     }
 
@@ -1533,7 +1542,34 @@ class MessageHandler {
     }
 
     // ── Stage 3: Final Pass with Cumulative Context ──────────────
+    // When the inferred intent is 'raw', skip the final synthesis pass
+    // and return the tool results formatted as external data directly.
+    // The Stage 1 draft is used as the response container.
     const combinedExternalData = externalDataParts.join('\n\n');
+
+    if (ctx.finalPassIntent === 'raw') {
+      logger.log('success', 'system', `UNIFIED: Skipping final pass — raw intent detected (${externalDataParts.length} data fragment(s))`);
+
+      // Build a lightweight response from the external data without LLM synthesis
+      const rawResponse: OllamaResponse = {
+        success: true,
+        data: { text: combinedExternalData || ctx.stage1Draft || '' },
+      };
+
+      await this.dispatchResponse(
+        rawResponse,
+        'ollama',
+        ctx.sourceMessage,
+        ctx.requester,
+        ctx.isDM,
+        ctx.mediaFollowUps.length > 0 ? ctx.mediaFollowUps : undefined
+      );
+
+      logger.log('success', 'system',
+        `UNIFIED: Pipeline complete (raw) — ${ctx.ollamaCallCount} Ollama call(s), ${ctx.toolResults.length} tool(s), ${Date.now() - ctx.startedAt}ms`);
+      return;
+    }
+
     logger.log('success', 'system', `UNIFIED: Stage 3 — Final pass with ${externalDataParts.length} external data fragment(s)`);
 
     const finalResult = await this.runUnifiedFinalPass(ctx, combinedExternalData, timeout);

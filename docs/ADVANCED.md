@@ -116,7 +116,19 @@ If not set, the default `OLLAMA_MODEL` is used for final-pass refinements.
 
 ## Native tools (Ollama tool_calls)
 
-When the tool config defines at least one routable tool (enabled, not builtin, api ≠ ollama), the bot uses **Ollama native tools**: the `tools` parameter is sent to `/api/chat`, and the model may return structured `tool_calls`. Up to **3** tool calls per turn are executed; then a **single** final Ollama pass combines all results for the reply. Internal-only tools (`help`, `activity_key`) are never sent to Ollama as tools; they are handled by direct bypass (e.g. `!help`).
+When the tool config defines at least one routable tool (enabled, not builtin, api ≠ ollama), the bot uses **Ollama native tools**: the `tools` parameter is sent to `/api/chat`, and the model may return structured `tool_calls`. Up to **3** tool calls per turn are executed; then a final Ollama pass combines all results for the reply — unless the user's intent signals raw data is preferred (see below). Internal-only tools (`help`, `activity_key`) are never sent to Ollama as tools; they are handled by direct bypass (e.g. `!help`).
+
+### Optional final pass (intent-driven)
+
+The pipeline infers whether a final synthesis pass is needed based on the user's message:
+
+| Intent | Trigger examples | Behavior |
+|--------|-----------------|----------|
+| **raw** | "just the scores", "raw data", "no commentary" | Final pass is skipped; tool results returned as-is |
+| **synthesize** | "what do you think", "summarize", "analyze" | Final pass always runs |
+| **auto** | No strong signal | Default behavior (final pass runs when tool results exist) |
+
+When no tools are invoked the Stage 1 draft is returned directly without a final pass, regardless of intent or model/provider configuration.
 
 ## Context Evaluation
 

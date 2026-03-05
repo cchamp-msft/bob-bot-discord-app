@@ -479,3 +479,395 @@ describe('getArtifact', () => {
     expect(result.error).toContain('message_id argument must be a string');
   });
 });
+
+// ── deleteMessage ─────────────────────────────────────────────
+
+describe('deleteMessage', () => {
+  const BOT_ID = '999';
+
+  /** Build a fake message with a configurable author. */
+  function fakeDeleteTarget(
+    overrides: Partial<{
+      id: string;
+      content: string;
+      authorId: string;
+      authorBot: boolean;
+      deleted: boolean;
+    }> = {},
+  ): Message {
+    const msg = fakeMessage({
+      id: overrides.id ?? '500',
+      content: overrides.content ?? 'bot reply',
+      username: 'BobBot',
+    });
+    (msg.author as any).id = overrides.authorId ?? BOT_ID;
+    (msg.author as any).bot = overrides.authorBot ?? true;
+    (msg as any).delete = jest.fn().mockResolvedValue(undefined);
+    return msg;
+  }
+
+  function buildSourceWithRef(
+    channel: TextChannel,
+    refMessageId?: string,
+  ): Message {
+    const source = buildSourceMessage(channel);
+    (source as any).id = '600';
+    if (refMessageId) {
+      (source as any).reference = { messageId: refMessageId };
+    }
+    return source;
+  }
+
+  // ── Priority 1: explicit message_id ─────────────────────────
+
+  it('should delete a bot message by explicit message_id', async () => {
+    const botMsg = fakeDeleteTarget({ id: '500' });
+    const channel = buildChannel([botMsg]);
+    const source = buildSourceWithRef(channel);
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      { message_id: '500' },
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.text).toContain('Deleted bot message');
+    expect(result.data?.text).toContain('500');
+    expect(botMsg.delete).toHaveBeenCalled();
+  });
+
+  it('should refuse to delete a non-bot message by explicit message_id', async () => {
+    const userMsg = fakeDeleteTarget({ id: '501', authorId: '100' });
+    const channel = buildChannel([userMsg]);
+    const source = buildSourceWithRef(channel);
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      { message_id: '501' },
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('not sent by the bot');
+    expect(userMsg.delete).not.toHaveBeenCalled();
+  });
+
+  // ── Priority 2: reply target ────────────────────────────────
+
+  it('should delete the reply target when no explicit selector is given', async () => {
+    const botMsg = fakeDeleteTarget({ id: '502' });
+    const channel = buildChannel([botMsg]);
+    const source = buildSourceWithRef(channel, '502');
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      {},
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.text).toContain('502');
+    expect(botMsg.delete).toHaveBeenCalled();
+  });
+
+  it('should fall through to last bot message when reply target is not found', async () => {
+    const botMsg = fakeDeleteTarget({ id: '503' });
+    const channel = buildChannel([botMsg]);
+    // Reply points to a deleted message (not in channel)
+    const source = buildSourceWithRef(channel, '999999');
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      {},
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.text).toContain('503');
+  });
+
+  // ── Priority 3: last bot message in scope ───────────────────
+
+  it('should delete the most recent bot message when no selectors are given', async () => {
+    const userMsg = fakeMessage({ id: '510' });
+    (userMsg.author as any).id = '100';
+    const botMsg = fakeDeleteTarget({ id: '511' });
+    const channel = buildChannel([userMsg, botMsg]);
+    const source = buildSourceWithRef(channel);
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      {},
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(true);
+    expect(botMsg.delete).toHaveBeenCalled();
+  });
+
+  it('should not delete the source message itself when searching for last bot message', async () => {
+    // Only message is the source message issued by the bot (the "working" message)
+    const botMsg = fakeDeleteTarget({ id: '600' });
+    const channel = buildChannel([botMsg]);
+    const source = buildSourceWithRef(channel);
+    // source.id === '600' matches the bot message id, so it should be skipped
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      {},
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('No recent bot message found');
+  });
+
+  it('should return error when no bot message is found at all', async () => {
+    const userMsg = fakeMessage({ id: '520' });
+    (userMsg.author as any).id = '100';
+    const channel = buildChannel([userMsg]);
+    const source = buildSourceWithRef(channel);
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      {},
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('No recent bot message found');
+  });
+
+  // ── Channel selector ────────────────────────────────────────
+
+  it('should resolve channel by name within the guild', async () => {
+    const botMsg = fakeDeleteTarget({ id: '530' });
+    const targetChannel = buildChannel([botMsg], { name: 'announcements', id: '888' });
+    const sourceChannel = buildChannel([], { name: 'general', id: '777' });
+
+    const source = {
+      id: '600',
+      channel: sourceChannel,
+      guild: {
+        channels: {
+          cache: new Collection<string, TextChannel>([
+            ['777', sourceChannel],
+            ['888', targetChannel],
+          ]),
+        },
+      },
+      author: { id: '100' },
+    } as unknown as Message;
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      { channel: 'announcements' },
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(true);
+    expect(botMsg.delete).toHaveBeenCalled();
+  });
+
+  it('should return error for unknown channel name', async () => {
+    const channel = buildChannel([]);
+    const source = buildSourceWithRef(channel);
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      { channel: 'nonexistent' },
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('not found');
+  });
+
+  it('should return disambiguation error for ambiguous channel name', async () => {
+    const ch1 = buildChannel([], { name: 'general', id: '111' });
+    const ch2 = buildChannel([], { name: 'general', id: '222' });
+    const sourceChannel = buildChannel([], { name: 'other', id: '333' });
+
+    const source = {
+      id: '600',
+      channel: sourceChannel,
+      guild: {
+        channels: {
+          cache: new Collection<string, TextChannel>([
+            ['111', ch1],
+            ['222', ch2],
+            ['333', sourceChannel],
+          ]),
+        },
+      },
+      author: { id: '100' },
+    } as unknown as Message;
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      { channel: 'general' },
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Ambiguous channel');
+    expect(result.error).toContain('111');
+    expect(result.error).toContain('222');
+  });
+
+  // ── Username (DM) selector ──────────────────────────────────
+
+  it('should resolve DM channel by username and delete bot message', async () => {
+    const botMsg = fakeDeleteTarget({ id: '540' });
+    const dmChannel = buildChannel([botMsg], { name: 'dm-chan', id: '444', type: ChannelType.DM });
+
+    const targetUser = {
+      id: '200',
+      createDM: jest.fn().mockResolvedValue(dmChannel),
+    };
+
+    const memberCache = new Collection<string, any>();
+    memberCache.set('200', {
+      id: '200',
+      user: { username: 'dave', id: '200' },
+      displayName: 'Dave',
+    });
+
+    const guildCache = new Collection<string, any>();
+    guildCache.set('guild1', { members: { cache: memberCache } });
+
+    const clientWithDM = {
+      user: { id: BOT_ID },
+      guilds: { cache: guildCache },
+      users: { fetch: jest.fn().mockResolvedValue(targetUser) },
+    } as unknown as Client;
+
+    const sourceChannel = buildChannel([], { name: 'general', id: '999' });
+    const source = {
+      id: '600',
+      channel: sourceChannel,
+      guild: null,
+      author: { id: '100' },
+    } as unknown as Message;
+
+    const result = await discordActionClient.deleteMessage(
+      clientWithDM,
+      { username: 'dave' },
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(true);
+    expect(botMsg.delete).toHaveBeenCalled();
+  });
+
+  it('should return error for unknown username', async () => {
+    const guildCache = new Collection<string, any>();
+    guildCache.set('guild1', { members: { cache: new Collection() } });
+
+    const clientEmpty = {
+      user: { id: BOT_ID },
+      guilds: { cache: guildCache },
+    } as unknown as Client;
+
+    const channel = buildChannel([]);
+    const source = buildSourceWithRef(channel);
+
+    const result = await discordActionClient.deleteMessage(
+      clientEmpty,
+      { username: 'ghost' },
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('User "ghost" not found');
+  });
+
+  // ── Thread channel support ──────────────────────────────────
+
+  it('should resolve thread channels by name', async () => {
+    const botMsg = fakeDeleteTarget({ id: '550' });
+    const threadChannel = buildChannel([botMsg], {
+      name: 'help-thread',
+      id: '555',
+      type: ChannelType.PublicThread,
+    });
+    const sourceChannel = buildChannel([], { name: 'general', id: '777' });
+
+    const source = {
+      id: '600',
+      channel: sourceChannel,
+      guild: {
+        channels: {
+          cache: new Collection<string, TextChannel>([
+            ['777', sourceChannel],
+            ['555', threadChannel],
+          ]),
+        },
+      },
+      author: { id: '100' },
+    } as unknown as Message;
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      { channel: 'help-thread' },
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(true);
+    expect(botMsg.delete).toHaveBeenCalled();
+  });
+
+  // ── Error handling ──────────────────────────────────────────
+
+  it('should handle Unknown Message error gracefully', async () => {
+    const channel = buildChannel([]);
+    // Override fetch to throw Unknown Message
+    (channel.messages.fetch as jest.Mock).mockImplementation(async (arg: any) => {
+      if (typeof arg === 'string') throw new Error('Unknown Message');
+      return new Collection();
+    });
+    const source = buildSourceWithRef(channel);
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      { message_id: '999999' },
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('may have already been deleted');
+  });
+
+  it('should handle generic delete failure', async () => {
+    const botMsg = fakeDeleteTarget({ id: '560' });
+    (botMsg.delete as jest.Mock).mockRejectedValue(new Error('Missing Permissions'));
+    const channel = buildChannel([botMsg]);
+    const source = buildSourceWithRef(channel);
+
+    const result = await discordActionClient.deleteMessage(
+      fakeClient,
+      { message_id: '560' },
+      'alice',
+      source,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Failed to delete message');
+    expect(result.error).toContain('Missing Permissions');
+  });
+});

@@ -109,6 +109,7 @@ import {
   escapeXmlAttribute,
   getCurrentDateTimeTag,
   getCurrentTimestampTag,
+  inferFinalPassIntent,
 } from '../src/utils/promptBuilder';
 import { config } from '../src/utils/config';
 
@@ -1097,6 +1098,94 @@ describe('PromptBuilder', () => {
       const prompt = buildAskPrompt('What is 2+2?');
       expect(prompt).toContain('<current_datetime>');
       expect(prompt).toContain('</current_datetime>');
+    });
+  });
+
+  // ── inferFinalPassIntent ───────────────────────────────────
+
+  describe('inferFinalPassIntent', () => {
+    it('should return auto for empty input', () => {
+      expect(inferFinalPassIntent('')).toBe('auto');
+    });
+
+    it('should return auto for generic questions', () => {
+      expect(inferFinalPassIntent('what is the weather in Dallas')).toBe('auto');
+      expect(inferFinalPassIntent('tell me about TypeScript')).toBe('auto');
+      expect(inferFinalPassIntent('hello')).toBe('auto');
+    });
+
+    it('should detect raw intent with "just the scores"', () => {
+      expect(inferFinalPassIntent('just the scores')).toBe('raw');
+    });
+
+    it('should detect raw intent with "raw data"', () => {
+      expect(inferFinalPassIntent('give me the raw data')).toBe('raw');
+    });
+
+    it('should detect raw intent with "only the results"', () => {
+      expect(inferFinalPassIntent('only the results please')).toBe('raw');
+    });
+
+    it('should detect raw intent with "no commentary"', () => {
+      expect(inferFinalPassIntent('no commentary just facts')).toBe('raw');
+    });
+
+    it('should detect raw intent with "dump it"', () => {
+      expect(inferFinalPassIntent('dump it')).toBe('raw');
+    });
+
+    it('should detect raw intent with "paste it"', () => {
+      expect(inferFinalPassIntent('paste it')).toBe('raw');
+    });
+
+    it('should detect raw intent with "skip analysis"', () => {
+      expect(inferFinalPassIntent('skip analysis and give me the numbers')).toBe('raw');
+    });
+
+    it('should detect raw intent with "unfiltered results"', () => {
+      expect(inferFinalPassIntent('unfiltered results')).toBe('raw');
+    });
+
+    it('should detect synthesize intent with "what do you think"', () => {
+      expect(inferFinalPassIntent('what do you think about this')).toBe('synthesize');
+    });
+
+    it('should detect synthesize intent with "your opinion"', () => {
+      expect(inferFinalPassIntent('your opinion on the game')).toBe('synthesize');
+    });
+
+    it('should detect synthesize intent with "summarize"', () => {
+      expect(inferFinalPassIntent('summarize the results')).toBe('synthesize');
+    });
+
+    it('should detect synthesize intent with "analyze"', () => {
+      expect(inferFinalPassIntent('analyze the weather data')).toBe('synthesize');
+    });
+
+    it('should detect synthesize intent with "explain"', () => {
+      expect(inferFinalPassIntent('explain the forecast')).toBe('synthesize');
+    });
+
+    it('should detect synthesize intent with "in your words"', () => {
+      expect(inferFinalPassIntent('in your words what happened')).toBe('synthesize');
+    });
+
+    it('should detect synthesize intent with "give me a summary"', () => {
+      expect(inferFinalPassIntent('give me a summary')).toBe('synthesize');
+    });
+
+    it('should detect synthesize intent with "break it down"', () => {
+      expect(inferFinalPassIntent('break it down for me')).toBe('synthesize');
+    });
+
+    it('should be case-insensitive', () => {
+      expect(inferFinalPassIntent('JUST THE DATA')).toBe('raw');
+      expect(inferFinalPassIntent('What Do You Think')).toBe('synthesize');
+    });
+
+    it('should accept optional stage1Draft parameter', () => {
+      expect(inferFinalPassIntent('just the scores', 'some draft text')).toBe('raw');
+      expect(inferFinalPassIntent('hello', 'draft')).toBe('auto');
     });
   });
 });

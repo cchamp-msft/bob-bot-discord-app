@@ -5,7 +5,7 @@ import { apiManager, ComfyUIResponse, XaiImageResponse, XaiVideoResponse, Ollama
 import { accuweatherClient } from '../api/accuweatherClient';
 import { serpApiClient } from '../api/serpApiClient';
 import { memeClient } from '../api/memeClient';
-import { ApiType, ChatMessage, NFLResponse, MemeResponse, DiscordActionResponse, MediaFollowUp } from '../types';
+import { ApiType, ChatMessage, NFLResponse, MemeResponse, DiscordActionResponse, MediaFollowUp, FinalPassIntent } from '../types';
 import {
   StageResult,
   extractStageResult,
@@ -18,6 +18,7 @@ import {
   formatNFLExternalData,
   formatSerpApiExternalData,
   formatGenericExternalData,
+  inferFinalPassIntent,
 } from './promptBuilder';
 
 function normalizeOneLine(text: string): string {
@@ -384,7 +385,7 @@ export async function executeRoutedRequest(
   conversationHistory?: ChatMessage[],
   botDisplayName?: string,
   signal?: AbortSignal,
-  options?: { skipFinalPass?: boolean },
+  options?: { skipFinalPass?: boolean; finalPassIntent?: FinalPassIntent },
   dmHistory?: ChatMessage[]
 ): Promise<RoutedResult> {
   const stages: StageResult[] = [];
@@ -514,11 +515,41 @@ export async function executeRoutedRequest(
     return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages, media: [] };
   }
 
+  // ── Infer final-pass intent when not explicitly provided ──
+  const resolvedIntent = options?.finalPassIntent ?? inferFinalPassIntent(content);
+
   // ── Mandatory final Ollama pass for all non-Ollama APIs ────────
   // Don't double-pass through Ollama if the primary API was already Ollama
   if (keywordConfig.api === 'ollama') {
     logger.log('success', 'system', 'API-ROUTING: Skipping final Ollama pass — primary API was already Ollama');
     return { finalResponse: primaryResult, finalApi: 'ollama', stages, media: [] };
+  }
+
+  // When the intent is 'raw', skip the final pass and return API data directly.
+  // Media follow-ups are still collected so images/memes are delivered.
+  if (resolvedIntent === 'raw') {
+    logger.log('success', 'system', 'API-ROUTING: Skipping final pass — raw intent detected');
+    const media: MediaFollowUp[] = [];
+    if (keywordConfig.api === 'comfyui') {
+      media.push({ kind: 'comfyui', response: primaryResult as ComfyUIResponse });
+    }
+    if (keywordConfig.api === 'xai-image') {
+      const xaiResp = primaryResult as XaiImageResponse;
+      if (xaiResp.data?.images?.length) {
+        media.push({ kind: 'xai-image', images: xaiResp.data.images, savedOutputs: xaiResp.data.savedOutputs });
+      }
+    }
+    if (keywordConfig.api === 'xai-video') {
+      const xaiResp = primaryResult as XaiVideoResponse;
+      if (xaiResp.data?.url) {
+        media.push({ kind: 'xai-video', url: xaiResp.data.url, duration: xaiResp.data.duration, savedOutputs: xaiResp.data.savedOutputs });
+      }
+    }
+    if (keywordConfig.api === 'meme') {
+      const url = (primaryResult as MemeResponse).data?.imageUrl;
+      if (url) media.push({ kind: 'url', url, label: 'meme' });
+    }
+    return { finalResponse: primaryResult, finalApi: keywordConfig.api, stages, media };
   }
 
   logger.log('success', 'system', 'API-ROUTING: Final Ollama refinement pass');

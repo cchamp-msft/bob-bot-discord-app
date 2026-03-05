@@ -1,6 +1,6 @@
 import { config, ToolConfig, AbilityInputs, COMMAND_PREFIX } from './config';
 import { logger } from './logger';
-import { ChatMessage, LlmProvider } from '../types';
+import { ChatMessage, LlmProvider, FinalPassIntent } from '../types';
 import { groupMessagesBySource } from './contextFormatter';
 
 // ── XML sanitization ─────────────────────────────────────────────
@@ -982,6 +982,84 @@ export function assembleUnifiedReprompt(options: UnifiedRepromptOptions): Assemb
   ];
 
   return { systemContent, userContent, messages };
+}
+
+// ── Final-pass intent inference ──────────────────────────────────
+
+/**
+ * Regex patterns that signal the user wants **raw / formatted** data
+ * without editorial synthesis. When matched the final pass can be
+ * skipped so the API result (or Stage 1 draft) is returned as-is.
+ *
+ * Patterns are intentionally conservative — a false-negative (running
+ * an unnecessary final pass) is harmless; a false-positive (skipping
+ * when the user wanted synthesis) degrades quality.
+ */
+const RAW_INTENT_PATTERNS: RegExp[] = [
+  // Explicit "give me the raw/unfiltered data"
+  /\b(?:raw|unfiltered|unformatted|verbatim|as[- ]is)\s+(?:data|results?|output|response|answer|info(?:rmation)?)\b/i,
+  // "just the" / "only the" data / scores / forecast / results
+  /\b(?:just|only)\s+(?:the\s+)?(?:data|results?|scores?|stats?|numbers?|forecast|facts?|info(?:rmation)?|list|links?|urls?)\b/i,
+  // "don't interpret" / "no commentary" / "skip analysis"
+  /\b(?:don'?t|do not|no|skip|without)\s+(?:interpret|commentary|analysis|synthesis|opinion|editoriali[sz]e|rewrite|rephrase|summarize|paraphrase)\b/i,
+  // "paste it" / "dump it" / "show me the raw"
+  /\b(?:paste|dump|spit out|print|echo)\s+(?:it|the|that)\b/i,
+];
+
+/**
+ * Regex patterns that signal the user wants an **opinionated /
+ * interpreted** answer. When matched, the final pass is explicitly
+ * requested even when the default pipeline might skip it.
+ */
+const SYNTHESIZE_INTENT_PATTERNS: RegExp[] = [
+  // "what do you think" / "your opinion" / "your take"
+  /\b(?:what\s+do\s+you\s+think|your\s+(?:opinion|take|thoughts?|analysis|interpretation|perspective|view))\b/i,
+  // "analyze" / "interpret" / "summarize" / "explain"
+  /\b(?:analy[sz]e|interpret|summari[sz]e|explain|elaborate|break\s+(?:it\s+)?down|give\s+(?:me\s+)?(?:a|your)?\s*(?:summary|analysis|breakdown|overview|rundown))\b/i,
+  // "in your words" / "rephrase" / "put it differently"
+  /\b(?:in\s+your\s+(?:own\s+)?words|rephrase|put\s+(?:it|that)\s+differently|reword)\b/i,
+  // "be opinionated" / "editorialize" / "add commentary"
+  /\b(?:be\s+opinionated|editoriali[sz]e|add\s+(?:your\s+)?commentary)\b/i,
+];
+
+/**
+ * Infer whether the user's request warrants a final synthesis pass.
+ *
+ * The function analyses the user message text for explicit intent
+ * signals (e.g. "just the data", "what do you think"). When no
+ * strong signal is detected it returns `'auto'`, deferring to the
+ * pipeline's existing default behavior.
+ *
+ * This is a pure heuristic — no LLM call is involved. False-negatives
+ * (returning `'auto'` when intent was present) are preferred over
+ * false-positives.
+ *
+ * @param userMessage  - The cleaned user message text.
+ * @param stage1Draft  - Optional Stage 1 response text (reserved for
+ *                       future model-output–based inference).
+ * @returns The inferred intent.
+ */
+export function inferFinalPassIntent(
+  userMessage: string,
+  _stage1Draft?: string
+): FinalPassIntent {
+  if (!userMessage) return 'auto';
+
+  for (const pattern of RAW_INTENT_PATTERNS) {
+    if (pattern.test(userMessage)) {
+      logger.logDebug('system', `INTENT: Detected raw-data intent — pattern: ${pattern.source}`);
+      return 'raw';
+    }
+  }
+
+  for (const pattern of SYNTHESIZE_INTENT_PATTERNS) {
+    if (pattern.test(userMessage)) {
+      logger.logDebug('system', `INTENT: Detected synthesize intent — pattern: ${pattern.source}`);
+      return 'synthesize';
+    }
+  }
+
+  return 'auto';
 }
 
 // ── Deprecated aliases (will be removed in a future release) ─────

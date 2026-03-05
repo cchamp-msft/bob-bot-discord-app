@@ -8,6 +8,7 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 - ✅ @mention and DM detection with inline replies
 - ✅ **DM conversation context** — DMs automatically include recent message history without requiring explicit replies
 - ✅ Slash commands with ephemeral responses (shareable by user)
+- ✅ **Message deletion** — `delete_discord_message` tool lets users ask the bot to delete its own messages by reply, channel, DM username, or message ID
 
 ### AI & Image Generation
 - ✅ ComfyUI integration for image generation (WebSocket-based with HTTP polling fallback)
@@ -65,6 +66,7 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 ## Advanced Configuration
 
 - ✅ **Global final-pass model** — configurable Ollama model for all final-pass refinements
+- ✅ **Optional final pass** — model infers from user intent whether a final synthesis pass is needed; requests for raw/formatted data skip the pass, while opinionated/interpreted requests always run it
 - ✅ **Ability logging** — opt-in detailed logging of abilities context sent to Ollama
 - ✅ **Ability parameter inference** — when two-stage evaluation detects an API keyword with required inputs, Ollama infers concrete parameters from user context before routing (e.g., resolving "capital of Thailand" → "Bangkok" for weather)
 - ✅ **NFL commands** — `!nfl_scores` (current or date-specific) and `!nfl_news` (with optional search term filter)
