@@ -93,7 +93,7 @@ import { comfyuiClient } from '../src/api/comfyuiClient';
 import { xaiClient } from '../src/api/xaiClient';
 import { nflClient } from '../src/api/nflClient';
 import { memeClient } from '../src/api/memeClient';
-import { config } from '../src/utils/config';
+import { config as _config } from '../src/utils/config';
 
 describe('ApiManager', () => {
   beforeEach(() => {

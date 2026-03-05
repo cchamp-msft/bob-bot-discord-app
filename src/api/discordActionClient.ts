@@ -4,6 +4,7 @@ import {
   TextChannel,
   ChannelType,
   PermissionFlagsBits,
+  DMChannel,
 } from 'discord.js';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
@@ -517,7 +518,7 @@ export async function deleteMessage(
     try {
       const targetUser = await client.users.fetch(targetId);
       const dmChannel = await targetUser.createDM();
-      targetChannel = dmChannel as any;
+      targetChannel = dmChannel as unknown as TextChannel | DMChannel;
     } catch {
       return { success: false, error: `Could not open DM channel with "${username}".` };
     }

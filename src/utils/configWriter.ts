@@ -354,11 +354,8 @@ class ConfigWriter {
         if (fs.existsSync(backupFile)) {
           fs.copyFileSync(backupFile, toolsFile);
         }
-        throw new Error(
-          `tools.xml was written but failed re-parse validation — restored from backup. ` +
-          `See ${path.basename(debugFile)} for diagnostics. ` +
-          `Validation error: ${validationErr instanceof Error ? validationErr.message : String(validationErr)}`,
-        );
+        const error = validationErr instanceof Error ? validationErr : new Error(String(validationErr));
+        throw error;
       }
     } catch (error) {
       throw new Error(`Failed to update tools config: ${error}`, { cause: error });

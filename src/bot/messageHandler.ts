@@ -1508,7 +1508,7 @@ class MessageHandler {
     }
 
     // Policy gate: validate batch before execution
-    const { allowed, blocked } = validateToolBatch(
+    const { allowed: _allowed, blocked } = validateToolBatch(
       resolvedBatch.map(r => r.tool),
       toolProvider
     );
