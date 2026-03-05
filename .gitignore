@@ -12,5 +12,6 @@ outputs/
 *.swp
 *.swo
 config/tools.xml
+config/tools.xml.bak
 eslint-results.sarif
 .claude/settings.local.json
