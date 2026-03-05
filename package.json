@@ -43,7 +43,7 @@
     "@microsoft/eslint-formatter-sarif": "^3.1.0",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
-    "@types/node": "^25.2.3",
+    "@types/node": "^25.3.3",
     "@types/ws": "^8.18.1",
     "eslint": "^10.0.2",
     "jest": "^30.2.0",
