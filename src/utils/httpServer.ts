@@ -557,14 +557,14 @@ class HttpServer {
         }
       } else {
         for (const imageUrl of images) {
-          const saved = await fileHandler.saveFromUrl('test', prompt, imageUrl, 'png');
+          const saved = await fileHandler.saveFromUrl('test', prompt, imageUrl, 'png', 'test');
           if (saved) {
             savedFiles.push({ url: imageUrl, localUrl: saved.url });
           }
         }
 
         for (const videoUrl of videos) {
-          const saved = await fileHandler.saveFromUrl('test', prompt, videoUrl, 'mp4');
+          const saved = await fileHandler.saveFromUrl('test', prompt, videoUrl, 'mp4', 'test');
           if (saved) {
             savedFiles.push({ url: videoUrl, localUrl: saved.url });
           }

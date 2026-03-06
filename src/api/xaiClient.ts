@@ -312,6 +312,7 @@ class XaiClient {
               defaultExtension: 'png',
               mediaType: 'image' as const,
             })),
+            'xai',
           );
           if (savedOutputs.length > 0) {
             logger.logDebug(requester, `xAI images persisted: ${savedOutputs.length} file(s)`);
@@ -395,6 +396,7 @@ class XaiClient {
               requester,
               prompt,
               [{ source: video.url, defaultExtension: 'mp4', mediaType: 'video' as const }],
+              'xai',
             );
             if (savedOutputs.length > 0) {
               logger.logDebug(requester, `xAI video persisted: ${savedOutputs.length} file(s)`);

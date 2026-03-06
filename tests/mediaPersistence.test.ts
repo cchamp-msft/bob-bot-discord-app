@@ -66,7 +66,7 @@ describe('persistMedia', () => {
       expect(results[0].mediaType).toBe('image');
       expect(results[0].source).toBe('https://cdn.x.ai/img/abc.png');
       expect(results[0].filePath).toBe(defaultOutput.filePath);
-      expect(mockSaveFromUrl).toHaveBeenCalledWith('user', 'test prompt', 'https://cdn.x.ai/img/abc.png', 'png');
+      expect(mockSaveFromUrl).toHaveBeenCalledWith('user', 'test prompt', 'https://cdn.x.ai/img/abc.png', 'png', 'unknown');
     });
 
     it('should extract extension from URL path', async () => {
@@ -78,7 +78,7 @@ describe('persistMedia', () => {
 
       await persistMedia('user', 'video prompt', sources);
 
-      expect(mockSaveFromUrl).toHaveBeenCalledWith('user', 'video prompt', 'https://cdn.x.ai/vid/abc.mp4', 'mp4');
+      expect(mockSaveFromUrl).toHaveBeenCalledWith('user', 'video prompt', 'https://cdn.x.ai/vid/abc.mp4', 'mp4', 'unknown');
     });
 
     it('should extract extension from ComfyUI-style filename param', async () => {
@@ -90,7 +90,7 @@ describe('persistMedia', () => {
 
       await persistMedia('user', 'comfy prompt', sources);
 
-      expect(mockSaveFromUrl).toHaveBeenCalledWith('user', 'comfy prompt', sources[0].source, 'webp');
+      expect(mockSaveFromUrl).toHaveBeenCalledWith('user', 'comfy prompt', sources[0].source, 'webp', 'unknown');
     });
 
     it('should use defaultExtension when URL has no parseable extension', async () => {
@@ -102,7 +102,7 @@ describe('persistMedia', () => {
 
       await persistMedia('user', 'test', sources);
 
-      expect(mockSaveFromUrl).toHaveBeenCalledWith('user', 'test', 'https://cdn.x.ai/img/abc', 'png');
+      expect(mockSaveFromUrl).toHaveBeenCalledWith('user', 'test', 'https://cdn.x.ai/img/abc', 'png', 'unknown');
     });
 
     it('should skip failed downloads and continue', async () => {
@@ -135,7 +135,7 @@ describe('persistMedia', () => {
 
       expect(results).toHaveLength(1);
       expect(results[0].mediaType).toBe('image');
-      expect(mockSaveFromDataUrl).toHaveBeenCalledWith('user', 'b64 prompt', dataUrl, 'png');
+      expect(mockSaveFromDataUrl).toHaveBeenCalledWith('user', 'b64 prompt', dataUrl, 'png', 'unknown');
     });
 
     it('should handle failed data-URI save', async () => {
@@ -165,7 +165,7 @@ describe('persistMedia', () => {
       expect(results).toHaveLength(1);
       expect(results[0].source).toBe('buffer');
       expect(results[0].mediaType).toBe('video');
-      expect(mockSaveFile).toHaveBeenCalledWith('user', 'buffer prompt', buf, 'mp4');
+      expect(mockSaveFile).toHaveBeenCalledWith('user', 'buffer prompt', buf, 'mp4', 'unknown');
     });
 
     it('should skip buffer source without buffer data', async () => {

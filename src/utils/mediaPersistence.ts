@@ -66,6 +66,7 @@ export async function persistMedia(
   requester: string,
   description: string,
   sources: MediaSource[],
+  apiSource: string = 'unknown',
 ): Promise<PersistedMedia[]> {
   const results: PersistedMedia[] = [];
 
@@ -80,14 +81,15 @@ export async function persistMedia(
           description,
           src.source,
           src.defaultExtension,
+          apiSource,
         );
       } else if (src.source.startsWith('http://') || src.source.startsWith('https://')) {
         // ── Remote URL ──────────────────────────────────────────
         const ext = extensionFromUrl(src.source, src.defaultExtension);
-        output = await fileHandler.saveFromUrl(requester, description, src.source, ext);
+        output = await fileHandler.saveFromUrl(requester, description, src.source, ext, apiSource);
       } else if (src.source === 'buffer' && src.buffer) {
         // ── Raw buffer ──────────────────────────────────────────
-        output = fileHandler.saveFile(requester, description, src.buffer, src.defaultExtension);
+        output = fileHandler.saveFile(requester, description, src.buffer, src.defaultExtension, apiSource);
       } else {
         logger.logError('system', `persistMedia: unrecognised source type: ${src.source.substring(0, 40)}`);
       }

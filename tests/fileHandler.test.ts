@@ -112,7 +112,7 @@ describe('FileHandler', () => {
       const buffer = Buffer.from('hello world');
       const result = (fileHandler as any).saveFile('TestUser', 'my great file extra', buffer, 'txt');
 
-      expect(result.fileName).toMatch(/^testuser-my_great_file\.txt$/);
+      expect(result.fileName).toMatch(/^\d+_unknown_testuser_my_great_file-\d+\.txt$/);
       expect(result.size).toBe(11);
       expect(result.url).toContain('http://localhost:3003/');
       expect(fs.existsSync(result.filePath)).toBe(true);
@@ -132,7 +132,7 @@ describe('FileHandler', () => {
       const buffer = Buffer.from('data');
       const result = (fileHandler as any).saveFile('User With Spaces!', 'test item item', buffer, 'txt');
 
-      expect(result.fileName).toMatch(/^user_with_spaces_-/);
+      expect(result.fileName).toMatch(/^\d+_unknown_user_with_spaces_/);
     });
 
     it('should write the correct content', () => {

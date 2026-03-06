@@ -54,7 +54,8 @@ class FileHandler {
     requester: string,
     description: string,
     fileBuffer: Buffer,
-    extension: string
+    extension: string,
+    apiSource: string = 'unknown'
   ): FileOutput {
     const datePath = this.getDatePath();
     const dirPath = path.join(this.outputsDir, datePath);
@@ -63,13 +64,24 @@ class FileHandler {
       fs.mkdirSync(dirPath, { recursive: true });
     }
 
-    // Format: requester-three_word_description.ext
+    // Format: {timestamp}_{api}_{requester}_{description}-{counter}.{ext}
     const safeRequester = this.sanitizeFileName(requester);
     const safeDescription = this.sanitizeFileName(
       this.normalizeDescription(description)
     );
-    const fileName = `${safeRequester}-${safeDescription}.${extension}`;
-    const filePath = path.join(dirPath, fileName);
+    const safeApi = this.sanitizeFileName(apiSource);
+    const timestamp = Date.now();
+    const baseName = `${timestamp}_${safeApi}_${safeRequester}_${safeDescription}`;
+
+    // Collision counter: increment until the filename is unique
+    let counter = 1;
+    let fileName = `${baseName}-${counter}.${extension}`;
+    let filePath = path.join(dirPath, fileName);
+    while (fs.existsSync(filePath)) {
+      counter++;
+      fileName = `${baseName}-${counter}.${extension}`;
+      filePath = path.join(dirPath, fileName);
+    }
 
     // Verify resolved path stays within outputs directory
     const resolved = path.resolve(filePath);
@@ -98,7 +110,8 @@ class FileHandler {
     requester: string,
     description: string,
     fileUrl: string,
-    extension: string
+    extension: string,
+    apiSource: string = 'unknown'
   ): Promise<FileOutput | null> {
     try {
       const response = await axios.get(fileUrl, {
@@ -106,7 +119,7 @@ class FileHandler {
         timeout: 30000,
       });
 
-      return this.saveFile(requester, description, response.data, extension);
+      return this.saveFile(requester, description, response.data, extension, apiSource);
     } catch (error) {
       logger.logError('system', `Failed to download file from URL: ${error}`);
       return null;
@@ -122,7 +135,8 @@ class FileHandler {
     requester: string,
     description: string,
     dataUrl: string,
-    defaultExtension: string
+    defaultExtension: string,
+    apiSource: string = 'unknown'
   ): FileOutput | null {
     const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
     if (!match) {
@@ -138,7 +152,7 @@ class FileHandler {
     const mimeExt = mime.split('/')[1]?.replace('jpeg', 'jpg');
     const extension = mimeExt || defaultExtension;
 
-    return this.saveFile(requester, description, buffer, extension);
+    return this.saveFile(requester, description, buffer, extension, apiSource);
   }
 
   shouldAttachFile(fileSize: number): boolean {

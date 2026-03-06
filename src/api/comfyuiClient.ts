@@ -1242,7 +1242,7 @@ class ComfyUIClient {
         ...images.map(url => ({ source: url, defaultExtension: 'png', mediaType: 'image' as const })),
         ...videos.map(url => ({ source: url, defaultExtension: 'mp4', mediaType: 'video' as const })),
       ];
-      const savedOutputs = await persistMedia(requester, prompt, mediaSources);
+      const savedOutputs = await persistMedia(requester, prompt, mediaSources, 'comfyui');
       if (savedOutputs.length > 0) {
         logger.logDebug(requester, `ComfyUI outputs persisted: ${savedOutputs.length} file(s)`);
       }

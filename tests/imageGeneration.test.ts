@@ -186,7 +186,7 @@ describe('POST /api/test/generate-image', () => {
     expect(requester).toBe('test');
 
     // Verify file was saved
-    expect(mockSaveFromUrl).toHaveBeenCalledWith('test', DEFAULT_PROMPT, imageUrl, 'png');
+    expect(mockSaveFromUrl).toHaveBeenCalledWith('test', DEFAULT_PROMPT, imageUrl, 'png', 'test');
   });
 
   it('should return multiple images when ComfyUI outputs several', async () => {

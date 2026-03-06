@@ -133,7 +133,7 @@ class GenerateCommand extends BaseCommand {
       // Fallback: download and save from original URLs (legacy path)
       const processOutputs = async (urls: string[], description: string, extension: string, label: string) => {
         for (let i = 0; i < urls.length; i++) {
-          const fileOutput = await fileHandler.saveFromUrl(requester, description, urls[i], extension);
+          const fileOutput = await fileHandler.saveFromUrl(requester, description, urls[i], extension, 'comfyui');
           if (fileOutput) {
             savedCount++;
             if (embed) {

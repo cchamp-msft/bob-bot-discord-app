@@ -77,6 +77,7 @@ describe('XaiClient', () => {
         'user1',
         'a sunset over mountains',
         [{ source: 'https://cdn.x.ai/img/abc.png', defaultExtension: 'png', mediaType: 'image' }],
+        'xai',
       );
 
       expect(mockPost).toHaveBeenCalledWith(
@@ -106,6 +107,7 @@ describe('XaiClient', () => {
         'user1',
         'a cat',
         [{ source: 'data:image/png;base64,iVBORw0KGgo=', defaultExtension: 'png', mediaType: 'image' }],
+        'xai',
       );
     });
 
@@ -131,6 +133,7 @@ describe('XaiClient', () => {
           { source: 'https://cdn.x.ai/img/1.png', defaultExtension: 'png', mediaType: 'image' },
           { source: 'https://cdn.x.ai/img/2.png', defaultExtension: 'png', mediaType: 'image' },
         ],
+        'xai',
       );
     });
 
@@ -216,6 +219,7 @@ describe('XaiClient', () => {
         'user1',
         'a flower blooming',
         [{ source: 'https://cdn.x.ai/vid/abc.mp4', defaultExtension: 'mp4', mediaType: 'video' }],
+        'xai',
       );
 
       expect(mockPost).toHaveBeenCalledWith(

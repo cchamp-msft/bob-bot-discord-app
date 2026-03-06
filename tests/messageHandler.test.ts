@@ -1514,7 +1514,8 @@ describe('MessageHandler handleComfyUIResponse fallback content', () => {
       'testuser',
       'generated_video',
       expect.stringContaining('ComfyUI_00002_.mp4'),
-      'mp4'
+      'mp4',
+      'comfyui'
     );
   });
 });

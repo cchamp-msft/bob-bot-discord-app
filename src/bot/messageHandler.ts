@@ -2492,7 +2492,7 @@ class MessageHandler {
     const processOutputs = async (urls: string[], description: string, defaultExtension: string, label: string) => {
       for (let i = 0; i < urls.length; i++) {
         const extension = extensionFromUrl(urls[i], defaultExtension);
-        const fileOutput = await fileHandler.saveFromUrl(requester, description, urls[i], extension);
+        const fileOutput = await fileHandler.saveFromUrl(requester, description, urls[i], extension, 'comfyui');
         if (fileOutput) {
           if (embed) {
             embed.addFields({
@@ -2592,6 +2592,23 @@ class MessageHandler {
   /** Regex to strip generated-image URL lines injected by the final Ollama pass. */
   private static readonly GENERATED_MEDIA_LINE_RE = /\[Generated \d+ (?:image|video)\(s\):[^\]]*\]\n?/g;
 
+  /** Matches text that is purely XML metadata tags and generated-media summaries (no real commentary). */
+  private static readonly XML_METADATA_ONLY_RE = /^(<[^>]+>|\[Generated[^\]]*\]|\s)*$/;
+
+  /** Strip XML metadata wrapper from text when media is present; returns empty string if only metadata remains. */
+  private static stripXmlMetadata(text: string): string {
+    // Remove <api_data ...>...</api_data> and <external_data>...</external_data> wrapper tags
+    let cleaned = text
+      .replace(/<\/?api_data[^>]*>/g, '')
+      .replace(/<\/?external_data[^>]*>/g, '')
+      .trim();
+    // If what remains is only generated-media summary lines and whitespace, treat as empty
+    if (MessageHandler.XML_METADATA_ONLY_RE.test(cleaned)) {
+      cleaned = '';
+    }
+    return cleaned;
+  }
+
   /**
    * Fire-and-forget POST of response/thinking text to a thraken ingest listener.
    * Uses the thraken URL configured for the active final-pass provider.
@@ -2625,7 +2642,7 @@ class MessageHandler {
     // Prefer pre-persisted file from xaiClient; fall back to download.
     const xaiVideoMedia = media?.find((m): m is XaiVideoMediaFollowUp => m.kind === 'xai-video');
     if (xaiVideoMedia?.url) {
-      text = text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim();
+      text = MessageHandler.stripXmlMetadata(text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim());
       try {
         let buf: Buffer;
         let attachName: string;
@@ -2672,7 +2689,7 @@ class MessageHandler {
     // Prefer pre-persisted files from xaiClient; fall back to decode/download.
     const xaiImageMedia = media?.find((m): m is XaiImageMediaFollowUp => m.kind === 'xai-image');
     if (xaiImageMedia && xaiImageMedia.images.length > 0) {
-      text = text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim();
+      text = MessageHandler.stripXmlMetadata(text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim());
       const attachments: { attachment: Buffer; name: string }[] = [];
       const savedPaths: string[] = [];
 
@@ -2748,7 +2765,7 @@ class MessageHandler {
       const totalOutputs = (mediaSource.data?.images?.length || 0) + (mediaSource.data?.videos?.length || 0);
       if (totalOutputs > 0) {
         // Strip URL lines that Ollama echoed from the external data
-        text = text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim();
+        text = MessageHandler.stripXmlMetadata(text.replace(MessageHandler.GENERATED_MEDIA_LINE_RE, '').trim());
 
         const includeEmbed = config.getImageResponseIncludeEmbed();
         let embed: EmbedBuilder | undefined;
