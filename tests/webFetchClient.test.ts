@@ -450,4 +450,211 @@ describe('WebFetchClient', () => {
       expect(xml).toContain('HTTP 403');
     });
   });
+
+  // ── SSRF hardening (security regression) ────────────────────────
+
+  describe('SSRF hardening', () => {
+    it('should block localhost hostname', () => {
+      const result = webFetchClient.validateUrl('http://localhost/admin');
+      expect(result).toContain('SSRF blocked');
+    });
+
+    it('should block localhost.localdomain hostname', () => {
+      const result = webFetchClient.validateUrl('http://localhost.localdomain/');
+      expect(result).toContain('SSRF blocked');
+    });
+
+    it('should block .local TLD', () => {
+      const result = webFetchClient.validateUrl('http://printer.local/status');
+      expect(result).toContain('SSRF blocked');
+    });
+
+    it('should block .internal TLD', () => {
+      const result = webFetchClient.validateUrl('http://service.internal/api');
+      expect(result).toContain('SSRF blocked');
+    });
+
+    it('should block CGNAT range 100.64.x.x', () => {
+      const result = webFetchClient.validateUrl('http://100.64.0.1/');
+      expect(result).toContain('SSRF blocked');
+    });
+
+    it('should block 0.0.0.0', () => {
+      const result = webFetchClient.validateUrl('http://0.0.0.0/');
+      expect(result).toContain('SSRF blocked');
+    });
+
+    it('should block multicast range 224.x.x.x', () => {
+      const result = webFetchClient.validateUrl('http://224.0.0.1/');
+      expect(result).toContain('SSRF blocked');
+    });
+
+    it('should block broadcast 255.255.255.255', () => {
+      const result = webFetchClient.validateUrl('http://255.255.255.255/');
+      expect(result).toContain('SSRF blocked');
+    });
+
+    it('should block TEST-NET-1 192.0.2.x', () => {
+      const result = webFetchClient.validateUrl('http://192.0.2.1/');
+      expect(result).toContain('SSRF blocked');
+    });
+
+    it('should block benchmarking range 198.18.x.x', () => {
+      const result = webFetchClient.validateUrl('http://198.18.0.1/');
+      expect(result).toContain('SSRF blocked');
+    });
+
+    it('should block IPv6 loopback ::1', () => {
+      const result = webFetchClient.validateUrl('http://[::1]/');
+      expect(result).toContain('SSRF blocked');
+    });
+  });
+
+  // ── DNS fail-closed behavior ────────────────────────────────────
+
+  describe('DNS fail-closed', () => {
+    it('should block when both A and AAAA resolution fail', async () => {
+      (dns.resolve as jest.Mock).mockRejectedValue(new Error('ENOTFOUND'));
+      (dns.resolve6 as jest.Mock).mockRejectedValue(new Error('ENOTFOUND'));
+
+      const result = await webFetchClient.handleRequest('https://nonexistent.example.com', 'fetch_webpage');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('fail-closed');
+    });
+  });
+
+  // ── Dual-stack AAAA validation ──────────────────────────────────
+
+  describe('Dual-stack DNS SSRF protection', () => {
+    it('should block when A records are public but AAAA resolves to private', async () => {
+      (dns.resolve as jest.Mock).mockResolvedValue(['93.184.216.34']);
+      (dns.resolve6 as jest.Mock).mockResolvedValue(['::1']);
+
+      const result = await webFetchClient.handleRequest('https://dualstack.example.com', 'fetch_webpage');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('SSRF blocked');
+    });
+
+    it('should block when AAAA resolves to ULA fd00::', async () => {
+      (dns.resolve as jest.Mock).mockResolvedValue(['93.184.216.34']);
+      (dns.resolve6 as jest.Mock).mockResolvedValue(['fd00::1']);
+
+      const result = await webFetchClient.handleRequest('https://ula.example.com', 'fetch_webpage');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('SSRF blocked');
+    });
+
+    it('should allow when both A and AAAA are public', async () => {
+      (dns.resolve as jest.Mock).mockResolvedValue(['93.184.216.34']);
+      (dns.resolve6 as jest.Mock).mockResolvedValue(['2606:2800:220:1:248:1893:25c8:1946']);
+      mockSuccessResponse(htmlPage('<p>Content</p>'));
+
+      const result = await webFetchClient.handleRequest('https://safe.example.com', 'fetch_webpage');
+      expect(result.success).toBe(true);
+    });
+  });
+
+  // ── Redirect SSRF validation ────────────────────────────────────
+
+  describe('Redirect SSRF validation', () => {
+    it('should block redirect to private IP', async () => {
+      mockInstance.get.mockResolvedValueOnce({
+        status: 302,
+        headers: { 'content-type': 'text/html', location: 'http://127.0.0.1/admin' },
+        data: Buffer.from(''),
+      });
+
+      const result = await webFetchClient.handleRequest('https://redirect.example.com', 'fetch_webpage');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Redirect to unsafe URL blocked');
+    });
+
+    it('should block redirect to localhost hostname', async () => {
+      mockInstance.get.mockResolvedValueOnce({
+        status: 301,
+        headers: { 'content-type': 'text/html', location: 'http://localhost/secret' },
+        data: Buffer.from(''),
+      });
+
+      const result = await webFetchClient.handleRequest('https://redirect2.example.com', 'fetch_webpage');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Redirect to unsafe URL blocked');
+    });
+
+    it('should block redirect whose DNS resolves to private IP', async () => {
+      // First hop succeeds DNS check
+      (dns.resolve as jest.Mock)
+        .mockResolvedValueOnce(['93.184.216.34'])   // initial URL
+        .mockResolvedValueOnce(['10.0.0.1']);        // redirect target
+
+      mockInstance.get.mockResolvedValueOnce({
+        status: 302,
+        headers: { 'content-type': 'text/html', location: 'https://evil-redirect.example.com/' },
+        data: Buffer.from(''),
+      });
+
+      const result = await webFetchClient.handleRequest('https://start.example.com', 'fetch_webpage');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Redirect blocked by DNS policy');
+    });
+
+    it('should follow safe redirects successfully', async () => {
+      mockInstance.get
+        .mockResolvedValueOnce({
+          status: 302,
+          headers: { 'content-type': 'text/html', location: 'https://final.example.com/page' },
+          data: Buffer.from(''),
+        })
+        .mockResolvedValueOnce({
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+          data: htmlPage('<p>Final page</p>'),
+        });
+
+      const result = await webFetchClient.handleRequest('https://redirect-ok.example.com', 'fetch_webpage');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('Final page');
+    });
+
+    it('should fail when redirect count exceeds max', async () => {
+      (config.getWebFetchMaxRedirects as jest.Mock).mockReturnValue(2);
+
+      mockInstance.get
+        .mockResolvedValueOnce({
+          status: 302,
+          headers: { location: 'https://hop1.example.com/' },
+          data: Buffer.from(''),
+        })
+        .mockResolvedValueOnce({
+          status: 302,
+          headers: { location: 'https://hop2.example.com/' },
+          data: Buffer.from(''),
+        })
+        .mockResolvedValueOnce({
+          status: 302,
+          headers: { location: 'https://hop3.example.com/' },
+          data: Buffer.from(''),
+        });
+
+      const result = await webFetchClient.handleRequest('https://loop.example.com', 'fetch_webpage');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Too many redirects');
+    });
+  });
+
+  // ── Transport-level size limits ─────────────────────────────────
+
+  describe('Transport-level size limits', () => {
+    it('should fall back when axios throws maxContentLength error', async () => {
+      mockSerpApiHandleRequest.mockResolvedValue({
+        success: true,
+        data: { text: 'Fallback for oversized' },
+      });
+      mockInstance.get.mockRejectedValueOnce(new Error('maxContentLength size of 5242880 exceeded'));
+
+      const result = await webFetchClient.handleRequest('https://huge.example.com', 'fetch_webpage');
+      expect(result.success).toBe(true);
+      expect(result.data?.fallbackUsed).toBe(true);
+    });
+  });
 });

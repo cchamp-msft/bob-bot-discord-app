@@ -41,31 +41,62 @@ const CAPTCHA_MARKERS = [
   'hcaptcha',
 ];
 
-/** CIDR-like checks for private/internal IPv4 ranges. */
-function isPrivateIPv4(ip: string): boolean {
+/** Hostnames that always resolve locally and must be blocked. */
+const BLOCKED_HOSTNAMES = new Set([
+  'localhost',
+  'localhost.localdomain',
+  'ip6-localhost',
+  'ip6-loopback',
+]);
+
+/** TLD suffixes that resolve to link-local/internal infrastructure. */
+const BLOCKED_TLD_SUFFIXES = ['.local', '.internal', '.localdomain', '.localhost'];
+
+/** Check whether a hostname should be blocked before DNS resolution. */
+function isBlockedHostname(hostname: string): boolean {
+  const lower = hostname.toLowerCase();
+  if (BLOCKED_HOSTNAMES.has(lower)) return true;
+  return BLOCKED_TLD_SUFFIXES.some((suffix) => lower.endsWith(suffix));
+}
+
+/**
+ * Comprehensive reserved/private IPv4 check.
+ * Covers RFC 1918, loopback, link-local, CGNAT, documentation, benchmarking,
+ * multicast, and broadcast ranges.
+ */
+function isReservedIPv4(ip: string): boolean {
   const parts = ip.split('.').map(Number);
-  if (parts.length !== 4) return false;
-  // 127.0.0.0/8
-  if (parts[0] === 127) return true;
-  // 10.0.0.0/8
-  if (parts[0] === 10) return true;
-  // 172.16.0.0/12
-  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-  // 192.168.0.0/16
-  if (parts[0] === 192 && parts[1] === 168) return true;
-  // 169.254.0.0/16 (link-local)
-  if (parts[0] === 169 && parts[1] === 254) return true;
-  // 0.0.0.0
-  if (parts[0] === 0 && parts[1] === 0 && parts[2] === 0 && parts[3] === 0) return true;
+  if (parts.length !== 4 || parts.some((p) => isNaN(p) || p < 0 || p > 255)) return false;
+  const [a, b] = parts;
+  if (a === 0) return true;                              // 0.0.0.0/8   (this network)
+  if (a === 10) return true;                             // 10.0.0.0/8
+  if (a === 100 && b >= 64 && b <= 127) return true;     // 100.64.0.0/10 (CGNAT)
+  if (a === 127) return true;                            // 127.0.0.0/8
+  if (a === 169 && b === 254) return true;               // 169.254.0.0/16 (link-local)
+  if (a === 172 && b >= 16 && b <= 31) return true;      // 172.16.0.0/12
+  if (a === 192 && b === 0 && parts[2] === 0) return true; // 192.0.0.0/24 (IETF protocol)
+  if (a === 192 && b === 0 && parts[2] === 2) return true; // 192.0.2.0/24 (TEST-NET-1)
+  if (a === 192 && b === 168) return true;               // 192.168.0.0/16
+  if (a === 198 && (b === 18 || b === 19)) return true;  // 198.18.0.0/15 (benchmarking)
+  if (a === 198 && b === 51 && parts[2] === 100) return true; // 198.51.100.0/24 (TEST-NET-2)
+  if (a === 203 && b === 0 && parts[2] === 113) return true;  // 203.0.113.0/24 (TEST-NET-3)
+  if (a >= 224) return true;                             // 224.0.0.0+ (multicast & reserved)
   return false;
 }
 
-/** Check if an IPv6 address is private/internal. */
-function isPrivateIPv6(ip: string): boolean {
+/**
+ * Comprehensive reserved/private IPv6 check.
+ * Covers loopback, ULA, link-local, IPv4-mapped private, and unspecified.
+ */
+function isReservedIPv6(ip: string): boolean {
   const lower = ip.toLowerCase();
-  if (lower === '::1') return true;
-  if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // fc00::/7
-  if (lower.startsWith('fe80')) return true; // fe80::/10
+  if (lower === '::' || lower === '::1') return true;
+  if (lower.startsWith('fc') || lower.startsWith('fd')) return true;  // fc00::/7 ULA
+  if (lower.startsWith('fe80')) return true;                          // fe80::/10 link-local
+  if (lower.startsWith('::ffff:')) {
+    const mapped = lower.substring('::ffff:'.length);
+    if (net.isIPv4(mapped) && isReservedIPv4(mapped)) return true;
+  }
   return false;
 }
 
@@ -79,16 +110,18 @@ class WebFetchClient {
   }
 
   private buildClient(): AxiosInstance {
+    const maxBody = Math.max(config.getWebFetchMaxTextSize(), config.getWebFetchMaxImageSize());
     return axios.create({
       timeout: config.getWebFetchTimeout(),
-      maxRedirects: config.getWebFetchMaxRedirects(),
+      maxRedirects: 0,
       headers: {
         'User-Agent': config.getWebFetchUserAgent(),
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/png,*/*;q=0.8',
       },
       responseType: 'arraybuffer',
-      // Don't throw on non-2xx so we can handle errors gracefully
-      validateStatus: (status) => status < 500,
+      maxContentLength: maxBody,
+      maxBodyLength: maxBody,
+      validateStatus: () => true,
     });
   }
 
@@ -127,7 +160,7 @@ class WebFetchClient {
         logger.logWarn('webfetch', `robots.txt blocks ${url}: ${robotsResult.reason}`);
         robotsTxtNote = robotsResult.reason;
         // Fall back to search instead
-        return this.fallbackToSearch(url, `Blocked by robots.txt: ${robotsResult.reason}`);
+        return this.fallbackToSearch(url, `Blocked by robots.txt: ${robotsResult.reason}`, signal);
       }
       if (robotsResult.note) {
         robotsTxtNote = robotsResult.note;
@@ -137,49 +170,77 @@ class WebFetchClient {
     logger.log('success', 'system', `WEBFETCH: Fetching "${url}" (tool: ${toolName})`);
 
     try {
-      const response = await this.client.get(url, { signal });
+      const maxRedirects = config.getWebFetchMaxRedirects();
+      let currentUrl = url;
+
+      // Follow redirects manually so each hop is validated for SSRF
+      let response = await this.client.get(currentUrl, { signal });
+      let redirectCount = 0;
+
+      while (this.isRedirect(response.status) && redirectCount < maxRedirects) {
+        const location = response.headers['location'];
+        if (!location) break;
+
+        const nextUrl = new URL(location, currentUrl).toString();
+
+        const hopValidation = this.validateUrl(nextUrl);
+        if (hopValidation) {
+          return { success: false, error: `Redirect to unsafe URL blocked: ${hopValidation}` };
+        }
+        try {
+          await this.checkDns(nextUrl);
+        } catch (dnsErr) {
+          const dnsMsg = dnsErr instanceof Error ? dnsErr.message : String(dnsErr);
+          return { success: false, error: `Redirect blocked by DNS policy: ${dnsMsg}` };
+        }
+
+        redirectCount++;
+        currentUrl = nextUrl;
+        response = await this.client.get(currentUrl, { signal });
+      }
+
+      if (this.isRedirect(response.status)) {
+        return { success: false, error: `Too many redirects (max ${maxRedirects})` };
+      }
 
       // Layer 3: Response validation (content-type)
       const rawContentType = response.headers['content-type'] || '';
       const contentType = rawContentType.split(';')[0].trim().toLowerCase();
 
-      // Check for HTTP errors that indicate blocking
       if (response.status === 403 || response.status === 401 || response.status === 429) {
-        logger.logWarn('webfetch', `HTTP ${response.status} from ${url} — falling back to search`);
-        return this.fallbackToSearch(url, `HTTP ${response.status} — access denied or rate limited`);
+        logger.logWarn('webfetch', `HTTP ${response.status} from ${currentUrl} — falling back to search`);
+        return this.fallbackToSearch(url, `HTTP ${response.status} — access denied or rate limited`, signal);
       }
 
-      if (response.status >= 400) {
-        return { success: false, error: `HTTP ${response.status} from ${url}` };
+      if (response.status >= 400 || response.status >= 500) {
+        return { success: false, error: `HTTP ${response.status} from ${currentUrl}` };
       }
 
       const buffer = Buffer.from(response.data);
 
-      // Handle images
       if (IMAGE_CONTENT_TYPES.has(contentType)) {
         return this.processImage(buffer, url, contentType);
       }
 
-      // Handle text content
       if (TEXT_CONTENT_TYPES.has(contentType)) {
-        return this.processText(buffer, url, contentType, robotsTxtNote);
+        return this.processText(buffer, url, contentType, robotsTxtNote, signal);
       }
 
-      // Reject unsupported content types
       return { success: false, error: `Unsupported content type: ${contentType}` };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
 
-      // Timeouts, network errors → fallback to search
       if (
         msg.includes('timeout') ||
         msg.includes('ECONNREFUSED') ||
         msg.includes('ENOTFOUND') ||
         msg.includes('ECONNRESET') ||
-        msg.includes('aborted')
+        msg.includes('aborted') ||
+        msg.includes('maxContentLength') ||
+        msg.includes('maxBodyLength')
       ) {
         logger.logWarn('webfetch', `Fetch failed for ${url}: ${msg} — falling back to search`);
-        return this.fallbackToSearch(url, msg);
+        return this.fallbackToSearch(url, msg, signal);
       }
 
       logger.logError('webfetch', `Fetch failed: ${msg}`);
@@ -189,7 +250,7 @@ class WebFetchClient {
 
   // ── Layer 1: URL validation ─────────────────────────────────────
 
-  /** Validate URL format and protocol. Returns error string or null if valid. */
+  /** Validate URL format, protocol, and hostname. Returns error string or null if valid. */
   validateUrl(url: string): string | null {
     if (!url) return 'No URL provided';
 
@@ -204,48 +265,65 @@ class WebFetchClient {
       return `URL must use http:// or https:// protocol (got ${parsed.protocol})`;
     }
 
-    // Block direct IP addresses in the URL that are private
     const hostname = parsed.hostname;
-    if (net.isIPv4(hostname) && isPrivateIPv4(hostname)) {
+    const bareHostname = hostname.startsWith('[') && hostname.endsWith(']')
+      ? hostname.slice(1, -1)
+      : hostname;
+
+    if (isBlockedHostname(bareHostname)) {
+      return `Blocked hostname "${bareHostname}" (SSRF blocked)`;
+    }
+
+    if (net.isIPv4(bareHostname) && isReservedIPv4(bareHostname)) {
       return 'URL points to a private/internal IP address (SSRF blocked)';
     }
-    if (net.isIPv6(hostname) && isPrivateIPv6(hostname)) {
+    if (net.isIPv6(bareHostname) && isReservedIPv6(bareHostname)) {
       return 'URL points to a private/internal IP address (SSRF blocked)';
     }
 
     return null;
   }
 
-  /** DNS pre-resolution to block SSRF via hostname → private IP. */
+  /**
+   * DNS pre-resolution to block SSRF via hostname -> private IP.
+   * Resolves both A and AAAA records independently.
+   * Fails closed: if DNS cannot resolve the hostname at all, the request is blocked.
+   */
   private async checkDns(url: string): Promise<void> {
     const parsed = new URL(url);
-    const hostname = parsed.hostname;
+    const rawHostname = parsed.hostname;
+    const hostname = rawHostname.startsWith('[') && rawHostname.endsWith(']')
+      ? rawHostname.slice(1, -1)
+      : rawHostname;
 
-    // Skip DNS check for direct IP addresses (already checked in validateUrl)
     if (net.isIPv4(hostname) || net.isIPv6(hostname)) return;
 
-    try {
-      const addresses = await dns.resolve(hostname);
-      for (const addr of addresses) {
-        if (isPrivateIPv4(addr)) {
-          throw new Error(`URL hostname "${hostname}" resolves to private IP ${addr} (SSRF blocked)`);
-        }
-      }
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('SSRF blocked')) throw error;
-      // Also try resolve6
-      try {
-        const addresses6 = await dns.resolve6(hostname);
-        for (const addr of addresses6) {
-          if (isPrivateIPv6(addr)) {
-            throw new Error(`URL hostname "${hostname}" resolves to private IPv6 ${addr} (SSRF blocked)`);
-          }
-        }
-      } catch (err6) {
-        if (err6 instanceof Error && err6.message.includes('SSRF blocked')) throw err6;
-        // DNS resolution failure is not an SSRF issue — let the HTTP request handle it
+    const [v4Result, v6Result] = await Promise.allSettled([
+      dns.resolve(hostname),
+      dns.resolve6(hostname),
+    ]);
+
+    const v4Addrs = v4Result.status === 'fulfilled' ? v4Result.value : [];
+    const v6Addrs = v6Result.status === 'fulfilled' ? v6Result.value : [];
+
+    if (v4Addrs.length === 0 && v6Addrs.length === 0) {
+      throw new Error(`DNS resolution failed for "${hostname}" — request blocked (fail-closed)`);
+    }
+
+    for (const addr of v4Addrs) {
+      if (isReservedIPv4(addr)) {
+        throw new Error(`URL hostname "${hostname}" resolves to private IP ${addr} (SSRF blocked)`);
       }
     }
+    for (const addr of v6Addrs) {
+      if (isReservedIPv6(addr)) {
+        throw new Error(`URL hostname "${hostname}" resolves to private IPv6 ${addr} (SSRF blocked)`);
+      }
+    }
+  }
+
+  private isRedirect(status: number): boolean {
+    return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
   }
 
   // ── robots.txt checking ─────────────────────────────────────────
@@ -300,7 +378,7 @@ class WebFetchClient {
 
   // ── Layer 3–4: Content processing ───────────────────────────────
 
-  private async processText(buffer: Buffer, url: string, contentType: string, robotsTxtNote?: string): Promise<WebFetchResponse> {
+  private async processText(buffer: Buffer, url: string, contentType: string, robotsTxtNote?: string, signal?: AbortSignal): Promise<WebFetchResponse> {
     // Actual byte-size validation
     const maxTextSize = config.getWebFetchMaxTextSize();
     if (buffer.length > maxTextSize) {
@@ -313,7 +391,7 @@ class WebFetchClient {
     const captchaResult = this.detectCaptcha(html);
     if (captchaResult) {
       logger.logWarn('webfetch', `Captcha detected on ${url}: ${captchaResult}`);
-      return this.fallbackToSearch(url, `Captcha detected: ${captchaResult}`);
+      return this.fallbackToSearch(url, `Captcha detected: ${captchaResult}`, signal);
     }
 
     // Extract text content
@@ -343,7 +421,7 @@ class WebFetchClient {
 
     if (!text.trim()) {
       logger.logWarn('webfetch', `No extractable text from ${url} — falling back to search`);
-      return this.fallbackToSearch(url, 'Page returned no extractable text content');
+      return this.fallbackToSearch(url, 'Page returned no extractable text content', signal);
     }
 
     return {
@@ -469,12 +547,16 @@ class WebFetchClient {
     }
   }
 
-  private async fallbackToSearch(url: string, reason: string): Promise<WebFetchResponse> {
+  private async fallbackToSearch(url: string, reason: string, signal?: AbortSignal): Promise<WebFetchResponse> {
     logger.log('success', 'system', `WEBFETCH: Falling back to SerpAPI search for ${url} (reason: ${reason})`);
+
+    if (signal?.aborted) {
+      return { success: false, error: `Request cancelled before fallback search for ${url}` };
+    }
 
     const query = this.buildFallbackQuery(url);
     try {
-      const searchResult = await serpApiClient.handleRequest(query, 'web_search');
+      const searchResult = await serpApiClient.handleRequest(query, 'web_search', signal);
       if (searchResult.success && searchResult.data?.text) {
         return {
           success: true,
