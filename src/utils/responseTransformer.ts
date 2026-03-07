@@ -1,19 +1,19 @@
 import { ComfyUIResponse } from '../api/comfyuiClient';
 import { OllamaResponse } from '../api/ollamaClient';
-import { AccuWeatherResponse, NFLResponse, SerpApiResponse, MemeResponse, DiscordActionResponse } from '../types';
+import { AccuWeatherResponse, NFLResponse, SerpApiResponse, MemeResponse, DiscordActionResponse, WebFetchResponse } from '../types';
 
 /**
  * Unified result from any API stage in a routed pipeline.
  */
 export interface StageResult {
   /** The type of API that produced this result. */
-  sourceApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'external';
+  sourceApi: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'webfetch' | 'external';
   /** Extracted text content (from Ollama, AccuWeather, NFL, or future text-based APIs). */
   text?: string;
   /** Extracted image URLs (from ComfyUI). */
   images?: string[];
   /** The raw API response for final handling. */
-  rawResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | Record<string, unknown>;
+  rawResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | WebFetchResponse | Record<string, unknown>;
 }
 
 /**
@@ -96,11 +96,22 @@ export function extractFromMeme(response: MemeResponse): StageResult {
 }
 
 /**
+ * Extract usable text content from a WebFetch response.
+ */
+export function extractFromWebFetch(response: WebFetchResponse): StageResult {
+  return {
+    sourceApi: 'webfetch',
+    text: response.data?.text ?? undefined,
+    rawResponse: response,
+  };
+}
+
+/**
  * Extract a StageResult from any API response based on the API type.
  */
 export function extractStageResult(
-  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video',
-  response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video' | 'webfetch',
+  response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse | WebFetchResponse
 ): StageResult {
   if (api === 'comfyui') {
     return extractFromComfyUI(response as ComfyUIResponse);
@@ -125,6 +136,9 @@ export function extractStageResult(
   }
   if (api === 'meme') {
     return extractFromMeme(response as MemeResponse);
+  }
+  if (api === 'webfetch') {
+    return extractFromWebFetch(response as WebFetchResponse);
   }
   if (api === 'discord') {
     const dr = response as DiscordActionResponse;

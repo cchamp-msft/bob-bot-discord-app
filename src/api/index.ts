@@ -5,11 +5,12 @@ import { accuweatherClient } from './accuweatherClient';
 import { nflClient } from './nflClient';
 import { serpApiClient } from './serpApiClient';
 import { memeClient } from './memeClient';
+import { webFetchClient } from './webFetchClient';
 import { config } from '../utils/config';
-import { ChatMessage, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult } from '../types';
+import { ChatMessage, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult, WebFetchResponse, WebFetchHealthResult } from '../types';
 import type { OllamaTool } from '../utils/toolsSchema';
 
-export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, XaiResponse, XaiImageResponse, XaiVideoResponse, XaiHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult };
+export type { ComfyUIResponse, OllamaResponse, OllamaHealthResult, XaiResponse, XaiImageResponse, XaiVideoResponse, XaiHealthResult, AccuWeatherResponse, AccuWeatherHealthResult, NFLResponse, NFLHealthResult, SerpApiResponse, SerpApiHealthResult, MemeResponse, MemeHealthResult, WebFetchResponse, WebFetchHealthResult };
 
 /** Options forwarded to ollamaClient.generate() when api === 'ollama'. */
 export interface OllamaRequestOptions {
@@ -27,7 +28,7 @@ export interface OllamaRequestOptions {
 
 class ApiManager {
   async executeRequest(
-    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video' | 'external',
+    api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video' | 'webfetch' | 'external',
     requester: string,
     data: string,
     _timeout: number,
@@ -38,7 +39,7 @@ class ApiManager {
     ollamaOptions?: OllamaRequestOptions,
     /** Tool name — required when api is 'nfl'. */
     toolName?: string
-  ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | XaiImageResponse | XaiVideoResponse> {
+  ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | XaiImageResponse | XaiVideoResponse | WebFetchResponse> {
     if (api === 'comfyui') {
       return await comfyuiClient.generateImage(data, requester, signal, _timeout);
     } else if (api === 'discord') {
@@ -56,6 +57,8 @@ class ApiManager {
       return await serpApiClient.handleRequest(data, toolName || 'web_search', signal);
     } else if (api === 'meme') {
       return await memeClient.handleRequest(data, toolName || 'meme', signal);
+    } else if (api === 'webfetch') {
+      return await webFetchClient.handleRequest(data, toolName || 'fetch_webpage', signal);
     } else if (api === 'xai') {
       return await xaiClient.generate(data, requester, model || config.getXaiModel(), conversationHistory, signal, ollamaOptions);
     } else if (api === 'external') {
@@ -87,6 +90,7 @@ class ApiManager {
     nflClient.refresh();
     serpApiClient.refresh();
     memeClient.refresh();
+    webFetchClient.refresh();
   }
 
   async checkNflHealth(): Promise<NFLHealthResult> {
@@ -124,6 +128,10 @@ class ApiManager {
   /**
    * Test xAI connection and return health status with available models.
    */
+  async checkWebFetchHealth(): Promise<WebFetchHealthResult> {
+    return await webFetchClient.testConnection();
+  }
+
   async testXaiConnection(): Promise<XaiHealthResult> {
     return await xaiClient.testConnection();
   }

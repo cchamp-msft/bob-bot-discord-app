@@ -31,6 +31,14 @@ jest.mock('../src/utils/config', () => ({
     getXaiModel: jest.fn(() => ''),
     getXaiTimeout: jest.fn(() => 120000),
     getImageGenerationBackend: jest.fn(() => 'comfyui'),
+    getWebFetchEnabled: jest.fn(() => true),
+    getWebFetchTimeout: jest.fn(() => 15000),
+    getWebFetchMaxRedirects: jest.fn(() => 3),
+    getWebFetchUserAgent: jest.fn(() => 'BobBot/1.0'),
+    getWebFetchMaxTextSize: jest.fn(() => 5242880),
+    getWebFetchMaxImageSize: jest.fn(() => 10485760),
+    getWebFetchMaxContentChars: jest.fn(() => 8000),
+    getWebFetchRobotsTxt: jest.fn(() => false),
   },
 }));
 
@@ -66,6 +74,14 @@ jest.mock('../src/api/memeClient', () => ({
   memeClient: {
     getTemplateListForInference: jest.fn(() => 'drake: Drake Hotline Bling (2 lines)\naag: Ancient Aliens Guy (2 lines)\ndoge: Doge (2 lines)'),
     getTemplateIds: jest.fn(() => 'drake, aag, doge'),
+  },
+}));
+
+jest.mock('../src/api/webFetchClient', () => ({
+  webFetchClient: {
+    handleRequest: jest.fn(),
+    formatContentForAI: jest.fn(() => '<page_content>mock content</page_content>'),
+    refresh: jest.fn(),
   },
 }));
 

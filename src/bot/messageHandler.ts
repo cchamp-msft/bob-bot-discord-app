@@ -1646,6 +1646,14 @@ class MessageHandler {
         if (url) media = { kind: 'url', url, label: 'meme' };
       }
 
+      // Push webfetch images into pipeline context for vision model final pass
+      if (tool.api === 'webfetch' && apiResult.finalResponse.success) {
+        const wfResp = apiResult.finalResponse as import('../types').WebFetchResponse;
+        if (wfResp.data?.imageBase64) {
+          ctx.imagePayloads.push(wfResp.data.imageBase64);
+        }
+      }
+
       return {
         toolName: tool.name,
         api: tool.api,
@@ -2002,6 +2010,12 @@ class MessageHandler {
         if (resolvedTool.api === 'meme' && apiResult.finalResponse.success) {
           const url = (apiResult.finalResponse as MemeResponse).data?.imageUrl;
           if (url) mediaFollowUps.push({ kind: 'url', url, label: 'meme' });
+        }
+        if (resolvedTool.api === 'webfetch' && apiResult.finalResponse.success) {
+          const wfResp = apiResult.finalResponse as import('../types').WebFetchResponse;
+          if (wfResp.data?.imageBase64) {
+            imagePayloads.push(wfResp.data.imageBase64);
+          }
         }
         const part = formatApiResultAsExternalData(resolvedTool, apiResult.finalResponse, contentStr);
         externalDataParts.push(part);

@@ -201,6 +201,8 @@ export function toolArgumentsToContent(
     case 'xai-image':
     case 'xai-video':
       return get('prompt') || get('input') || '';
+    case 'webfetch':
+      return get('url') || get('input') || '';
     default:
       return get('input') || get('content') || Object.values(args).filter(v => typeof v === 'string').join(' ') || '';
   }

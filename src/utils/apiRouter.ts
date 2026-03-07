@@ -1,10 +1,11 @@
 import { config, ToolConfig } from './config';
 import { logger } from './logger';
 import { requestQueue } from './requestQueue';
-import { apiManager, ComfyUIResponse, XaiImageResponse, XaiVideoResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
+import { apiManager, ComfyUIResponse, XaiImageResponse, XaiVideoResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse, WebFetchResponse } from '../api';
 import { accuweatherClient } from '../api/accuweatherClient';
 import { serpApiClient } from '../api/serpApiClient';
 import { memeClient } from '../api/memeClient';
+import { webFetchClient } from '../api/webFetchClient';
 import { ApiType, ChatMessage, NFLResponse, MemeResponse, DiscordActionResponse, MediaFollowUp, FinalPassIntent } from '../types';
 import {
   StageResult,
@@ -18,6 +19,7 @@ import {
   formatNFLExternalData,
   formatSerpApiExternalData,
   formatGenericExternalData,
+  formatWebFetchExternalData,
   inferFinalPassIntent,
 } from './promptBuilder';
 
@@ -310,7 +312,7 @@ function buildRetryUserPrompt(args: {
  */
 export interface RoutedResult {
   /** The final API response to present to the user. */
-  finalResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse;
+  finalResponse: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse | WebFetchResponse;
   /** The API type that produced the final response (for handler dispatch). */
   finalApi: ApiType;
   /** Intermediate stage results (for debugging/logging). */
@@ -325,7 +327,7 @@ export interface RoutedResult {
  */
 export function formatApiResultAsExternalData(
   keywordConfig: ToolConfig,
-  primaryResult: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse,
+  primaryResult: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse | WebFetchResponse,
   queryContent?: string
 ): string {
   const primaryExtracted = extractStageResult(keywordConfig.api, primaryResult);
@@ -353,6 +355,11 @@ export function formatApiResultAsExternalData(
       ? serpApiClient.formatSearchContextForAI(rawData as Parameters<typeof serpApiClient.formatSearchContextForAI>[0], queryContent ?? '')
       : serpResponse.data?.text ?? 'No search data available.';
     return formatSerpApiExternalData(queryContent ?? '', searchContext);
+  }
+  if (keywordConfig.api === 'webfetch') {
+    const wfResponse = primaryResult as WebFetchResponse;
+    const aiContext = webFetchClient.formatContentForAI(wfResponse);
+    return formatWebFetchExternalData(wfResponse.data?.url ?? queryContent ?? '', aiContext);
   }
   const genericText = primaryExtracted.text ?? 'No data available.';
   return formatGenericExternalData(keywordConfig.api, genericText);
@@ -421,7 +428,7 @@ export async function executeRoutedRequest(
           keywordConfig.name
         ),
       signal
-    ) as ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse;
+    ) as ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | WebFetchResponse;
   };
 
   let primaryResult = await runAbility('', attemptContent);
@@ -592,6 +599,10 @@ export async function executeRoutedRequest(
       ? serpApiClient.formatSearchContextForAI(rawData as Parameters<typeof serpApiClient.formatSearchContextForAI>[0], content)
       : serpResponse.data?.text ?? 'No search data available.';
     externalDataBlock = formatSerpApiExternalData(content, searchContext);
+  } else if (keywordConfig.api === 'webfetch') {
+    const wfResponse = primaryResult as WebFetchResponse;
+    const aiContext = webFetchClient.formatContentForAI(wfResponse);
+    externalDataBlock = formatWebFetchExternalData(wfResponse.data?.url ?? content, aiContext);
   } else if (keywordConfig.api === 'meme') {
     const memeResponse = primaryResult as MemeResponse;
     // Only pass the template name — the actual image URL is sent as a

@@ -24,7 +24,7 @@ export interface ChatMessage {
 }
 
 /** Recognized API backend identifiers. */
-export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video';
+export type ApiType = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video' | 'webfetch';
 
 /** LLM provider identifiers used for per-stage model dispatch. */
 export type LlmProvider = 'ollama' | 'xai';
@@ -347,6 +347,30 @@ export interface SerpApiHealthResult {
   error?: string;
 }
 
+// ── Web Fetch response types ────────────────────────────────────
+
+/** Response from the webFetchClient. */
+export interface WebFetchResponse {
+  success: boolean;
+  data?: {
+    text: string;
+    url: string;
+    contentType: string;
+    title?: string;
+    imageBase64?: string;
+    fallbackUsed?: boolean;
+    fallbackReason?: string;
+    robotsTxtNote?: string;
+  };
+  error?: string;
+}
+
+/** Health-check result for web fetch connectivity test. */
+export interface WebFetchHealthResult {
+  healthy: boolean;
+  error?: string;
+}
+
 // ── Meme (memegen.link) response types ──────────────────────────
 
 /** A single meme template from the memegen.link API. */
@@ -532,6 +556,7 @@ export interface PublicConfig {
     serpapiHl: string;
     serpapiGl: string;
     serpapiLocation: string;
+    webfetchEnabled: boolean;
   };
   defaultWorkflow: {
     model: string;

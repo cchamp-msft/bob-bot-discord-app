@@ -167,6 +167,30 @@
     </parameters>
   </tool>
 
+  <!-- Web fetch tools -->
+  <tool>
+    <name>fetch_webpage</name>
+    <api>webfetch</api>
+    <timeout>30</timeout>
+    <description>Fetch a web page or image by URL and analyze its content</description>
+    <abilityWhen>User provides a URL and wants opinions on its content, or asks about a specific web page or image at a URL</abilityWhen>
+    <abilityText>Fetches a web page or image from a URL, extracts text content, and provides analysis. Falls back to web search if direct fetch fails.</abilityText>
+    <parameters>
+      <mode>explicit</mode>
+      <url>
+        <type>string</type>
+        <description>The full URL to fetch (must start with http:// or https://)</description>
+        <required>true</required>
+      </url>
+      <inferFrom>current_message</inferFrom>
+      <validation>URL must start with http:// or https://</validation>
+      <examples>
+        <example>fetch_webpage https://example.com/article</example>
+        <example>fetch_webpage https://news.ycombinator.com</example>
+      </examples>
+    </parameters>
+  </tool>
+
   <!-- Meme tools -->
   <tool>
     <name>generate_meme</name>

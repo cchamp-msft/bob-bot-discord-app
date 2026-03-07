@@ -2,7 +2,7 @@ import { logger } from './logger';
 import { generateThreadId, getThreadId, runWithThreadId } from './threadContext';
 
 /** API types that have their own serialized queue. Discord is handled inline (no queue). */
-type QueuedApi = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'xai' | 'xai-image' | 'xai-video';
+type QueuedApi = 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'xai' | 'xai-image' | 'xai-video' | 'webfetch';
 type AnyApi = QueuedApi | 'discord';
 
 interface QueueEntry<T = unknown> {
@@ -26,12 +26,14 @@ class RequestQueue {
   private nflActive: boolean = false;
   private serpapiActive: boolean = false;
   private memeActive: boolean = false;
+  private webfetchActive: boolean = false;
   private comfyuiQueue: QueueEntry[] = [];
   private ollamaQueue: QueueEntry[] = [];
   private accuweatherQueue: QueueEntry[] = [];
   private nflQueue: QueueEntry[] = [];
   private serpapiQueue: QueueEntry[] = [];
   private memeQueue: QueueEntry[] = [];
+  private webfetchQueue: QueueEntry[] = [];
 
   isApiAvailable(api: QueuedApi): boolean {
     if (api === 'comfyui') return !this.comfyuiActive;
@@ -39,6 +41,7 @@ class RequestQueue {
     if (api === 'nfl') return !this.nflActive;
     if (api === 'serpapi') return !this.serpapiActive;
     if (api === 'meme') return !this.memeActive;
+    if (api === 'webfetch') return !this.webfetchActive;
     return !this.ollamaActive;
   }
 
@@ -49,6 +52,7 @@ class RequestQueue {
     if (api === 'nfl') return this.nflQueue.length;
     if (api === 'serpapi') return this.serpapiQueue.length;
     if (api === 'meme') return this.memeQueue.length;
+    if (api === 'webfetch') return this.webfetchQueue.length;
     return this.ollamaQueue.length;
   }
 
@@ -63,6 +67,8 @@ class RequestQueue {
       this.serpapiActive = active;
     } else if (api === 'meme') {
       this.memeActive = active;
+    } else if (api === 'webfetch') {
+      this.webfetchActive = active;
     } else {
       this.ollamaActive = active;
     }
@@ -74,6 +80,7 @@ class RequestQueue {
     if (api === 'nfl') return this.nflQueue;
     if (api === 'serpapi') return this.serpapiQueue;
     if (api === 'meme') return this.memeQueue;
+    if (api === 'webfetch') return this.webfetchQueue;
     return this.ollamaQueue;
   }
 

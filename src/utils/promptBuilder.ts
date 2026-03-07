@@ -690,6 +690,16 @@ export function formatSerpApiExternalData(
   return `<search_data source="serpapi" query="${escapeXmlAttribute(query)}">\n${searchContextXml}\n</search_data>`;
 }
 
+/**
+ * Wrap web-fetched page content in an <external_data> sub-tag.
+ */
+export function formatWebFetchExternalData(
+  url: string,
+  contentXml: string
+): string {
+  return `<webpage_data source="webfetch" url="${escapeXmlAttribute(url)}">\n${contentXml}\n</webpage_data>`;
+}
+
 // ── First-line tool parser ───────────────────────────────────────
 
 /**

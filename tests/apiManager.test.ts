@@ -84,6 +84,14 @@ jest.mock('../src/utils/config', () => ({
     getXaiModel: jest.fn(() => ''),
     getXaiTimeout: jest.fn(() => 120000),
     getImageGenerationBackend: jest.fn(() => 'comfyui'),
+    getWebFetchEnabled: jest.fn(() => true),
+    getWebFetchTimeout: jest.fn(() => 15000),
+    getWebFetchMaxRedirects: jest.fn(() => 3),
+    getWebFetchUserAgent: jest.fn(() => 'BobBot/1.0'),
+    getWebFetchMaxTextSize: jest.fn(() => 5242880),
+    getWebFetchMaxImageSize: jest.fn(() => 10485760),
+    getWebFetchMaxContentChars: jest.fn(() => 8000),
+    getWebFetchRobotsTxt: jest.fn(() => false),
   },
 }));
 

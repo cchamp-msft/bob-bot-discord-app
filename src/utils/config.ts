@@ -54,7 +54,7 @@ export interface AbilityInputs {
 
 /** Canonical list of valid tool API identifiers. Single source of truth for parser, writer, and UI. */
 export const VALID_TOOL_APIS = [
-  'comfyui', 'ollama', 'accuweather', 'nfl', 'serpapi', 'meme', 'discord', 'xai', 'xai-image', 'xai-video',
+  'comfyui', 'ollama', 'accuweather', 'nfl', 'serpapi', 'meme', 'discord', 'xai', 'xai-image', 'xai-video', 'webfetch',
 ] as const;
 
 export interface ToolConfig {
@@ -375,6 +375,40 @@ class Config {
    */
   getSerpApiLocation(): string {
     return process.env.SERPAPI_LOCATION || '';
+  }
+
+  // ── Web Fetch configuration ──────────────────────────────────
+
+  getWebFetchEnabled(): boolean {
+    return process.env.WEBFETCH_ENABLED !== 'false';
+  }
+
+  getWebFetchTimeout(): number {
+    return parseInt(process.env.WEBFETCH_TIMEOUT || '15000', 10);
+  }
+
+  getWebFetchMaxTextSize(): number {
+    return parseInt(process.env.WEBFETCH_MAX_TEXT_SIZE || '5242880', 10);
+  }
+
+  getWebFetchMaxImageSize(): number {
+    return parseInt(process.env.WEBFETCH_MAX_IMAGE_SIZE || '10485760', 10);
+  }
+
+  getWebFetchMaxContentChars(): number {
+    return parseInt(process.env.WEBFETCH_MAX_CONTENT_CHARS || '8000', 10);
+  }
+
+  getWebFetchMaxRedirects(): number {
+    return parseInt(process.env.WEBFETCH_MAX_REDIRECTS || '3', 10);
+  }
+
+  getWebFetchRobotsTxt(): boolean {
+    return process.env.WEBFETCH_ROBOTS_TXT === 'true';
+  }
+
+  getWebFetchUserAgent(): string {
+    return process.env.WEBFETCH_USER_AGENT || 'BobBot/1.0';
   }
 
   // ── xAI configuration ─────────────────────────────────────────
@@ -1238,13 +1272,14 @@ class Config {
     return parsed;
   }
 
-  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video'): string {
+  getApiEndpoint(api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'discord' | 'xai' | 'xai-image' | 'xai-video' | 'webfetch'): string {
     if (api === 'comfyui') return this.getComfyUIEndpoint();
     if (api === 'accuweather') return this.getAccuWeatherEndpoint();
     if (api === 'nfl') return this.getNflEndpoint();
     if (api === 'serpapi') return this.getSerpApiEndpoint();
     if (api === 'meme') return this.getMemeEndpoint();
     if (api === 'discord') return '';
+    if (api === 'webfetch') return '';
     if (api === 'xai' || api === 'xai-image' || api === 'xai-video') return this.getXaiEndpoint();
     return this.getOllamaEndpoint();
   }
@@ -1549,6 +1584,7 @@ class Config {
         serpapiHl: this.getSerpApiHl(),
         serpapiGl: this.getSerpApiGl(),
         serpapiLocation: this.getSerpApiLocation(),
+        webfetchEnabled: this.getWebFetchEnabled(),
       },
       defaultWorkflow: {
         model: this.getComfyUIDefaultModel(),
