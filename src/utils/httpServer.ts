@@ -157,9 +157,9 @@ class HttpServer {
 
     // GET test API connectivity
     this.app.get('/api/config/test-connection/:api', ...adminGuard, safeHandler(async (req, res) => {
-      const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'xai';
-      if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather' && api !== 'nfl' && api !== 'serpapi' && api !== 'meme' && api !== 'xai') {
-        res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", "accuweather", "nfl", "serpapi", "meme", or "xai"' });
+      const api = req.params.api as 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme' | 'xai' | 'webfetch';
+      if (api !== 'comfyui' && api !== 'ollama' && api !== 'accuweather' && api !== 'nfl' && api !== 'serpapi' && api !== 'meme' && api !== 'xai' && api !== 'webfetch') {
+        res.status(400).json({ error: 'Invalid API — must be "comfyui", "ollama", "accuweather", "nfl", "serpapi", "meme", "xai", or "webfetch"' });
         return;
       }
 
@@ -221,6 +221,14 @@ class HttpServer {
             logger.logError('configurator', `Connection test: xai at ${endpoint} — FAILED${result.error ? ': ' + result.error : ''}`);
           }
           res.json({ api, endpoint, healthy: result.healthy, models: result.models, error: result.error });
+        } else if (api === 'webfetch') {
+          const result = await apiManager.checkWebFetchHealth();
+          if (result.healthy) {
+            logger.log('success', 'configurator', `Connection test: webfetch — OK`);
+          } else {
+            logger.logError('configurator', `Connection test: webfetch — FAILED${result.error ? ': ' + result.error : ''}`);
+          }
+          res.json({ api, healthy: result.healthy, error: result.error });
         } else {
           const healthy = await apiManager.checkApiHealth(api);
           const endpoint = config.getApiEndpoint(api as 'comfyui' | 'ollama' | 'accuweather');
