@@ -1175,6 +1175,61 @@ describe('Config', () => {
       expect(helpKw).toBeDefined();
       expect(helpKw!.allowEmptyContent).toBeUndefined();
     });
+
+    it('should correct a tool whose api field differs from the default', () => {
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        { name: 'fetch_webpage', api: 'comfyui', timeout: 30, description: 'Fetch' },
+      ] as any));
+      config.reload();
+
+      const tool = config.getToolConfig('fetch_webpage');
+      expect(tool).toBeDefined();
+      expect(tool!.api).toBe('webfetch');
+    });
+
+    it('should preserve non-api fields when correcting api mismatch', () => {
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        { name: 'fetch_webpage', api: 'comfyui', timeout: 99, description: 'Custom desc' },
+      ] as any));
+      config.reload();
+
+      const tool = config.getToolConfig('fetch_webpage');
+      expect(tool).toBeDefined();
+      expect(tool!.api).toBe('webfetch');
+      expect(tool!.timeout).toBe(99);
+      expect(tool!.description).toBe('Custom desc');
+    });
+
+    it('should log a warning when correcting an api mismatch', () => {
+      const warnSpy = jest.spyOn(logger, 'logWarn');
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        { name: 'fetch_webpage', api: 'comfyui', timeout: 30, description: 'Fetch' },
+      ] as any));
+      config.reload();
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        'config',
+        expect.stringContaining('TOOLS SELF-HEAL: Tool "fetch_webpage" has api="comfyui" but default is "webfetch"')
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('should not correct api when it already matches the default', () => {
+      const warnSpy = jest.spyOn(logger, 'logWarn');
+      fs.writeFileSync(runtimePath, buildToolsXml([
+        { name: 'fetch_webpage', api: 'webfetch', timeout: 30, description: 'Fetch' },
+      ] as any));
+      config.reload();
+
+      const tool = config.getToolConfig('fetch_webpage');
+      expect(tool).toBeDefined();
+      expect(tool!.api).toBe('webfetch');
+      const selfHealWarnings = warnSpy.mock.calls.filter(
+        ([, msg]) => typeof msg === 'string' && msg.includes('TOOLS SELF-HEAL') && msg.includes('fetch_webpage')
+      );
+      expect(selfHealWarnings).toHaveLength(0);
+      warnSpy.mockRestore();
+    });
   });
 
   describe('getPublicConfig includes defaultTools', () => {

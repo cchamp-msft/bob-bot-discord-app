@@ -226,6 +226,7 @@ class Config {
     );
 
     let added = 0;
+    let corrected = 0;
     let keptExisting = 0;
 
     for (const def of defaults) {
@@ -240,13 +241,19 @@ class Config {
         logger.log('success', 'config',
           `TOOLS SELF-HEAL: Added missing tool "${def.name}" from tools.default.xml`);
       } else {
+        if (existing.api !== def.api) {
+          logger.logWarn('config',
+            `TOOLS SELF-HEAL: Tool "${def.name}" has api="${existing.api}" but default is "${def.api}" — correcting to default`);
+          existing.api = def.api;
+          corrected++;
+        }
         keptExisting++;
       }
     }
 
-    if (added > 0) {
+    if (added > 0 || corrected > 0) {
       logger.log('success', 'config',
-        `TOOLS SELF-HEAL: tools.xml merged with defaults — added: ${added}, kept existing: ${keptExisting}, total runtime tools: ${this.tools.length}`);
+        `TOOLS SELF-HEAL: tools.xml merged with defaults — added: ${added}, corrected: ${corrected}, kept existing: ${keptExisting}, total runtime tools: ${this.tools.length}`);
     } else {
       logger.log('success', 'config',
         `TOOLS SELF-HEAL: No missing defaults found — kept existing tools unchanged (${keptExisting} matched)`);
