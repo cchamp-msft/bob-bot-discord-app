@@ -4,8 +4,6 @@
  * and SerpAPI fallback.
  */
 
-import axios from 'axios';
-
 const mockInstance = {
   get: jest.fn(),
   defaults: { baseURL: '' },
@@ -66,6 +64,7 @@ jest.mock('../src/api/serpApiClient', () => ({
   },
 }));
 
+import axios from 'axios';
 import { webFetchClient } from '../src/api/webFetchClient';
 import { config } from '../src/utils/config';
 import * as dns from 'dns/promises';
@@ -655,6 +654,24 @@ describe('WebFetchClient', () => {
       const result = await webFetchClient.handleRequest('https://huge.example.com', 'fetch_webpage');
       expect(result.success).toBe(true);
       expect(result.data?.fallbackUsed).toBe(true);
+    });
+  });
+
+  // ── robots.txt awareness (log but ignore) ────────────────────────
+
+  describe('robots.txt awareness', () => {
+    it('should proceed with fetch even when robots.txt blocks the URL', async () => {
+      (config.getWebFetchRobotsTxt as jest.Mock).mockReturnValue(true);
+      (axios.get as jest.Mock).mockResolvedValueOnce({
+        status: 200,
+        data: 'User-agent: *\nDisallow: /',
+      });
+      mockSuccessResponse(htmlPage('<p>Blocked but fetched</p>'));
+
+      const result = await webFetchClient.handleRequest('https://example.com/page', 'fetch_webpage');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('Blocked but fetched');
+      expect(result.data?.robotsTxtNote).toMatch(/disallow/i);
     });
   });
 });

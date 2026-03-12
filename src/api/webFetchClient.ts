@@ -159,8 +159,6 @@ class WebFetchClient {
       if (robotsResult.blocked) {
         logger.logWarn('webfetch', `robots.txt blocks ${url}: ${robotsResult.reason}`);
         robotsTxtNote = robotsResult.reason;
-        // Fall back to search instead
-        return this.fallbackToSearch(url, `Blocked by robots.txt: ${robotsResult.reason}`, signal);
       }
       if (robotsResult.note) {
         robotsTxtNote = robotsResult.note;
