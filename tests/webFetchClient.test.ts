@@ -26,7 +26,7 @@ jest.mock('../src/utils/config', () => ({
     getWebFetchMaxImageSize: jest.fn(() => 10485760),
     getWebFetchMaxContentChars: jest.fn(() => 8000),
     getWebFetchMaxRedirects: jest.fn(() => 3),
-    getWebFetchRobotsTxt: jest.fn(() => false),
+    getWebFetchRobotsTxtMode: jest.fn(() => 'disabled'),
     getWebFetchUserAgent: jest.fn(() => 'BobBot/1.0'),
     getSerpApiKey: jest.fn(() => 'test-key'),
     getSerpApiEndpoint: jest.fn(() => 'https://serpapi.com'),
@@ -97,7 +97,7 @@ describe('WebFetchClient', () => {
     (config.getWebFetchMaxImageSize as jest.Mock).mockReturnValue(10485760);
     (config.getWebFetchMaxContentChars as jest.Mock).mockReturnValue(8000);
     (config.getWebFetchMaxRedirects as jest.Mock).mockReturnValue(3);
-    (config.getWebFetchRobotsTxt as jest.Mock).mockReturnValue(false);
+    (config.getWebFetchRobotsTxtMode as jest.Mock).mockReturnValue('disabled');
     (config.getWebFetchUserAgent as jest.Mock).mockReturnValue('BobBot/1.0');
   });
 
@@ -657,11 +657,11 @@ describe('WebFetchClient', () => {
     });
   });
 
-  // ── robots.txt awareness (log but ignore) ────────────────────────
+  // ── robots.txt modes ────────────────────────────────────────────
 
-  describe('robots.txt awareness', () => {
-    it('should proceed with fetch even when robots.txt blocks the URL', async () => {
-      (config.getWebFetchRobotsTxt as jest.Mock).mockReturnValue(true);
+  describe('robots.txt modes', () => {
+    it('ignore: should proceed with fetch and attach note when robots.txt blocks', async () => {
+      (config.getWebFetchRobotsTxtMode as jest.Mock).mockReturnValue('ignore');
       (axios.get as jest.Mock).mockResolvedValueOnce({
         status: 200,
         data: 'User-agent: *\nDisallow: /',
@@ -672,6 +672,132 @@ describe('WebFetchClient', () => {
       expect(result.success).toBe(true);
       expect(result.data?.text).toContain('Blocked but fetched');
       expect(result.data?.robotsTxtNote).toMatch(/disallow/i);
+    });
+
+    it('follow: should block fetch and fall back to search when robots.txt disallows', async () => {
+      (config.getWebFetchRobotsTxtMode as jest.Mock).mockReturnValue('follow');
+      (axios.get as jest.Mock).mockResolvedValueOnce({
+        status: 200,
+        data: 'User-agent: *\nDisallow: /secret',
+      });
+      mockSerpApiHandleRequest.mockResolvedValue({
+        success: true,
+        data: { text: 'Search fallback result' },
+      });
+
+      const result = await webFetchClient.handleRequest('https://example.com/secret/doc', 'fetch_webpage');
+      expect(result.success).toBe(true);
+      expect(result.data?.fallbackUsed).toBe(true);
+      expect(result.data?.fallbackReason).toContain('robots.txt');
+    });
+
+    it('follow: should proceed normally when robots.txt allows the path', async () => {
+      (config.getWebFetchRobotsTxtMode as jest.Mock).mockReturnValue('follow');
+      (axios.get as jest.Mock).mockResolvedValueOnce({
+        status: 200,
+        data: 'User-agent: *\nDisallow: /admin',
+      });
+      mockSuccessResponse(htmlPage('<p>Allowed content</p>'));
+
+      const result = await webFetchClient.handleRequest('https://example.com/public', 'fetch_webpage');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('Allowed content');
+      expect(result.data?.fallbackUsed).toBeUndefined();
+    });
+
+    it('disabled: should skip robots.txt check entirely', async () => {
+      (config.getWebFetchRobotsTxtMode as jest.Mock).mockReturnValue('disabled');
+      mockSuccessResponse(htmlPage('<p>No robots check</p>'));
+
+      const result = await webFetchClient.handleRequest('https://example.com/page', 'fetch_webpage');
+      expect(result.success).toBe(true);
+      expect(result.data?.text).toContain('No robots check');
+      expect(result.data?.robotsTxtNote).toBeUndefined();
+      expect(axios.get).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── buildFallbackQuery ─────────────────────────────────────────
+
+  describe('buildFallbackQuery', () => {
+    it('should extract domain and meaningful path segments', () => {
+      const query = webFetchClient.buildFallbackQuery(
+        'https://www.msn.com/en-us/news/insight/nand-prices-soar-amid-ai-boom/gm-GMB6AA7777'
+      );
+      expect(query).toContain('msn.com');
+      expect(query).toContain('news');
+      expect(query).toContain('insight');
+      expect(query).toContain('nand prices soar amid ai boom');
+      expect(query).not.toMatch(/\ben\b/);
+      expect(query).not.toMatch(/\ben-us\b/);
+      expect(query).not.toMatch(/GMB6AA/i);
+    });
+
+    it('should strip locale segments like en, us, en-us', () => {
+      const query = webFetchClient.buildFallbackQuery(
+        'https://example.com/en/us/articles/some-great-article'
+      );
+      expect(query).not.toMatch(/\ben\b/);
+      expect(query).not.toMatch(/\bus\b/);
+      expect(query).toContain('articles');
+      expect(query).toContain('some great article');
+    });
+
+    it('should drop pure numeric path segments', () => {
+      const query = webFetchClient.buildFallbackQuery(
+        'https://news.example.com/2025/12/article-title'
+      );
+      expect(query).not.toMatch(/\b2025\b/);
+      expect(query).not.toMatch(/\b12\b/);
+      expect(query).toContain('article title');
+    });
+
+    it('should drop opaque IDs with mixed alpha-numeric content', () => {
+      const query = webFetchClient.buildFallbackQuery(
+        'https://example.com/posts/my-great-post/abc123def456'
+      );
+      expect(query).toContain('my great post');
+      expect(query).not.toContain('abc123def456');
+    });
+
+    it('should include meaningful query parameters', () => {
+      const query = webFetchClient.buildFallbackQuery(
+        'https://example.com/search?q=typescript+best+practices&utm_source=google'
+      );
+      expect(query).toContain('typescript best practices');
+      expect(query).not.toContain('google');
+      expect(query).not.toContain('utm_source');
+    });
+
+    it('should handle URL with only a domain', () => {
+      const query = webFetchClient.buildFallbackQuery('https://www.example.com');
+      expect(query).toBe('example.com');
+    });
+
+    it('should return raw URL string for invalid URLs', () => {
+      const query = webFetchClient.buildFallbackQuery('not-a-valid-url');
+      expect(query).toBe('not-a-valid-url');
+    });
+
+    it('should cap query length to avoid excessively long searches', () => {
+      const longPath = Array.from({ length: 20 }, (_, i) => `segment-number-${i}`).join('/');
+      const query = webFetchClient.buildFallbackQuery(`https://example.com/${longPath}`);
+      expect(query.length).toBeLessThanOrEqual(120);
+    });
+
+    it('should strip www. from domain', () => {
+      const query = webFetchClient.buildFallbackQuery('https://www.reddit.com/r/programming');
+      expect(query).toContain('reddit.com');
+      expect(query).not.toContain('www.');
+    });
+
+    it('should skip tracking query parameters', () => {
+      const query = webFetchClient.buildFallbackQuery(
+        'https://example.com/page?fbclid=abc123&gclid=xyz789&topic=interesting-stuff'
+      );
+      expect(query).not.toContain('fbclid');
+      expect(query).not.toContain('gclid');
+      expect(query).toContain('interesting stuff');
     });
   });
 });

@@ -38,7 +38,7 @@ jest.mock('../src/utils/config', () => ({
     getWebFetchMaxTextSize: jest.fn(() => 5242880),
     getWebFetchMaxImageSize: jest.fn(() => 10485760),
     getWebFetchMaxContentChars: jest.fn(() => 8000),
-    getWebFetchRobotsTxt: jest.fn(() => false),
+    getWebFetchRobotsTxtMode: jest.fn(() => 'disabled'),
   },
 }));
 

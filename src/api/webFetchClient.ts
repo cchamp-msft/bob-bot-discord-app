@@ -152,11 +152,16 @@ class WebFetchClient {
       return { success: false, error: msg };
     }
 
-    // Optional robots.txt check
+    // robots.txt check — behaviour depends on mode
     let robotsTxtNote: string | undefined;
-    if (config.getWebFetchRobotsTxt()) {
+    const robotsMode = config.getWebFetchRobotsTxtMode();
+    if (robotsMode !== 'disabled') {
       const robotsResult = await this.checkRobotsTxt(url);
       if (robotsResult.blocked) {
+        if (robotsMode === 'follow') {
+          logger.logWarn('webfetch', `robots.txt blocks ${url}: ${robotsResult.reason} — falling back to search`);
+          return this.fallbackToSearch(url, `Blocked by robots.txt: ${robotsResult.reason}`, signal);
+        }
         logger.logWarn('webfetch', `robots.txt blocks ${url}: ${robotsResult.reason}`);
         robotsTxtNote = robotsResult.reason;
       }
@@ -529,17 +534,71 @@ class WebFetchClient {
 
   // ── SerpAPI fallback ────────────────────────────────────────────
 
-  private buildFallbackQuery(url: string): string {
+  /** Max character length for generated fallback search queries. */
+  private static readonly FALLBACK_QUERY_MAX_LENGTH = 120;
+
+  /** Locale-style path segments that add no search value. */
+  private static readonly LOCALE_SEGMENTS = new Set([
+    'en', 'us', 'uk', 'fr', 'de', 'es', 'it', 'pt', 'ja', 'ko', 'zh',
+    'en-us', 'en-gb', 'en-au', 'en-ca', 'fr-fr', 'de-de', 'es-es',
+    'pt-br', 'ja-jp', 'ko-kr', 'zh-cn', 'zh-tw',
+  ]);
+
+  /** URL query parameters that are tracking/noise and should be skipped. */
+  private static readonly TRACKING_PARAMS = new Set([
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+    'ref', 'fbclid', 'gclid', 'dclid', 'msclkid', 'mc_cid', 'mc_eid',
+    'yclid', 'twclid', '_ga', '_gl', 'spm', 'scm',
+  ]);
+
+  /**
+   * Returns true when a segment looks like an opaque ID rather than
+   * human-readable text (e.g. "GMB6AA7777", "a1b2c3d4e5").
+   */
+  private static isOpaqueId(segment: string): boolean {
+    if (/^\d+$/.test(segment)) return true;
+    if (segment.length <= 1) return true;
+    const alphaCount = (segment.match(/[a-zA-Z]/g) || []).length;
+    const digitCount = (segment.match(/\d/g) || []).length;
+    if (digitCount > 0 && alphaCount > 0 && digitCount / segment.length >= 0.4) return true;
+    if (/^[A-Za-z0-9]{16,}$/.test(segment)) return true;
+    return false;
+  }
+
+  buildFallbackQuery(url: string): string {
     try {
       const parsed = new URL(url);
-      // Use domain + path keywords as search query
+      const domain = parsed.hostname.replace(/^www\./, '');
+
       const pathParts = parsed.pathname
         .split('/')
         .filter(Boolean)
-        .map((p) => p.replace(/[-_]/g, ' '))
-        .filter((p) => p.length > 1 && !/^\d+$/.test(p));
-      const domain = parsed.hostname.replace('www.', '');
-      return [domain, ...pathParts.slice(0, 3)].join(' ');
+        .flatMap((seg) => {
+          if (WebFetchClient.LOCALE_SEGMENTS.has(seg.toLowerCase())) return [];
+          const readable = seg.replace(/[-_]/g, ' ').trim();
+          if (!readable) return [];
+          if (WebFetchClient.LOCALE_SEGMENTS.has(readable.toLowerCase())) return [];
+          const words = readable.split(/\s+/).filter((w) => !WebFetchClient.isOpaqueId(w) && !WebFetchClient.LOCALE_SEGMENTS.has(w.toLowerCase()));
+          return words.length > 0 ? [words.join(' ')] : [];
+        });
+
+      const queryParts: string[] = [];
+      parsed.searchParams.forEach((value, key) => {
+        if (WebFetchClient.TRACKING_PARAMS.has(key.toLowerCase())) return;
+        const clean = value.replace(/[+_-]/g, ' ').trim();
+        if (clean && !WebFetchClient.isOpaqueId(clean)) {
+          queryParts.push(clean);
+        }
+      });
+
+      const parts = [domain, ...pathParts, ...queryParts];
+      let query = parts.join(' ');
+
+      if (query.length > WebFetchClient.FALLBACK_QUERY_MAX_LENGTH) {
+        query = query.substring(0, WebFetchClient.FALLBACK_QUERY_MAX_LENGTH).replace(/\s\S*$/, '');
+      }
+
+      return query || domain;
     } catch {
       return url;
     }

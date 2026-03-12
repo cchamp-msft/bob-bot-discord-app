@@ -410,8 +410,19 @@ class Config {
     return parseInt(process.env.WEBFETCH_MAX_REDIRECTS || '3', 10);
   }
 
-  getWebFetchRobotsTxt(): boolean {
-    return process.env.WEBFETCH_ROBOTS_TXT === 'true';
+  /**
+   * Returns the robots.txt handling mode:
+   * - `"follow"` — check robots.txt; if disallowed, block fetch and fall back to search.
+   * - `"ignore"` — check robots.txt; if disallowed, log a note but proceed with fetch.
+   * - `"disabled"` — do not check robots.txt at all.
+   *
+   * Accepts the legacy `"true"` (mapped to `"ignore"`) and `"false"` (mapped to `"disabled"`).
+   */
+  getWebFetchRobotsTxtMode(): 'follow' | 'ignore' | 'disabled' {
+    const raw = (process.env.WEBFETCH_ROBOTS_TXT || 'disabled').toLowerCase().trim();
+    if (raw === 'follow') return 'follow';
+    if (raw === 'ignore' || raw === 'true') return 'ignore';
+    return 'disabled';
   }
 
   getWebFetchUserAgent(): string {
