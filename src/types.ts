@@ -556,7 +556,16 @@ export interface PublicConfig {
     serpapiHl: string;
     serpapiGl: string;
     serpapiLocation: string;
-    webfetchEnabled: boolean;
+  };
+  webFetch: {
+    enabled: boolean;
+    robotsTxtMode: 'follow' | 'ignore' | 'disabled';
+    timeout: number;
+    maxContentChars: number;
+    maxRedirects: number;
+    userAgent: string;
+    maxTextSize: number;
+    maxImageSize: number;
   };
   defaultWorkflow: {
     model: string;

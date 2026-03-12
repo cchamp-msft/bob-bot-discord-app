@@ -1314,6 +1314,63 @@
       </div>
     </section>
 
+    <!-- Web Fetch Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">Web Fetch</h2>
+      <div class="body">
+        <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
+          Fetches web pages and images by URL for the LLM.
+          HTML is parsed to extract text content; direct image URLs are returned as base64.
+          Falls back to SerpAPI search on timeouts, captchas, or blocked responses.
+        </p>
+        <div class="field-row">
+          <div class="field narrow">
+            <label>Enabled</label>
+            <select id="webfetch_enabled" data-env="WEBFETCH_ENABLED" onchange="markDirty()">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label>robots.txt Mode <span class="note">how to handle robots.txt rules</span></label>
+            <select id="webfetch_robots_txt" data-env="WEBFETCH_ROBOTS_TXT" onchange="markDirty()">
+              <option value="disabled">Disabled</option>
+              <option value="ignore">Ignore (log only)</option>
+              <option value="follow">Follow (block if disallowed)</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field narrow">
+            <label>Timeout (seconds) <span class="note">per-request timeout</span></label>
+            <input type="number" id="webfetch_timeout" data-env="WEBFETCH_TIMEOUT" data-unit="seconds" placeholder="15" min="1">
+          </div>
+          <div class="field narrow">
+            <label>Max Redirects <span class="note">redirect hops to follow</span></label>
+            <input type="number" id="webfetch_max_redirects" data-env="WEBFETCH_MAX_REDIRECTS" placeholder="3" min="0">
+          </div>
+          <div class="field narrow">
+            <label>Max Content Chars <span class="note">text sent to the LLM</span></label>
+            <input type="number" id="webfetch_max_content_chars" data-env="WEBFETCH_MAX_CONTENT_CHARS" placeholder="8000" min="100">
+          </div>
+        </div>
+        <div class="field">
+          <label>User-Agent <span class="note">sent with every request</span></label>
+          <input type="text" id="webfetch_user_agent" data-env="WEBFETCH_USER_AGENT" placeholder="BobBot/1.0">
+        </div>
+        <div class="field-row">
+          <div class="field narrow">
+            <label>Max Text Size (bytes) <span class="note">raw download ceiling</span></label>
+            <input type="number" id="webfetch_max_text_size" data-env="WEBFETCH_MAX_TEXT_SIZE" placeholder="5242880" min="1024">
+          </div>
+          <div class="field narrow">
+            <label>Max Image Size (bytes) <span class="note">raw image download ceiling</span></label>
+            <input type="number" id="webfetch_max_image_size" data-env="WEBFETCH_MAX_IMAGE_SIZE" placeholder="10485760" min="1024">
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Error Handling Section -->
     <section>
       <h2 onclick="toggleSection(this)">Error Handling</h2>
@@ -1795,6 +1852,18 @@ flowchart TD
       document.getElementById('serpapi_api_key').value = '';
       document.getElementById('serpapi_api_key').placeholder =
         cfg.apis.serpapiApiKeyConfigured ? 'API key configured ✓ — paste new value to change' : 'Paste SerpAPI key';
+
+      // Populate Web Fetch fields
+      if (cfg.webFetch) {
+        document.getElementById('webfetch_enabled').value = cfg.webFetch.enabled ? 'true' : 'false';
+        document.getElementById('webfetch_robots_txt').value = cfg.webFetch.robotsTxtMode || 'disabled';
+        document.getElementById('webfetch_timeout').value = cfg.webFetch.timeout ? cfg.webFetch.timeout / 1000 : '';
+        document.getElementById('webfetch_max_redirects').value = cfg.webFetch.maxRedirects ?? '';
+        document.getElementById('webfetch_max_content_chars').value = cfg.webFetch.maxContentChars ?? '';
+        document.getElementById('webfetch_user_agent').value = cfg.webFetch.userAgent || '';
+        document.getElementById('webfetch_max_text_size').value = cfg.webFetch.maxTextSize ?? '';
+        document.getElementById('webfetch_max_image_size').value = cfg.webFetch.maxImageSize ?? '';
+      }
 
       // Populate xAI fields
       if (cfg.xai) {

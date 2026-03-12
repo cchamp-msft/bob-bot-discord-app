@@ -62,6 +62,10 @@ describe('Configurator — section structure', () => {
     expect(headings).toContain('Prompt &amp; Runtime');
   });
 
+  it('has a top-level Web Fetch section', () => {
+    expect(headings).toContain('Web Fetch');
+  });
+
   it('does NOT have a combined "API Endpoints" section', () => {
     expect(headings).not.toContain('API Endpoints');
   });
@@ -102,6 +106,33 @@ describe('Configurator — Discord Tools subsection', () => {
     expect(discord).toBeDefined();
     expect(discord!.body).toContain('discord_artifact_max_images');
     expect(discord!.body).toContain('DISCORD_ARTIFACT_MAX_IMAGES');
+  });
+});
+
+// ── Web Fetch section contains expected fields ───────────────
+
+describe('Configurator — Web Fetch section', () => {
+  const sections = extractSections();
+
+  it('contains the robots.txt mode dropdown', () => {
+    const webFetch = sections.find(s => s.heading === 'Web Fetch');
+    expect(webFetch).toBeDefined();
+    expect(webFetch!.body).toContain('webfetch_robots_txt');
+    expect(webFetch!.body).toContain('WEBFETCH_ROBOTS_TXT');
+  });
+
+  it('contains the max content chars input', () => {
+    const webFetch = sections.find(s => s.heading === 'Web Fetch');
+    expect(webFetch).toBeDefined();
+    expect(webFetch!.body).toContain('webfetch_max_content_chars');
+    expect(webFetch!.body).toContain('WEBFETCH_MAX_CONTENT_CHARS');
+  });
+
+  it('contains the enabled toggle', () => {
+    const webFetch = sections.find(s => s.heading === 'Web Fetch');
+    expect(webFetch).toBeDefined();
+    expect(webFetch!.body).toContain('webfetch_enabled');
+    expect(webFetch!.body).toContain('WEBFETCH_ENABLED');
   });
 });
 

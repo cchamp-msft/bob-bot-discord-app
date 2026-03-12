@@ -1601,7 +1601,16 @@ class Config {
         serpapiHl: this.getSerpApiHl(),
         serpapiGl: this.getSerpApiGl(),
         serpapiLocation: this.getSerpApiLocation(),
-        webfetchEnabled: this.getWebFetchEnabled(),
+      },
+      webFetch: {
+        enabled: this.getWebFetchEnabled(),
+        robotsTxtMode: this.getWebFetchRobotsTxtMode(),
+        timeout: this.getWebFetchTimeout(),
+        maxContentChars: this.getWebFetchMaxContentChars(),
+        maxRedirects: this.getWebFetchMaxRedirects(),
+        userAgent: this.getWebFetchUserAgent(),
+        maxTextSize: this.getWebFetchMaxTextSize(),
+        maxImageSize: this.getWebFetchMaxImageSize(),
       },
       defaultWorkflow: {
         model: this.getComfyUIDefaultModel(),
