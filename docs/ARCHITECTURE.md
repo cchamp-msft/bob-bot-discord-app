@@ -175,7 +175,7 @@ In all cases, context is sent to Ollama using the `/api/chat` endpoint with prop
 | `REPLY_CHAIN_ENABLED` | `true` | Set to `false` to disable reply chain traversal, channel context, and DM history |
 | `REPLY_CHAIN_MAX_DEPTH` | `30` | Maximum messages to collect across all context sources (1–50) |
 | `REPLY_CHAIN_MAX_TOKENS` | `16000` | Character budget for collected context (1,000–128,000) |
-| `REPLY_CHAIN_IMAGE_MAX_DEPTH` | `5` | Maximum reply-chain messages to scan for image attachments (0–50). Set to 0 to disable reply-chain image collection. Independent of `REPLY_CHAIN_MAX_DEPTH`. |
+| `REPLY_CHAIN_IMAGE_ENABLED` | `true` | When `true`, a single image from the immediate reply parent (attachment or embed) is extracted and sent to the vision model. Set to `false` to disable. |
 | `ALLOW_BOT_INTERACTIONS` | `false` | When `true`, the bot responds to messages from other bots and includes their messages in context history |
 
 ### Behavior Notes
