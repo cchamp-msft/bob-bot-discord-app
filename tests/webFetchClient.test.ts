@@ -717,6 +717,36 @@ describe('WebFetchClient', () => {
     });
   });
 
+  // ── testConnection ────────────────────────────────────────────
+
+  describe('testConnection', () => {
+    it('should return healthy when fetch succeeds', async () => {
+      mockSuccessResponse(htmlPage('<p>Example Domain</p>'), 'text/html');
+
+      const result = await webFetchClient.testConnection();
+
+      expect(result.healthy).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should return unhealthy when web fetch is disabled', async () => {
+      (config.getWebFetchEnabled as jest.Mock).mockReturnValue(false);
+
+      const result = await webFetchClient.testConnection();
+
+      expect(result.healthy).toBe(false);
+      expect(result.error).toContain('disabled');
+    });
+
+    it('should return unhealthy when the fetch fails', async () => {
+      mockInstance.get.mockRejectedValueOnce(new Error('Network failure'));
+
+      const result = await webFetchClient.testConnection();
+
+      expect(result.healthy).toBe(false);
+    });
+  });
+
   // ── buildFallbackQuery ─────────────────────────────────────────
 
   describe('buildFallbackQuery', () => {

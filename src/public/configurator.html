@@ -1339,6 +1339,9 @@
               <option value="follow">Follow (block if disallowed)</option>
             </select>
           </div>
+          <div class="field tiny">
+            <button class="btn-test btn-sm" onclick="testConnection('webfetch')">Test</button>
+          </div>
         </div>
         <div class="field-row">
           <div class="field narrow">
@@ -1368,6 +1371,7 @@
             <input type="number" id="webfetch_max_image_size" data-env="WEBFETCH_MAX_IMAGE_SIZE" placeholder="10485760" min="1024">
           </div>
         </div>
+        <div id="webfetchTestResult" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
       </div>
     </section>
 
@@ -2615,6 +2619,12 @@ flowchart TD
           resultEl.innerHTML = '<span style="color:var(--ok)">✓ API key valid. SerpAPI is reachable.</span>';
         }
 
+        // For Web Fetch, show success status
+        if (api === 'webfetch') {
+          const resultEl = document.getElementById('webfetchTestResult');
+          resultEl.innerHTML = '<span style="color:var(--ok)">✓ Fetch pipeline OK. Successfully fetched example.com.</span>';
+        }
+
         // For xAI, populate model dropdown and show status
         if (api === 'xai' && data.models && data.models.length > 0) {
           populateXaiModelDropdowns(data.models);
@@ -2646,6 +2656,10 @@ flowchart TD
         }
         if (api === 'xai') {
           const resultEl = document.getElementById('xaiTestResult');
+          resultEl.innerHTML = `<span style="color:var(--err)">✗ ${data.error || 'Connection failed'}</span>`;
+        }
+        if (api === 'webfetch') {
+          const resultEl = document.getElementById('webfetchTestResult');
           resultEl.innerHTML = `<span style="color:var(--err)">✗ ${data.error || 'Connection failed'}</span>`;
         }
       }
