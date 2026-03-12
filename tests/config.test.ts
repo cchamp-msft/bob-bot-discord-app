@@ -320,13 +320,13 @@ describe('Config', () => {
       expect(pub.apis.serpapiLocation).toBe('United States');
     });
 
-    it('should include replyChain enabled, maxDepth, maxTokens, and imageMaxDepth', () => {
+    it('should include replyChain enabled, maxDepth, maxTokens, and imageEnabled', () => {
       delete process.env.REPLY_CHAIN_ENABLED;
       delete process.env.REPLY_CHAIN_MAX_DEPTH;
       delete process.env.REPLY_CHAIN_MAX_TOKENS;
-      delete process.env.REPLY_CHAIN_IMAGE_MAX_DEPTH;
+      delete process.env.REPLY_CHAIN_IMAGE_ENABLED;
       const pub = config.getPublicConfig();
-      expect(pub.replyChain).toEqual({ enabled: true, maxDepth: 30, maxTokens: 16000, imageMaxDepth: 5 });
+      expect(pub.replyChain).toEqual({ enabled: true, maxDepth: 30, maxTokens: 16000, imageEnabled: true });
     });
 
     it('should include httpHost and outputsHost in http section', () => {
@@ -449,29 +449,26 @@ describe('Config', () => {
       warnSpy.mockRestore();
     });
 
-    it('getReplyChainImageMaxDepth should default to 5 when env not set', () => {
-      delete process.env.REPLY_CHAIN_IMAGE_MAX_DEPTH;
-      expect(config.getReplyChainImageMaxDepth()).toBe(5);
+    it('getReplyChainImageEnabled should default to true when env not set', () => {
+      delete process.env.REPLY_CHAIN_IMAGE_ENABLED;
+      expect(config.getReplyChainImageEnabled()).toBe(true);
     });
 
-    it('getReplyChainImageMaxDepth should parse valid int', () => {
-      process.env.REPLY_CHAIN_IMAGE_MAX_DEPTH = '10';
-      expect(config.getReplyChainImageMaxDepth()).toBe(10);
+    it('getReplyChainImageEnabled should return true when set to "true"', () => {
+      process.env.REPLY_CHAIN_IMAGE_ENABLED = 'true';
+      expect(config.getReplyChainImageEnabled()).toBe(true);
     });
 
-    it('getReplyChainImageMaxDepth should clamp to 0 minimum', () => {
-      process.env.REPLY_CHAIN_IMAGE_MAX_DEPTH = '-1';
-      expect(config.getReplyChainImageMaxDepth()).toBe(0);
+    it('getReplyChainImageEnabled should return false when set to "false"', () => {
+      process.env.REPLY_CHAIN_IMAGE_ENABLED = 'false';
+      expect(config.getReplyChainImageEnabled()).toBe(false);
     });
 
-    it('getReplyChainImageMaxDepth should clamp to 50 maximum', () => {
-      process.env.REPLY_CHAIN_IMAGE_MAX_DEPTH = '100';
-      expect(config.getReplyChainImageMaxDepth()).toBe(50);
-    });
-
-    it('getReplyChainImageMaxDepth should allow 0 to disable image collection', () => {
-      process.env.REPLY_CHAIN_IMAGE_MAX_DEPTH = '0';
-      expect(config.getReplyChainImageMaxDepth()).toBe(0);
+    it('getReplyChainImageEnabled should be case-insensitive', () => {
+      process.env.REPLY_CHAIN_IMAGE_ENABLED = 'TRUE';
+      expect(config.getReplyChainImageEnabled()).toBe(true);
+      process.env.REPLY_CHAIN_IMAGE_ENABLED = 'False';
+      expect(config.getReplyChainImageEnabled()).toBe(false);
     });
   });
 

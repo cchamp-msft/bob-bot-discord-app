@@ -110,11 +110,11 @@ describe('Configurator — Discord Tools subsection', () => {
 describe('Configurator — Reply Chain Context in Prompt & Runtime section', () => {
   const sections = extractSections();
 
-  it('the Prompt & Runtime section contains the reply chain image max depth field', () => {
+  it('the Prompt & Runtime section contains the reply chain image enabled field', () => {
     const prompt = sections.find(s => s.heading === 'Prompt &amp; Runtime');
     expect(prompt).toBeDefined();
-    expect(prompt!.body).toContain('reply_chain_image_max_depth');
-    expect(prompt!.body).toContain('REPLY_CHAIN_IMAGE_MAX_DEPTH');
+    expect(prompt!.body).toContain('reply_chain_image_enabled');
+    expect(prompt!.body).toContain('REPLY_CHAIN_IMAGE_ENABLED');
   });
 
   it('the Prompt & Runtime section contains the context eval enabled toggle', () => {

@@ -57,7 +57,7 @@ jest.mock('../src/utils/config', () => ({
     getOutputBaseUrl: jest.fn(() => 'http://localhost:3003'),
     getImageAttachmentMaxSize: jest.fn(() => 5 * 1024 * 1024),
     getImageAttachmentMaxCount: jest.fn(() => 4),
-    getReplyChainImageMaxDepth: jest.fn(() => 5),
+    getReplyChainImageEnabled: jest.fn(() => true),
     getPipelineMode: jest.fn(() => 'legacy'),
     needsSeparateFinalPass: jest.fn(() => false),
     getDmContextEnabled: jest.fn(() => false),
@@ -484,190 +484,191 @@ describe('MessageHandler collectReplyChain', () => {
   });
 });
 
-describe('MessageHandler collectReplyChain — image extraction', () => {
+describe('MessageHandler extractReplyImage', () => {
   const mockedAxiosGet = axios.get as jest.MockedFunction<typeof axios.get>;
 
-  function createMockMessageWithAttachments(
+  function createMockMessage(
     id: string,
-    authorId: string,
-    authorUsername: string,
-    content: string,
-    attachments: { url: string; contentType: string; size: number; name: string }[] = [],
     reference?: { messageId: string },
     fetchReferenceResult?: any,
-    memberDisplayName?: string
+  ): any {
+    return {
+      id,
+      content: 'test',
+      reference: reference ? { messageId: reference.messageId } : null,
+      fetchReference: jest.fn().mockResolvedValue(fetchReferenceResult),
+    };
+  }
+
+  function createMockReplyParent(
+    id: string,
+    attachments: { url: string; contentType: string; size: number; name: string }[] = [],
+    embeds: { image?: { url: string }; thumbnail?: { url: string } }[] = [],
   ): any {
     const attachmentMap = new Map<string, any>();
     attachments.forEach((a, i) => attachmentMap.set(String(i), a));
     return {
       id,
-      content,
-      author: { id: authorId, username: authorUsername },
-      member: memberDisplayName ? { displayName: memberDisplayName } : null,
-      reference: reference ? { messageId: reference.messageId } : null,
-      client: { user: { id: 'bot-id', username: 'BotUser' } },
-      fetchReference: jest.fn().mockResolvedValue(fetchReferenceResult),
       attachments: attachmentMap,
-      createdTimestamp: Date.now(),
+      embeds,
     };
   }
 
   beforeEach(() => {
     mockedAxiosGet.mockReset();
-    (config.getReplyChainImageMaxDepth as jest.Mock).mockReturnValue(5);
-    (config.getReplyChainMaxDepth as jest.Mock).mockReturnValue(10);
-    (config.getReplyChainMaxTokens as jest.Mock).mockReturnValue(16000);
+    (config.getReplyChainImageEnabled as jest.Mock).mockReturnValue(true);
     (config.getImageAttachmentMaxSize as jest.Mock).mockReturnValue(5 * 1024 * 1024);
-    (config.getImageAttachmentMaxCount as jest.Mock).mockReturnValue(4);
   });
 
-  it('should extract images from referenced messages within image depth', async () => {
+  it('should return image when reply parent has an attachment', async () => {
     const imageBuffer = Buffer.from('fake-png-data');
     mockedAxiosGet.mockResolvedValue({ data: imageBuffer });
 
-    const msgA = createMockMessageWithAttachments(
-      'msg-a', 'user-a', 'Alice', 'Look at this image',
-      [{ url: 'https://cdn.discord.com/img.png', contentType: 'image/png', size: 1024, name: 'img.png' }]
-    );
+    const parent = createMockReplyParent('msg-parent', [
+      { url: 'https://cdn.discord.com/img.png', contentType: 'image/png', size: 1024, name: 'img.png' },
+    ]);
+    const msg = createMockMessage('msg-current', { messageId: 'msg-parent' }, parent);
 
-    const currentMsg = createMockMessageWithAttachments(
-      'msg-current', 'user-a', 'Alice', 'What do you see?',
-      [],
-      { messageId: 'msg-a' },
-      msgA
-    );
+    const result = await (messageHandler as any).extractReplyImage(msg);
 
-    const chain = await (messageHandler as any).collectReplyChain(currentMsg);
-
-    expect(chain).toHaveLength(1);
-    expect(chain[0].images).toBeDefined();
-    expect(chain[0].images).toHaveLength(1);
-    expect(chain[0].images![0]).toBe(imageBuffer.toString('base64'));
+    expect(result).toBe(imageBuffer.toString('base64'));
   });
 
-  it('should extract images from both user and bot messages', async () => {
-    const imageBuffer = Buffer.from('bot-image');
+  it('should return image when reply parent has an embed with image', async () => {
+    const imageBuffer = Buffer.from('embed-image-data');
     mockedAxiosGet.mockResolvedValue({ data: imageBuffer });
 
-    const botMsg = createMockMessageWithAttachments(
-      'msg-bot', 'bot-id', 'BotUser', 'Here is the result',
-      [{ url: 'https://cdn.discord.com/bot-img.png', contentType: 'image/png', size: 1024, name: 'bot-img.png' }]
-    );
+    const parent = createMockReplyParent('msg-parent', [], [
+      { image: { url: 'https://example.com/embed.png' } },
+    ]);
+    const msg = createMockMessage('msg-current', { messageId: 'msg-parent' }, parent);
 
-    const currentMsg = createMockMessageWithAttachments(
-      'msg-current', 'user-a', 'Alice', 'Can you describe that?',
-      [],
-      { messageId: 'msg-bot' },
-      botMsg
-    );
+    const result = await (messageHandler as any).extractReplyImage(msg);
 
-    const chain = await (messageHandler as any).collectReplyChain(currentMsg);
-
-    expect(chain).toHaveLength(1);
-    expect(chain[0].role).toBe('assistant');
-    expect(chain[0].images).toHaveLength(1);
+    expect(result).toBe(imageBuffer.toString('base64'));
   });
 
-  it('should NOT extract images from messages beyond image depth', async () => {
-    (config.getReplyChainImageMaxDepth as jest.Mock).mockReturnValue(1);
-    const imageBuffer = Buffer.from('img');
+  it('should return image from embed thumbnail when no embed image', async () => {
+    const imageBuffer = Buffer.from('thumb-data');
     mockedAxiosGet.mockResolvedValue({ data: imageBuffer });
 
-    // msg-deep is at depth 1 (beyond imageMaxDepth=1)
-    const msgDeep = createMockMessageWithAttachments(
-      'msg-deep', 'user-a', 'Alice', 'Old message with image',
-      [{ url: 'https://cdn.discord.com/old.png', contentType: 'image/png', size: 1024, name: 'old.png' }]
-    );
+    const parent = createMockReplyParent('msg-parent', [], [
+      { thumbnail: { url: 'https://example.com/thumb.png' } },
+    ]);
+    const msg = createMockMessage('msg-current', { messageId: 'msg-parent' }, parent);
 
-    // msg-near is at depth 0 (within imageMaxDepth=1)
-    const msgNear = createMockMessageWithAttachments(
-      'msg-near', 'user-a', 'Alice', 'Recent message with image',
-      [{ url: 'https://cdn.discord.com/new.png', contentType: 'image/png', size: 1024, name: 'new.png' }],
-      { messageId: 'msg-deep' },
-      msgDeep
-    );
+    const result = await (messageHandler as any).extractReplyImage(msg);
 
-    const currentMsg = createMockMessageWithAttachments(
-      'msg-current', 'user-a', 'Alice', 'Describe them',
-      [],
-      { messageId: 'msg-near' },
-      msgNear
-    );
-
-    const chain = await (messageHandler as any).collectReplyChain(currentMsg);
-
-    expect(chain).toHaveLength(2);
-    // Oldest first after reverse — msgDeep is chain[0], msgNear is chain[1]
-    expect(chain[0].images).toBeUndefined(); // beyond depth
-    expect(chain[1].images).toHaveLength(1); // within depth
+    expect(result).toBe(imageBuffer.toString('base64'));
   });
 
-  it('should NOT extract images when imageMaxDepth is 0', async () => {
-    (config.getReplyChainImageMaxDepth as jest.Mock).mockReturnValue(0);
+  it('should prefer attachment over embed', async () => {
+    const attachBuffer = Buffer.from('attachment-data');
+    mockedAxiosGet.mockResolvedValue({ data: attachBuffer });
 
-    const msgA = createMockMessageWithAttachments(
-      'msg-a', 'user-a', 'Alice', 'Image here',
-      [{ url: 'https://cdn.discord.com/img.png', contentType: 'image/png', size: 1024, name: 'img.png' }]
+    const parent = createMockReplyParent(
+      'msg-parent',
+      [{ url: 'https://cdn.discord.com/attach.png', contentType: 'image/png', size: 1024, name: 'attach.png' }],
+      [{ image: { url: 'https://example.com/embed.png' } }],
     );
+    const msg = createMockMessage('msg-current', { messageId: 'msg-parent' }, parent);
 
-    const currentMsg = createMockMessageWithAttachments(
-      'msg-current', 'user-a', 'Alice', 'Describe',
-      [],
-      { messageId: 'msg-a' },
-      msgA
-    );
+    const result = await (messageHandler as any).extractReplyImage(msg);
 
-    const chain = await (messageHandler as any).collectReplyChain(currentMsg);
+    expect(result).toBe(attachBuffer.toString('base64'));
+    expect(mockedAxiosGet).toHaveBeenCalledTimes(1);
+    expect(mockedAxiosGet).toHaveBeenCalledWith('https://cdn.discord.com/attach.png', expect.any(Object));
+  });
 
-    expect(chain).toHaveLength(1);
-    expect(chain[0].images).toBeUndefined();
+  it('should return null when disabled', async () => {
+    (config.getReplyChainImageEnabled as jest.Mock).mockReturnValue(false);
+
+    const parent = createMockReplyParent('msg-parent', [
+      { url: 'https://cdn.discord.com/img.png', contentType: 'image/png', size: 1024, name: 'img.png' },
+    ]);
+    const msg = createMockMessage('msg-current', { messageId: 'msg-parent' }, parent);
+
+    const result = await (messageHandler as any).extractReplyImage(msg);
+
+    expect(result).toBeNull();
     expect(mockedAxiosGet).not.toHaveBeenCalled();
   });
 
-  it('should handle image download failure gracefully', async () => {
-    mockedAxiosGet.mockRejectedValue(new Error('Network error'));
+  it('should return null when no reply reference', async () => {
+    const msg = createMockMessage('msg-current');
 
-    const msgA = createMockMessageWithAttachments(
-      'msg-a', 'user-a', 'Alice', 'Image here',
-      [{ url: 'https://cdn.discord.com/img.png', contentType: 'image/png', size: 1024, name: 'img.png' }]
-    );
+    const result = await (messageHandler as any).extractReplyImage(msg);
 
-    const currentMsg = createMockMessageWithAttachments(
-      'msg-current', 'user-a', 'Alice', 'Describe',
-      [],
-      { messageId: 'msg-a' },
-      msgA
-    );
-
-    const chain = await (messageHandler as any).collectReplyChain(currentMsg);
-
-    // Message should still be in chain, just with no images
-    expect(chain).toHaveLength(1);
-    expect(chain[0].content).toBe('Image here');
-    expect(chain[0].images).toBeUndefined();
+    expect(result).toBeNull();
   });
 
-  it('should include message with only images and no text content', async () => {
-    const imageBuffer = Buffer.from('image-only');
+  it('should return null when reply parent has no images', async () => {
+    const parent = createMockReplyParent('msg-parent');
+    const msg = createMockMessage('msg-current', { messageId: 'msg-parent' }, parent);
+
+    const result = await (messageHandler as any).extractReplyImage(msg);
+
+    expect(result).toBeNull();
+  });
+
+  it('should return only one image even if multiple attachments exist', async () => {
+    const imageBuffer = Buffer.from('first-image');
     mockedAxiosGet.mockResolvedValue({ data: imageBuffer });
 
-    const msgA = createMockMessageWithAttachments(
-      'msg-a', 'user-a', 'Alice', '', // empty text content
-      [{ url: 'https://cdn.discord.com/img.png', contentType: 'image/png', size: 1024, name: 'img.png' }]
+    const parent = createMockReplyParent('msg-parent', [
+      { url: 'https://cdn.discord.com/img1.png', contentType: 'image/png', size: 1024, name: 'img1.png' },
+      { url: 'https://cdn.discord.com/img2.png', contentType: 'image/png', size: 1024, name: 'img2.png' },
+    ]);
+    const msg = createMockMessage('msg-current', { messageId: 'msg-parent' }, parent);
+
+    const result = await (messageHandler as any).extractReplyImage(msg);
+
+    expect(result).toBe(imageBuffer.toString('base64'));
+    expect(mockedAxiosGet).toHaveBeenCalledTimes(1);
+  });
+
+  it('should handle fetch failure gracefully', async () => {
+    const msg: any = {
+      id: 'msg-current',
+      content: 'test',
+      reference: { messageId: 'msg-parent' },
+      fetchReference: jest.fn().mockRejectedValue(new Error('Not found')),
+    };
+
+    const result = await (messageHandler as any).extractReplyImage(msg);
+
+    expect(result).toBeNull();
+  });
+
+  it('should skip oversized attachments', async () => {
+    (config.getImageAttachmentMaxSize as jest.Mock).mockReturnValue(500);
+
+    const parent = createMockReplyParent('msg-parent', [
+      { url: 'https://cdn.discord.com/big.png', contentType: 'image/png', size: 1000, name: 'big.png' },
+    ]);
+    const msg = createMockMessage('msg-current', { messageId: 'msg-parent' }, parent);
+
+    const result = await (messageHandler as any).extractReplyImage(msg);
+
+    expect(result).toBeNull();
+    expect(mockedAxiosGet).not.toHaveBeenCalled();
+  });
+
+  it('should skip non-image attachments and fall back to embed', async () => {
+    const imageBuffer = Buffer.from('embed-fallback');
+    mockedAxiosGet.mockResolvedValue({ data: imageBuffer });
+
+    const parent = createMockReplyParent(
+      'msg-parent',
+      [{ url: 'https://cdn.discord.com/doc.pdf', contentType: 'application/pdf', size: 1024, name: 'doc.pdf' }],
+      [{ image: { url: 'https://example.com/embed.png' } }],
     );
+    const msg = createMockMessage('msg-current', { messageId: 'msg-parent' }, parent);
 
-    const currentMsg = createMockMessageWithAttachments(
-      'msg-current', 'user-a', 'Alice', 'What is this?',
-      [],
-      { messageId: 'msg-a' },
-      msgA
-    );
+    const result = await (messageHandler as any).extractReplyImage(msg);
 
-    const chain = await (messageHandler as any).collectReplyChain(currentMsg);
-
-    expect(chain).toHaveLength(1);
-    expect(chain[0].images).toHaveLength(1);
-    expect(chain[0].content).toBe('');
+    expect(result).toBe(imageBuffer.toString('base64'));
+    expect(mockedAxiosGet).toHaveBeenCalledWith('https://example.com/embed.png', expect.any(Object));
   });
 });
 
