@@ -1496,6 +1496,7 @@ class MessageHandler {
           logger.logWarn('system', `UNIFIED: Unknown tool name "${tc.function.name}" — skipping`);
           continue;
         }
+        logger.logDebug('system', `UNIFIED: Resolved tool "${tc.function.name}" → api=${resolvedTool.api}`);
         const args = typeof tc.function.arguments === 'object' && tc.function.arguments !== null
           ? (tc.function.arguments as Record<string, unknown>)
           : {};
@@ -1949,6 +1950,7 @@ class MessageHandler {
           logger.logWarn('system', `TWO-STAGE: Unknown tool name "${tc.function.name}" — skipping`);
           continue;
         }
+        logger.logDebug('system', `TWO-STAGE: Resolved tool "${tc.function.name}" → api=${resolvedTool.api}`);
         const args = typeof tc.function.arguments === 'object' && tc.function.arguments !== null
           ? (tc.function.arguments as Record<string, unknown>)
           : {};
