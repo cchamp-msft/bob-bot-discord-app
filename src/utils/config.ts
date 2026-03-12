@@ -1079,15 +1079,14 @@ class Config {
   }
 
   /**
-   * Maximum number of reply-chain messages (counting back from newest) to
-   * scan for image attachments. Messages beyond this depth are collected
-   * for text context only — their attachments are ignored.
-   * Independent of REPLY_CHAIN_MAX_DEPTH. Default: 5, range [0, 50].
-   * Set to 0 to disable image collection from the reply chain entirely.
+   * Whether to extract a single image from the immediate reply parent and
+   * include it in the vision payload sent to the LLM.
+   * Default: true. Set to false to disable reply-chain image extraction.
    */
-  getReplyChainImageMaxDepth(): number {
-    const raw = this.parseIntEnv('REPLY_CHAIN_IMAGE_MAX_DEPTH', 5);
-    return Math.max(0, Math.min(raw, 50));
+  getReplyChainImageEnabled(): boolean {
+    const val = process.env.REPLY_CHAIN_IMAGE_ENABLED;
+    if (val === undefined) return true;
+    return val.toLowerCase() === 'true';
   }
 
   // ── DM Context configuration ────────────────────────────────
@@ -1342,7 +1341,7 @@ class Config {
     const prevReplyChainEnabled = this.getReplyChainEnabled();
     const prevReplyChainMaxDepth = this.getReplyChainMaxDepth();
     const prevReplyChainMaxTokens = this.getReplyChainMaxTokens();
-    const prevReplyChainImageMaxDepth = this.getReplyChainImageMaxDepth();
+    const prevReplyChainImageEnabled = this.getReplyChainImageEnabled();
     const prevDmContextEnabled = this.getDmContextEnabled();
     const prevDmContextMaxMessages = this.getDmContextMaxMessages();
     const prevImageResponseIncludeEmbed = this.getImageResponseIncludeEmbed();
@@ -1467,7 +1466,7 @@ class Config {
     if (this.getReplyChainEnabled() !== prevReplyChainEnabled) reloaded.push('REPLY_CHAIN_ENABLED');
     if (this.getReplyChainMaxDepth() !== prevReplyChainMaxDepth) reloaded.push('REPLY_CHAIN_MAX_DEPTH');
     if (this.getReplyChainMaxTokens() !== prevReplyChainMaxTokens) reloaded.push('REPLY_CHAIN_MAX_TOKENS');
-    if (this.getReplyChainImageMaxDepth() !== prevReplyChainImageMaxDepth) reloaded.push('REPLY_CHAIN_IMAGE_MAX_DEPTH');
+    if (this.getReplyChainImageEnabled() !== prevReplyChainImageEnabled) reloaded.push('REPLY_CHAIN_IMAGE_ENABLED');
     if (this.getDmContextEnabled() !== prevDmContextEnabled) reloaded.push('DM_CONTEXT_ENABLED');
     if (this.getDmContextMaxMessages() !== prevDmContextMaxMessages) reloaded.push('DM_CONTEXT_MAX_MESSAGES');
     if (this.getImageResponseIncludeEmbed() !== prevImageResponseIncludeEmbed) reloaded.push('IMAGE_RESPONSE_INCLUDE_EMBED');
@@ -1652,7 +1651,7 @@ class Config {
         enabled: this.getReplyChainEnabled(),
         maxDepth: this.getReplyChainMaxDepth(),
         maxTokens: this.getReplyChainMaxTokens(),
-        imageMaxDepth: this.getReplyChainImageMaxDepth(),
+        imageEnabled: this.getReplyChainImageEnabled(),
       },
       contextEval: {
         enabled: this.getContextEvalEnabled(),

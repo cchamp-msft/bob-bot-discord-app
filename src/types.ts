@@ -610,7 +610,7 @@ export interface PublicConfig {
     enabled: boolean;
     maxDepth: number;
     maxTokens: number;
-    imageMaxDepth: number;
+    imageEnabled: boolean;
   };
   contextEval: {
     enabled: boolean;
