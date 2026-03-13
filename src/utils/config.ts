@@ -1032,6 +1032,15 @@ class Config {
   }
 
   /**
+   * Number of days to retain log files before automatic grooming.
+   * 0 disables grooming.  Default: 7 days.
+   */
+  getLogRetentionDays(): number {
+    const val = parseInt(process.env.LOG_RETENTION_DAYS || '7', 10);
+    return isNaN(val) ? 7 : val;
+  }
+
+  /**
    * NFL logging verbosity level.
    *   0 = summary only (endpoint, season/week, cache hit/miss, game count)
    *   1 = summary + trimmed payload preview (default)
@@ -1674,6 +1683,7 @@ class Config {
         maxMessages: this.getDmContextMaxMessages(),
       },
       debugLogging: this.getDebugLogging(),
+      logRetentionDays: this.getLogRetentionDays(),
       nflLogging: {
         level: this.getNflLoggingLevel(),
       },

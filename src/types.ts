@@ -629,6 +629,8 @@ export interface PublicConfig {
     prompt: string;
   };
   debugLogging: boolean;
+  /** Number of days to retain log files (0 = grooming disabled). */
+  logRetentionDays: number;
   nflLogging: {
     level: number;
   };

@@ -296,6 +296,72 @@ class Logger {
   }
 
   /**
+   * Delete log files older than the specified retention period.
+   *
+   * Scans the logs directory for files matching `YYYY-MM-DD.log` and
+   * `YYYY-MM-DD_N.log` patterns, deleting any whose date component is
+   * older than `retentionDays` days from now.  Today's active log file
+   * is never deleted regardless of the retention value.
+   *
+   * @param retentionDays Number of days to retain.  0 = grooming disabled.
+   * @returns Summary with deleted filenames and count of skipped files.
+   */
+  groomLogs(retentionDays: number): { deleted: string[]; skipped: number } {
+    if (retentionDays === 0) {
+      return { deleted: [], skipped: 0 };
+    }
+
+    const now = new Date();
+    const cutoffDate = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+    const todayStr = now.toISOString().split('T')[0];
+
+    const deleted: string[] = [];
+    let skipped = 0;
+
+    try {
+      const files = fs.readdirSync(this.logsDir).filter(f => f.endsWith('.log'));
+
+      for (const file of files) {
+        // Never delete today's active log
+        if (file === `${todayStr}.log`) {
+          skipped++;
+          continue;
+        }
+
+        // Extract date from filename: YYYY-MM-DD.log or YYYY-MM-DD_N.log
+        const match = file.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (!match) continue;
+
+        const fileDate = new Date(match[1] + 'T00:00:00Z');
+        if (isNaN(fileDate.getTime())) {
+          skipped++;
+          continue;
+        }
+
+        if (fileDate < cutoffDate) {
+          try {
+            fs.unlinkSync(path.join(this.logsDir, file));
+            deleted.push(file);
+          } catch (err) {
+            this.log('warn', 'system', `LOG-GROOMING: Failed to delete ${file}: ${err instanceof Error ? err.message : String(err)}`);
+            skipped++;
+          }
+        } else {
+          skipped++;
+        }
+      }
+    } catch (err) {
+      this.log('error', 'system', `LOG-GROOMING: Error reading logs directory: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    if (deleted.length > 0) {
+      this.log('success', 'system', `LOG-GROOMING: Deleted ${deleted.length} file(s), skipped ${skipped} recent file(s)`);
+    }
+
+    return { deleted, skipped };
+  }
+
+  /**
    * Rotate the current active log file.
    *
    * Copies the current log content into an archive file named
@@ -304,10 +370,14 @@ class Logger {
    *
    * The active log filename remains stable (`YYYY-MM-DD.log`).
    *
+   * After archiving, automatically grooms old log files based on
+   * the `LOG_RETENTION_DAYS` environment variable (default: 7 days,
+   * 0 = disabled).
+   *
    * Returns metadata about the rotation, or null if there is nothing
    * to rotate (e.g. no log file exists yet).
    */
-  rotateLog(): { archivedPath: string; archivedName: string; activeFile: string } | null {
+  rotateLog(): { archivedPath: string; archivedName: string; activeFile: string; grooming: { deleted: string[]; skipped: number; disabled: boolean } } | null {
     const logFile = this.getLogFilePath();
 
     if (!fs.existsSync(logFile)) return null;
@@ -332,10 +402,21 @@ class Logger {
     const archivedName = path.basename(archivedPath);
     this.log('success', 'system', `LOG-ROTATE: Archived to ${archivedName} and cleared active log`);
 
+    // Groom old logs — read retention directly from env to avoid circular dep with config
+    const retentionDays = parseInt(process.env.LOG_RETENTION_DAYS || '7', 10);
+    const groomingDisabled = retentionDays === 0 || isNaN(retentionDays);
+    const groomingResult = groomingDisabled
+      ? { deleted: [] as string[], skipped: 0 }
+      : this.groomLogs(retentionDays);
+
     return {
       archivedPath,
       archivedName,
       activeFile: path.basename(logFile),
+      grooming: {
+        ...groomingResult,
+        disabled: groomingDisabled,
+      },
     };
   }
 }

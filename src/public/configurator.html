@@ -1390,6 +1390,17 @@
       </div>
     </section>
 
+    <!-- Log Management Section -->
+    <section>
+      <h2 onclick="toggleSection(this)">Log Management</h2>
+      <div class="body">
+        <div class="field narrow">
+          <label>Log Retention Days <span class="note">days to keep logs; older files are deleted on rotation · 0 = disabled</span></label>
+          <input type="number" id="log_retention_days" data-env="LOG_RETENTION_DAYS" placeholder="7" min="0" onchange="markDirty()">
+        </div>
+      </div>
+    </section>
+
     <!-- HTTP Server Section -->
     <section>
       <h2 onclick="toggleSection(this)">HTTP Server</h2>
@@ -1920,6 +1931,9 @@ flowchart TD
       // Populate error handling fields
       document.getElementById('error_message').value = cfg.errorHandling?.errorMessage || '';
       document.getElementById('error_rate_limit').value = cfg.errorHandling?.errorRateLimitMinutes || 60;
+
+      // Populate log management
+      document.getElementById('log_retention_days').value = cfg.logRetentionDays ?? 7;
 
       // Populate reply chain fields
       const rcEnabled = document.getElementById('reply_chain_enabled');
@@ -3262,6 +3276,15 @@ flowchart TD
       const data = await res.json();
       if (data.success && data.archivedName) {
         conLog(`  ✓ Log archived as ${data.archivedName}`, 'ok');
+        if (data.grooming) {
+          if (data.grooming.deleted && data.grooming.deleted.length > 0) {
+            conLog(`  🧹 Groomed ${data.grooming.deleted.length} old log(s): ${data.grooming.deleted.join(', ')}`, 'ok');
+          } else if (data.grooming.disabled) {
+            conLog(`  ℹ Log grooming disabled (retention = 0)`, 'warn');
+          } else {
+            conLog(`  ✓ No old logs to groom`, 'ok');
+          }
+        }
       } else {
         conLog(`  ℹ ${data.message || 'Nothing to rotate'}`, 'warn');
       }

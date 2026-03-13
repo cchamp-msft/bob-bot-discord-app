@@ -702,4 +702,156 @@ describe('Logger', () => {
       expect(loggedLine).not.toContain('tok123');
     });
   });
+
+  // ── Log grooming ─────────────────────────────────────
+
+  describe('groomLogs', () => {
+    function dateStr(daysAgo: number): string {
+      const d = new Date();
+      d.setDate(d.getDate() - daysAgo);
+      return d.toISOString().split('T')[0];
+    }
+
+    it('should return immediately with 0 deleted when retentionDays is 0 (disabled)', () => {
+      // Create a file so directory is non-empty
+      fs.writeFileSync(path.join(tempDir, `${dateStr(10)}.log`), 'old\n');
+
+      const result = logger.groomLogs(0);
+      expect(result.deleted).toEqual([]);
+      expect(result.skipped).toBe(0);
+      // File should still exist
+      expect(fs.existsSync(path.join(tempDir, `${dateStr(10)}.log`))).toBe(true);
+    });
+
+    it('should delete log files older than retention period', () => {
+      const old = dateStr(10);
+      const recent = dateStr(3);
+      fs.writeFileSync(path.join(tempDir, `${old}.log`), 'old\n');
+      fs.writeFileSync(path.join(tempDir, `${recent}.log`), 'recent\n');
+
+      const result = logger.groomLogs(7);
+      expect(result.deleted).toContain(`${old}.log`);
+      expect(result.deleted).not.toContain(`${recent}.log`);
+      expect(fs.existsSync(path.join(tempDir, `${old}.log`))).toBe(false);
+      expect(fs.existsSync(path.join(tempDir, `${recent}.log`))).toBe(true);
+    });
+
+    it('should never delete today\'s active log file', () => {
+      const today = dateStr(0);
+      fs.writeFileSync(path.join(tempDir, `${today}.log`), 'active\n');
+
+      const result = logger.groomLogs(1);
+      expect(result.deleted).not.toContain(`${today}.log`);
+      expect(fs.existsSync(path.join(tempDir, `${today}.log`))).toBe(true);
+    });
+
+    it('should handle both active and archived filename formats', () => {
+      const old = dateStr(10);
+      fs.writeFileSync(path.join(tempDir, `${old}.log`), 'active\n');
+      fs.writeFileSync(path.join(tempDir, `${old}_0.log`), 'archive 0\n');
+      fs.writeFileSync(path.join(tempDir, `${old}_1.log`), 'archive 1\n');
+
+      const result = logger.groomLogs(7);
+      expect(result.deleted).toContain(`${old}.log`);
+      expect(result.deleted).toContain(`${old}_0.log`);
+      expect(result.deleted).toContain(`${old}_1.log`);
+    });
+
+    it('should return the list of deleted filenames', () => {
+      const old1 = dateStr(10);
+      const old2 = dateStr(12);
+      fs.writeFileSync(path.join(tempDir, `${old1}.log`), 'x\n');
+      fs.writeFileSync(path.join(tempDir, `${old2}.log`), 'x\n');
+
+      const result = logger.groomLogs(7);
+      expect(result.deleted).toHaveLength(2);
+      expect(result.deleted).toContain(`${old1}.log`);
+      expect(result.deleted).toContain(`${old2}.log`);
+    });
+
+    it('should not delete files newer than retention period', () => {
+      const recent = dateStr(2);
+      fs.writeFileSync(path.join(tempDir, `${recent}.log`), 'recent\n');
+
+      const result = logger.groomLogs(7);
+      expect(result.deleted).toEqual([]);
+      expect(fs.existsSync(path.join(tempDir, `${recent}.log`))).toBe(true);
+    });
+
+    it('should handle empty logs directory gracefully', () => {
+      const result = logger.groomLogs(7);
+      expect(result.deleted).toEqual([]);
+      expect(result.skipped).toBe(0);
+    });
+
+    it('should count skipped (recent) files correctly', () => {
+      const recent1 = dateStr(1);
+      const recent2 = dateStr(3);
+      const old = dateStr(15);
+      fs.writeFileSync(path.join(tempDir, `${recent1}.log`), 'x\n');
+      fs.writeFileSync(path.join(tempDir, `${recent2}.log`), 'x\n');
+      fs.writeFileSync(path.join(tempDir, `${old}.log`), 'x\n');
+
+      const result = logger.groomLogs(7);
+      expect(result.deleted).toHaveLength(1);
+      expect(result.skipped).toBe(2);
+    });
+  });
+
+  describe('rotateLog triggers grooming', () => {
+    let originalRetention: string | undefined;
+
+    beforeEach(() => {
+      originalRetention = process.env.LOG_RETENTION_DAYS;
+    });
+
+    afterEach(() => {
+      if (originalRetention === undefined) {
+        delete process.env.LOG_RETENTION_DAYS;
+      } else {
+        process.env.LOG_RETENTION_DAYS = originalRetention;
+      }
+    });
+
+    it('should include grooming results in rotateLog return', () => {
+      const old = new Date();
+      old.setDate(old.getDate() - 10);
+      const oldStr = old.toISOString().split('T')[0];
+      fs.writeFileSync(path.join(tempDir, `${oldStr}.log`), 'old\n');
+
+      // Write current log so there is something to rotate
+      logger.log('success', 'user', 'content');
+      process.env.LOG_RETENTION_DAYS = '7';
+
+      const result = logger.rotateLog();
+      expect(result).not.toBeNull();
+      expect(result!.grooming).toBeDefined();
+      expect(result!.grooming.deleted).toContain(`${oldStr}.log`);
+      expect(result!.grooming.disabled).toBe(false);
+    });
+
+    it('should report grooming disabled when LOG_RETENTION_DAYS is 0', () => {
+      logger.log('success', 'user', 'content');
+      process.env.LOG_RETENTION_DAYS = '0';
+
+      const result = logger.rotateLog();
+      expect(result).not.toBeNull();
+      expect(result!.grooming.disabled).toBe(true);
+      expect(result!.grooming.deleted).toEqual([]);
+    });
+
+    it('should default to 7 days retention when LOG_RETENTION_DAYS is not set', () => {
+      delete process.env.LOG_RETENTION_DAYS;
+      // Create a file 3 days old (should NOT be deleted with 7 day retention)
+      const recent = new Date();
+      recent.setDate(recent.getDate() - 3);
+      const recentStr = recent.toISOString().split('T')[0];
+      fs.writeFileSync(path.join(tempDir, `${recentStr}.log`), 'recent\n');
+
+      logger.log('success', 'user', 'content');
+      const result = logger.rotateLog();
+      expect(result).not.toBeNull();
+      expect(result!.grooming.deleted).not.toContain(`${recentStr}.log`);
+    });
+  });
 });

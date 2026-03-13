@@ -440,6 +440,7 @@ class HttpServer {
         archivedName: result.archivedName,
         activeFile: result.activeFile,
         message: `Log archived as ${result.archivedName}`,
+        grooming: result.grooming,
       });
     }));
 
