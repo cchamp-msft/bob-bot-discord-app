@@ -344,6 +344,22 @@ class HttpServer {
 
     // GET export currently active workflow as ComfyUI API format JSON
     this.app.get('/api/config/workflow/export', ...adminGuard, safeHandler(async (req, res) => {
+      const toolName = typeof req.query.toolName === 'string' ? req.query.toolName : '';
+
+      if (toolName) {
+        // Export per-tool workflow
+        const workflowJson = config.getComfyUIWorkflowForTool(toolName);
+        if (!workflowJson) {
+          res.status(400).json({ success: false, error: `No workflow found for tool "${toolName}"` });
+          return;
+        }
+        const workflow = JSON.parse(workflowJson);
+        const source = config.hasComfyUIWorkflowForTool(toolName) ? `per-tool (${toolName})` : 'legacy fallback';
+        logger.log('success', 'configurator', `Workflow exported for tool "${toolName}" (source: ${source})`);
+        res.json({ success: true, workflow, source });
+        return;
+      }
+
       const result = await comfyuiClient.getExportWorkflow();
       if (!result) {
         res.status(400).json({
@@ -398,14 +414,6 @@ class HttpServer {
         const denoise = Number(body.denoise);
         const seed = Number(body.seed);
 
-        if (!model) errors.push('model is required');
-        if (isNaN(width) || width <= 0 || width % 8 !== 0) errors.push('width must be a positive multiple of 8');
-        if (isNaN(height) || height <= 0 || height % 8 !== 0) errors.push('height must be a positive multiple of 8');
-        if (isNaN(steps) || steps <= 0) errors.push('steps must be positive');
-        if (isNaN(cfg) || cfg <= 0) errors.push('cfg must be positive');
-        if (isNaN(denoise) || denoise < 0 || denoise > 1) errors.push('denoise must be between 0 and 1');
-        if (isNaN(seed) || !Number.isInteger(seed) || (seed !== -1 && (seed < 0 || seed > Number.MAX_SAFE_INTEGER))) errors.push('seed must be -1 (random) or an integer 0–9007199254740991');
-
         // Optional new fields
         const negativePrompt = typeof body.negativePrompt === 'string' ? body.negativePrompt : '';
         const vae = typeof body.vae === 'string' ? body.vae.trim() : '';
@@ -413,6 +421,14 @@ class HttpServer {
         const clip2 = typeof body.clip2 === 'string' ? body.clip2.trim() : '';
         const clipType = typeof body.clipType === 'string' ? body.clipType.trim() : '';
         const diffuser = typeof body.diffuser === 'string' ? body.diffuser.trim() : '';
+
+        if (!model && !diffuser) errors.push('Either model (checkpoint) or diffuser (UNET) is required');
+        if (isNaN(width) || width <= 0 || width % 8 !== 0) errors.push('width must be a positive multiple of 8');
+        if (isNaN(height) || height <= 0 || height % 8 !== 0) errors.push('height must be a positive multiple of 8');
+        if (isNaN(steps) || steps <= 0) errors.push('steps must be positive');
+        if (isNaN(cfg) || cfg <= 0) errors.push('cfg must be positive');
+        if (isNaN(denoise) || denoise < 0 || denoise > 1) errors.push('denoise must be between 0 and 1');
+        if (isNaN(seed) || !Number.isInteger(seed) || (seed !== -1 && (seed < 0 || seed > Number.MAX_SAFE_INTEGER))) errors.push('seed must be -1 (random) or an integer 0–9007199254740991');
 
         // Validate: diffuser requires VAE
         if (diffuser && !vae) {

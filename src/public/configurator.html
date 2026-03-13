@@ -1017,30 +1017,6 @@
             <button class="btn-test btn-sm" onclick="testConnection('comfyui')">Test</button>
           </div>
         </div>
-        <div class="field">
-          <label>ComfyUI Workflow</label>
-          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:6px">
-            Upload a ComfyUI workflow JSON file exported using <strong>"Save (API Format)"</strong> in ComfyUI.
-            The workflow must contain at least one <code>%prompt%</code> placeholder (case-sensitive) which will be replaced with the Discord message prompt.
-            All occurrences of <code>%prompt%</code> will be substituted.
-            <br><em>Note: UI-format workflows (standard "Save") will be auto-converted, but API format is recommended for reliability.</em>
-          </p>
-          <div class="field-row">
-            <div class="field">
-              <input type="file" id="workflow_file" accept=".json" style="font-size:0.82em" onchange="handleWorkflowUpload(this)">
-            </div>
-          </div>
-          <div id="workflowStatus" style="font-size:0.8em;margin-top:6px;color:var(--text-dim)"></div>
-          <div id="customWorkflowActions" style="margin-top:6px;display:none">
-            <button class="btn-sm" style="font-size:0.78em;color:#e57373;border-color:#e57373" onclick="deleteCustomWorkflow()">Remove Custom Workflow</button>
-            <span style="font-size:0.75em;color:var(--text-dim);margin-left:8px">Removes uploaded workflow so the default workflow is used instead</span>
-          </div>
-          <div style="margin-top:8px;display:flex;align-items:center;gap:10px">
-            <button class="btn-sm" style="font-size:0.78em" onclick="exportWorkflow()">Export Current Workflow</button>
-            <span id="exportStatus" style="font-size:0.78em;color:var(--text-dim)"></span>
-          </div>
-        </div>
-
         <!-- Default Workflow Settings -->
         <div style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -1048,14 +1024,14 @@
             <button class="btn-sm" style="font-size:0.78em" onclick="discoverComfyUIOptions()">Discover Options</button>
           </div>
           <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">
-            Configure a basic text-to-image workflow that will be used when no custom workflow is uploaded.
-            Click <strong>Discover Options</strong> after testing the ComfyUI connection to populate dropdowns with available models, samplers, and schedulers.
-            <br><em>Sampler Override:</em> Steps, CFG, Sampler, Scheduler, Denoise, and Seed are also applied as overrides to any uploaded workflow that contains <code>KSampler</code> nodes. Checkpoint Model, Width, and Height only apply to the default workflow. Other sampler node types (e.g. <code>KSamplerAdvanced</code>) are not affected.
+            Configure settings for the auto-generated text-to-image workflow. These settings are used when no
+            custom workflow is uploaded for a tool. Sampler settings (Steps, CFG, Sampler, Scheduler, Denoise,
+            Seed) also override KSampler nodes in any uploaded custom workflow.
+            <br>Click <strong>Discover Options</strong> after testing the ComfyUI connection to populate dropdowns.
           </p>
-          <div id="defaultWorkflowInfo" style="font-size:0.78em;padding:6px 10px;border-radius:4px;margin-bottom:10px;display:none"></div>
 
           <div class="field">
-            <label>Checkpoint Model</label>
+            <label>Checkpoint Model <span style="font-size:0.8em;color:var(--text-dim)">(or use Diffuser/UNET below)</span></label>
             <select id="dw_model" style="width:100%">
               <option value="">— click Discover Options to load models —</option>
             </select>
@@ -1188,8 +1164,10 @@
         <div id="per-tool-workflows-card" style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
           <label style="display:block;font-size:0.9em;font-weight:600;margin-bottom:6px">Per-Tool Workflows</label>
           <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:8px">
-            Upload separate workflow files for each ComfyUI tool. Per-tool workflows override the default workflow above.
-            Use <code>%prompt%</code> and <code>%negative%</code> placeholders for text, and <code>%image%</code> for input images (required for img2img/img2vid tools).
+            Manage ComfyUI workflow files for each tool. The Text to Image workflow is always present.
+            Upload custom workflow JSON files exported using <strong>"Save (API Format)"</strong> in ComfyUI.
+            Workflows must contain a <code>%prompt%</code> placeholder. Use <code>%negative%</code> for negative prompts and <code>%image%</code> for input images.
+            <br><em>Tool names must match a tool configured in the Tools section (or its keyword alias).</em>
           </p>
           <div id="per-tool-workflows-list"></div>
         </div>
@@ -1769,17 +1747,6 @@ flowchart TD
         modelSelect.value = cfg.apis.ollamaModel;
       }
 
-      // Populate ComfyUI workflow status
-      const workflowStatus = document.getElementById('workflowStatus');
-      _hasCustomWorkflow = !!cfg.apis.comfyuiWorkflowConfigured;
-      if (_hasCustomWorkflow) {
-        workflowStatus.innerHTML = '<span style="color:var(--ok)">✓ Workflow configured</span>';
-        document.getElementById('customWorkflowActions').style.display = '';
-      } else {
-        workflowStatus.innerHTML = '<span style="color:var(--text-dim)">No workflow uploaded</span>';
-        document.getElementById('customWorkflowActions').style.display = 'none';
-      }
-
       // Populate default workflow settings
       if (cfg.defaultWorkflow) {
         const dw = cfg.defaultWorkflow;
@@ -1855,8 +1822,6 @@ flowchart TD
         }
         updateClipTypeVisibility();
       }
-      updateDefaultWorkflowInfo();
-
       // Populate Ollama system prompt
       const systemPromptEl = document.getElementById('ollama_system_prompt');
       if (cfg.apis.ollamaSystemPrompt) {
@@ -2814,51 +2779,6 @@ flowchart TD
     }
   }
 
-  // ── Workflow upload ─────────────────────────────────
-  async function handleWorkflowUpload(input) {
-    const file = input.files[0];
-    if (!file) return;
-
-    const statusEl = document.getElementById('workflowStatus');
-    statusEl.innerHTML = '<span style="color:var(--warn)">Uploading…</span>';
-    conLog(`[${new Date().toISOString()}] Uploading workflow: ${file.name}…`);
-
-    try {
-      const text = await file.text();
-
-      const res = await fetch('/api/config/upload-workflow', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workflow: text, filename: file.name }),
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        const convertedNote = data.converted ? ' [auto-converted from UI format]' : '';
-        statusEl.innerHTML = `<span style="color:var(--ok)">✓ ${esc(file.name)} — validation passed${convertedNote}</span>`;
-        conLog(`  ✓ Workflow "${file.name}" uploaded and validated${convertedNote}`, 'ok');
-        if (data.converted) {
-          conLog('  ℹ Workflow was in ComfyUI UI format and auto-converted to API format. For best results, export using "Save (API Format)" in ComfyUI.', 'warn');
-        }
-        _hasCustomWorkflow = true;
-        document.getElementById('customWorkflowActions').style.display = '';
-        updateDefaultWorkflowInfo();
-      } else {
-        statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(file.name)} — ${esc(data.error)}</span>`;
-        conLog(`  ✗ Workflow validation failed: ${data.error}`, 'err');
-      }
-
-      await pollStatus();
-    } catch (e) {
-      statusEl.innerHTML = `<span style="color:var(--err)">✗ Upload failed: ${esc(e.message)}</span>`;
-      conLog(`  ✗ Workflow upload failed: ${e.message}`, 'err');
-    }
-
-    // Reset the file input so the same file can be re-uploaded
-    input.value = '';
-  }
-
   // ── Default workflow management ─────────────────────
   async function discoverComfyUIOptions() {
     conLog(`[${new Date().toISOString()}] Discovering ComfyUI options…`);
@@ -2977,8 +2897,9 @@ flowchart TD
   async function saveDefaultWorkflow() {
     const statusEl = document.getElementById('dwSaveStatus');
     const model = document.getElementById('dw_model').value;
-    if (!model) {
-      statusEl.textContent = 'Select a checkpoint model first';
+    const diffuser = document.getElementById('dw_diffuser').value;
+    if (!model && !diffuser) {
+      statusEl.textContent = 'Select a checkpoint model or a diffuser/UNET model';
       statusEl.style.color = 'var(--err)';
       return;
     }
@@ -3019,7 +2940,6 @@ flowchart TD
         statusEl.textContent = 'Saved ✓';
         statusEl.style.color = 'var(--ok)';
         conLog('  ✓ Default workflow settings saved', 'ok');
-        updateDefaultWorkflowInfo();
       } else {
         const errMsg = data.errors ? data.errors.join(', ') : (data.error || 'Unknown error');
         statusEl.textContent = 'Error: ' + errMsg;
@@ -3082,55 +3002,6 @@ flowchart TD
     vaeSel.addEventListener('change', updateWarning);
   })();
 
-  async function deleteCustomWorkflow() {
-    if (!confirm('Remove the custom workflow? The default workflow settings will be used instead.')) return;
-    conLog(`[${new Date().toISOString()}] Removing custom workflow…`);
-    try {
-      const res = await fetch('/api/config/workflow', { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        conLog('  ✓ ' + data.message, 'ok');
-        _hasCustomWorkflow = false;
-        document.getElementById('workflowStatus').innerHTML = '<span style="color:var(--text-dim)">No workflow uploaded</span>';
-        document.getElementById('customWorkflowActions').style.display = 'none';
-        updateDefaultWorkflowInfo();
-      } else {
-        conLog('  ✗ ' + (data.error || 'Failed'), 'err');
-      }
-    } catch (e) {
-      conLog(`  ✗ Delete failed: ${e.message}`, 'err');
-    }
-  }
-
-  async function exportWorkflow() {
-    const statusEl = document.getElementById('exportStatus');
-    statusEl.innerHTML = '<span style="color:var(--warn)">Exporting…</span>';
-    conLog(`[${new Date().toISOString()}] Exporting current workflow…`);
-    try {
-      const res = await fetch('/api/config/workflow/export');
-      const data = await res.json();
-      if (data.success) {
-        const blob = new Blob([JSON.stringify(data.workflow, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'comfyui-workflow-export.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        statusEl.innerHTML = `<span style="color:var(--ok)">✓ Exported (${data.source})</span>`;
-        conLog(`  ✓ Workflow exported (source: ${data.source})`, 'ok');
-      } else {
-        statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(data.error)}</span>`;
-        conLog(`  ✗ Export failed: ${data.error}`, 'err');
-      }
-    } catch (e) {
-      statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(e.message)}</span>`;
-      conLog(`  ✗ Export failed: ${e.message}`, 'err');
-    }
-  }
-
   // ── Per-tool workflow management ────────────────────
   // Cache known tool names from last fetch for use in add-row
   let _knownComfyuiToolNames = [];
@@ -3166,18 +3037,24 @@ flowchart TD
     for (const tool of allComfyuiTools) knownSet.add(tool.name);
     _knownComfyuiToolNames = [...knownSet];
 
+    // Ensure generate_image is always present as a pinned first row
+    const genImgIdx = workflows.findIndex(w => w.toolName === 'generate_image');
+    if (genImgIdx >= 0) {
+      workflows[genImgIdx].pinned = true;
+      // Move to front
+      const [genImg] = workflows.splice(genImgIdx, 1);
+      workflows.unshift(genImg);
+    } else {
+      workflows.unshift({ toolName: 'generate_image', hasWorkflow: false, pinned: true });
+    }
+
     renderPerToolTable(list, workflows, knownSet);
   }
 
   function renderPerToolTable(container, workflows, knownSet) {
     container.innerHTML = '';
 
-    if (workflows.length === 0) {
-      const empty = document.createElement('p');
-      empty.style.cssText = 'font-size:0.8em;color:var(--text-dim);margin:8px 0';
-      empty.textContent = 'No per-tool workflows configured. Add one below or create ComfyUI tools in the Tools section.';
-      container.appendChild(empty);
-    } else {
+    if (workflows.length > 0) {
       const table = document.createElement('table');
       table.className = 'per-tool-table';
       table.innerHTML = '<thead><tr><th>Tool Name</th><th>Status</th><th>Actions</th></tr></thead>';
@@ -3235,7 +3112,8 @@ flowchart TD
           Upload <input type="file" accept=".json" style="display:none">
         </label>
         ${wf.hasWorkflow ? '<button class="btn-sm btn-danger ptw-delete">Delete</button>' : ''}
-        ${!wf.hasWorkflow ? '<button class="btn-sm ptw-remove" title="Remove row">\u2715</button>' : ''}
+        ${wf.hasWorkflow ? '<button class="btn-sm ptw-export" style="margin-left:4px">Export</button>' : ''}
+        ${!wf.hasWorkflow && !wf.pinned ? '<button class="btn-sm ptw-remove" title="Remove row">\u2715</button>' : ''}
       </td>
     `;
 
@@ -3254,6 +3132,14 @@ flowchart TD
       deleteBtn.addEventListener('click', () => {
         const currentName = nameInput.value.trim() || nameInput.dataset.original;
         deletePerToolWorkflow(currentName);
+      });
+    }
+
+    const exportBtn = tr.querySelector('.ptw-export');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        const currentName = nameInput.value.trim() || nameInput.dataset.original;
+        exportPerToolWorkflow(currentName);
       });
     }
 
@@ -3355,31 +3241,27 @@ flowchart TD
     }
   }
 
-  // Tracks whether a custom workflow is currently uploaded (set from config API, not DOM text)
-  let _hasCustomWorkflow = false;
-
-  function updateDefaultWorkflowInfo() {
-    const infoEl = document.getElementById('defaultWorkflowInfo');
-    const hasCustom = _hasCustomWorkflow;
-    const hasModel = document.getElementById('dw_model').value;
-
-    document.getElementById('customWorkflowActions').style.display = hasCustom ? '' : 'none';
-
-    if (hasCustom) {
-      infoEl.style.display = '';
-      infoEl.style.background = 'rgba(255,183,77,0.08)';
-      infoEl.style.border = '1px solid rgba(255,183,77,0.3)';
-      infoEl.innerHTML = '⚠ A custom workflow is uploaded and takes precedence. Default workflow settings are saved but inactive.';
-    } else if (hasModel) {
-      infoEl.style.display = '';
-      infoEl.style.background = 'rgba(129,199,132,0.08)';
-      infoEl.style.border = '1px solid rgba(129,199,132,0.3)';
-      infoEl.innerHTML = '✓ Default workflow is active with the settings below.';
-    } else {
-      infoEl.style.display = '';
-      infoEl.style.background = 'rgba(144,164,174,0.08)';
-      infoEl.style.border = '1px solid rgba(144,164,174,0.3)';
-      infoEl.innerHTML = 'No workflow configured. Select a checkpoint model and save to enable the default workflow.';
+  async function exportPerToolWorkflow(toolName) {
+    conLog(`[${new Date().toISOString()}] Exporting workflow for "${toolName}"\u2026`);
+    try {
+      const resp = await fetch(`/api/config/workflow/export?toolName=${encodeURIComponent(toolName)}`);
+      const data = await resp.json();
+      if (data.success) {
+        const blob = new Blob([JSON.stringify(data.workflow, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `comfyui-workflow-${toolName}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        conLog(`  \u2713 Workflow exported for "${toolName}" (source: ${data.source})`, 'ok');
+      } else {
+        conLog(`  \u2717 Export failed: ${data.error}`, 'err');
+      }
+    } catch (e) {
+      conLog(`  \u2717 Export error: ${e.message}`, 'err');
     }
   }
 

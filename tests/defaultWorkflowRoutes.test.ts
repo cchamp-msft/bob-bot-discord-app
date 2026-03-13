@@ -261,7 +261,7 @@ describe('Default Workflow Routes', () => {
       expect(envUpdates.COMFYUI_DEFAULT_SEED).toBe(-1);
     });
 
-    it('should reject missing model', async () => {
+    it('should reject missing model and diffuser', async () => {
       const res = await postJson(server, '/api/config/default-workflow', {
         ...validPayload,
         model: '',
@@ -269,7 +269,21 @@ describe('Default Workflow Routes', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
-      expect(res.body.errors).toContain('model is required');
+      expect(res.body.errors).toContain('Either model (checkpoint) or diffuser (UNET) is required');
+    });
+
+    it('should accept diffuser without model', async () => {
+      mockUpdateEnv.mockResolvedValue(undefined);
+
+      const res = await postJson(server, '/api/config/default-workflow', {
+        ...validPayload,
+        model: '',
+        diffuser: 'flux1-dev.safetensors',
+        vae: 'ae.safetensors',
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
     });
 
     it('should reject width not divisible by 8', async () => {
