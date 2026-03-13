@@ -128,7 +128,7 @@ describe('ApiManager', () => {
 
       const result = await apiManager.executeRequest('comfyui', 'user1', 'test prompt', 300);
 
-      expect(comfyuiClient.generateImage).toHaveBeenCalledWith('test prompt', 'user1', undefined, 300);
+      expect(comfyuiClient.generateImage).toHaveBeenCalledWith('test prompt', 'user1', undefined, 300, { toolName: undefined, images: undefined });
       expect(result.success).toBe(true);
     });
 
@@ -165,7 +165,7 @@ describe('ApiManager', () => {
 
       const result = await apiManager.executeRequest('comfyui', 'user1', 'a sunset', 300);
 
-      expect(comfyuiClient.generateImage).toHaveBeenCalledWith('a sunset', 'user1', undefined, 300);
+      expect(comfyuiClient.generateImage).toHaveBeenCalledWith('a sunset', 'user1', undefined, 300, { toolName: undefined, images: undefined });
       expect(xaiClient.generateImage).not.toHaveBeenCalled();
       expect(result.success).toBe(true);
     });
@@ -272,7 +272,7 @@ describe('ApiManager', () => {
       await apiManager.executeRequest('comfyui', 'user1', 'test prompt', 300);
 
       expect(ollamaClient.generate).not.toHaveBeenCalled();
-      expect(comfyuiClient.generateImage).toHaveBeenCalledWith('test prompt', 'user1', undefined, 300);
+      expect(comfyuiClient.generateImage).toHaveBeenCalledWith('test prompt', 'user1', undefined, 300, { toolName: undefined, images: undefined });
     });
     it('should route meme requests to memeClient', async () => {
       (memeClient.handleRequest as jest.Mock).mockResolvedValue({

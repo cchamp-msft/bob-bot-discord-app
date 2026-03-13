@@ -528,6 +528,14 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/** Options for extended ComfyUI generation (multi-workflow, image input). */
+export interface ComfyUIGenerateOptions {
+  /** Tool name — selects per-tool workflow from .config/comfyui-workflows/{toolName}.json. */
+  toolName?: string;
+  /** Base64-encoded image payloads for img2img/img2vid workflows. */
+  images?: string[];
+}
+
 class ComfyUIClient {
   private client: AxiosInstance;
 
@@ -910,15 +918,46 @@ class ComfyUIClient {
     return { workflow, source: 'default', params };
   }
 
+  /**
+   * Upload an image to the ComfyUI server for use in img2img/img2vid workflows.
+   * Uses the ComfyUI /upload/image endpoint with multipart/form-data.
+   * Returns the uploaded filename and metadata needed for workflow substitution.
+   */
+  async uploadImage(imageBuffer: Buffer, filename?: string): Promise<{ name: string; subfolder: string; type: string }> {
+    const uploadName = filename || `${randomUUID()}.png`;
+    const blob = new Blob([new Uint8Array(imageBuffer)], { type: 'image/png' });
+    const formData = new FormData();
+    formData.append('image', blob, uploadName);
+    formData.append('type', 'input');
+
+    const baseUrl = this.client.defaults.baseURL || config.getComfyUIEndpoint();
+    const response = await fetch(`${baseUrl}/upload/image`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(`ComfyUI image upload failed (HTTP ${response.status}): ${detail}`);
+    }
+
+    const result = await response.json() as { name: string; subfolder: string; type: string };
+    logger.log('success', 'comfyui', `Image uploaded: ${result.name} (subfolder: ${result.subfolder || '(root)'})`);
+    return result;
+  }
+
   async generateImage(
     prompt: string,
     requester: string,
     signal?: AbortSignal,
-    timeoutSeconds?: number
+    timeoutSeconds?: number,
+    options?: ComfyUIGenerateOptions
   ): Promise<ComfyUIResponse> {
     try {
       // Priority: custom uploaded workflow > default generated workflow
-      let workflowJson = config.getComfyUIWorkflow();
+      let workflowJson = options?.toolName
+        ? config.getComfyUIWorkflowForTool(options.toolName)
+        : config.getComfyUIWorkflow();
       let usingDefault = false;
 
       if (!workflowJson) {
@@ -972,8 +1011,22 @@ class ComfyUIClient {
         .split('%prompt%').join(escapedPrompt)
         .split('%negative%').join(escapedNegative);
 
+      // ── Image upload and %image% substitution ──────────────────
+      let finalWorkflow = substitutedWorkflow;
+      if (options?.images?.length) {
+        // Upload the first image to ComfyUI
+        const imageBuffer = Buffer.from(options.images[0], 'base64');
+        const uploaded = await this.uploadImage(imageBuffer);
+        finalWorkflow = finalWorkflow.split('%image%').join(uploaded.name);
+        logger.log('success', requester, `ComfyUI: uploaded input image as "${uploaded.name}" for %image% substitution`);
+      } else if (substitutedWorkflow.includes('%image%')) {
+        const errorMsg = 'Workflow contains %image% placeholder but no input image was provided. Attach an image to use this tool.';
+        logger.logError(requester, errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
       // Parse the substituted workflow to send as the prompt object
-      const workflowData = JSON.parse(substitutedWorkflow);
+      const workflowData = JSON.parse(finalWorkflow);
 
       // Resolve seed per-request: replace -1 with a fresh random value on every KSampler node
       resolveWorkflowSeeds(workflowData as Record<string, unknown>);

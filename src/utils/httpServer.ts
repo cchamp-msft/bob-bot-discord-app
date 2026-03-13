@@ -260,7 +260,7 @@ class HttpServer {
 
     // POST upload ComfyUI workflow JSON
     this.app.post('/api/config/upload-workflow', ...adminGuard, safeHandler(async (req, res) => {
-      const { workflow, filename } = req.body;
+      const { workflow, filename, toolName } = req.body;
 
       if (!workflow || typeof workflow !== 'string') {
         logger.logError('configurator', 'Workflow upload FAILED: No workflow data provided');
@@ -270,11 +270,12 @@ class HttpServer {
 
       const safeName = filename || 'comfyui-workflow.json';
 
-      const result = await configWriter.saveWorkflow(workflow, safeName);
+      const result = await configWriter.saveWorkflow(workflow, safeName, toolName);
 
       if (result.success) {
         const convertedNote = result.converted ? ' (auto-converted from UI format to API format)' : '';
-        logger.log('success', 'configurator', `Workflow uploaded: ${safeName} — validation passed${convertedNote}`);
+        const toolNote = toolName ? ` [tool: ${toolName}]` : '';
+        logger.log('success', 'configurator', `Workflow uploaded: ${safeName}${toolNote} — validation passed${convertedNote}`);
         res.json({ success: true, filename: safeName, converted: result.converted || false });
       } else {
         logger.logError('configurator', `Workflow upload FAILED: ${result.error}`);
@@ -283,10 +284,12 @@ class HttpServer {
     }));
 
     // DELETE remove custom ComfyUI workflow (fall back to default)
-    this.app.delete('/api/config/workflow', ...adminGuard, safeHandler(async (_req, res) => {
-      const deleted = configWriter.deleteWorkflow();
+    this.app.delete('/api/config/workflow', ...adminGuard, safeHandler(async (req, res) => {
+      const toolName = req.query.toolName as string | undefined;
+      const deleted = configWriter.deleteWorkflow(toolName);
       if (deleted) {
-        logger.log('success', 'configurator', 'Custom workflow removed — will use default workflow');
+        const toolNote = toolName ? ` for tool "${toolName}"` : '';
+        logger.log('success', 'configurator', `Custom workflow removed${toolNote} — will use default workflow`);
         apiManager.refreshClients();
         res.json({ success: true, message: 'Custom workflow removed. Default workflow will be used.' });
       } else {
@@ -340,7 +343,7 @@ class HttpServer {
     }));
 
     // GET export currently active workflow as ComfyUI API format JSON
-    this.app.get('/api/config/workflow/export', ...adminGuard, safeHandler(async (_req, res) => {
+    this.app.get('/api/config/workflow/export', ...adminGuard, safeHandler(async (req, res) => {
       const result = await comfyuiClient.getExportWorkflow();
       if (!result) {
         res.status(400).json({
@@ -351,6 +354,13 @@ class HttpServer {
       }
       logger.log('success', 'configurator', `Workflow exported (source: ${result.source})`);
       res.json({ success: true, workflow: result.workflow, source: result.source, params: result.params });
+    }));
+
+    // GET list per-tool workflow status for all ComfyUI tools
+    this.app.get('/api/config/workflows', ...adminGuard, safeHandler(async (_req, res) => {
+      const toolWorkflows = configWriter.listToolWorkflows();
+      const hasLegacy = config.hasComfyUIWorkflow();
+      res.json({ tools: toolWorkflows, hasLegacyWorkflow: hasLegacy });
     }));
 
     // POST save default workflow parameters

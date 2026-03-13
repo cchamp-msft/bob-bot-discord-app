@@ -41,7 +41,10 @@ class ApiManager {
     toolName?: string
   ): Promise<ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | XaiImageResponse | XaiVideoResponse | WebFetchResponse> {
     if (api === 'comfyui') {
-      return await comfyuiClient.generateImage(data, requester, signal, _timeout);
+      return await comfyuiClient.generateImage(data, requester, signal, _timeout, {
+        toolName,
+        images: ollamaOptions?.images,
+      });
     } else if (api === 'discord') {
       throw new Error('Discord tools must be dispatched via dispatchDiscordAction, not apiManager.executeRequest');
     } else if (api === 'xai-image') {

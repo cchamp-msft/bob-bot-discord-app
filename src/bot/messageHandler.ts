@@ -679,6 +679,13 @@ class MessageHandler {
           );
           await this.dispatchResponse(discordResult, 'discord', message, requester, isDM);
         } else {
+          // Validate image requirement for img2img/img2vid ComfyUI tools
+          const requiresImage = toolConfig.api === 'comfyui' && toolConfig.name.includes('from_image');
+          if (requiresImage && (!imagePayloads || imagePayloads.length === 0)) {
+            await message.reply('This command requires an image. Attach an image or reply to a message with an image.');
+            return;
+          }
+
           const directIntent: FinalPassIntent = 'raw';
           const routedResult = await executeRoutedRequest(
             toolConfig,
@@ -687,7 +694,7 @@ class MessageHandler {
             historyWithTrigger,
             botDisplayName,
             undefined, // signal
-            { finalPassIntent: directIntent },
+            { finalPassIntent: directIntent, images: imagePayloads },
             dmHistory
           );
 
@@ -1688,7 +1695,7 @@ class MessageHandler {
           : undefined,
         ctx.botDisplayName,
         undefined,
-        { skipFinalPass: true },
+        { skipFinalPass: true, images: ctx.imagePayloads },
         ctx.dmHistory
       );
 
@@ -2058,7 +2065,7 @@ class MessageHandler {
           historyWithTrigger.length > 0 ? historyWithTrigger : undefined,
           botDisplayName,
           undefined,
-          { skipFinalPass: true },
+          { skipFinalPass: true, images: imagePayloads },
           dmHistory
         );
         // Capture media follow-ups for attachment after the text reply
@@ -2241,7 +2248,7 @@ class MessageHandler {
           historyWithTrigger.length > 0 ? historyWithTrigger : undefined,
           botDisplayName,
           undefined,
-          undefined,
+          { images: imagePayloads },
           dmHistory
         );
 
@@ -2279,7 +2286,7 @@ class MessageHandler {
             historyWithTrigger.length > 0 ? historyWithTrigger : undefined,
             botDisplayName,
             undefined,
-            undefined,
+            { images: imagePayloads },
             dmHistory
           );
 

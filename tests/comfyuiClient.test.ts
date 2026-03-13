@@ -58,6 +58,7 @@ jest.mock('../src/utils/config', () => ({
     getComfyUIDefaultClip2: jest.fn(() => ''),
     getComfyUIDefaultClipType: jest.fn(() => 'stable_diffusion'),
     getComfyUIDefaultDiffuser: jest.fn(() => ''),
+    getComfyUIWorkflowForTool: jest.fn(() => ''),
   },
 }));
 
@@ -2371,6 +2372,144 @@ describe('ComfyUIClient', () => {
       const sentBody = mockInstance.post.mock.calls[0][1];
       expect(sentBody.prompt['2'].inputs.text).toBe('hello world');
       expect(sentBody.prompt['3'].inputs.text).toBe('');
+    });
+  });
+
+  describe('uploadImage', () => {
+    it('should upload an image via fetch and return metadata', async () => {
+      const mockResponse = { name: 'test-uuid.png', subfolder: '', type: 'input' };
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      }) as jest.Mock;
+
+      const buffer = Buffer.from('fake-image-data');
+      const result = await comfyuiClient.uploadImage(buffer, 'test.png');
+
+      expect(result).toEqual(mockResponse);
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/upload/image'),
+        expect.objectContaining({ method: 'POST' })
+      );
+    });
+
+    it('should throw on non-ok response', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: () => Promise.resolve('Internal Server Error'),
+      }) as jest.Mock;
+
+      const buffer = Buffer.from('fake-image-data');
+      await expect(comfyuiClient.uploadImage(buffer)).rejects.toThrow('ComfyUI image upload failed');
+    });
+  });
+
+  describe('generateImage with options', () => {
+    it('should use per-tool workflow when toolName is provided', async () => {
+      const mockConfig = require('../src/utils/config').config;
+      const workflowJson = JSON.stringify({
+        '1': { class_type: 'KSampler', inputs: { seed: -1 } },
+        '2': { class_type: 'CLIPTextEncode', inputs: { text: '%prompt%' } },
+        '3': { class_type: 'SaveImage', inputs: {} },
+      });
+      mockConfig.getComfyUIWorkflowForTool.mockReturnValue(workflowJson);
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: 'test-id', number: 1, node_errors: {} },
+      });
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          'test-id': {
+            status: { status_str: 'success', completed: true },
+            outputs: { '3': { images: [{ filename: 'tool_out.png', subfolder: '', type: 'output' }] } },
+          },
+        },
+      });
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: true,
+        promptId: 'test-id',
+        completed: true,
+      });
+
+      await comfyuiClient.generateImage('test prompt', 'user1', undefined, undefined, {
+        toolName: 'generate_video_local',
+      });
+
+      expect(mockConfig.getComfyUIWorkflowForTool).toHaveBeenCalledWith('generate_video_local');
+    });
+
+    it('should substitute %image% when images are provided', async () => {
+      const mockConfig = require('../src/utils/config').config;
+      const workflowJson = JSON.stringify({
+        '1': { class_type: 'KSampler', inputs: { seed: -1 } },
+        '2': { class_type: 'CLIPTextEncode', inputs: { text: '%prompt%' } },
+        '3': { class_type: 'LoadImage', inputs: { image: '%image%' } },
+        '4': { class_type: 'SaveImage', inputs: {} },
+      });
+      mockConfig.getComfyUIWorkflowForTool.mockReturnValue(workflowJson);
+
+      // Mock uploadImage via fetch
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ name: 'uploaded-abc.png', subfolder: '', type: 'input' }),
+      }) as jest.Mock;
+
+      mockInstance.post.mockResolvedValue({
+        status: 200,
+        data: { prompt_id: 'test-id', number: 1, node_errors: {} },
+      });
+      mockInstance.get.mockResolvedValue({
+        status: 200,
+        data: {
+          'test-id': {
+            status: { status_str: 'success', completed: true },
+            outputs: { '4': { images: [{ filename: 'restyled.png', subfolder: '', type: 'output' }] } },
+          },
+        },
+      });
+      mockWsManager.waitForExecution.mockResolvedValue({
+        success: true,
+        promptId: 'test-id',
+        completed: true,
+      });
+
+      await comfyuiClient.generateImage('restyle this', 'user1', undefined, undefined, {
+        toolName: 'generate_image_from_image_local',
+        images: [Buffer.from('fake-png').toString('base64')],
+      });
+
+      // Verify upload was called
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/upload/image'),
+        expect.objectContaining({ method: 'POST' })
+      );
+      // Verify the workflow submission contained the uploaded filename
+      const postCall = mockInstance.post.mock.calls.find((c: unknown[]) => c[0] === '/api/prompt');
+      expect(postCall).toBeDefined();
+      const submittedWorkflow = JSON.stringify(postCall![1].prompt);
+      expect(submittedWorkflow).toContain('uploaded-abc.png');
+      expect(submittedWorkflow).not.toContain('%image%');
+    });
+
+    it('should error when %image% is in workflow but no images provided', async () => {
+      const mockConfig = require('../src/utils/config').config;
+      const workflowJson = JSON.stringify({
+        '1': { class_type: 'KSampler', inputs: { seed: -1 } },
+        '2': { class_type: 'CLIPTextEncode', inputs: { text: '%prompt%' } },
+        '3': { class_type: 'LoadImage', inputs: { image: '%image%' } },
+        '4': { class_type: 'SaveImage', inputs: {} },
+      });
+      mockConfig.getComfyUIWorkflowForTool.mockReturnValue(workflowJson);
+
+      const result = await comfyuiClient.generateImage('test', 'user1', undefined, undefined, {
+        toolName: 'generate_image_from_image_local',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('%image%');
     });
   });
 });

@@ -392,7 +392,7 @@ export async function executeRoutedRequest(
   conversationHistory?: ChatMessage[],
   botDisplayName?: string,
   signal?: AbortSignal,
-  options?: { skipFinalPass?: boolean; finalPassIntent?: FinalPassIntent },
+  options?: { skipFinalPass?: boolean; finalPassIntent?: FinalPassIntent; images?: string[] },
   dmHistory?: ChatMessage[]
 ): Promise<RoutedResult> {
   const stages: StageResult[] = [];
@@ -424,7 +424,7 @@ export async function executeRoutedRequest(
           conversationHistory?.length ? conversationHistory : undefined,
           sig,
           undefined,
-          undefined,
+          options?.images?.length ? { images: options.images } : undefined,
           keywordConfig.name
         ),
       signal

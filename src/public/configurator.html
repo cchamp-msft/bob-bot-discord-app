@@ -483,6 +483,15 @@
     border-top: 1px solid var(--border);
   }
 
+  /* Per-tool workflows table */
+  .per-tool-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .per-tool-table th, .per-tool-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  .per-tool-table th { font-weight: 600; font-size: 0.75em; text-transform: uppercase; color: var(--text-dim); }
+  .per-tool-table td { font-size: 0.85em; }
+  .per-tool-table code { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.92em; }
+  .status-ok { color: var(--ok); font-weight: 600; }
+  .status-none { color: var(--text-dim); }
+
   /* Bot control bar */
   .bot-controls {
     display: flex;
@@ -1171,6 +1180,16 @@
             <option value="false">No</option>
             <option value="true">Yes</option>
           </select>
+        </div>
+
+        <!-- Per-Tool Workflows -->
+        <div id="per-tool-workflows-card" style="display:none;margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
+          <label style="display:block;font-size:0.9em;font-weight:600;margin-bottom:6px">Per-Tool Workflows</label>
+          <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:8px">
+            Upload separate workflow files for each ComfyUI tool. Per-tool workflows override the default workflow above.
+            Use <code>%prompt%</code> and <code>%negative%</code> placeholders for text, and <code>%image%</code> for input images (required for img2img/img2vid tools).
+          </p>
+          <div id="per-tool-workflows-list"></div>
         </div>
       </div>
     </section>
@@ -2016,6 +2035,9 @@ flowchart TD
       document.getElementById('statusDot').className = 'dot';
 
       conLog(`[${new Date().toISOString()}] Config loaded from server`, 'ok');
+
+      // Load per-tool workflow status (non-blocking)
+      loadPerToolWorkflows();
     } catch (e) {
       document.getElementById('statusDot').className = 'dot off';
       conLog(`[${new Date().toISOString()}] Failed to load config: ${e.message}`, 'err');
@@ -2046,6 +2068,7 @@ flowchart TD
 
   // ── Tools table ─────────────────────────────────
   function renderTools(tools) {
+    window.toolsData = tools;
     const tbody = document.getElementById('kwBody');
     tbody.innerHTML = '';
     for (const kw of tools) {
@@ -3103,6 +3126,101 @@ flowchart TD
     } catch (e) {
       statusEl.innerHTML = `<span style="color:var(--err)">✗ ${esc(e.message)}</span>`;
       conLog(`  ✗ Export failed: ${e.message}`, 'err');
+    }
+  }
+
+  // ── Per-tool workflow management ────────────────────
+  async function loadPerToolWorkflows() {
+    const card = document.getElementById('per-tool-workflows-card');
+    const list = document.getElementById('per-tool-workflows-list');
+    if (!card || !list) return;
+
+    // Find all comfyui tools from the tools array
+    const comfyuiTools = (window.toolsData || []).filter(t => t.api === 'comfyui');
+    if (comfyuiTools.length === 0) {
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = '';
+
+    let workflowStatus = {};
+    try {
+      const resp = await fetch('/api/config/workflows');
+      if (resp.ok) {
+        const data = await resp.json();
+        for (const tw of (data.tools || [])) {
+          workflowStatus[tw.toolName] = tw.hasWorkflow;
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    list.innerHTML = '';
+    const table = document.createElement('table');
+    table.className = 'per-tool-table';
+    table.innerHTML = '<thead><tr><th>Tool</th><th>Keyword</th><th>Status</th><th>Actions</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+
+    for (const tool of comfyuiTools) {
+      const hasWorkflow = workflowStatus[tool.name] || false;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${esc(tool.name)}</td>
+        <td><code>${esc(tool.keyword || '\u2014')}</code></td>
+        <td>${hasWorkflow ? '<span class="status-ok">\u2713 Uploaded</span>' : '<span class="status-none">Using default</span>'}</td>
+        <td>
+          <label class="btn-sm btn-primary" style="margin-right:4px;display:inline-block;cursor:pointer;">
+            Upload <input type="file" accept=".json" style="display:none" onchange="uploadPerToolWorkflow('${esc(tool.name)}', this)">
+          </label>
+          ${hasWorkflow ? `<button class="btn-sm btn-danger" onclick="deletePerToolWorkflow('${esc(tool.name)}')">Delete</button>` : ''}
+        </td>
+      `;
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    list.appendChild(table);
+  }
+
+  async function uploadPerToolWorkflow(toolName, input) {
+    const file = input.files[0];
+    if (!file) return;
+    conLog(`[${new Date().toISOString()}] Uploading per-tool workflow for "${toolName}": ${file.name}\u2026`);
+    try {
+      const text = await file.text();
+      const resp = await fetch('/api/config/upload-workflow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflow: text, filename: file.name, toolName }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        const convertedNote = data.converted ? ' [auto-converted from UI format]' : '';
+        conLog(`  \u2713 Workflow uploaded for "${toolName}"${convertedNote}`, 'ok');
+        loadPerToolWorkflows();
+      } else {
+        conLog(`  \u2717 Upload failed for "${toolName}": ${data.error}`, 'err');
+      }
+    } catch (e) {
+      conLog(`  \u2717 Upload error for "${toolName}": ${e.message}`, 'err');
+    }
+    input.value = '';
+  }
+
+  async function deletePerToolWorkflow(toolName) {
+    if (!confirm(`Delete the per-tool workflow for "${toolName}"? It will fall back to the default workflow.`)) return;
+    conLog(`[${new Date().toISOString()}] Removing per-tool workflow for "${toolName}"\u2026`);
+    try {
+      const resp = await fetch(`/api/config/workflow?toolName=${encodeURIComponent(toolName)}`, {
+        method: 'DELETE',
+      });
+      const data = await resp.json();
+      if (data.success) {
+        conLog(`  \u2713 Workflow removed for "${toolName}"`, 'ok');
+        loadPerToolWorkflows();
+      } else {
+        conLog(`  \u2717 Delete failed: ${data.error || 'Unknown error'}`, 'err');
+      }
+    } catch (e) {
+      conLog(`  \u2717 Delete error: ${e.message}`, 'err');
     }
   }
 

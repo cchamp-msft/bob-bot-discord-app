@@ -484,4 +484,76 @@ describe('ConfigWriter', () => {
       ).rejects.toThrow('at index 1');
     });
   });
+
+  describe('saveWorkflow with toolName', () => {
+    it('should save to per-tool path when toolName is provided', async () => {
+      const workflowsDir = path.join(tempDir, '.config', 'comfyui-workflows');
+      (configWriter as any).configDir = path.join(tempDir, '.config');
+      (configWriter as any).workflowsDir = workflowsDir;
+
+      const workflow = JSON.stringify({ '1': { class_type: 'Test', inputs: { text: '%prompt%' } } });
+      const result = await configWriter.saveWorkflow(workflow, 'test.json', 'generate_video_local');
+
+      expect(result.success).toBe(true);
+      const savedPath = path.join(workflowsDir, 'generate_video_local.json');
+      expect(fs.existsSync(savedPath)).toBe(true);
+      expect(fs.readFileSync(savedPath, 'utf-8')).toContain('%prompt%');
+    });
+
+    it('should save to legacy path when toolName is not provided', async () => {
+      const legacyPath = path.join(tempDir, 'workflow.json');
+      (configWriter as any).configDir = tempDir;
+      (configWriter as any).workflowPath = legacyPath;
+
+      const workflow = JSON.stringify({ '1': { class_type: 'Test', inputs: { text: '%prompt%' } } });
+      const result = await configWriter.saveWorkflow(workflow, 'test.json');
+
+      expect(result.success).toBe(true);
+      expect(fs.existsSync(legacyPath)).toBe(true);
+    });
+  });
+
+  describe('deleteWorkflow with toolName', () => {
+    it('should delete per-tool workflow file', () => {
+      const workflowsDir = path.join(tempDir, 'comfyui-workflows');
+      fs.mkdirSync(workflowsDir, { recursive: true });
+      const toolFile = path.join(workflowsDir, 'generate_video_local.json');
+      fs.writeFileSync(toolFile, '{}');
+      (configWriter as any).workflowsDir = workflowsDir;
+
+      const result = configWriter.deleteWorkflow('generate_video_local');
+      expect(result).toBe(true);
+      expect(fs.existsSync(toolFile)).toBe(false);
+    });
+
+    it('should return false if per-tool workflow does not exist', () => {
+      (configWriter as any).workflowsDir = path.join(tempDir, 'nonexistent');
+      const result = configWriter.deleteWorkflow('nonexistent_tool');
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('listToolWorkflows', () => {
+    it('should list workflow files in the workflows directory', () => {
+      const workflowsDir = path.join(tempDir, 'comfyui-workflows');
+      fs.mkdirSync(workflowsDir, { recursive: true });
+      fs.writeFileSync(path.join(workflowsDir, 'generate_video_local.json'), '{}');
+      fs.writeFileSync(path.join(workflowsDir, 'generate_image_from_image_local.json'), '{}');
+      (configWriter as any).workflowsDir = workflowsDir;
+
+      const results = configWriter.listToolWorkflows();
+      expect(results).toHaveLength(2);
+      expect(results.map(r => r.toolName).sort()).toEqual([
+        'generate_image_from_image_local',
+        'generate_video_local',
+      ]);
+      expect(results.every(r => r.hasWorkflow)).toBe(true);
+    });
+
+    it('should return empty array if directory does not exist', () => {
+      (configWriter as any).workflowsDir = path.join(tempDir, 'nonexistent');
+      const results = configWriter.listToolWorkflows();
+      expect(results).toEqual([]);
+    });
+  });
 });

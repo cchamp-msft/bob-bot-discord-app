@@ -1279,6 +1279,36 @@ class Config {
     return fs.existsSync(workflowPath);
   }
 
+  /**
+   * Load a ComfyUI workflow JSON for a specific tool from .config/comfyui-workflows/{toolName}.json.
+   * Falls back to the legacy .config/comfyui-workflow.json if no per-tool file exists.
+   * Returns the raw JSON string, or empty string if neither is found.
+   */
+  getComfyUIWorkflowForTool(toolName: string): string {
+    if (toolName) {
+      const perToolPath = path.join(__dirname, '../../.config/comfyui-workflows', `${toolName}.json`);
+      try {
+        if (fs.existsSync(perToolPath)) {
+          return fs.readFileSync(perToolPath, 'utf-8');
+        }
+      } catch (error) {
+        logger.logError('config', `Failed to load ComfyUI workflow for tool "${toolName}": ${error}`);
+      }
+    }
+    // Fallback to legacy workflow
+    return this.getComfyUIWorkflow();
+  }
+
+  /**
+   * Check whether a per-tool ComfyUI workflow file exists.
+   * Does NOT check the legacy fallback — use hasComfyUIWorkflow() for that.
+   */
+  hasComfyUIWorkflowForTool(toolName: string): boolean {
+    if (!toolName) return false;
+    const perToolPath = path.join(__dirname, '../../.config/comfyui-workflows', `${toolName}.json`);
+    return fs.existsSync(perToolPath);
+  }
+
   private parseIntEnv(name: string, defaultValue: number): number {
     const raw = process.env[name];
     if (!raw) return defaultValue;

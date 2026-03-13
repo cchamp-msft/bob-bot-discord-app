@@ -2193,7 +2193,7 @@ describe('MessageHandler two-stage evaluation', () => {
       [{ role: 'user', content: 'testuser: is it going to rain in Seattle', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser',
       undefined,
-      undefined,
+      { images: [] },
       []
     );
   });
@@ -2281,7 +2281,7 @@ describe('MessageHandler two-stage evaluation', () => {
       [{ role: 'user', content: 'testuser: generate_image', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser',
       undefined,
-      undefined,
+      { images: [] },
       []
     );
   });
@@ -4881,7 +4881,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser',
       undefined,
-      undefined,
+      { images: [] },
       []
     );
   });
@@ -4936,7 +4936,7 @@ describe('MessageHandler meme two-stage routing fallback', () => {
       [{ role: 'user', content: 'testuser: make a meme about driving class', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser',
       undefined,
-      undefined,
+      { images: [] },
       []
     );
   });

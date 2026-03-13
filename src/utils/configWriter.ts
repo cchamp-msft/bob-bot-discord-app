@@ -21,6 +21,7 @@ class ConfigWriter {
   private defaultToolsPath = path.join(__dirname, '../../config/tools.default.xml');
   private configDir = path.join(__dirname, '../../.config');
   private workflowPath = path.join(__dirname, '../../.config/comfyui-workflow.json');
+  private workflowsDir = path.join(__dirname, '../../.config/comfyui-workflows');
 
   /**
    * Ensure the .config directory exists.
@@ -37,7 +38,7 @@ class ConfigWriter {
    * If the workflow is in UI format, it is auto-converted to API format before saving.
    * Returns the result of validation and save, including whether conversion occurred.
    */
-  async saveWorkflow(workflowJson: string, _filename: string): Promise<{ success: boolean; error?: string; converted?: boolean }> {
+  async saveWorkflow(workflowJson: string, _filename: string, toolName?: string): Promise<{ success: boolean; error?: string; converted?: boolean }> {
     // Validate JSON structure
     let parsed: Record<string, unknown>;
     try {
@@ -79,7 +80,15 @@ class ConfigWriter {
 
     try {
       this.ensureConfigDir();
-      fs.writeFileSync(this.workflowPath, finalJson, 'utf-8');
+      if (toolName) {
+        if (!fs.existsSync(this.workflowsDir)) {
+          fs.mkdirSync(this.workflowsDir, { recursive: true });
+        }
+        const perToolPath = path.join(this.workflowsDir, `${toolName}.json`);
+        fs.writeFileSync(perToolPath, finalJson, 'utf-8');
+      } else {
+        fs.writeFileSync(this.workflowPath, finalJson, 'utf-8');
+      }
       return { success: true, converted: wasConverted };
     } catch (error) {
       return {
@@ -162,12 +171,39 @@ class ConfigWriter {
    * to fall back to the default generated workflow.
    * Returns true if deleted, false if it didn't exist.
    */
-  deleteWorkflow(): boolean {
+  deleteWorkflow(toolName?: string): boolean {
+    if (toolName) {
+      const perToolPath = path.join(this.workflowsDir, `${toolName}.json`);
+      if (fs.existsSync(perToolPath)) {
+        fs.unlinkSync(perToolPath);
+        return true;
+      }
+      return false;
+    }
     if (fs.existsSync(this.workflowPath)) {
       fs.unlinkSync(this.workflowPath);
       return true;
     }
     return false;
+  }
+
+  /**
+   * Scan .config/comfyui-workflows/ and return which tool names have per-tool workflow files.
+   */
+  listToolWorkflows(): { toolName: string; hasWorkflow: boolean }[] {
+    const results: { toolName: string; hasWorkflow: boolean }[] = [];
+    if (!fs.existsSync(this.workflowsDir)) return results;
+    try {
+      const files = fs.readdirSync(this.workflowsDir);
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          results.push({ toolName: file.replace(/\.json$/, ''), hasWorkflow: true });
+        }
+      }
+    } catch {
+      // Directory might not exist or be unreadable
+    }
+    return results;
   }
 
   /**
