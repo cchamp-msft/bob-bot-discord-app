@@ -207,6 +207,18 @@ class ConfigWriter {
   }
 
   /**
+   * Rename a per-tool workflow file.
+   * Returns true if renamed, false if the source file didn't exist.
+   */
+  renameWorkflow(oldToolName: string, newToolName: string): boolean {
+    const oldPath = path.join(this.workflowsDir, `${oldToolName}.json`);
+    const newPath = path.join(this.workflowsDir, `${newToolName}.json`);
+    if (!fs.existsSync(oldPath)) return false;
+    fs.renameSync(oldPath, newPath);
+    return true;
+  }
+
+  /**
    * Validate and update tools.xml
    */
   async updateTools(tools: ToolConfig[]): Promise<void> {

@@ -360,7 +360,26 @@ class HttpServer {
     this.app.get('/api/config/workflows', ...adminGuard, safeHandler(async (_req, res) => {
       const toolWorkflows = configWriter.listToolWorkflows();
       const hasLegacy = config.hasComfyUIWorkflow();
-      res.json({ tools: toolWorkflows, hasLegacyWorkflow: hasLegacy });
+      const comfyuiToolNames = config.getTools()
+        .filter(t => t.api === 'comfyui')
+        .map(t => t.name);
+      res.json({ tools: toolWorkflows, hasLegacyWorkflow: hasLegacy, comfyuiToolNames });
+    }));
+
+    // POST rename a per-tool workflow file
+    this.app.post('/api/config/workflow/rename', ...adminGuard, safeHandler(async (req, res) => {
+      const { oldToolName, newToolName } = req.body;
+      if (!oldToolName || !newToolName) {
+        res.status(400).json({ success: false, error: 'Both oldToolName and newToolName are required' });
+        return;
+      }
+      const renamed = configWriter.renameWorkflow(oldToolName, newToolName);
+      if (renamed) {
+        logger.log('success', 'configurator', `Workflow renamed: "${oldToolName}" → "${newToolName}"`);
+        res.json({ success: true });
+      } else {
+        res.json({ success: false, error: `No workflow found for "${oldToolName}"` });
+      }
     }));
 
     // POST save default workflow parameters

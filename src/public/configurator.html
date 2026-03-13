@@ -491,6 +491,8 @@
   .per-tool-table code { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.92em; }
   .status-ok { color: var(--ok); font-weight: 600; }
   .status-none { color: var(--text-dim); }
+  .tool-warning { color: var(--warn, #ff9800); font-size: 0.75em; margin-left: 6px; }
+  .ptw-name { font-family: inherit; font-size: 0.85em; padding: 4px 6px; background: var(--input-bg, var(--bg)); color: var(--text); border: 1px solid var(--border); border-radius: 4px; width: 100%; max-width: 280px; box-sizing: border-box; }
 
   /* Bot control bar */
   .bot-controls {
@@ -1183,7 +1185,7 @@
         </div>
 
         <!-- Per-Tool Workflows -->
-        <div id="per-tool-workflows-card" style="display:none;margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
+        <div id="per-tool-workflows-card" style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
           <label style="display:block;font-size:0.9em;font-weight:600;margin-bottom:6px">Per-Tool Workflows</label>
           <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:8px">
             Upload separate workflow files for each ComfyUI tool. Per-tool workflows override the default workflow above.
@@ -3130,59 +3132,188 @@ flowchart TD
   }
 
   // ── Per-tool workflow management ────────────────────
+  // Cache known tool names from last fetch for use in add-row
+  let _knownComfyuiToolNames = [];
+
   async function loadPerToolWorkflows() {
-    const card = document.getElementById('per-tool-workflows-card');
     const list = document.getElementById('per-tool-workflows-list');
-    if (!card || !list) return;
+    if (!list) return;
 
-    // Find all comfyui tools from the tools array
-    const comfyuiTools = (window.toolsData || []).filter(t => t.api === 'comfyui');
-    if (comfyuiTools.length === 0) {
-      card.style.display = 'none';
-      return;
-    }
-    card.style.display = '';
-
-    let workflowStatus = {};
+    let workflows = [];
+    let comfyuiToolNames = [];
     try {
       const resp = await fetch('/api/config/workflows');
       if (resp.ok) {
         const data = await resp.json();
-        for (const tw of (data.tools || [])) {
-          workflowStatus[tw.toolName] = tw.hasWorkflow;
-        }
+        workflows = data.tools || [];
+        comfyuiToolNames = data.comfyuiToolNames || [];
       }
-    } catch (e) { /* ignore */ }
-
-    list.innerHTML = '';
-    const table = document.createElement('table');
-    table.className = 'per-tool-table';
-    table.innerHTML = '<thead><tr><th>Tool</th><th>Keyword</th><th>Status</th><th>Actions</th></tr></thead>';
-    const tbody = document.createElement('tbody');
-
-    for (const tool of comfyuiTools) {
-      const hasWorkflow = workflowStatus[tool.name] || false;
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${esc(tool.name)}</td>
-        <td><code>${esc(tool.keyword || '\u2014')}</code></td>
-        <td>${hasWorkflow ? '<span class="status-ok">\u2713 Uploaded</span>' : '<span class="status-none">Using default</span>'}</td>
-        <td>
-          <label class="btn-sm btn-primary" style="margin-right:4px;display:inline-block;cursor:pointer;">
-            Upload <input type="file" accept=".json" style="display:none" onchange="uploadPerToolWorkflow('${esc(tool.name)}', this)">
-          </label>
-          ${hasWorkflow ? `<button class="btn-sm btn-danger" onclick="deletePerToolWorkflow('${esc(tool.name)}')">Delete</button>` : ''}
-        </td>
-      `;
-      tbody.appendChild(tr);
+    } catch (e) {
+      conLog(`  \u2717 Failed to load per-tool workflows: ${e.message}`, 'err');
     }
-    table.appendChild(tbody);
-    list.appendChild(table);
+
+    // Merge comfyui tools from toolsData that don't have a workflow file yet
+    const existingNames = new Set(workflows.map(w => w.toolName));
+    const allComfyuiTools = (window.toolsData || []).filter(t => t.api === 'comfyui');
+    for (const tool of allComfyuiTools) {
+      if (!existingNames.has(tool.name)) {
+        workflows.push({ toolName: tool.name, hasWorkflow: false });
+      }
+    }
+
+    // Also add known tool names from toolsData into the set
+    const knownSet = new Set(comfyuiToolNames);
+    for (const tool of allComfyuiTools) knownSet.add(tool.name);
+    _knownComfyuiToolNames = [...knownSet];
+
+    renderPerToolTable(list, workflows, knownSet);
+  }
+
+  function renderPerToolTable(container, workflows, knownSet) {
+    container.innerHTML = '';
+
+    if (workflows.length === 0) {
+      const empty = document.createElement('p');
+      empty.style.cssText = 'font-size:0.8em;color:var(--text-dim);margin:8px 0';
+      empty.textContent = 'No per-tool workflows configured. Add one below or create ComfyUI tools in the Tools section.';
+      container.appendChild(empty);
+    } else {
+      const table = document.createElement('table');
+      table.className = 'per-tool-table';
+      table.innerHTML = '<thead><tr><th>Tool Name</th><th>Status</th><th>Actions</th></tr></thead>';
+      const tbody = document.createElement('tbody');
+
+      for (const wf of workflows) {
+        tbody.appendChild(createPerToolRow(wf, knownSet));
+      }
+      table.appendChild(tbody);
+      container.appendChild(table);
+    }
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn-sm';
+    addBtn.style.marginTop = '8px';
+    addBtn.textContent = '+ Add Tool Workflow';
+    addBtn.onclick = () => {
+      let table = container.querySelector('table.per-tool-table');
+      if (!table) {
+        // Remove the empty message and create table
+        const emptyMsg = container.querySelector('p');
+        if (emptyMsg) emptyMsg.remove();
+        table = document.createElement('table');
+        table.className = 'per-tool-table';
+        table.innerHTML = '<thead><tr><th>Tool Name</th><th>Status</th><th>Actions</th></tr></thead>';
+        const tbody = document.createElement('tbody');
+        table.appendChild(tbody);
+        container.insertBefore(table, addBtn);
+      }
+      const tbody = table.querySelector('tbody');
+      tbody.appendChild(createPerToolRow({ toolName: '', hasWorkflow: false }, knownSet));
+      // Focus the new input
+      const inputs = tbody.querySelectorAll('.ptw-name');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    };
+    container.appendChild(addBtn);
+  }
+
+  function createPerToolRow(wf, knownSet) {
+    const tr = document.createElement('tr');
+    const isKnown = !wf.toolName || knownSet.has(wf.toolName);
+    const warningHtml = isKnown ? ''
+      : '<span class="tool-warning" title="This tool name is not in the tools configuration">\u26A0 Not in tools config</span>';
+    const safeName = esc(wf.toolName);
+
+    tr.innerHTML = `
+      <td>
+        <input type="text" class="ptw-name" value="${safeName}" data-original="${safeName}"
+               placeholder="tool_name" />
+        ${warningHtml}
+      </td>
+      <td>${wf.hasWorkflow ? '<span class="status-ok">\u2713 Uploaded</span>' : '<span class="status-none">No workflow</span>'}</td>
+      <td>
+        <label class="btn-sm btn-primary" style="margin-right:4px;display:inline-block;cursor:pointer;">
+          Upload <input type="file" accept=".json" style="display:none">
+        </label>
+        ${wf.hasWorkflow ? '<button class="btn-sm btn-danger ptw-delete">Delete</button>' : ''}
+        ${!wf.hasWorkflow ? '<button class="btn-sm ptw-remove" title="Remove row">\u2715</button>' : ''}
+      </td>
+    `;
+
+    // Attach event listeners
+    const nameInput = tr.querySelector('.ptw-name');
+    nameInput.addEventListener('change', () => renamePerToolWorkflow(nameInput));
+
+    const fileInput = tr.querySelector('input[type="file"]');
+    fileInput.addEventListener('change', () => {
+      const currentName = nameInput.value.trim() || nameInput.dataset.original;
+      uploadPerToolWorkflow(currentName, fileInput);
+    });
+
+    const deleteBtn = tr.querySelector('.ptw-delete');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', () => {
+        const currentName = nameInput.value.trim() || nameInput.dataset.original;
+        deletePerToolWorkflow(currentName);
+      });
+    }
+
+    const removeBtn = tr.querySelector('.ptw-remove');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => tr.remove());
+    }
+
+    return tr;
+  }
+
+  async function renamePerToolWorkflow(input) {
+    const oldName = input.dataset.original;
+    const newName = input.value.trim();
+    if (!newName || newName === oldName) { input.value = oldName; return; }
+    if (!oldName) {
+      // New row with no original name — just update data-original, no rename needed
+      input.dataset.original = newName;
+      // Update warning
+      const td = input.closest('td');
+      const existingWarning = td.querySelector('.tool-warning');
+      if (existingWarning) existingWarning.remove();
+      const knownSet = new Set(_knownComfyuiToolNames);
+      if (!knownSet.has(newName)) {
+        const warn = document.createElement('span');
+        warn.className = 'tool-warning';
+        warn.title = 'This tool name is not in the tools configuration';
+        warn.textContent = '\u26A0 Not in tools config';
+        td.appendChild(warn);
+      }
+      return;
+    }
+    try {
+      const resp = await fetch('/api/config/workflow/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldToolName: oldName, newToolName: newName }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        conLog(`  \u2713 Workflow renamed: "${oldName}" \u2192 "${newName}"`, 'ok');
+        loadPerToolWorkflows();
+      } else {
+        conLog(`  \u2717 Rename failed: ${data.error}`, 'err');
+        input.value = oldName;
+      }
+    } catch (e) {
+      conLog(`  \u2717 Rename error: ${e.message}`, 'err');
+      input.value = oldName;
+    }
   }
 
   async function uploadPerToolWorkflow(toolName, input) {
     const file = input.files[0];
     if (!file) return;
+    if (!toolName) {
+      conLog('  \u2717 Enter a tool name before uploading a workflow', 'err');
+      input.value = '';
+      return;
+    }
     conLog(`[${new Date().toISOString()}] Uploading per-tool workflow for "${toolName}": ${file.name}\u2026`);
     try {
       const text = await file.text();

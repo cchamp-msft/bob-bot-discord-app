@@ -556,4 +556,30 @@ describe('ConfigWriter', () => {
       expect(results).toEqual([]);
     });
   });
+
+  describe('renameWorkflow', () => {
+    it('should rename an existing per-tool workflow file', () => {
+      const workflowsDir = path.join(tempDir, 'comfyui-workflows');
+      fs.mkdirSync(workflowsDir, { recursive: true });
+      fs.writeFileSync(path.join(workflowsDir, 'old_tool.json'), '{"test":true}');
+      (configWriter as any).workflowsDir = workflowsDir;
+
+      const result = configWriter.renameWorkflow('old_tool', 'new_tool');
+      expect(result).toBe(true);
+      expect(fs.existsSync(path.join(workflowsDir, 'new_tool.json'))).toBe(true);
+      expect(fs.existsSync(path.join(workflowsDir, 'old_tool.json'))).toBe(false);
+      // Verify content is preserved
+      const content = fs.readFileSync(path.join(workflowsDir, 'new_tool.json'), 'utf-8');
+      expect(JSON.parse(content)).toEqual({ test: true });
+    });
+
+    it('should return false if the source workflow does not exist', () => {
+      const workflowsDir = path.join(tempDir, 'comfyui-workflows');
+      fs.mkdirSync(workflowsDir, { recursive: true });
+      (configWriter as any).workflowsDir = workflowsDir;
+
+      const result = configWriter.renameWorkflow('nonexistent', 'new_name');
+      expect(result).toBe(false);
+    });
+  });
 });
