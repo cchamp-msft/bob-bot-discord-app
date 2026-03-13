@@ -1,4 +1,5 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import * as crypto from 'crypto';
 import * as http from 'http';
 import * as path from 'path';
@@ -79,7 +80,21 @@ function adminAuth(req: Request, res: Response, next: NextFunction): void {
  * Combined admin guard: token auth (if configured) then localhost check.
  * Attach both to every configurator / admin route.
  */
-const adminGuard = [adminAuth, localhostOnly];
+/**
+ * Rate limiter for admin routes — throttles repeated requests per IP to
+ * mitigate brute-force token-spraying.  Only failed requests count against
+ * the limit (`skipSuccessfulRequests`) so normal usage is unaffected.
+ */
+const adminRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req: Request) => ipKeyGenerator(req.ip ?? req.socket.remoteAddress ?? 'unknown'),
+});
+
+const adminGuard = [adminRateLimiter, adminAuth, localhostOnly];
 
 /**
  * Remove common server fingerprint headers and add minimal security
