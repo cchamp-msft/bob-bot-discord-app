@@ -272,14 +272,14 @@ class AccuWeatherClient {
   }
 
   /**
-   * Get 10-day daily forecast for a location key.
+   * Get 5-day daily forecast for a location key.
    */
-  async get10DayForecast(locationKey: string): Promise<AccuWeatherForecastResponse | null> {
+  async get5DayForecast(locationKey: string): Promise<AccuWeatherForecastResponse | null> {
     const apiKey = config.getAccuWeatherApiKey();
     if (!apiKey) return null;
 
     try {
-      const response = await this.client.get(`/forecasts/v1/daily/10day/${locationKey}`, {
+      const response = await this.client.get(`/forecasts/v1/daily/5day/${locationKey}`, {
         params: { apikey: apiKey },
       });
       if (response.status === 200 && response.data?.DailyForecasts) {
@@ -287,14 +287,18 @@ class AccuWeatherClient {
       }
       return null;
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.logError('accuweather', `10-day forecast fetch failed for key "${locationKey}": ${errorMsg}`);
+      if (axios.isAxiosError(error) && error.response?.status === 403) {
+        logger.logError('accuweather', `Forecast endpoint returned 403 Forbidden for key "${locationKey}" — the API key tier may not support this endpoint`);
+      } else {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.logError('accuweather', `5-day forecast fetch failed for key "${locationKey}": ${errorMsg}`);
+      }
       return null;
     }
   }
 
   /**
-   * Get full weather data (current conditions + 10-day forecast) for a prompt.
+   * Get full weather data (current conditions + 5-day forecast) for a prompt.
    *
    * This is the main entry point for weather requests. It resolves the
    * location from the prompt, fetches data, and returns a formatted text
@@ -344,7 +348,7 @@ class AccuWeatherClient {
     }
 
     if (mode === 'forecast' || mode === 'full') {
-      forecast = await this.get10DayForecast(location.Key);
+      forecast = await this.get5DayForecast(location.Key);
       if (!forecast) {
         return { success: false, error: `Failed to fetch forecast for ${locationName}.` };
       }
@@ -456,7 +460,7 @@ class AccuWeatherClient {
     }
 
     if (forecast && (mode === 'forecast' || mode === 'full')) {
-      parts.push('**10-Day Forecast**');
+      parts.push('**5-Day Forecast**');
       if (forecast.Headline?.Text) {
         parts.push(`_${forecast.Headline.Text}_`);
       }
@@ -528,7 +532,7 @@ class AccuWeatherClient {
     }
 
     if (forecast) {
-      parts.push('10-DAY FORECAST:');
+      parts.push('5-DAY FORECAST:');
       if (forecast.Headline?.Text) {
         parts.push(`  Headline: ${forecast.Headline.Text} (${forecast.Headline.Category})`);
       }
@@ -582,6 +586,9 @@ class AccuWeatherClient {
       // Check for common API key errors
       if (axios.isAxiosError(error) && error.response?.status === 401) {
         return { healthy: false, error: 'Invalid API key — authentication failed (HTTP 401)' };
+      }
+      if (axios.isAxiosError(error) && error.response?.status === 403) {
+        return { healthy: false, error: 'AccuWeather API key does not have access to this endpoint — check your subscription tier (HTTP 403)' };
       }
       if (axios.isAxiosError(error) && error.response?.status === 503) {
         return { healthy: false, error: 'AccuWeather API key has exceeded its daily call limit or has been revoked (HTTP 503)' };

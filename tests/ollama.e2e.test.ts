@@ -241,7 +241,7 @@ describe('Tools prompt (native tool calling)', () => {
       type: 'function' as const,
       function: {
         name: 'weather',
-        description: 'Get current weather conditions and 10-day forecast',
+        description: 'Get current weather conditions and 5-day forecast',
         parameters: {
           type: 'object' as const,
           properties: {

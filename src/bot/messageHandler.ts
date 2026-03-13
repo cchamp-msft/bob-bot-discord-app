@@ -398,8 +398,13 @@ class MessageHandler {
       }
     }
 
-    // Process DMs, @mentions, or direct replies to the bot — ignore everything else
-    if (!isDM && !isMentioned && !isReplyToBot) return;
+    // Check if this is a bare !command in a guild channel (no @mention needed)
+    const isPrefixCommand = !isDM && !isMentioned && !isReplyToBot
+      && message.content.trim().startsWith(COMMAND_PREFIX)
+      && this.findTool(message.content.trim()) !== undefined;
+
+    // Process DMs, @mentions, direct replies to the bot, or prefix commands
+    if (!isDM && !isMentioned && !isReplyToBot && !isPrefixCommand) return;
 
     // DM authorization: only respond to users who share at least one guild with the bot.
     // This prevents strangers from interacting with the bot via unsolicited DMs.
