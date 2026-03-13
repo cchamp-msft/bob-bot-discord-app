@@ -1639,7 +1639,7 @@ describe('MessageHandler first-word tool routing', () => {
       [{ role: 'user', content: 'testuser: 45403', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser',
       undefined,
-      expect.objectContaining({ finalPassIntent: 'auto' }),
+      expect.objectContaining({ finalPassIntent: 'raw' }),
       []
     );
   });
@@ -1662,7 +1662,7 @@ describe('MessageHandler first-word tool routing', () => {
       [{ role: 'user', content: 'testuser: 20251116', contextSource: 'trigger', hasNamePrefix: true }],
       'BotUser',
       undefined,
-      expect.objectContaining({ finalPassIntent: 'auto' }),
+      expect.objectContaining({ finalPassIntent: 'raw' }),
       []
     );
   });
@@ -1765,7 +1765,7 @@ describe('MessageHandler first-word tool routing', () => {
       ]),
       'BotUser',
       undefined,
-      expect.objectContaining({ finalPassIntent: 'auto' }),
+      expect.objectContaining({ finalPassIntent: 'raw' }),
       []
     );
   });
@@ -1792,7 +1792,7 @@ describe('MessageHandler first-word tool routing', () => {
       expect.any(Array),
       'BotUser',
       undefined,
-      expect.objectContaining({ finalPassIntent: 'auto' }),
+      expect.objectContaining({ finalPassIntent: 'raw' }),
       []
     );
   });
@@ -1990,7 +1990,7 @@ describe('MessageHandler SerpAPI find content tool routing', () => {
       expect.any(Array),
       'BotUser',
       undefined,
-      expect.objectContaining({ finalPassIntent: 'auto' }),
+      expect.objectContaining({ finalPassIntent: 'raw' }),
       []
     );
   });
@@ -2514,7 +2514,7 @@ describe('MessageHandler trigger message attribution', () => {
       ]),
       'BotUser',
       undefined,
-      expect.objectContaining({ finalPassIntent: 'auto' }),
+      expect.objectContaining({ finalPassIntent: 'raw' }),
       []
     );
   });

@@ -35,6 +35,7 @@ function buildToolObject(tc: ToolConfig): Record<string, unknown> {
 
   // Required fields
   obj.name = tc.name;
+  if (tc.keyword) obj.keyword = tc.keyword;
   obj.api = tc.api;
   obj.timeout = tc.timeout;
   obj.description = tc.description;

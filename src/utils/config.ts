@@ -88,6 +88,9 @@ export interface ToolConfig {
   /** OpenAI-style parameter definitions for the XML tools format.
    *  Stored for faithful round-trip when writing back to tools.xml. */
   parameters?: Record<string, ToolParameter>;
+  /** Short alias for `!command` matching (e.g. "weather" instead of "get_current_weather").
+   *  The `name` field stays unchanged for model inference. */
+  keyword?: string;
 }
 
 /** @deprecated Use ToolConfig instead. */

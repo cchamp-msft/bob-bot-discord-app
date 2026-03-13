@@ -22,6 +22,7 @@
   <!-- Image generation tool -->
   <tool>
     <name>generate_image</name>
+    <keyword>image</keyword>
     <api>comfyui</api>
     <timeout>600</timeout>
     <description>Generate an image from a text prompt</description>
@@ -51,6 +52,7 @@
   <!-- xAI image generation tool -->
   <tool>
     <name>generate_image_grok</name>
+    <keyword>image_grok</keyword>
     <api>xai-image</api>
     <timeout>120</timeout>
     <description>Generate an image using Grok (xAI) from a text prompt</description>
@@ -74,6 +76,7 @@
   <!-- xAI video generation tool -->
   <tool>
     <name>generate_video_grok</name>
+    <keyword>video_grok</keyword>
     <api>xai-video</api>
     <timeout>600</timeout>
     <description>Generate a short video using Grok (xAI) from a text prompt</description>
@@ -97,6 +100,7 @@
   <!-- Weather tool -->
   <tool>
     <name>get_current_weather</name>
+    <keyword>weather</keyword>
     <api>accuweather</api>
     <timeout>60</timeout>
     <description>Get weather details including current conditions and forecast</description>
@@ -120,6 +124,7 @@
   <!-- NFL tool -->
   <tool>
     <name>get_recent_nfl_data</name>
+    <keyword>nfl</keyword>
     <api>nfl</api>
     <timeout>30</timeout>
     <description>Get recent NFL scores or news. Provide a data type: "scores" for game results, "news" for headlines. Optionally add a filter — a date (YYYYMMDD or YYYY-MM-DD) for scores, or a keyword (e.g. team name) for news.</description>
@@ -147,6 +152,7 @@
   <!-- Search tools -->
   <tool>
     <name>web_search</name>
+    <keyword>search</keyword>
     <api>serpapi</api>
     <timeout>60</timeout>
     <description>Search the web for current information using Google</description>
@@ -170,6 +176,7 @@
   <!-- Web fetch tools -->
   <tool>
     <name>fetch_webpage</name>
+    <keyword>fetch</keyword>
     <api>webfetch</api>
     <timeout>30</timeout>
     <description>Fetch a web page or image by URL and analyze its content</description>
@@ -194,6 +201,7 @@
   <!-- Meme tools -->
   <tool>
     <name>generate_meme</name>
+    <keyword>meme</keyword>
     <api>meme</api>
     <timeout>60</timeout>
     <description>Create meme images from popular templates</description>
@@ -216,6 +224,7 @@
 
   <tool>
     <name>get_meme_templates</name>
+    <keyword>meme_templates</keyword>
     <api>meme</api>
     <timeout>30</timeout>
     <description>Get available meme templates. Use when a user asks what meme templates are available or wants to see a list of meme templates.</description>
@@ -226,6 +235,7 @@
   <!-- Cross-provider tools -->
   <tool>
     <name>consult_grok</name>
+    <keyword>grok</keyword>
     <api>xai</api>
     <timeout>120</timeout>
     <description>Consult Grok (xAI) for a second opinion or deeper analysis on complex topics</description>
@@ -306,6 +316,7 @@
 
   <tool>
     <name>get_discord_artifact</name>
+    <keyword>artifact</keyword>
     <api>discord</api>
     <timeout>15</timeout>
     <description>Retrieve messages from a Discord channel. If message_id is given, returns that specific message. If search is given, finds a message matching the text. If only channel is provided, returns recent channel history (message and image counts governed by configured limits).</description>
@@ -333,6 +344,7 @@
 
   <tool>
     <name>react_to_message</name>
+    <keyword>react</keyword>
     <api>discord</api>
     <timeout>15</timeout>
     <description>Add an emoji reaction to a message. Use when the user asks to react to a message with an emoji.</description>

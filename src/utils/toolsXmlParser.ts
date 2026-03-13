@@ -98,6 +98,9 @@ function parseToolElement(raw: Record<string, unknown>, index: number): ToolConf
   };
 
   // Optional simple fields
+  if (raw.keyword !== undefined) {
+    tc.keyword = String(raw.keyword);
+  }
   if (raw.abilityWhen !== undefined) {
     tc.abilityWhen = String(raw.abilityWhen);
   }

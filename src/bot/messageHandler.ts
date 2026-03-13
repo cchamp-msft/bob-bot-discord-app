@@ -11,7 +11,7 @@ import { requestQueue } from '../utils/requestQueue';
 import { apiManager, ComfyUIResponse, XaiImageResponse, XaiVideoResponse, OllamaResponse, AccuWeatherResponse, SerpApiResponse } from '../api';
 import { fileHandler } from '../utils/fileHandler';
 import { memeClient } from '../api/memeClient';
-import { ApiType, ChatMessage, NFLResponse, MemeResponse, DiscordActionResponse, MediaFollowUp, ComfyUIMediaFollowUp, XaiImageMediaFollowUp, XaiVideoMediaFollowUp, UrlMediaFollowUp, PipelineContext, ToolInvocation } from '../types';
+import { ApiType, ChatMessage, NFLResponse, MemeResponse, DiscordActionResponse, MediaFollowUp, ComfyUIMediaFollowUp, XaiImageMediaFollowUp, XaiVideoMediaFollowUp, UrlMediaFollowUp, PipelineContext, ToolInvocation, FinalPassIntent, WebFetchResponse } from '../types';
 import * as discordActionClient from '../api/discordActionClient';
 import { chunkText } from '../utils/chunkText';
 import { executeRoutedRequest, inferAbilityParameters, formatApiResultAsExternalData } from '../utils/apiRouter';
@@ -515,7 +515,7 @@ class MessageHandler {
     // Strip the routing tool name only when it was explicitly matched at the start.
     // The default "chat" fallback should NOT strip — it would mutate free-form content.
     if (toolMatched) {
-      content = this.stripToolName(content, toolConfig.name);
+      content = this.stripToolName(content, toolConfig.name, toolConfig.keyword);
     }
 
     // For image generation replies, combine quoted message content with the user's reply text.
@@ -679,7 +679,7 @@ class MessageHandler {
           );
           await this.dispatchResponse(discordResult, 'discord', message, requester, isDM);
         } else {
-          const directIntent = inferFinalPassIntent(content);
+          const directIntent: FinalPassIntent = 'raw';
           const routedResult = await executeRoutedRequest(
             toolConfig,
             content,
@@ -1291,20 +1291,17 @@ class MessageHandler {
     // Only match if the message starts with the command prefix
     if (!lowerContent.startsWith(COMMAND_PREFIX)) return undefined;
 
-    // Sort longest tool name first so more specific multi-word names win.
+    // Sort longest keyword/name first so more specific multi-word names win.
     const sorted = [...config.getTools()]
       .filter((k) => k.enabled !== false)
-      .sort(
-        (a, b) => b.name.length - a.name.length
-      );
+      .sort((a, b) => {
+        const aLen = Math.max(a.name.length, a.keyword?.length ?? 0);
+        const bLen = Math.max(b.name.length, b.keyword?.length ?? 0);
+        return bLen - aLen;
+      });
     return sorted.find((k) => {
       const rawName = k.name.toLowerCase().trim();
       if (!rawName) return false;
-
-      // Normalize: ensure tool name includes the command prefix for matching
-      const toolName = rawName.startsWith(COMMAND_PREFIX)
-        ? rawName
-        : `${COMMAND_PREFIX}${rawName}`;
 
       // Built-in !help is intentionally standalone-only.
       if (this.toolNameIs(rawName, 'help')) {
@@ -1316,10 +1313,20 @@ class MessageHandler {
         return lowerContent === `${COMMAND_PREFIX}activity_key`;
       }
 
-      const escaped = toolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      // Anchor to START of message + word boundary after tool name
-      const pattern = new RegExp(`^${escaped}\\b`, 'i');
-      return pattern.test(lowerContent);
+      // Try keyword first (short alias), then fall back to full name
+      const candidates: string[] = [];
+      if (k.keyword) candidates.push(k.keyword.toLowerCase().trim());
+      candidates.push(rawName);
+
+      for (const candidate of candidates) {
+        const prefixed = candidate.startsWith(COMMAND_PREFIX)
+          ? candidate
+          : `${COMMAND_PREFIX}${candidate}`;
+        const escaped = prefixed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const pattern = new RegExp(`^${escaped}\\b`, 'i');
+        if (pattern.test(lowerContent)) return true;
+      }
+      return false;
     });
   }
 
@@ -2411,7 +2418,7 @@ class MessageHandler {
    * Handles error responses uniformly.
    */
   private async dispatchResponse(
-    response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse,
+    response: ComfyUIResponse | OllamaResponse | AccuWeatherResponse | NFLResponse | SerpApiResponse | MemeResponse | DiscordActionResponse | WebFetchResponse,
     api: ApiType,
     sourceMessage: Message,
     requester: string,
@@ -2433,6 +2440,8 @@ class MessageHandler {
       await this.handleSerpApiResponse(response as SerpApiResponse, sourceMessage, requester, isDM);
     } else if (api === 'meme') {
       await this.handleMemeResponse(response as MemeResponse, sourceMessage, requester, isDM);
+    } else if (api === 'webfetch') {
+      await this.handleWebFetchResponse(response as WebFetchResponse, sourceMessage, requester, isDM);
     } else {
       await this.handleOllamaResponse(response as OllamaResponse, sourceMessage, requester, isDM, media);
     }
@@ -2449,16 +2458,16 @@ class MessageHandler {
 
     const capabilityLines = availableTools.length > 0
       ? availableTools.map(k => {
-          const bare = k.name.startsWith(COMMAND_PREFIX)
+          const displayName = k.keyword ?? (k.name.startsWith(COMMAND_PREFIX)
             ? k.name.slice(COMMAND_PREFIX.length)
-            : k.name;
-          return `• \`${COMMAND_PREFIX}${bare}\` — ${k.description}`;
+            : k.name);
+          return `• \`${COMMAND_PREFIX}${displayName}\` — ${k.description}`;
         }).join('\n')
       : 'No tools are currently configured.';
 
     return [
       `**Available Tools**`,
-      `To call a tool, prefix the tool name with \`${COMMAND_PREFIX}\` and provide it as the first word to the bot. Example: \`${COMMAND_PREFIX}web_search pickled eggs\``,
+      `To call a tool, prefix the tool name with \`${COMMAND_PREFIX}\` and provide it as the first word to the bot. Example: \`${COMMAND_PREFIX}search pickled eggs\``,
       'You can also describe what you need in natural language and the bot will infer the right action.',
       '',
       capabilityLines,
@@ -2469,8 +2478,17 @@ class MessageHandler {
    * Remove the first occurrence of the routing tool name (including prefix)
    * from the content. Preserves surrounding whitespace and trims the result.
    */
-  stripToolName(content: string, toolName: string): string {
-    // Normalize tool name to include command prefix for stripping !-prefixed content
+  stripToolName(content: string, toolName: string, keyword?: string): string {
+    // Try keyword first (the short alias the user actually typed)
+    if (keyword) {
+      const kwLower = keyword.toLowerCase().trim();
+      const matchKw = kwLower.startsWith(COMMAND_PREFIX) ? keyword : `${COMMAND_PREFIX}${keyword}`;
+      const kwEscaped = matchKw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const kwPattern = new RegExp(`^${kwEscaped}\\b\\s*`, 'i');
+      const stripped = content.replace(kwPattern, '').trim();
+      if (stripped !== content.trim()) return stripped;
+    }
+    // Fall back to full tool name
     const tnLower = toolName.toLowerCase().trim();
     const matchToolName = tnLower.startsWith(COMMAND_PREFIX) ? toolName : `${COMMAND_PREFIX}${toolName}`;
     const escaped = matchToolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -2704,6 +2722,46 @@ class MessageHandler {
     });
   }
 
+  private async handleWebFetchResponse(
+    apiResult: WebFetchResponse,
+    sourceMessage: Message,
+    requester: string,
+    isDM: boolean
+  ): Promise<void> {
+    const data = apiResult.data;
+    if (!data) {
+      await sourceMessage.reply({ content: 'No content fetched.' });
+      return;
+    }
+
+    // Header: title + URL or just URL
+    const header = data.title ? `**${data.title}**\n${data.url}` : data.url;
+
+    // Body: extracted text content, limited to ~5500 chars across max 3 messages
+    const maxTotalChars = 5500;
+    let bodyText = data.text || '';
+    if (bodyText.length > maxTotalChars) {
+      bodyText = bodyText.slice(0, maxTotalChars) + '\n\n[Content truncated]';
+    }
+
+    const fullText = `${header}\n\n${bodyText}`;
+    const chunks = chunkText(fullText);
+    const maxMessages = 3;
+
+    await sourceMessage.reply({ content: chunks[0], embeds: [] });
+    for (let i = 1; i < Math.min(chunks.length, maxMessages); i++) {
+      if ('send' in sourceMessage.channel) {
+        await sourceMessage.channel.send(chunks[i]);
+      }
+    }
+    if (chunks.length > maxMessages && 'send' in sourceMessage.channel) {
+      await sourceMessage.channel.send('[Content truncated — too long for Discord]');
+    }
+
+    activityEvents.emitBotReply('webfetch', fullText, isDM);
+    logger.logReply(requester, `WebFetch response sent: ${fullText.length} characters`);
+  }
+
   private async handleOllamaResponse(
     apiResult: OllamaResponse,
     sourceMessage: Message,
@@ -2712,6 +2770,11 @@ class MessageHandler {
     media?: MediaFollowUp[]
   ): Promise<void> {
     let text = apiResult.data?.text || 'No response generated.';
+
+    // Suppress placeholder text when media follow-ups carry the actual content
+    if (text === 'No response generated.' && media && media.length > 0) {
+      text = '';
+    }
 
     // Send response text to thraken ingest listener (fire-and-forget)
     this.sendToThraken(text, requester);
