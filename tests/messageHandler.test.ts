@@ -4675,13 +4675,13 @@ describe('MessageHandler activity_key tool name', () => {
     );
   });
 
-  it('should issue a key via guild @mention', async () => {
+  it('should deny key issuance in guild and redirect to DM', async () => {
     const msg = createMentionMsg('<@bot-123> !activity_key');
     await messageHandler.handleMessage(msg);
 
-    expect(activityKeyManager.issueKey).toHaveBeenCalled();
+    expect(activityKeyManager.issueKey).not.toHaveBeenCalled();
     expect(msg.reply).toHaveBeenCalledWith(
-      expect.stringContaining('mock-activity-key-abc')
+      expect.stringContaining('activity keys can only be issued via DM')
     );
   });
 

@@ -60,19 +60,30 @@ class OutputsServer {
       res.status(403).json({ error: 'Forbidden' });
     });
 
-    // ── Rate limiter for filesystem-serving routes ──────────────────
+    // ── Rate limiters ───────────────────────────────────────────────
     // Uses express-rate-limit (recognised by CodeQL js/missing-rate-limiting).
+    const ipKey = (req: Request) => ipKeyGenerator(req.ip ?? req.socket.remoteAddress ?? 'unknown');
+
+    // Limiter for static/page-serving routes (/activity, /api/privacy-policy)
     const rateLimiter = rateLimit({
       windowMs: config.getOutputsRateLimitWindowMs(),
       max: config.getOutputsRateLimitMax(),
       standardHeaders: true,
       legacyHeaders: false,
       message: { error: 'Too Many Requests', message: 'Rate limit exceeded. Please try again later.' },
-      // Explicit key generator — when trust proxy is enabled, req.ip is the
-      // real client IP (from X-Forwarded-For); when disabled, req.ip is the
-      // proxy/direct-connect IP.  ipKeyGenerator normalises IPv6 subnets to
-      // prevent per-address bypass.
-      keyGenerator: (req: Request) => ipKeyGenerator(req.ip ?? req.socket.remoteAddress ?? 'unknown'),
+      keyGenerator: ipKey,
+    });
+
+    // Dedicated limiter for /api/activity — separated from the page limiter
+    // because the polling client hits this endpoint every few seconds and
+    // should not consume budget meant for static file serving.
+    const activityApiLimiter = rateLimit({
+      windowMs: config.getOutputsRateLimitWindowMs(),
+      max: config.getOutputsRateLimitMax() * 10, // higher ceiling for polling
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: 'Too Many Requests', message: 'Rate limit exceeded. Please try again later.' },
+      keyGenerator: ipKey,
     });
 
     // ── Activity feed (key-protected) ───────────────────────────────
@@ -104,11 +115,9 @@ class OutputsServer {
     //      bootstrap a session).
     //   3. On successful key auth, create a session and return the token in the
     //      response so the client can switch to session-based auth.
-    this.app.get('/api/activity', (req, res) => {
-      // ── Try session token first ──
-      const sessionToken = typeof req.query.session === 'string'
-        ? req.query.session
-        : req.headers['x-activity-session'] as string | undefined;
+    this.app.get('/api/activity', activityApiLimiter, (req, res) => {
+      // ── Try session token first (headers only — no query-param credentials) ──
+      const sessionToken = req.headers['x-activity-session'] as string | undefined;
 
       let authenticated = false;
       let newSessionToken: string | undefined;
@@ -116,10 +125,8 @@ class OutputsServer {
       if (sessionToken && activityKeyManager.isSessionValid(sessionToken)) {
         authenticated = true;
       } else {
-        // ── Fall back to raw activity key ──
-        const key = typeof req.query.key === 'string'
-          ? req.query.key
-          : req.headers['x-activity-key'] as string | undefined;
+        // ── Fall back to raw activity key (header only) ──
+        const key = req.headers['x-activity-key'] as string | undefined;
 
         if (key && activityKeyManager.isValid(key)) {
           authenticated = true;

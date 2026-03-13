@@ -696,19 +696,21 @@
   function fetchEvents(since) {
     var url = '/api/activity';
     var params = [];
-
-    // Prefer session token; fall back to raw key for initial auth
-    var session = getStoredSession();
-    var key = getStoredKey();
-    if (session) {
-      params.push('session=' + encodeURIComponent(session));
-    } else if (key) {
-      params.push('key=' + encodeURIComponent(key));
-    }
     if (since) params.push('since=' + encodeURIComponent(since));
     if (params.length) url += '?' + params.join('&');
 
-    return fetch(url)
+    // Send credentials via headers only (not query params) to prevent
+    // leakage through browser history, server logs, and referrer headers.
+    var headers = {};
+    var session = getStoredSession();
+    var key = getStoredKey();
+    if (session) {
+      headers['x-activity-session'] = session;
+    } else if (key) {
+      headers['x-activity-key'] = key;
+    }
+
+    return fetch(url, { headers: headers })
       .then(function(res) {
         if (res.status === 401) {
           clearAuth();

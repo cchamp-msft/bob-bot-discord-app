@@ -548,7 +548,15 @@ class MessageHandler {
     // Route standalone "!activity_key" — issue a new rotating key and DM it
     // back to the user. This short-circuits before Ollama/API routing since
     // no model interaction is needed.
+    // SECURITY: Keys are only issued via DM to prevent credential exposure in
+    // guild channels. Guild requests get a safe redirect message instead.
     if (toolMatched && this.toolNameIs(toolConfig.name, 'activity_key')) {
+      if (!isDM) {
+        await message.reply('🔑 For security reasons, activity keys can only be issued via DM. Please send me a direct message with this command.');
+        logger.log('success', 'system', `ACTIVITY-KEY: Guild request denied for ${requester} — redirected to DM`);
+        return;
+      }
+
       const key = activityKeyManager.issueKey();
       const ttl = config.getActivityKeyTtl();
       const sessionMaxTime = config.getActivitySessionMaxTime();

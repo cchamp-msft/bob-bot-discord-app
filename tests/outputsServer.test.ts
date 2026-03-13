@@ -261,7 +261,9 @@ describe('OutputsServer', () => {
   // ── /api/activity endpoint ─────────────────────────────────
 
   it('/api/activity returns JSON with events and serverTime', async () => {
-    const res = await fetch(`${baseUrl}/api/activity?key=test-valid-key`);
+    const res = await fetch(`${baseUrl}/api/activity`, {
+      headers: { 'x-activity-key': 'test-valid-key' },
+    });
     expect(res.status).toBe(200);
     const body = await res.json() as { events: any[]; serverTime: string };
     expect(Array.isArray(body.events)).toBe(true);
@@ -275,7 +277,9 @@ describe('OutputsServer', () => {
     mockGetRecent.mockClear();
 
     const since = '2026-01-01T00:00:00.000Z';
-    await fetch(`${baseUrl}/api/activity?key=test-valid-key&since=${encodeURIComponent(since)}`);
+    await fetch(`${baseUrl}/api/activity?since=${encodeURIComponent(since)}`, {
+      headers: { 'x-activity-key': 'test-valid-key' },
+    });
 
     expect(mockGetRecent).toHaveBeenCalledWith(50, since);
   });
@@ -284,7 +288,9 @@ describe('OutputsServer', () => {
     const mockGetRecent = activityEvents.getRecent as jest.MockedFunction<typeof activityEvents.getRecent>;
     mockGetRecent.mockClear();
 
-    await fetch(`${baseUrl}/api/activity?key=test-valid-key&count=10`);
+    await fetch(`${baseUrl}/api/activity?count=10`, {
+      headers: { 'x-activity-key': 'test-valid-key' },
+    });
     expect(mockGetRecent).toHaveBeenCalledWith(10, undefined);
   });
 
@@ -292,7 +298,9 @@ describe('OutputsServer', () => {
     const mockGetRecent = activityEvents.getRecent as jest.MockedFunction<typeof activityEvents.getRecent>;
     mockGetRecent.mockClear();
 
-    await fetch(`${baseUrl}/api/activity?key=test-valid-key&count=999`);
+    await fetch(`${baseUrl}/api/activity?count=999`, {
+      headers: { 'x-activity-key': 'test-valid-key' },
+    });
     expect(mockGetRecent).toHaveBeenCalledWith(100, undefined);
   });
 
@@ -300,12 +308,16 @@ describe('OutputsServer', () => {
     const mockGetRecent = activityEvents.getRecent as jest.MockedFunction<typeof activityEvents.getRecent>;
     mockGetRecent.mockClear();
 
-    await fetch(`${baseUrl}/api/activity?key=test-valid-key&count=abc`);
+    await fetch(`${baseUrl}/api/activity?count=abc`, {
+      headers: { 'x-activity-key': 'test-valid-key' },
+    });
     expect(mockGetRecent).toHaveBeenCalledWith(50, undefined);
   });
 
   it('/api/activity has security headers', async () => {
-    const res = await fetch(`${baseUrl}/api/activity?key=test-valid-key`);
+    const res = await fetch(`${baseUrl}/api/activity`, {
+      headers: { 'x-activity-key': 'test-valid-key' },
+    });
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
     expect(res.headers.get('x-powered-by')).toBeNull();
   });
@@ -320,7 +332,9 @@ describe('OutputsServer', () => {
   });
 
   it('/api/activity returns 401 for an invalid key', async () => {
-    const res = await fetch(`${baseUrl}/api/activity?key=bad-key-value`);
+    const res = await fetch(`${baseUrl}/api/activity`, {
+      headers: { 'x-activity-key': 'bad-key-value' },
+    });
     expect(res.status).toBe(401);
   });
 
@@ -379,20 +393,13 @@ describe('OutputsServer', () => {
     const mockCreateSession = activityKeyManager.createSession as jest.MockedFunction<typeof activityKeyManager.createSession>;
     mockCreateSession.mockClear();
 
-    const res = await fetch(`${baseUrl}/api/activity?key=test-valid-key`);
+    const res = await fetch(`${baseUrl}/api/activity`, {
+      headers: { 'x-activity-key': 'test-valid-key' },
+    });
     expect(res.status).toBe(200);
     const body = await res.json() as { events: any[]; serverTime: string; sessionToken?: string };
     expect(body.sessionToken).toBe('test-session-token');
     expect(mockCreateSession).toHaveBeenCalled();
-  });
-
-  it('/api/activity accepts session token via query param', async () => {
-    const res = await fetch(`${baseUrl}/api/activity?session=test-session-token`);
-    expect(res.status).toBe(200);
-    const body = await res.json() as { events: any[]; serverTime: string; sessionToken?: string };
-    expect(Array.isArray(body.events)).toBe(true);
-    // No new sessionToken when already using a session
-    expect(body.sessionToken).toBeUndefined();
   });
 
   it('/api/activity accepts session token via x-activity-session header', async () => {
@@ -405,17 +412,24 @@ describe('OutputsServer', () => {
   });
 
   it('/api/activity returns 401 for an invalid session token', async () => {
-    const res = await fetch(`${baseUrl}/api/activity?session=bad-session-token`);
+    const res = await fetch(`${baseUrl}/api/activity`, {
+      headers: { 'x-activity-session': 'bad-session-token' },
+    });
     expect(res.status).toBe(401);
   });
 
-  it('/api/activity prefers session token over key when both provided', async () => {
+  it('/api/activity prefers session token over key when both provided via headers', async () => {
     const mockIsValid = activityKeyManager.isValid as jest.MockedFunction<typeof activityKeyManager.isValid>;
     const mockCreateSession = activityKeyManager.createSession as jest.MockedFunction<typeof activityKeyManager.createSession>;
     mockIsValid.mockClear();
     mockCreateSession.mockClear();
 
-    const res = await fetch(`${baseUrl}/api/activity?session=test-session-token&key=test-valid-key`);
+    const res = await fetch(`${baseUrl}/api/activity`, {
+      headers: {
+        'x-activity-session': 'test-session-token',
+        'x-activity-key': 'test-valid-key',
+      },
+    });
     expect(res.status).toBe(200);
     // isValid should NOT be called because session check came first
     expect(mockIsValid).not.toHaveBeenCalled();
@@ -429,7 +443,12 @@ describe('OutputsServer', () => {
     mockIsSessionValid.mockReturnValueOnce(false); // session invalid this time
     mockCreateSession.mockClear();
 
-    const res = await fetch(`${baseUrl}/api/activity?session=expired-session&key=test-valid-key`);
+    const res = await fetch(`${baseUrl}/api/activity`, {
+      headers: {
+        'x-activity-session': 'expired-session',
+        'x-activity-key': 'test-valid-key',
+      },
+    });
     expect(res.status).toBe(200);
     const body = await res.json() as { sessionToken?: string };
     // Should have created a new session from the valid key
@@ -523,7 +542,9 @@ describe('OutputsServer', () => {
   it('/api/activity logs debug info on auth failure', async () => {
     (logger.logDebug as jest.Mock).mockClear();
 
-    await fetch(`${baseUrl}/api/activity?key=bad-key`);
+    await fetch(`${baseUrl}/api/activity`, {
+      headers: { 'x-activity-key': 'bad-key' },
+    });
 
     expect(logger.logDebug).toHaveBeenCalledWith(
       'outputs-server',
