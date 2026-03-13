@@ -219,6 +219,9 @@ class ConfigWriter {
         if (entry.abilityWhen !== undefined && typeof entry.abilityWhen !== 'string') {
           throw new Error(`Tool "${entry.name}" has invalid abilityWhen — must be a string`);
         }
+        if (entry.keyword !== undefined && typeof entry.keyword !== 'string') {
+          throw new Error(`Tool "${entry.name}" has invalid keyword — must be a string`);
+        }
         if (entry.abilityInputs !== undefined) {
           const ai: Record<string, unknown> = entry.abilityInputs as unknown as Record<string, unknown>;
           if (typeof ai !== 'object' || ai === null || Array.isArray(ai)) {
@@ -295,6 +298,7 @@ class ConfigWriter {
         };
         if (entry.abilityText) clean.abilityText = entry.abilityText;
         if (entry.abilityWhen) clean.abilityWhen = entry.abilityWhen;
+        if (entry.keyword) clean.keyword = entry.keyword;
         if (entry.abilityInputs) clean.abilityInputs = entry.abilityInputs;
         if (entry.parameters) clean.parameters = entry.parameters;
         if (entry.allowEmptyContent !== undefined) clean.allowEmptyContent = entry.allowEmptyContent;

@@ -2096,6 +2096,10 @@ flowchart TD
       <td colspan="${colCount}">
         <div class="kw-details-grid">
           <div class="section-label">Ability</div>
+          <div class="field-half">
+            <label>Keyword <span style="color:var(--text-dim);font-weight:normal">(short !command alias)</span></label>
+            <input type="text" class="kw-shortKeyword" value="${esc(kw?.keyword || '')}" placeholder="e.g. weather">
+          </div>
           <div class="field-full">
             <label>Ability Text <span style="color:var(--text-dim);font-weight:normal">(model-facing description; leave empty to use Description)</span></label>
             <input type="text" class="kw-abilityText" value="${esc(kw?.abilityText || '')}" placeholder="(uses description)">
@@ -2242,6 +2246,7 @@ flowchart TD
     for (const kw of tools) {
       xml += '  <tool>\n';
       xml += `    <name>${escXml(kw.name)}</name>\n`;
+      if (kw.keyword) xml += `    <keyword>${escXml(kw.keyword)}</keyword>\n`;
       xml += `    <api>${escXml(kw.api)}</api>\n`;
       xml += `    <timeout>${kw.timeout}</timeout>\n`;
       if (kw.description) xml += `    <description>${escXml(kw.description)}</description>\n`;
@@ -2351,6 +2356,9 @@ flowchart TD
 
         const abilityWhenVal = detail.querySelector('.kw-abilityWhen')?.value?.trim();
         if (abilityWhenVal) entry.abilityWhen = abilityWhenVal;
+
+        const keywordVal = detail.querySelector('.kw-shortKeyword')?.value?.trim();
+        if (keywordVal) entry.keyword = keywordVal;
 
         // allowEmptyContent
         const allowEmptyVal = detail.querySelector('.kw-allowEmpty')?.value;
