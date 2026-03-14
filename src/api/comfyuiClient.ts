@@ -742,10 +742,15 @@ class ComfyUIClient {
    * If the workflow is in ComfyUI's UI export format, it is auto-converted to API format.
    */
   validateWorkflow(workflowJson: string): WorkflowValidationResult {
+    // Pre-substitute %seed% with a dummy value so unquoted numeric placeholders
+    // (e.g. "noise_seed": %seed%) don't break JSON.parse.  The real seed is
+    // substituted later in generateImage().
+    const jsonForParsing = workflowJson.split('%seed%').join('0');
+
     // Validate JSON structure
     let parsed: Record<string, unknown>;
     try {
-      parsed = JSON.parse(workflowJson);
+      parsed = JSON.parse(jsonForParsing);
     } catch (e) {
       return {
         valid: false,
