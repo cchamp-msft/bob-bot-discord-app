@@ -8,6 +8,8 @@ Ollama provides AI text generation capabilities for the bot.
 
 ### Model Selection
 
+> **Looking for model recommendations?** See the [Model Selection Guide](model_selection.md) for hands-on testing notes and per-stage recommendations.
+
 Ollama models are discovered automatically when you click **Test** in the configurator's API Endpoints section. The model list is fetched from the Ollama `/api/tags` endpoint and populates the dropdown. Select a model and click **Save Changes** to persist it to `.env` as `OLLAMA_MODEL`.
 
 If no model is configured or the selected model becomes unavailable, the bot will return an error to the console and send a rate-limited error message to Discord users.

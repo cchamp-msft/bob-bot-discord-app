@@ -21,6 +21,31 @@ A Discord bot that monitors @mentions and DMs, routes tool-matched requests to C
 
 **[View Complete Feature List →](docs/FEATURES.md)**
 
+## Project Scope
+
+### What This Project Is
+- An inference-model-powered Discord bot designed to facilitate AI interactions.
+- Hard-coded with options for model sourcing via [Ollama](https://ollama.com/), [ComfyUI](https://github.com/comfyanonymous/ComfyUI), or [xAI (Grok)](https://x.ai/).
+- Tool-enabled through a custom XML pipeline offering RAG and [MCP](https://modelcontextprotocol.io/)-like functionality, without relying on the standard MCP specification.
+- Maintained with security best practices in mind.
+
+### What This Project Is Not
+- **Modular** — tightly coupled architecture; not designed as a plugin system.
+- **[MCP](https://modelcontextprotocol.io/) compatible** — uses a custom XML tool pipeline that resembles MCP concepts but is not interoperable.
+- **An ongoing focus project** — feature-complete and maintained, but no longer under active development.
+- **Secure by default** — the onus of secure configuration is on the operator. See [Security Policy](SECURITY.md).
+
+### Warranty
+This software is provided **"AS IS"** under the [MIT License](LICENSE), without warranty of any kind.
+See [Terms of Service](TERMS_OF_SERVICE.md).
+
+## Bot in Action
+
+<!-- TODO: Replace with actual collage once screenshots are captured -->
+<!-- ![Bot in Action](docs/images/bot-in-action.png) -->
+
+*Screenshots coming soon — see [docs/images/README.md](docs/images/README.md) for capture instructions.*
+
 ## Quick Start
 
 ### Prerequisites
@@ -116,7 +141,7 @@ npm test
 npm run test:watch
 ```
 
-100+ unit tests covering core functionality. No Discord connection or external APIs required.
+1,800+ unit tests across 40+ suites covering core functionality. No Discord connection or external APIs required.
 
 ## Documentation
 
@@ -127,6 +152,7 @@ npm run test:watch
 - **[Web Configurator](docs/CONFIGURATOR.md)** — Web UI, activity feed, reverse proxy setup
 - **[Architecture](docs/ARCHITECTURE.md)** — Technical details, routing, context management
 - **[Advanced Features](docs/ADVANCED.md)** — Tool configuration, context evaluation, debugging
+- **[Model Selection Guide](docs/model_selection.md)** — Tested models and recommendations
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** — Fix common issues
 
 ## Contributing

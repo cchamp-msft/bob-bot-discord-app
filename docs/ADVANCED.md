@@ -288,6 +288,7 @@ npm run test:watch
 - **responseTransformer.test.ts** — Result extraction, context prompt building
 - **accuweatherClient.test.ts** — Location resolution, weather data fetching
 - **nflClient.test.ts** — ESPN adapter mapping, game formatting, API fetching
+- **...and 30+ additional suites** — covering SerpAPI, meme generation, web fetch, xAI, prompt building, Ollama, ComfyUI, Discord actions, message handling, activity events, and more
 
 All tests run without requiring Discord connection or external APIs.
 
