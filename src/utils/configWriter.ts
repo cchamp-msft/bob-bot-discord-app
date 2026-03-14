@@ -191,14 +191,22 @@ class ConfigWriter {
   /**
    * Scan .config/comfyui-workflows/ and return which tool names have per-tool workflow files.
    */
-  listToolWorkflows(): { toolName: string; hasWorkflow: boolean }[] {
-    const results: { toolName: string; hasWorkflow: boolean }[] = [];
+  listToolWorkflows(): { toolName: string; hasWorkflow: boolean; placeholders: string[] }[] {
+    const results: { toolName: string; hasWorkflow: boolean; placeholders: string[] }[] = [];
     if (!fs.existsSync(this.workflowsDir)) return results;
     try {
       const files = fs.readdirSync(this.workflowsDir);
       for (const file of files) {
         if (file.endsWith('.json')) {
-          results.push({ toolName: file.replace(/\.json$/, ''), hasWorkflow: true });
+          let placeholders: string[] = [];
+          try {
+            const content = fs.readFileSync(path.join(this.workflowsDir, file), 'utf-8');
+            const matches = content.matchAll(/%([a-zA-Z_][a-zA-Z0-9_]*)%/g);
+            placeholders = [...new Set([...matches].map(m => m[1]))];
+          } catch {
+            // File unreadable — leave placeholders empty
+          }
+          results.push({ toolName: file.replace(/\.json$/, ''), hasWorkflow: true, placeholders });
         }
       }
     } catch {
