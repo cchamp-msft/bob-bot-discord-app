@@ -88,9 +88,9 @@
     --accent2: #00b3b3;
     --text: #ffffff;
     --text-dim: #cccccc;
-    --ok: #00ff00;
-    --warn: #ffff00;
-    --err: #ff0000;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --err: #f44336;
     --border: #333333;
   }
   
@@ -530,6 +530,11 @@
   .bot-controls .status-label .dot.stopped { background: var(--err); }
   .bot-controls .status-label .dot.connecting { background: var(--warn); animation: pulse 1s infinite; }
   .bot-controls .status-label .dot.error { background: var(--err); }
+  section h2 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; margin-left: 6px; }
+  section h2 .dot.running { background: var(--ok); }
+  section h2 .dot.connecting { background: var(--warn); animation: pulse 1s infinite; }
+  section h2 .dot.stopped { background: var(--text-dim); opacity: 0.4; }
+  section h2 .dot.error { background: var(--err); }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
   .bot-controls .spacer { flex: 1; }
   .btn-ok { background: var(--ok); color: #fff; }
@@ -554,10 +559,47 @@
 <div class="main">
   <div class="config-panel">
 
+    <!-- Quick Reference Section -->
+    <section id="quickRefSection">
+      <h2 onclick="toggleSection(this)">Quick Reference</h2>
+      <div class="body">
+        <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin-bottom:8px">Getting Started</div>
+        <ol style="margin:0 0 12px 18px;padding:0;font-size:0.85em;line-height:1.7;color:var(--text)">
+          <li><strong>Discord Login</strong> &mdash; enter your token + client ID in <em>Discord Connection</em>, Test, Save, Start. <a href="docs/QUICKSTART.md" style="color:var(--accent)">Quickstart guide</a></li>
+          <li><strong>AI Provider</strong> &mdash; Ollama (local) or xAI (cloud) with endpoint + model. <a href="docs/API_INTEGRATION.md" style="color:var(--accent)">API integration docs</a></li>
+          <li><strong>Prompt Settings</strong> &mdash; system prompt, tool routing, final pass in <em>Prompt &amp; Runtime</em>. <a href="docs/USAGE.md" style="color:var(--accent)">Usage guide</a></li>
+          <li><strong>HTTP Server</strong> &mdash; configurator on :3000, outputs on :3003. <a href="docs/CONFIGURATOR.md" style="color:var(--accent)">Configurator docs</a></li>
+          <li><strong>Activity Monitor</strong> &mdash; live narrative at /activity, generate key via Discord. <a href="README.md" style="color:var(--accent)">README</a></li>
+        </ol>
+        <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
+        <div style="font-size:0.95em;font-weight:600;color:var(--accent);margin-bottom:8px">Message Flow</div>
+        <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
+          How the bot processes an incoming @mention or DM.
+        </p>
+        <pre class="mermaid" style="background:transparent;text-align:center">
+flowchart TD
+    A["Incoming Message"] --> B["findKeyword regex match"]
+    B -->|"Exact API tool match"| C["Direct API Execution (short-circuit)"]
+    B -->|"Built-in (help, activity_key)"| D["Built-in Handler (short-circuit)"]
+    B -->|"No match (default path)"| E["Context Evaluator (global, optional)"]
+    C --> F["Final Pass Refinement (if configured)"]
+    E --> G["LLM Tool Evaluation (native tools)"]
+    G -->|"tool_calls returned"| H["Execute API(s)"]
+    G -->|"no tool_calls"| I["Direct Chat Response"]
+    H --> J{"More passes (max depth)?"}
+    J -->|yes| G
+    J -->|no| F
+    F --> K["Response Dispatch"]
+    I --> K
+    D --> K
+        </pre>
+      </div>
+    </section>
+
     <!-- Discord Section -->
     <section>
-      <h2 class="open" onclick="toggleSection(this)">Discord Connection</h2>
-      <div class="body open">
+      <h2 onclick="toggleSection(this)">Discord Connection <span class="dot stopped" id="discordHeaderDot"></span></h2>
+      <div class="body">
         <div class="field">
           <label>Client ID</label>
           <input type="text" id="discord_client_id" data-env="DISCORD_CLIENT_ID" placeholder="Discord Application Client ID">
@@ -605,8 +647,8 @@
 
     <!-- Ollama Section -->
     <section>
-      <h2 class="open" onclick="toggleSection(this)">Ollama Connection</h2>
-      <div class="body open">
+      <h2 onclick="toggleSection(this)">Ollama Connection</h2>
+      <div class="body">
         <div class="field-row">
           <div class="field">
             <label>Ollama Endpoint</label>
@@ -836,8 +878,8 @@
 
     <!-- Prompt & Runtime Section -->
     <section>
-      <h2 class="open" onclick="toggleSection(this)">Prompt &amp; Runtime</h2>
-      <div class="body open">
+      <h2 onclick="toggleSection(this)">Prompt &amp; Runtime</h2>
+      <div class="body">
 
         <div class="field">
           <label>
@@ -1500,36 +1542,10 @@
         </div>
       </div>
     </section>
-    <!-- Message Flow Section -->
-    <section>
-      <h2 onclick="toggleSection(this)">Message Flow Overview</h2>
-      <div class="body">
-        <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
-          How the bot processes an incoming @mention or DM.
-        </p>
-        <pre class="mermaid" style="background:transparent;text-align:center">
-flowchart TD
-    A["📨 Incoming Message"] --> B["🔍 findKeyword regex match"]
-    B -->|"Exact API tool match<br/>(weather, nfl, etc.)"| C["⚡ Direct API Execution<br/>(short-circuit)"]
-    B -->|"Built-in<br/>(help, activity_key)"| D["🏠 Built-in Handler<br/>(short-circuit)"]
-    B -->|"No match<br/>(default path)"| E["🔍 Context Evaluator<br/>(global, optional)"]
-    C --> F["🧠 Final Ollama Pass<br/>(if configured)"]
-    E --> G["🧠 Ollama Tool Evaluation<br/>(native tools)"]
-    G -->|"tool_calls returned"| H["⚡ Execute API(s)"]
-    G -->|"no tool_calls"| I["💬 Direct Chat Response"]
-    H --> J{"🔄 More passes<br/>(max depth)?"}
-    J -->|yes| G
-    J -->|no| F
-    F --> K["📤 Response Dispatch"]
-    I --> K
-    D --> K
-        </pre>
-      </div>
-    </section>
     <!-- Tools Section -->
     <section>
-      <h2 class="open" onclick="toggleSection(this)">Tools → API Routing</h2>
-      <div class="body open">
+      <h2 onclick="toggleSection(this)">Tools &rarr; API Routing</h2>
+      <div class="body">
         <p style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">
           Map @mention tools to APIs. Tools must start with <code>!</code> (e.g. <code>!weather</code>).
           When <strong>Ability</strong> is checked, the tool's description is included
@@ -1653,6 +1669,7 @@ flowchart TD
     const dot = document.getElementById('botDot');
     const text = document.getElementById('botStatusText');
     const headerDot = document.getElementById('statusDot');
+    const discordHeaderDot = document.getElementById('discordHeaderDot');
     const btnStart = document.getElementById('btnStart');
     const btnStop = document.getElementById('btnStop');
 
@@ -1662,24 +1679,28 @@ flowchart TD
       case 'running':
         text.textContent = `Connected as ${data.username || '?'}`;
         headerDot.className = 'dot';
+        discordHeaderDot.className = 'dot running';
         btnStart.disabled = true;
         btnStop.disabled = false;
         break;
       case 'connecting':
         text.textContent = 'Connecting…';
         headerDot.className = 'dot warn';
+        discordHeaderDot.className = 'dot connecting';
         btnStart.disabled = true;
         btnStop.disabled = false;
         break;
       case 'error':
         text.textContent = `Error: ${data.error || 'unknown'}`;
         headerDot.className = 'dot off';
+        discordHeaderDot.className = 'dot error';
         btnStart.disabled = false;
         btnStop.disabled = true;
         break;
       default:
         text.textContent = data.tokenConfigured ? 'Stopped' : 'Stopped — no token configured';
         headerDot.className = 'dot off';
+        discordHeaderDot.className = 'dot stopped';
         btnStart.disabled = !data.tokenConfigured;
         btnStop.disabled = true;
     }
@@ -2020,6 +2041,21 @@ flowchart TD
       if (cfg.configuratorTheme) {
         _serverTheme = cfg.configuratorTheme;
         applyTheme(cfg.configuratorTheme, /* fromServer */ true);
+      }
+
+      // Auto-expand Quick Reference for first-time setup (no .env)
+      if (!cfg.envExists) {
+        const qr = document.getElementById('quickRefSection');
+        if (qr) {
+          const h2 = qr.querySelector('h2');
+          const body = qr.querySelector('.body');
+          if (h2 && body) {
+            h2.classList.add('open');
+            body.classList.add('open');
+            const diagrams = body.querySelectorAll('pre.mermaid:not([data-processed])');
+            if (diagrams.length) mermaid.run({ nodes: Array.from(diagrams) });
+          }
+        }
       }
 
       // Clear dirty state

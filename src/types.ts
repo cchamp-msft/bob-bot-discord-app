@@ -696,4 +696,6 @@ export interface PublicConfig {
   backends: {
     webSearch: 'serpapi' | 'xai';
   };
+  /** Whether .env exists on disk (used to auto-expand Quick Reference for first-time setup). */
+  envExists: boolean;
 }

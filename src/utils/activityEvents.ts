@@ -88,9 +88,22 @@ export function normalizeNarrative(text: string): string {
   });
 
   // Whole-word replacements, case-insensitive — order matters
-  result = result.replace(/\bfor you\b/gi, 'for them');
-  result = result.replace(/\byour\b/gi, 'their');
-  result = result.replace(/\byou\b/gi, 'them');
+  // "for you" → "for them" (object position, preserve leading case)
+  result = result.replace(/\bfor you\b/gi, (m) =>
+    m[0] === m[0].toUpperCase() ? 'For them' : 'for them');
+
+  // "your" → "their" (preserve case)
+  result = result.replace(/\byour\b/gi, (m) =>
+    m[0] === m[0].toUpperCase() ? 'Their' : 'their');
+
+  // "you" → "they" (subject) or "them" (object), with case preservation
+  result = result.replace(/\byou\b/gi, (match, offset) => {
+    const before = result.slice(0, offset);
+    const isSubject = offset === 0 || /[.!?]\s*$/.test(before);
+    const word = isSubject ? 'they' : 'them';
+    return match[0] === match[0].toUpperCase()
+      ? word[0].toUpperCase() + word.slice(1) : word;
+  });
 
   // Restore protected URL segments
   result = result.replace(/\uFFFDU(\d+)\uFFFD/g, (_, i) => saved[parseInt(i, 10)]);

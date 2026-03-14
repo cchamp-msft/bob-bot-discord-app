@@ -354,8 +354,16 @@ describe('normalizeNarrative', () => {
     expect(normalizeNarrative('I told you already')).toBe('I told them already');
   });
 
-  it('is case-insensitive', () => {
-    expect(normalizeNarrative('For You, Your request')).toBe('for them, their request');
+  it('is case-insensitive and preserves leading case', () => {
+    expect(normalizeNarrative('For You, Your request')).toBe('For them, Their request');
+  });
+
+  it('uses "they" in subject position (start of text)', () => {
+    expect(normalizeNarrative('You asked for weather')).toBe('They asked for weather');
+  });
+
+  it('uses "they" after sentence boundary', () => {
+    expect(normalizeNarrative('Done. You should check.')).toBe('Done. They should check.');
   });
 
   it('leaves first-person text unchanged', () => {

@@ -1771,6 +1771,7 @@ class Config {
       backends: {
         webSearch: this.getWebSearchBackend(),
       },
+      envExists: fs.existsSync(path.join(__dirname, '../../.env')),
     };
   }
 }
