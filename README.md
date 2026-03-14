@@ -41,10 +41,48 @@ See [Terms of Service](TERMS_OF_SERVICE.md).
 
 ## Bot in Action
 
-<!-- TODO: Replace with actual collage once screenshots are captured -->
-<!-- ![Bot in Action](docs/images/bot-in-action.png) -->
-
-*Screenshots coming soon — see [docs/images/README.md](docs/images/README.md) for capture instructions.*
+<table>
+  <tr>
+    <td align="center">
+      <a href="docs/images/1-screenshot_configurator.png">
+        <img src="docs/images/1-screenshot_configurator.png" width="380" alt="Web Configurator" />
+      </a>
+      <br /><sub><b>Web Configurator</b></sub>
+    </td>
+    <td align="center">
+      <a href="docs/images/1s-screenshot_configurator_log-view.png">
+        <img src="docs/images/1s-screenshot_configurator_log-view.png" width="380" alt="Web Configurator Log View" />
+      </a>
+      <br /><sub><b>Web Configurator Log View</b></sub>
+    </td>
+    <td align="center">
+      <a href="docs/images/2-screenshot_chat_via_dm.png">
+        <img src="docs/images/2-screenshot_chat_via_dm.png" width="380" alt="Text Generation via DM" />
+      </a>
+      <br /><sub><b>Text Generation via DM</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="docs/images/3-screenshot_chat_via_dm_with_image_gen.png">
+        <img src="docs/images/3-screenshot_chat_via_dm_with_image_gen.png" width="380" alt="Image Generation via DM" />
+      </a>
+      <br /><sub><b>Image Generation via DM</b></sub>
+    </td>
+    <td align="center">
+      <a href="docs/images/4-screenshot_chat_via_dm_with_tool_call.png">
+        <img src="docs/images/4-screenshot_chat_via_dm_with_tool_call.png" width="380" alt="Tool Routing via DM" />
+      </a>
+      <br /><sub><b>Tool Routing via DM</b></sub>
+    </td>
+    <td align="center">
+      <a href="docs/images/5-screenshot_activity-monitor.png">
+        <img src="docs/images/5-screenshot_activity-monitor.png" width="380" alt="Activity Monitor" />
+      </a>
+      <br /><sub><b>Activity Monitor</b></sub>
+    </td>
+  </tr>
+</table>
 
 ## Quick Start
 
