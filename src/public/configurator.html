@@ -1144,12 +1144,26 @@
         <div style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
           <label style="display:block;font-size:0.8em;color:var(--text-dim);margin-bottom:6px">Test Image Generation <span class="note">submit a prompt directly to ComfyUI</span></label>
           <div class="field-row" style="margin-bottom:8px">
-            <div class="field">
-              <input type="text" id="testPrompt" value="a picture of a banana" placeholder="Enter a test prompt…">
+            <div class="field narrow">
+              <label>Tool <span class="note">workflow to use</span></label>
+              <select id="testToolName"><option value="">(default workflow)</option></select>
+            </div>
+            <div class="field narrow">
+              <label>Seed <span class="note">-1 = random</span></label>
+              <input type="number" id="testSeed" value="3133758008" min="-1" max="9007199254740991" step="1">
             </div>
             <div class="field tiny">
               <button class="btn-test btn-sm" id="btnTestGenerate" onclick="testGenerateImage()">Generate</button>
             </div>
+          </div>
+          <div class="field-row" style="margin-bottom:8px">
+            <div class="field">
+              <input type="text" id="testPrompt" value="a picture of a banana" placeholder="Enter a test prompt…">
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:8px">
+            <label>Negative Prompt <span class="note">optional; combined with default negative if set</span></label>
+            <textarea id="testNegativePrompt" rows="2" placeholder="e.g. blurry, low quality, watermark, text" style="width:100%;resize:vertical;font-family:inherit;font-size:0.85em;padding:6px 8px;background:var(--input-bg,var(--bg));color:var(--text);border:1px solid var(--border);border-radius:4px"></textarea>
           </div>
           <div id="testGenStatus" style="font-size:0.8em;color:var(--text-dim);display:none"></div>
           <div id="testGenResults" style="margin-top:8px;display:none">
@@ -3053,6 +3067,27 @@ flowchart TD
     }
 
     renderPerToolTable(list, workflows, knownSet);
+    populateTestToolSelector();
+  }
+
+  function populateTestToolSelector() {
+    const sel = document.getElementById('testToolName');
+    if (!sel) return;
+    const prev = sel.value;
+    // Keep the default option, clear the rest
+    sel.innerHTML = '<option value="">(default workflow)</option>';
+    for (const name of _knownComfyuiToolNames.slice().sort()) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    }
+    // Restore previous selection if still valid, else default to generate_image
+    if (prev && [...sel.options].some(o => o.value === prev)) {
+      sel.value = prev;
+    } else if (_knownComfyuiToolNames.includes('generate_image')) {
+      sel.value = 'generate_image';
+    }
   }
 
   function renderPerToolTable(container, workflows, knownSet) {
@@ -3276,6 +3311,10 @@ flowchart TD
       conLog(`[${new Date().toISOString()}] Enter a prompt to test image generation`, 'warn');
       return;
     }
+    const toolName = document.getElementById('testToolName').value || undefined;
+    const negativePrompt = document.getElementById('testNegativePrompt').value.trim() || undefined;
+    const seedVal = parseInt(document.getElementById('testSeed').value, 10);
+    const seed = Number.isFinite(seedVal) ? seedVal : undefined;
 
     const btn = document.getElementById('btnTestGenerate');
     const statusEl = document.getElementById('testGenStatus');
@@ -3289,13 +3328,13 @@ flowchart TD
     resultsEl.style.display = 'none';
     imagesEl.innerHTML = '';
 
-    conLog(`[${new Date().toISOString()}] Test image generation started — "${prompt.substring(0, 80)}"…`);
+    conLog(`[${new Date().toISOString()}] Test image generation started — tool: ${toolName || '(default)'}, seed: ${seed ?? '(default)'}, prompt: "${prompt.substring(0, 80)}"…`);
 
     try {
       const res = await fetch('/api/test/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, toolName, negativePrompt, seed }),
       });
 
       const data = await res.json();

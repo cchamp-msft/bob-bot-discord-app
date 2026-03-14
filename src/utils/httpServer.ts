@@ -596,17 +596,28 @@ class HttpServer {
 
     // POST test image generation — submit a prompt to ComfyUI and return results
     this.app.post('/api/test/generate-image', ...adminGuard, safeHandler(async (req, res) => {
-      const { prompt } = req.body;
+      const { prompt, toolName, negativePrompt, seed } = req.body;
 
       if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
         res.status(400).json({ success: false, error: 'A non-empty prompt string is required' });
         return;
       }
 
-      logger.log('success', 'configurator', `Test image generation started — prompt: "${prompt.substring(0, 80)}"`);
+      // Build augmented prompt with optional negative and seed markers
+      // Order matters: --negative: first, --seed: last (parseSeed strips from \n--seed: to end)
+      let augmentedPrompt = prompt.trim();
+      if (typeof negativePrompt === 'string' && negativePrompt.trim()) {
+        augmentedPrompt += `\n--negative: ${negativePrompt.trim()}`;
+      }
+      if (typeof seed === 'number' && Number.isFinite(seed)) {
+        augmentedPrompt += `\n--seed: ${seed}`;
+      }
+
+      const resolvedTool = (typeof toolName === 'string' && toolName.trim()) ? toolName.trim() : undefined;
+      logger.log('success', 'configurator', `Test image generation started — tool: ${resolvedTool || '(default)'}, prompt: "${prompt.substring(0, 80)}"`);
 
       const controller = new AbortController();
-      const result = await comfyuiClient.generateImage(prompt.trim(), 'test', controller.signal);
+      const result = await comfyuiClient.generateImage(augmentedPrompt, 'test', controller.signal, undefined, resolvedTool ? { toolName: resolvedTool } : undefined);
 
       if (!result.success) {
         logger.logError('configurator', `Test image generation failed: ${result.error}`);
