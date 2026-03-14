@@ -99,7 +99,14 @@ git clone https://github.com/cchamp-msft/bob-bot-discord-app.git
 cd bob-bot-discord-app
 npm install
 cp .env.example .env
-npm run dev
+npm run dev          # development (ts-node, no build step)
+```
+
+For ongoing use after configuration is confirmed working:
+
+```bash
+npm run build        # compile TypeScript → dist/
+npm start            # run compiled output (recommended for production)
 ```
 
 Open **http://localhost:3000/configurator** to configure your Discord token and API endpoints.
@@ -158,7 +165,7 @@ outputs/                  # Generated files and logs
 
 The bot includes a **localhost-only web configurator** for easy management:
 
-1. Start the bot: `npm run dev`
+1. Start the bot: `npm run dev` (or `npm run build && npm start` for production)
 2. Open: **http://localhost:3000/configurator**
 3. Configure Discord token, API endpoints, and tools
 4. Test connections and start the bot
