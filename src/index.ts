@@ -5,6 +5,7 @@ import { logger } from './utils/logger';
 import { discordManager } from './bot/discordManager';
 import { comfyuiClient } from './api/comfyuiClient';
 import { memeClient } from './api/memeClient';
+import { retentionScheduler } from './utils/retentionScheduler';
 
 // Start HTTP servers immediately (configurator + outputs available without Discord)
 httpServer.start();
@@ -18,6 +19,9 @@ if (config.getMemeEnabled()) {
 } else {
   logger.log('success', 'system', 'Meme API disabled — skipping template cache initialisation');
 }
+
+// Start scheduled retention grooming (logs + media)
+retentionScheduler.start();
 
 // Auto-connect to Discord if token is configured
 const token = process.env.DISCORD_TOKEN;
@@ -47,6 +51,9 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
   }
   try { memeClient.destroy(); } catch (e) {
     logger.logError('system', `Error stopping meme refresh timer: ${e}`);
+  }
+  try { retentionScheduler.destroy(); } catch (e) {
+    logger.logError('system', `Error stopping retention scheduler: ${e}`);
   }
   try { await discordManager.destroy(); } catch (e) {
     logger.logError('system', `Error destroying Discord client: ${e}`);

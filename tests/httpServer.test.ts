@@ -35,7 +35,7 @@ jest.mock('../src/utils/configWriter', () => ({
 }));
 
 jest.mock('../src/utils/fileHandler', () => ({
-  fileHandler: { saveFromUrl: jest.fn() },
+  fileHandler: { saveFromUrl: jest.fn(), groomMedia: jest.fn(() => ({ deleted: [], skipped: 0, errors: 0 })) },
 }));
 
 jest.mock('../src/api', () => ({

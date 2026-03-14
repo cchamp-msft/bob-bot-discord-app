@@ -222,4 +222,80 @@ describe('FileHandler', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('groomMedia', () => {
+    function mkLeaf(yearMonthDay: string): string {
+      // yearMonthDay e.g. "2024/01/15T10-30-00"
+      const leafPath = path.join(tempDir, yearMonthDay);
+      fs.mkdirSync(leafPath, { recursive: true });
+      // Put a dummy file inside so the dir isn't empty
+      fs.writeFileSync(path.join(leafPath, 'img.png'), 'data');
+      return leafPath;
+    }
+
+    it('should return early when retentionDays is 0 (disabled)', () => {
+      mkLeaf('2020/01/01T00-00-00');
+      const result = fileHandler.groomMedia(0);
+      expect(result).toEqual({ deleted: [], skipped: 0, errors: 0 });
+      // Folder should still exist
+      expect(fs.existsSync(path.join(tempDir, '2020/01/01T00-00-00'))).toBe(true);
+    });
+
+    it('should delete old folders and keep recent ones', () => {
+      const now = new Date();
+      // Old folder: 60 days ago
+      const old = new Date(now.getTime() - 60 * 86_400_000);
+      const oldYear = String(old.getFullYear());
+      const oldMonth = String(old.getMonth() + 1).padStart(2, '0');
+      const oldDay = String(old.getDate()).padStart(2, '0');
+      const oldPath = `${oldYear}/${oldMonth}/${oldDay}T12-00-00`;
+      mkLeaf(oldPath);
+
+      // Recent folder: today
+      const newYear = String(now.getFullYear());
+      const newMonth = String(now.getMonth() + 1).padStart(2, '0');
+      const newDay = String(now.getDate()).padStart(2, '0');
+      const newPath = `${newYear}/${newMonth}/${newDay}T12-00-00`;
+      mkLeaf(newPath);
+
+      const result = fileHandler.groomMedia(30);
+
+      expect(result.deleted).toHaveLength(1);
+      expect(result.deleted[0]).toBe(oldPath);
+      expect(result.skipped).toBe(1);
+      expect(fs.existsSync(path.join(tempDir, oldPath))).toBe(false);
+      expect(fs.existsSync(path.join(tempDir, newPath))).toBe(true);
+    });
+
+    it('should skip the logs/ directory', () => {
+      const logsDir = path.join(tempDir, 'logs');
+      fs.mkdirSync(logsDir, { recursive: true });
+      fs.writeFileSync(path.join(logsDir, 'test.log'), 'log data');
+
+      const result = fileHandler.groomMedia(1);
+      expect(result.deleted).toHaveLength(0);
+      expect(fs.existsSync(logsDir)).toBe(true);
+    });
+
+    it('should clean up empty parent directories', () => {
+      // Create an old folder that will be deleted
+      const old = new Date(Date.now() - 100 * 86_400_000);
+      const y = String(old.getFullYear());
+      const m = String(old.getMonth() + 1).padStart(2, '0');
+      const d = String(old.getDate()).padStart(2, '0');
+      const oldPath = `${y}/${m}/${d}T00-00-00`;
+      mkLeaf(oldPath);
+
+      fileHandler.groomMedia(7);
+
+      // Month and year dirs should be cleaned up if empty
+      expect(fs.existsSync(path.join(tempDir, y, m))).toBe(false);
+      expect(fs.existsSync(path.join(tempDir, y))).toBe(false);
+    });
+
+    it('should handle empty outputs directory', () => {
+      const result = fileHandler.groomMedia(7);
+      expect(result).toEqual({ deleted: [], skipped: 0, errors: 0 });
+    });
+  });
 });

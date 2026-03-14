@@ -1459,13 +1459,17 @@ flowchart TD
       </div>
     </section>
 
-    <!-- Log Management Section -->
+    <!-- Logs and Media Retention Section -->
     <section>
-      <h2 onclick="toggleSection(this)">Log Management</h2>
+      <h2 onclick="toggleSection(this)">Logs and Media Retention</h2>
       <div class="body">
         <div class="field narrow">
           <label>Log Retention Days <span class="note">days to keep logs; older files are deleted on rotation · 0 = disabled</span></label>
           <input type="number" id="log_retention_days" data-env="LOG_RETENTION_DAYS" placeholder="7" min="0" onchange="markDirty()">
+        </div>
+        <div class="field narrow">
+          <label>Media Retention Days <span class="note">days to keep media output folders; older folders are deleted daily · 0 = disabled</span></label>
+          <input type="number" id="media_retention_days" data-env="MEDIA_RETENTION_DAYS" placeholder="30" min="0" onchange="markDirty()">
         </div>
       </div>
     </section>
@@ -1603,7 +1607,7 @@ flowchart TD
 <!-- Bottom action bar -->
 <div class="actions-bar">
   <button class="btn-secondary btn-sm" onclick="loadConfig()">↻ Reload</button>
-  <button class="btn-secondary btn-sm" onclick="rotateLog()" title="Archive current log and start fresh">🔄 Rotate Log</button>
+  <button class="btn-secondary btn-sm" onclick="rotateLog()" title="Rotate log, groom logs &amp; media">🔄 Rotate &amp; Groom</button>
   <button class="btn-secondary btn-sm" id="btnGenKey" onclick="generateActivityKey()">🔑 Activity Key</button>
   <span id="activityKeyResult"></span>
   <span class="spacer"></span>
@@ -1967,8 +1971,9 @@ flowchart TD
       document.getElementById('error_message').value = cfg.errorHandling?.errorMessage || '';
       document.getElementById('error_rate_limit').value = cfg.errorHandling?.errorRateLimitMinutes || 60;
 
-      // Populate log management
+      // Populate logs and media retention
       document.getElementById('log_retention_days').value = cfg.logRetentionDays ?? 7;
+      document.getElementById('media_retention_days').value = cfg.mediaRetentionDays ?? 30;
 
       // Populate reply chain fields
       const rcEnabled = document.getElementById('reply_chain_enabled');
@@ -3499,9 +3504,9 @@ flowchart TD
     }
   });
 
-  // ── Rotate Log ─────────────────────────────────────
+  // ── Rotate Log & Groom ─────────────────────────────
   async function rotateLog() {
-    conLog(`[${new Date().toISOString()}] Rotating log…`);
+    conLog(`[${new Date().toISOString()}] Rotating log and grooming files…`);
     try {
       const res = await fetch('/api/config/log/rotate', { method: 'POST' });
       const data = await res.json();
@@ -3518,6 +3523,16 @@ flowchart TD
         }
       } else {
         conLog(`  ℹ ${data.message || 'Nothing to rotate'}`, 'warn');
+      }
+      // Media grooming results
+      if (data.mediaGrooming) {
+        if (data.mediaGrooming.disabled) {
+          conLog(`  ℹ Media grooming disabled (retention = 0)`, 'warn');
+        } else if (data.mediaGrooming.deleted && data.mediaGrooming.deleted.length > 0) {
+          conLog(`  🧹 Groomed ${data.mediaGrooming.deleted.length} old media folder(s)`, 'ok');
+        } else {
+          conLog(`  ✓ No old media to groom`, 'ok');
+        }
       }
       await pollStatus();
     } catch (e) {

@@ -1045,6 +1045,15 @@ class Config {
   }
 
   /**
+   * Number of days to retain media output directories before automatic grooming.
+   * 0 disables grooming.  Default: 30 days.
+   */
+  getMediaRetentionDays(): number {
+    const val = parseInt(process.env.MEDIA_RETENTION_DAYS || '30', 10);
+    return isNaN(val) ? 30 : val;
+  }
+
+  /**
    * NFL logging verbosity level.
    *   0 = summary only (endpoint, season/week, cache hit/miss, game count)
    *   1 = summary + trimmed payload preview (default)
@@ -1718,6 +1727,7 @@ class Config {
       },
       debugLogging: this.getDebugLogging(),
       logRetentionDays: this.getLogRetentionDays(),
+      mediaRetentionDays: this.getMediaRetentionDays(),
       nflLogging: {
         level: this.getNflLoggingLevel(),
       },

@@ -155,6 +155,101 @@ class FileHandler {
     return this.saveFile(requester, description, buffer, extension, apiSource);
   }
 
+  /**
+   * Delete media output directories older than `retentionDays` days.
+   * Walks the `outputs/YYYY/MM/DDThh-mm-ss/` directory tree, skipping `logs/`.
+   * Empty month/year directories are removed after processing.
+   *
+   * @param retentionDays Number of days to retain.  0 = grooming disabled.
+   */
+  groomMedia(retentionDays: number): { deleted: string[]; skipped: number; errors: number } {
+    if (retentionDays === 0) {
+      return { deleted: [], skipped: 0, errors: 0 };
+    }
+
+    const cutoffDate = new Date(Date.now() - retentionDays * 86_400_000);
+    const deleted: string[] = [];
+    let skipped = 0;
+    let errors = 0;
+
+    let topEntries: string[];
+    try {
+      topEntries = fs.readdirSync(this.outputsDir);
+    } catch {
+      return { deleted: [], skipped: 0, errors: 0 };
+    }
+
+    const yearRegex = /^\d{4}$/;
+    const monthRegex = /^\d{2}$/;
+    const leafRegex = /^(\d{2})T(\d{2})-(\d{2})-(\d{2})$/;
+
+    for (const yearName of topEntries) {
+      if (yearName === 'logs' || !yearRegex.test(yearName)) continue;
+      const yearPath = path.join(this.outputsDir, yearName);
+      if (!fs.statSync(yearPath).isDirectory()) continue;
+
+      let months: string[];
+      try { months = fs.readdirSync(yearPath); } catch { continue; }
+
+      for (const monthName of months) {
+        if (!monthRegex.test(monthName)) continue;
+        const monthPath = path.join(yearPath, monthName);
+        if (!fs.statSync(monthPath).isDirectory()) continue;
+
+        let leaves: string[];
+        try { leaves = fs.readdirSync(monthPath); } catch { continue; }
+
+        for (const leafName of leaves) {
+          const m = leafRegex.exec(leafName);
+          if (!m) continue;
+          const leafPath = path.join(monthPath, leafName);
+          if (!fs.statSync(leafPath).isDirectory()) continue;
+
+          // Reconstruct date: YYYY-MM-DDThh:mm:ss
+          const day = m[1];
+          const hh = m[2];
+          const mm = m[3];
+          const ss = m[4];
+          const dateStr = `${yearName}-${monthName}-${day}T${hh}:${mm}:${ss}`;
+          const folderDate = new Date(dateStr);
+          if (isNaN(folderDate.getTime())) {
+            skipped++;
+            continue;
+          }
+
+          if (folderDate < cutoffDate) {
+            try {
+              fs.rmSync(leafPath, { recursive: true, force: true });
+              deleted.push(`${yearName}/${monthName}/${leafName}`);
+            } catch {
+              errors++;
+            }
+          } else {
+            skipped++;
+          }
+        }
+
+        // Remove empty month dir
+        try {
+          const remaining = fs.readdirSync(monthPath);
+          if (remaining.length === 0) fs.rmdirSync(monthPath);
+        } catch { /* ignore */ }
+      }
+
+      // Remove empty year dir
+      try {
+        const remaining = fs.readdirSync(yearPath);
+        if (remaining.length === 0) fs.rmdirSync(yearPath);
+      } catch { /* ignore */ }
+    }
+
+    if (deleted.length > 0) {
+      logger.log('success', 'system', `MEDIA-GROOMING: Deleted ${deleted.length} folder(s), skipped ${skipped}, errors ${errors}`);
+    }
+
+    return { deleted, skipped, errors };
+  }
+
   shouldAttachFile(fileSize: number): boolean {
     return fileSize <= config.getFileSizeThreshold();
   }

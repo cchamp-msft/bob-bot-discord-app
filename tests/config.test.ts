@@ -1744,4 +1744,40 @@ describe('Config', () => {
       });
     });
   });
+
+  describe('getMediaRetentionDays', () => {
+    const { config } = require('../src/utils/config');
+
+    it('should default to 30 when env is unset', () => {
+      delete process.env.MEDIA_RETENTION_DAYS;
+      expect(config.getMediaRetentionDays()).toBe(30);
+    });
+
+    it('should parse env value', () => {
+      process.env.MEDIA_RETENTION_DAYS = '14';
+      expect(config.getMediaRetentionDays()).toBe(14);
+    });
+
+    it('should return 0 when set to 0 (disabled)', () => {
+      process.env.MEDIA_RETENTION_DAYS = '0';
+      expect(config.getMediaRetentionDays()).toBe(0);
+    });
+
+    it('should fall back to 30 for non-numeric values', () => {
+      process.env.MEDIA_RETENTION_DAYS = 'abc';
+      expect(config.getMediaRetentionDays()).toBe(30);
+    });
+
+    it('should be included in getPublicConfig', () => {
+      process.env.MEDIA_RETENTION_DAYS = '60';
+      const pub = config.getPublicConfig();
+      expect(pub.mediaRetentionDays).toBe(60);
+    });
+
+    it('getPublicConfig should default mediaRetentionDays to 30', () => {
+      delete process.env.MEDIA_RETENTION_DAYS;
+      const pub = config.getPublicConfig();
+      expect(pub.mediaRetentionDays).toBe(30);
+    });
+  });
 });

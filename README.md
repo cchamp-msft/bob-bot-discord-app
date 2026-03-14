@@ -16,6 +16,7 @@ A Discord bot that monitors @mentions and DMs, routes tool-matched requests to C
 - ✅ **NFL game data** — live scores and news via ESPN
 - ✅ **Web search** — Google Search via SerpAPI with AI Overview support
 - ✅ **Meme generation** — create meme images via memegen.link with cached templates
+- ✅ **Scheduled retention grooming** — automatically purges old logs and media based on configurable retention periods
 - ✅ **Web-based configurator** — localhost-only SPA for managing all settings
 - ✅ **Two-stage evaluation** — intelligent API routing with automatic ability discovery
 
@@ -186,7 +187,7 @@ npm test
 npm run test:watch
 ```
 
-1,800+ unit tests across 40+ suites covering core functionality. No Discord connection or external APIs required.
+1,890+ unit tests across 41 suites covering core functionality. No Discord connection or external APIs required.
 
 ## Documentation
 
@@ -197,6 +198,7 @@ npm run test:watch
 - **[Web Configurator](docs/CONFIGURATOR.md)** — Web UI, activity feed, reverse proxy setup
 - **[Architecture](docs/ARCHITECTURE.md)** — Technical details, routing, context management
 - **[Advanced Features](docs/ADVANCED.md)** — Tool configuration, context evaluation, debugging
+- **[Retention & Grooming](docs/RETENTION.md)** — Scheduled log and media cleanup, lifecycle examples
 - **[Model Selection Guide](docs/model_selection.md)** — Tested models and recommendations
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** — Fix common issues
 

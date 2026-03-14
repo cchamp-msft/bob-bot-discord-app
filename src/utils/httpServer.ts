@@ -472,11 +472,19 @@ class HttpServer {
       res.json({ lines: logger.getAllLines() });
     });
 
-    // POST rotate the current log file
+    // POST rotate the current log file and groom media
     this.app.post('/api/config/log/rotate', ...adminGuard, safeHandler(async (_req, res) => {
       const result = logger.rotateLog();
+
+      // Media grooming — runs regardless of whether a log rotation happened
+      const mediaRetention = parseInt(process.env.MEDIA_RETENTION_DAYS || '30', 10);
+      const mediaDisabled = mediaRetention === 0 || isNaN(mediaRetention);
+      const mediaGrooming = mediaDisabled
+        ? { deleted: [] as string[], skipped: 0, errors: 0, disabled: true }
+        : { ...fileHandler.groomMedia(mediaRetention), disabled: false };
+
       if (!result) {
-        res.json({ success: true, message: 'Nothing to rotate — log is empty or does not exist yet.' });
+        res.json({ success: true, message: 'Nothing to rotate — log is empty or does not exist yet.', mediaGrooming });
         return;
       }
       logger.log('success', 'configurator', `Log rotated: archived as ${result.archivedName}`);
@@ -486,6 +494,7 @@ class HttpServer {
         activeFile: result.activeFile,
         message: `Log archived as ${result.archivedName}`,
         grooming: result.grooming,
+        mediaGrooming,
       });
     }));
 

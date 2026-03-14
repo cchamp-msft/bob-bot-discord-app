@@ -631,6 +631,8 @@ export interface PublicConfig {
   debugLogging: boolean;
   /** Number of days to retain log files (0 = grooming disabled). */
   logRetentionDays: number;
+  /** Number of days to retain media output directories (0 = grooming disabled). */
+  mediaRetentionDays: number;
   nflLogging: {
     level: number;
   };
