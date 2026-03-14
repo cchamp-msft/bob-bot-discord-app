@@ -1064,15 +1064,16 @@ class ComfyUIClient {
           sampler_name: config.getComfyUIDefaultSampler(),
           scheduler:    config.getComfyUIDefaultScheduler(),
           denoise:      config.getComfyUIDefaultDenoise(),
-          seed:         config.getComfyUIDefaultSeed(),
+          seed:         resolveSeed(config.getComfyUIDefaultSeed()),
         });
         if (patchedCount > 0) {
+          const resolvedSeed = resolveSeed(config.getComfyUIDefaultSeed());
           logger.log(
             'success',
             requester,
             `Applied sampler overrides to ${patchedCount} KSampler node(s): ` +
             `sampler=${config.getComfyUIDefaultSampler()}, scheduler=${config.getComfyUIDefaultScheduler()}, ` +
-            `steps=${config.getComfyUIDefaultSteps()}, cfg=${config.getComfyUIDefaultCfg()}, denoise=${config.getComfyUIDefaultDenoise()}, seed=${config.getComfyUIDefaultSeed()}`
+            `steps=${config.getComfyUIDefaultSteps()}, cfg=${config.getComfyUIDefaultCfg()}, denoise=${config.getComfyUIDefaultDenoise()}, seed=${resolvedSeed}`
           );
         }
       }
