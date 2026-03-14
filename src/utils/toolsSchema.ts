@@ -176,7 +176,10 @@ export function toolArgumentsToContent(
     case 'comfyui': {
       const prompt = get('prompt') || get('input') || '';
       const negative = get('negative_prompt');
-      return negative ? `${prompt}\n--negative: ${negative}` : prompt;
+      const seed = get('seed');
+      let content = negative ? `${prompt}\n--negative: ${negative}` : prompt;
+      if (seed) content += `\n--seed: ${seed}`;
+      return content;
     }
     case 'serpapi':
       return get('query') || get('input') || '';

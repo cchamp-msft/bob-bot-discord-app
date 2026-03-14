@@ -80,7 +80,7 @@ jest.mock('../src/utils/mediaPersistence', () => ({
 
 // Import after mocks — singleton captures mockInstance
 import { comfyuiClient } from '../src/api/comfyuiClient';
-import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode, resolveSeed, resolveWorkflowSeeds, parseNegativePrompt, resolveNegativePrompt, validateNodeReferences } from '../src/api/comfyuiClient';
+import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode, resolveSeed, resolveWorkflowSeeds, parseNegativePrompt, parseSeed, resolveNegativePrompt, validateNodeReferences } from '../src/api/comfyuiClient';
 import { config } from '../src/utils/config';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -1415,12 +1415,44 @@ describe('ComfyUIClient', () => {
       expect(((workflow['1'] as any).inputs as any).seed).toBe(42);
     });
 
-    it('should not touch non-KSampler nodes', () => {
+    it('should resolve -1 noise_seed on KSamplerAdvanced nodes', () => {
       const workflow: Record<string, unknown> = {
         '1': { class_type: 'KSamplerAdvanced', inputs: { noise_seed: -1 } },
       };
       resolveWorkflowSeeds(workflow);
-      expect(((workflow['1'] as any).inputs as any).noise_seed).toBe(-1);
+      const seed = ((workflow['1'] as any).inputs as any).noise_seed;
+      expect(seed).not.toBe(-1);
+      expect(Number.isInteger(seed)).toBe(true);
+      expect(seed).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should resolve -1 noise_seed on RandomNoise nodes', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'RandomNoise', inputs: { noise_seed: -1 } },
+      };
+      resolveWorkflowSeeds(workflow);
+      const seed = ((workflow['1'] as any).inputs as any).noise_seed;
+      expect(seed).not.toBe(-1);
+      expect(Number.isInteger(seed)).toBe(true);
+      expect(seed).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should keep specific noise_seed on KSamplerAdvanced and RandomNoise', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'KSamplerAdvanced', inputs: { noise_seed: 42 } },
+        '2': { class_type: 'RandomNoise', inputs: { noise_seed: 99 } },
+      };
+      resolveWorkflowSeeds(workflow);
+      expect(((workflow['1'] as any).inputs as any).noise_seed).toBe(42);
+      expect(((workflow['2'] as any).inputs as any).noise_seed).toBe(99);
+    });
+
+    it('should not touch unrelated node types', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'CLIPTextEncode', inputs: { text: 'hello' } },
+      };
+      resolveWorkflowSeeds(workflow);
+      expect(((workflow['1'] as any).inputs as any).text).toBe('hello');
     });
   });
 
@@ -2067,6 +2099,38 @@ describe('ComfyUIClient', () => {
       const result = parseNegativePrompt('cat\n--negative:');
       expect(result.positive).toBe('cat');
       expect(result.negative).toBe('');
+    });
+  });
+
+  describe('parseSeed', () => {
+    it('should return null seed when no --seed: marker', () => {
+      const result = parseSeed('a sunset over mountains');
+      expect(result.content).toBe('a sunset over mountains');
+      expect(result.seed).toBeNull();
+    });
+
+    it('should extract seed from --seed: marker', () => {
+      const result = parseSeed('a sunset over mountains\n--seed: 42');
+      expect(result.content).toBe('a sunset over mountains');
+      expect(result.seed).toBe(42);
+    });
+
+    it('should handle -1 seed', () => {
+      const result = parseSeed('cat\n--seed: -1');
+      expect(result.content).toBe('cat');
+      expect(result.seed).toBe(-1);
+    });
+
+    it('should return null for invalid seed value', () => {
+      const result = parseSeed('cat\n--seed: abc');
+      expect(result.content).toBe('cat');
+      expect(result.seed).toBeNull();
+    });
+
+    it('should handle content with both negative and seed markers', () => {
+      const result = parseSeed('cat\n--negative: blurry\n--seed: 123');
+      expect(result.content).toBe('cat\n--negative: blurry');
+      expect(result.seed).toBe(123);
     });
   });
 

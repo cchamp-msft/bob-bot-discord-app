@@ -245,20 +245,40 @@ export function resolveSeed(seed: number): number {
 }
 
 /**
- * Walk all KSampler nodes in a parsed workflow and resolve their seed values.
+ * Walk all sampler/noise nodes in a parsed workflow and resolve their seed values.
  * Seeds of -1 are replaced with a fresh random integer; other values are kept.
  * This must run per-request so that random seeds differ between generations.
+ * Handles KSampler (seed), KSamplerAdvanced (noise_seed), and RandomNoise (noise_seed).
  */
 export function resolveWorkflowSeeds(workflow: Record<string, unknown>): void {
   for (const nodeId of Object.keys(workflow)) {
     const node = workflow[nodeId] as Record<string, unknown>;
-    if (node.class_type === 'KSampler') {
-      const inputs = node.inputs as Record<string, unknown>;
-      if (typeof inputs.seed === 'number') {
-        inputs.seed = resolveSeed(inputs.seed);
-      }
+    const inputs = node.inputs as Record<string, unknown> | undefined;
+    if (!inputs) continue;
+
+    if (node.class_type === 'KSampler' && typeof inputs.seed === 'number') {
+      inputs.seed = resolveSeed(inputs.seed);
+    }
+    if ((node.class_type === 'KSamplerAdvanced' || node.class_type === 'RandomNoise')
+        && typeof inputs.noise_seed === 'number') {
+      inputs.noise_seed = resolveSeed(inputs.noise_seed);
     }
   }
+}
+
+/**
+ * Parse the `--seed: <number>` convention from a content string.
+ * Returns the content without the seed marker, and the parsed seed (or null).
+ * Must be called before parseNegativePrompt since --seed: is appended last.
+ */
+export function parseSeed(content: string): { content: string; seed: number | null } {
+  const marker = '\n--seed:';
+  const idx = content.indexOf(marker);
+  if (idx === -1) return { content, seed: null };
+  const seedStr = content.substring(idx + marker.length).trim();
+  const remaining = content.substring(0, idx);
+  const parsed = parseInt(seedStr, 10);
+  return { content: remaining, seed: isNaN(parsed) ? null : parsed };
 }
 
 /**
@@ -995,21 +1015,26 @@ class ComfyUIClient {
         `ComfyUI generate: ${prompt.substring(0, 100)}...`
       );
 
+      // Parse seed from content (must be first — it's appended last)
+      const { content: contentWithoutSeed, seed: userSeed } = parseSeed(prompt);
       // Split positive/negative from the --negative: convention
-      const { positive, negative: modelNegative } = parseNegativePrompt(prompt);
+      const { positive, negative: modelNegative } = parseNegativePrompt(contentWithoutSeed);
       const resolvedNegative = resolveNegativePrompt(
         config.getComfyUIDefaultNegativePrompt(),
         modelNegative
       );
+      const resolvedSeed = userSeed !== null ? userSeed : config.getComfyUIDefaultSeed();
 
       // JSON-escape prompts so quotes/backslashes don't break the workflow JSON
       const escapedPrompt = JSON.stringify(positive).slice(1, -1);
       const escapedNegative = JSON.stringify(resolvedNegative).slice(1, -1);
+      const seedStr = String(resolveSeed(resolvedSeed));
 
-      // Replace all occurrences of %prompt% and %negative% (case-sensitive)
+      // Replace all occurrences of %prompt%, %negative%, and %seed% (case-sensitive)
       const substitutedWorkflow = effectiveWorkflow
         .split('%prompt%').join(escapedPrompt)
-        .split('%negative%').join(escapedNegative);
+        .split('%negative%').join(escapedNegative)
+        .split('%seed%').join(seedStr);
 
       // ── Image upload and %image% substitution ──────────────────
       let finalWorkflow = substitutedWorkflow;
