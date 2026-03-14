@@ -342,6 +342,62 @@ export async function getArtifact(
 
 // ── reactToMessage ─────────────────────────────────────────────
 
+/** Map common English emoji names to their Unicode characters. */
+const EMOJI_NAME_MAP: Record<string, string> = {
+  heart: '❤️', red_heart: '❤️', love: '❤️',
+  thumbsup: '👍', thumbs_up: '👍', like: '👍', up: '👍',
+  thumbsdown: '👎', thumbs_down: '👎', dislike: '👎', down: '👎',
+  laugh: '😂', lol: '😂', joy: '😂', crying_laughing: '😂',
+  fire: '🔥', lit: '🔥',
+  smile: '😊', happy: '😊',
+  cry: '😢', sad: '😢',
+  clap: '👏',
+  wave: '👋', hi: '👋', hello: '👋',
+  check: '✅', yes: '✅', done: '✅',
+  x: '❌', no: '❌', cross: '❌',
+  star: '⭐',
+  eyes: '👀', look: '👀',
+  think: '🤔', thinking: '🤔', hmm: '🤔',
+  skull: '💀', dead: '💀',
+  rocket: '🚀',
+  poop: '💩', shit: '💩',
+  pray: '🙏', thanks: '🙏', please: '🙏',
+  hundred: '💯',
+  party: '🎉', celebrate: '🎉', tada: '🎉',
+  cool: '😎', sunglasses: '😎',
+  angry: '😠', mad: '😠',
+  sob: '😭',
+  wink: '😉',
+  tongue: '😛',
+  sleep: '😴', zzz: '😴',
+  puke: '🤮', vomit: '🤮',
+  shrug: '🤷',
+  facepalm: '🤦',
+  ok: '👌',
+  peace: '✌️',
+  muscle: '💪', strong: '💪', flex: '💪',
+  broken_heart: '💔',
+  blue_heart: '💙',
+  green_heart: '💚',
+  purple_heart: '💜',
+  orange_heart: '🧡',
+  yellow_heart: '💛',
+  white_heart: '🤍',
+  black_heart: '🖤',
+  sparkles: '✨', sparkle: '✨',
+  rainbow: '🌈',
+  sun: '☀️',
+  moon: '🌙',
+  cloud: '☁️',
+  rain: '🌧️',
+  snow: '❄️', snowflake: '❄️',
+  warning: '⚠️', warn: '⚠️',
+  question: '❓',
+  exclamation: '❗',
+  plus: '➕',
+  minus: '➖',
+};
+
 interface ReactToMessageArgs {
   emoji: string;
   target?: string;
@@ -386,11 +442,18 @@ export async function reactToMessage(
       targetMessage = sourceMessage;
     }
 
-    // Parse emoji: custom format <:name:id> or name:id, otherwise unicode
+    // Parse emoji: custom format <:name:id> or name:id, word name, or unicode
     let emojiInput = emoji.trim();
     const customMatch = emojiInput.match(/^<?:?(\w+):(\d+)>?$/);
     if (customMatch) {
       emojiInput = `${customMatch[1]}:${customMatch[2]}`;
+    } else if (/^[a-z_]+$/i.test(emojiInput)) {
+      // Word-based name — resolve to Unicode
+      const resolved = EMOJI_NAME_MAP[emojiInput.toLowerCase()];
+      if (!resolved) {
+        return { success: false, error: `Unknown emoji name "${emojiInput}". Use a Unicode emoji (e.g. ❤️ 👍 😂) or a custom emoji reference (name:id).` };
+      }
+      emojiInput = resolved;
     }
 
     await targetMessage.react(emojiInput);

@@ -61,7 +61,14 @@ async function dispatchDiscordAction(
   try {
     args = JSON.parse(contentStr);
   } catch {
-    args = {};
+    // contentStr is plain text, not JSON — infer the primary arg from the tool.
+    // For react_to_message the entire string is the emoji.
+    const plainName = toolName.replace(/^!\s*/, '').trim().toLowerCase();
+    if (plainName === 'react_to_message' && contentStr.trim()) {
+      args = { emoji: contentStr.trim() };
+    } else {
+      args = {};
+    }
   }
 
   // Normalize common argument aliases to canonical keys
