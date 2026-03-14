@@ -382,14 +382,8 @@ export async function reactToMessage(
         return { success: false, error: `No message found matching "${target}".` };
       }
     } else {
-      // Default: most recent non-bot message in channel (excluding the trigger)
-      const messages = await channel.messages.fetch({ limit: 10 });
-      targetMessage = messages.find(
-        (m) => !m.author.bot && m.id !== sourceMessage.id,
-      );
-      if (!targetMessage) {
-        return { success: false, error: 'No recent non-bot message found to react to.' };
-      }
+      // Default: react to the message that triggered the tool call
+      targetMessage = sourceMessage;
     }
 
     // Parse emoji: custom format <:name:id> or name:id, otherwise unicode
