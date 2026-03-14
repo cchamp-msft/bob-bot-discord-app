@@ -4,6 +4,7 @@ import { ToolConfig, COMMAND_PREFIX, VALID_TOOL_APIS } from './config';
 import { isUIFormat, convertUIToAPIFormat } from '../api/comfyuiClient';
 import { buildToolsXml } from './toolsXmlWriter';
 import { parseToolsXml } from './toolsXmlParser';
+import { sanitizeToolName } from './sanitizePath';
 
 interface EnvUpdate {
   [key: string]: string | number;
@@ -84,7 +85,7 @@ class ConfigWriter {
         if (!fs.existsSync(this.workflowsDir)) {
           fs.mkdirSync(this.workflowsDir, { recursive: true });
         }
-        const perToolPath = path.join(this.workflowsDir, `${toolName}.json`);
+        const perToolPath = path.join(this.workflowsDir, `${sanitizeToolName(toolName)}.json`);
         fs.writeFileSync(perToolPath, finalJson, 'utf-8');
       } else {
         fs.writeFileSync(this.workflowPath, finalJson, 'utf-8');
@@ -173,7 +174,7 @@ class ConfigWriter {
    */
   deleteWorkflow(toolName?: string): boolean {
     if (toolName) {
-      const perToolPath = path.join(this.workflowsDir, `${toolName}.json`);
+      const perToolPath = path.join(this.workflowsDir, `${sanitizeToolName(toolName)}.json`);
       if (fs.existsSync(perToolPath)) {
         fs.unlinkSync(perToolPath);
         return true;
@@ -211,8 +212,8 @@ class ConfigWriter {
    * Returns true if renamed, false if the source file didn't exist.
    */
   renameWorkflow(oldToolName: string, newToolName: string): boolean {
-    const oldPath = path.join(this.workflowsDir, `${oldToolName}.json`);
-    const newPath = path.join(this.workflowsDir, `${newToolName}.json`);
+    const oldPath = path.join(this.workflowsDir, `${sanitizeToolName(oldToolName)}.json`);
+    const newPath = path.join(this.workflowsDir, `${sanitizeToolName(newToolName)}.json`);
     if (!fs.existsSync(oldPath)) return false;
     fs.renameSync(oldPath, newPath);
     return true;

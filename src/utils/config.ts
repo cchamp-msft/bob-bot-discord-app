@@ -4,6 +4,7 @@ import * as path from 'path';
 import { logger } from './logger';
 import { readEnvVar } from './dotenvCodec';
 import { parseToolsXml } from './toolsXmlParser';
+import { sanitizeToolName } from './sanitizePath';
 import type { ToolParameter } from './toolsXmlParser';
 import type { PublicConfig, LlmProvider } from '../types';
 
@@ -1286,7 +1287,7 @@ class Config {
    */
   getComfyUIWorkflowForTool(toolName: string): string {
     if (toolName) {
-      const perToolPath = path.join(__dirname, '../../.config/comfyui-workflows', `${toolName}.json`);
+      const perToolPath = path.join(__dirname, '../../.config/comfyui-workflows', `${sanitizeToolName(toolName)}.json`);
       try {
         if (fs.existsSync(perToolPath)) {
           return fs.readFileSync(perToolPath, 'utf-8');
@@ -1305,7 +1306,7 @@ class Config {
    */
   hasComfyUIWorkflowForTool(toolName: string): boolean {
     if (!toolName) return false;
-    const perToolPath = path.join(__dirname, '../../.config/comfyui-workflows', `${toolName}.json`);
+    const perToolPath = path.join(__dirname, '../../.config/comfyui-workflows', `${sanitizeToolName(toolName)}.json`);
     return fs.existsSync(perToolPath);
   }
 
