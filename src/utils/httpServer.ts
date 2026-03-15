@@ -11,6 +11,20 @@ import { apiManager } from '../api';
 import { comfyuiClient } from '../api/comfyuiClient';
 import { discordManager } from '../bot/discordManager';
 import { activityKeyManager } from './activityKeyManager';
+// Lazy imports to avoid pulling memeClient (and its config.getMemeEndpoint call)
+// into the module graph at load time — breaks test suites that mock config.
+let _registerSlashCommands: typeof import('../registerCommands').registerSlashCommands | null = null;
+let _commandHandler: typeof import('../commands').commandHandler | null = null;
+
+async function getSlashDeps() {
+  if (!_registerSlashCommands) {
+    _registerSlashCommands = (await import('../registerCommands')).registerSlashCommands;
+  }
+  if (!_commandHandler) {
+    _commandHandler = (await import('../commands')).commandHandler;
+  }
+  return { registerSlashCommands: _registerSlashCommands, commandHandler: _commandHandler };
+}
 
 // ── Security middleware ──────────────────────────────────────────
 
@@ -553,6 +567,16 @@ class HttpServer {
       const result = await discordManager.testToken(token);
       // Never log the actual token value
       logger.log(result.success ? 'success' : 'error', 'configurator', `Discord token test: ${result.success ? 'OK' : 'FAILED'} — ${result.message}`);
+      res.json(result);
+    }));
+
+    // POST register the single slash command with Discord
+    this.app.post('/api/discord/register-slash-command', ...adminGuard, safeHandler(async (_req, res) => {
+      logger.log('success', 'configurator', 'Slash command registration requested');
+      const { registerSlashCommands, commandHandler } = await getSlashDeps();
+      const result = await registerSlashCommands();
+      commandHandler.rebuild();
+      logger.log(result.success ? 'success' : 'error', 'configurator', `Slash command registration: ${result.message}`);
       res.json(result);
     }));
 

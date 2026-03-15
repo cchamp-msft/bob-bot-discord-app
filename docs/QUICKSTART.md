@@ -66,11 +66,12 @@ npm start
 > If `DISCORD_TOKEN` is set in `.env`, the bot will auto-connect to Discord on startup.
 > If not, it starts in configurator-only mode so you can set it up via the web UI.
 
-### Register slash commands:
-```bash
-npm run register
-```
-> Requires `DISCORD_TOKEN` and `DISCORD_CLIENT_ID` to be set in `.env`.
+### Register the slash command:
+
+The bot uses a single configurable `/bot` slash command (name controlled by `SLASH_COMMAND_NAME` in `.env`). You can register it two ways:
+
+1. **Web configurator** — click the **Register Slash Command** button in the configurator UI
+2. **CLI** — run `npm run register` (requires `DISCORD_TOKEN` and `DISCORD_CLIENT_ID` in `.env`)
 
 ## What's Next?
 

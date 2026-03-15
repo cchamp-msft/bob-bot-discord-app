@@ -12,6 +12,7 @@ import { logger } from '../utils/logger';
 import { chunkText } from '../utils/chunkText';
 import { fileHandler } from '../utils/fileHandler';
 import { buildAskPrompt } from '../utils/promptBuilder';
+import { COMMAND_PREFIX } from '../utils/config';
 
 export abstract class BaseCommand {
   abstract data: SharedSlashCommand;
@@ -22,77 +23,252 @@ export abstract class BaseCommand {
   }
 }
 
-class GenerateCommand extends BaseCommand {
-  data = new SlashCommandBuilder()
-    .setName('generate_image')
-    .setDescription('Generate an image using ComfyUI')
-    .addStringOption((option) =>
-      option
-        .setName('prompt')
-        .setDescription('The prompt for image generation')
-        .setRequired(true)
-    );
+/** Tool keyword mapping for !-prefix dispatch within the single /bot command. */
+interface ToolRoute {
+  /** The keyword after the ! prefix (e.g. 'generate', 'weather'). */
+  keyword: string;
+  /** API type to dispatch to. */
+  api: 'comfyui' | 'ollama' | 'accuweather' | 'nfl' | 'serpapi' | 'meme';
+  /** Tool name for timeout lookup and logging. */
+  toolName: string;
+}
+
+/** Built-in tool routes for !-prefix dispatch. */
+const TOOL_ROUTES: ToolRoute[] = [
+  { keyword: 'generate', api: 'comfyui', toolName: 'generate_image' },
+  { keyword: 'weather', api: 'accuweather', toolName: 'get_current_weather' },
+  { keyword: 'meme', api: 'meme', toolName: 'generate_meme' },
+  { keyword: 'meme_templates', api: 'meme', toolName: 'get_meme_templates' },
+  { keyword: 'search', api: 'serpapi', toolName: 'web_search' },
+  { keyword: 'nfl', api: 'nfl', toolName: 'nfl_scores' },
+];
+
+/** Also match tool names from tools config as routes. */
+function findToolRoute(keyword: string): ToolRoute | undefined {
+  // Check built-in routes first
+  const builtin = TOOL_ROUTES.find(r => r.keyword === keyword);
+  if (builtin) return builtin;
+
+  // Check configured tools by name or keyword
+  const toolConfig = config.getToolConfig(keyword);
+  if (toolConfig) {
+    return {
+      keyword,
+      api: toolConfig.api as ToolRoute['api'],
+      toolName: toolConfig.name,
+    };
+  }
+  return undefined;
+}
+
+class BotCommand extends BaseCommand {
+  data: SharedSlashCommand;
+
+  constructor() {
+    super();
+    this.data = new SlashCommandBuilder()
+      .setName(config.getSlashCommandName())
+      .setDescription('Send a message or tool command to the bot')
+      .addStringOption((option) =>
+        option
+          .setName('input')
+          .setDescription('Your message or !tool command (e.g. "hello" or "!weather Seattle")')
+          .setRequired(true)
+      );
+  }
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    const prompt = interaction.options.getString('prompt', true);
+    const input = interaction.options.getString('input', true);
     const requester = interaction.user.username;
 
     // Defer reply as ephemeral
     await interaction.deferReply({ ephemeral: true });
 
-    // Log the request
-    logger.logRequest(requester, `[generate_image] ${prompt}`);
+    // Check for !tool prefix dispatch
+    if (input.startsWith(COMMAND_PREFIX)) {
+      const withoutPrefix = input.slice(COMMAND_PREFIX.length);
+      const spaceIdx = withoutPrefix.indexOf(' ');
+      const keyword = spaceIdx === -1 ? withoutPrefix : withoutPrefix.slice(0, spaceIdx);
+      const content = spaceIdx === -1 ? '' : withoutPrefix.slice(spaceIdx + 1).trim();
 
-    // Start processing message
-    await interaction.editReply({
-      content: '⏳ Processing your image generation request...',
-    });
-
-    try {
-      // Execute through the queue (handles locking + timeout)
-      const timeout = this.getTimeout('generate_image');
-      const apiResult = await requestQueue.execute<ComfyUIResponse>(
-        'comfyui',
-        requester,
-        'generate_image',
-        timeout,
-        (signal) => apiManager.executeRequest('comfyui', requester, prompt, timeout, undefined, undefined, signal) as Promise<ComfyUIResponse>
-      );
-
-      if (!apiResult.success) {
-        const errorDetail = apiResult.error ?? 'Unknown API error';
-        logger.logError(requester, errorDetail);
-        await interaction.editReply({
-          content: `⚠️ ${config.getErrorMessage()}`,
-        });
+      // Special case: !meme_templates (no content needed)
+      if (keyword === 'meme_templates') {
+        await this.handleMemeTemplates(interaction, requester);
         return;
       }
 
-      // Handle response
-      await this.handleResponse(interaction, apiResult, requester);
+      const route = findToolRoute(keyword);
+      if (route) {
+        await this.handleToolRoute(interaction, route, content, requester);
+        return;
+      }
+    }
+
+    // No tool match — pass to Ollama via buildAskPrompt
+    await this.handleAsk(interaction, input, requester);
+  }
+
+  private async handleToolRoute(
+    interaction: ChatInputCommandInteraction,
+    route: ToolRoute,
+    content: string,
+    requester: string,
+  ): Promise<void> {
+    logger.logRequest(requester, `[${route.toolName}] ${content}`);
+
+    await interaction.editReply({
+      content: `⏳ Processing ${route.toolName} request...`,
+    });
+
+    try {
+      const timeout = this.getTimeout(route.toolName);
+
+      if (route.api === 'comfyui') {
+        const apiResult = await requestQueue.execute<ComfyUIResponse>(
+          'comfyui',
+          requester,
+          route.toolName,
+          timeout,
+          (signal) => apiManager.executeRequest('comfyui', requester, content, timeout, undefined, undefined, signal) as Promise<ComfyUIResponse>
+        );
+
+        if (!apiResult.success) {
+          logger.logError(requester, apiResult.error ?? 'Unknown API error');
+          await interaction.editReply({ content: `⚠️ ${config.getErrorMessage()}` });
+          return;
+        }
+
+        await this.handleComfyUIResponse(interaction, apiResult, requester);
+      } else if (route.api === 'accuweather') {
+        const prompt = content ? `weather in ${content}` : 'weather';
+        const apiResult = await requestQueue.execute<AccuWeatherResponse>(
+          'accuweather',
+          requester,
+          route.toolName,
+          timeout,
+          (signal) => apiManager.executeRequest('accuweather', requester, prompt, timeout, undefined, undefined, signal) as Promise<AccuWeatherResponse>
+        );
+
+        if (!apiResult.success) {
+          logger.logError(requester, apiResult.error ?? 'Unknown API error');
+          await interaction.editReply({ content: `⚠️ ${apiResult.error ?? config.getErrorMessage()}` });
+          return;
+        }
+
+        await this.handleTextResponse(interaction, apiResult.data?.text || 'No weather data available.', requester, 'Weather');
+      } else {
+        // Generic text API dispatch (ollama, nfl, serpapi, meme)
+        const apiResult = await requestQueue.execute<{ success: boolean; data?: { text: string }; error?: string }>(
+          route.api,
+          requester,
+          route.toolName,
+          timeout,
+          (signal) => apiManager.executeRequest(route.api, requester, content, timeout, undefined, undefined, signal) as Promise<{ success: boolean; data?: { text: string }; error?: string }>
+        );
+
+        if (!apiResult.success) {
+          logger.logError(requester, apiResult.error ?? 'Unknown API error');
+          await interaction.editReply({ content: `⚠️ ${config.getErrorMessage()}` });
+          return;
+        }
+
+        await this.handleTextResponse(interaction, apiResult.data?.text || 'No response generated.', requester, route.toolName);
+      }
     } catch (error) {
-      const errorMsg =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       logger.logError(requester, errorMsg);
-      await interaction.editReply({
-        content: `⚠️ ${config.getErrorMessage()}`,
-      });
+      await interaction.editReply({ content: `⚠️ ${config.getErrorMessage()}` });
     }
   }
 
-  private async handleResponse(
+  private async handleAsk(
+    interaction: ChatInputCommandInteraction,
+    question: string,
+    requester: string,
+  ): Promise<void> {
+    const model = config.getOllamaModel();
+    logger.logRequest(requester, `[ask] (${model}) ${question}`);
+
+    await interaction.editReply({ content: '⏳ Processing your question...' });
+
+    try {
+      const askPrompt = buildAskPrompt(question);
+      const timeout = this.getTimeout('ask');
+      const apiResult = await requestQueue.execute<OllamaResponse>(
+        'ollama',
+        requester,
+        'ask',
+        timeout,
+        (signal) => apiManager.executeRequest(
+          'ollama', requester, askPrompt, timeout, model, undefined, signal,
+          undefined, { includeSystemPrompt: false }
+        ) as Promise<OllamaResponse>
+      );
+
+      if (!apiResult.success) {
+        logger.logError(requester, apiResult.error ?? 'Unknown API error');
+        await interaction.editReply({ content: `⚠️ ${config.getErrorMessage()}` });
+        return;
+      }
+
+      await this.handleTextResponse(interaction, apiResult.data?.text || 'No response generated.', requester, 'Ollama');
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      logger.logError(requester, errorMsg);
+      await interaction.editReply({ content: `⚠️ ${config.getErrorMessage()}` });
+    }
+  }
+
+  private async handleMemeTemplates(
+    interaction: ChatInputCommandInteraction,
+    requester: string,
+  ): Promise<void> {
+    logger.logRequest(requester, '[get_meme_templates]');
+
+    const ids = memeClient.getTemplateIds();
+
+    if (!ids) {
+      await interaction.editReply({ content: 'No meme templates found' });
+      return;
+    }
+
+    const chunks = chunkText(ids, 1900);
+    await interaction.editReply({ content: chunks[0] });
+
+    for (let i = 1; i < chunks.length; i++) {
+      await interaction.followUp({ content: chunks[i], ephemeral: true });
+    }
+
+    logger.logReply(requester, `Meme templates sent: ${ids.length} characters`);
+  }
+
+  private async handleTextResponse(
+    interaction: ChatInputCommandInteraction,
+    text: string,
+    requester: string,
+    label: string,
+  ): Promise<void> {
+    const chunks = chunkText(text);
+    await interaction.editReply({ content: chunks[0] });
+
+    for (let i = 1; i < chunks.length; i++) {
+      await interaction.followUp({ content: chunks[i], ephemeral: true });
+    }
+
+    logger.logReply(requester, `${label} response sent: ${text.length} characters`, text);
+  }
+
+  private async handleComfyUIResponse(
     interaction: ChatInputCommandInteraction,
     apiResult: ComfyUIResponse,
-    requester: string
+    requester: string,
   ): Promise<void> {
     const images = apiResult.data?.images || [];
     const videos = apiResult.data?.videos || [];
     const totalOutputs = images.length + videos.length;
 
     if (totalOutputs === 0) {
-      await interaction.editReply({
-        content: 'No images or videos were generated.',
-      });
+      await interaction.editReply({ content: 'No images or videos were generated.' });
       return;
     }
 
@@ -106,7 +282,6 @@ class GenerateCommand extends BaseCommand {
         .setTimestamp();
     }
 
-    // Process each output — prefer pre-persisted files from client
     let savedCount = 0;
     const attachments: { attachment: Buffer; name: string }[] = [];
 
@@ -130,7 +305,6 @@ class GenerateCommand extends BaseCommand {
         }
       }
     } else {
-      // Fallback: download and save from original URLs (legacy path)
       const processOutputs = async (urls: string[], description: string, extension: string, label: string) => {
         for (let i = 0; i < urls.length; i++) {
           const fileOutput = await fileHandler.saveFromUrl(requester, description, urls[i], extension, 'comfyui');
@@ -158,17 +332,13 @@ class GenerateCommand extends BaseCommand {
     }
 
     if (savedCount === 0) {
-      await interaction.editReply({
-        content: 'Files were generated but could not be saved or displayed.',
-      });
+      await interaction.editReply({ content: 'Files were generated but could not be saved or displayed.' });
       return;
     }
 
-    // Chunk attachments to respect Discord's per-message limit
     const maxPerMessage = config.getMaxAttachments();
     const firstBatch = attachments.slice(0, maxPerMessage);
 
-    // Provide fallback text when embed is off and no files could be attached
     const hasVisualContent = !!embed || firstBatch.length > 0;
     const content = hasVisualContent ? '' : `✅ ${savedCount} file(s) generated and saved.`;
 
@@ -178,7 +348,6 @@ class GenerateCommand extends BaseCommand {
       ...(firstBatch.length > 0 ? { files: firstBatch } : {}),
     });
 
-    // Send remaining attachments as follow-up messages in batches
     for (let i = maxPerMessage; i < attachments.length; i += maxPerMessage) {
       const batch = attachments.slice(i, i + maxPerMessage);
       await interaction.followUp({ content: '📎 Additional files', files: batch, ephemeral: true });
@@ -191,211 +360,9 @@ class GenerateCommand extends BaseCommand {
   }
 }
 
-class AskCommand extends BaseCommand {
-  data = new SlashCommandBuilder()
-    .setName('ask')
-    .setDescription('Ask a question to Ollama AI')
-    .addStringOption((option) =>
-      option
-        .setName('question')
-        .setDescription('Your question for the AI')
-        .setRequired(true)
-    )
-    .addStringOption((option) =>
-      option
-        .setName('model')
-        .setDescription('Which model to use (uses configured default if omitted)')
-        .setRequired(false)
-    );
+export let commands: BaseCommand[] = [new BotCommand()];
 
-  async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    const question = interaction.options.getString('question', true);
-    const model = interaction.options.getString('model') || config.getOllamaModel();
-    const requester = interaction.user.username;
-
-    // Defer reply as ephemeral
-    await interaction.deferReply({ ephemeral: true });
-
-    // Log the request
-    logger.logRequest(requester, `[ask] (${model}) ${question}`);
-
-    // Start processing message
-    await interaction.editReply({
-      content: '⏳ Processing your question...',
-    });
-
-    try {
-      // Build the XML-tagged single-string prompt for /ask
-      const askPrompt = buildAskPrompt(question);
-
-      // Execute through the queue (handles locking + timeout).
-      // The persona is embedded in the <system> XML tag inside the prompt,
-      // so includeSystemPrompt: false prevents a duplicate system message.
-      const timeout = this.getTimeout('ask');
-      const apiResult = await requestQueue.execute<OllamaResponse>(
-        'ollama',
-        requester,
-        'ask',
-        timeout,
-        (signal) => apiManager.executeRequest(
-          'ollama', requester, askPrompt, timeout, model, undefined, signal,
-          undefined, { includeSystemPrompt: false }
-        ) as Promise<OllamaResponse>
-      );
-
-      if (!apiResult.success) {
-        const errorDetail = apiResult.error ?? 'Unknown API error';
-        logger.logError(requester, errorDetail);
-        await interaction.editReply({
-          content: `⚠️ ${config.getErrorMessage()}`,
-        });
-        return;
-      }
-
-      // Handle response
-      await this.handleResponse(interaction, apiResult, requester);
-    } catch (error) {
-      const errorMsg =
-        error instanceof Error ? error.message : 'Unknown error';
-      logger.logError(requester, errorMsg);
-      await interaction.editReply({
-        content: `⚠️ ${config.getErrorMessage()}`,
-      });
-    }
-  }
-
-  private async handleResponse(
-    interaction: ChatInputCommandInteraction,
-    apiResult: OllamaResponse,
-    requester: string
-  ): Promise<void> {
-    const text = apiResult.data?.text || 'No response generated.';
-
-    // Split into Discord-safe chunks (newline-aware)
-    const chunks = chunkText(text);
-
-    // Edit the deferred reply with the first chunk
-    await interaction.editReply({ content: chunks[0] });
-
-    // Send remaining chunks as follow-ups (keep ephemeral to match deferred reply)
-    for (let i = 1; i < chunks.length; i++) {
-      await interaction.followUp({ content: chunks[i], ephemeral: true });
-    }
-
-    logger.logReply(requester, `Ollama response sent: ${text.length} characters`, text);
-  }
+/** Rebuild the commands array with a fresh BotCommand (picks up current config name). */
+export function rebuildCommands(): void {
+  commands = [new BotCommand()];
 }
-
-class WeatherCommand extends BaseCommand {
-  data = new SlashCommandBuilder()
-    .setName('weather')
-    .setDescription('Get weather conditions and forecast')
-    .addStringOption((option) =>
-      option
-        .setName('location')
-        .setDescription('City name, zip code, or location key (uses default if omitted)')
-        .setRequired(false)
-    );
-
-  async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    const location = interaction.options.getString('location') || '';
-    const requester = interaction.user.username;
-
-    // Defer reply as ephemeral
-    await interaction.deferReply({ ephemeral: true });
-
-    // Build a prompt-like string for the weather client
-    const prompt = location ? `weather in ${location}` : 'weather';
-
-    // Log the request
-    logger.logRequest(requester, `[get_current_weather] ${config.getAccuWeatherDefaultWeatherType()} — ${location || '(default location)'}`);
-
-    await interaction.editReply({
-      content: '⏳ Fetching weather data…',
-    });
-
-    try {
-      const timeout = this.getTimeout('get_current_weather');
-      const apiResult = await requestQueue.execute<AccuWeatherResponse>(
-        'accuweather',
-        requester,
-        'get_current_weather',
-        timeout,
-        (signal) => apiManager.executeRequest('accuweather', requester, prompt, timeout, undefined, undefined, signal) as Promise<AccuWeatherResponse>
-      );
-
-      if (!apiResult.success) {
-        const errorDetail = apiResult.error ?? 'Unknown API error';
-        logger.logError(requester, errorDetail);
-        await interaction.editReply({
-          content: `⚠️ ${errorDetail}`,
-        });
-        return;
-      }
-
-      await this.handleResponse(interaction, apiResult, requester);
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.logError(requester, errorMsg);
-      await interaction.editReply({
-        content: `⚠️ ${config.getErrorMessage()}`,
-      });
-    }
-  }
-
-  private async handleResponse(
-    interaction: ChatInputCommandInteraction,
-    apiResult: AccuWeatherResponse,
-    requester: string
-  ): Promise<void> {
-    const text = apiResult.data?.text || 'No weather data available.';
-
-    // Split into Discord-safe chunks (newline-aware)
-    const chunks = chunkText(text);
-
-    // Edit the deferred reply with the first chunk
-    await interaction.editReply({ content: chunks[0] });
-
-    // Send remaining chunks as follow-ups
-    for (let i = 1; i < chunks.length; i++) {
-      await interaction.followUp({ content: chunks[i], ephemeral: true });
-    }
-
-    logger.logReply(requester, `Weather response sent: ${text.length} characters`, text);
-  }
-}
-
-class MemeTemplatesCommand extends BaseCommand {
-  data = new SlashCommandBuilder()
-    .setName('get_meme_templates')
-    .setDescription('List available meme template ids');
-
-  async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    const requester = interaction.user.username;
-
-    await interaction.deferReply({ ephemeral: true });
-    logger.logRequest(requester, '[get_meme_templates]');
-
-    const ids = memeClient.getTemplateIds();
-
-    if (!ids) {
-      await interaction.editReply({
-        content: 'No meme templates found',
-      });
-      return;
-    }
-
-    // Discord messages have a 2000-char limit; chunk if needed
-    const chunks = chunkText(ids, 1900);
-
-    await interaction.editReply({ content: chunks[0] });
-
-    for (let i = 1; i < chunks.length; i++) {
-      await interaction.followUp({ content: chunks[i], ephemeral: true });
-    }
-
-    logger.logReply(requester, `Meme templates sent: ${ids.length} characters`);
-  }
-}
-
-export const commands: BaseCommand[] = [new GenerateCommand(), new AskCommand(), new WeatherCommand(), new MemeTemplatesCommand()];

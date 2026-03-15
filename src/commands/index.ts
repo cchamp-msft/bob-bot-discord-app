@@ -1,17 +1,11 @@
 import { ChatInputCommandInteraction } from 'discord.js';
-import { commands, BaseCommand } from './commands';
+import { commands, rebuildCommands } from './commands';
 
 class CommandHandler {
-  private commandMap: Map<string, BaseCommand> = new Map();
-
-  constructor() {
-    for (const command of commands) {
-      this.commandMap.set(command.data.name, command);
-    }
-  }
-
   async handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-    const command = this.commandMap.get(interaction.commandName);
+    // Single command — always dispatch to it regardless of interaction.commandName
+    // (future-proofs against name changes via config)
+    const command = commands[0];
 
     if (!command) {
       await interaction.reply({
@@ -22,6 +16,11 @@ class CommandHandler {
     }
 
     await command.execute(interaction);
+  }
+
+  /** Rebuild the internal command with the current config name. */
+  rebuild(): void {
+    rebuildCommands();
   }
 
   getCommands() {

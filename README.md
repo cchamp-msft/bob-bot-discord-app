@@ -7,7 +7,7 @@ A Discord bot that monitors @mentions and DMs, routes tool-matched requests to C
 ### Core Capabilities
 - ✅ @mention and DM detection with inline replies
 - ✅ **DM conversation context** — DMs automatically include recent message history
-- ✅ Slash commands with ephemeral responses
+- ✅ Configurable slash command with ephemeral responses
 - ✅ ComfyUI integration for AI image generation
 - ✅ Ollama integration for AI text generation and conversation
 - ✅ **xAI (Grok) integration** — select between Ollama and xAI per pipeline stage (tool eval, final pass, context eval)
@@ -120,7 +120,7 @@ Open **http://localhost:3000/configurator** to configure your Discord token and 
 src/
 ├── index.ts              # Main bot entry point
 ├── bot/                  # Discord client and message handling
-├── commands/             # Slash command definitions
+├── commands/             # Single configurable slash command definition
 ├── api/                  # API clients (ComfyUI, Ollama, xAI, AccuWeather, NFL, SerpAPI, Meme)
 ├── public/               # Web configurator and activity feed
 └── utils/                # Config, logging, file handling, routing, queuing
@@ -153,12 +153,13 @@ outputs/                  # Generated files and logs
 @BobBot delete your last message in #general
 ```
 
-**Slash commands:**
+**Slash command** (ephemeral — visible only to you):
 ```
-/generate prompt: a beautiful sunset landscape
-/ask question: what is the meaning of life?
-/weather location: Seattle type: full
+/bot what is the meaning of life?
+/bot !generate a beautiful sunset landscape
+/bot !weather Seattle
 ```
+The command name is configurable via the web configurator (default: `/bot`).
 
 **[Complete Usage Guide →](docs/USAGE.md)**
 

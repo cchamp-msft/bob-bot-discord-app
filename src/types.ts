@@ -519,6 +519,7 @@ export interface PublicConfig {
     tokenConfigured: boolean;
     /** Explicit bot display name override (empty = use Discord display name). */
     botDisplayName: string;
+    slashCommandName: string;
   };
   /** Discord tool-call limits for channel-only artifact retrieval. */
   discordTools: {

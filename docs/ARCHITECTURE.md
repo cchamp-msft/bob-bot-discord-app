@@ -12,7 +12,7 @@ src/
 │   └── messageHandler.ts # @mention / DM detection, image extraction, and inline replies
 ├── commands/
 │   ├── index.ts          # Command handler
-│   └── commands.ts       # Slash command definitions
+│   └── commands.ts       # Single configurable slash command definition
 ├── api/
 │   ├── index.ts          # API manager
 │   ├── accuweatherClient.ts # AccuWeather API client (weather data)
@@ -93,7 +93,7 @@ When generating an OAuth2 invite link, include these **Bot Permissions**:
 - **Read Message History** — fetch referenced messages in reply chains
 - **Attach Files** — send generated images
 - **Embed Links** — send ComfyUI response embeds
-- **Use Slash Commands** — register and respond to `/generate` and `/ask`
+- **Use Slash Commands** — register and respond to the `/bot` command (name configurable via `SLASH_COMMAND_NAME`)
 
 ## Two-Stage Evaluation & API Routing
 

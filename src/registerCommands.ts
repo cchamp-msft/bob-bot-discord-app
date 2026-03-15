@@ -1,39 +1,52 @@
 import { REST, Routes } from 'discord.js';
 import { config } from './utils/config';
-import { commands } from './commands/commands';
+import { rebuildCommands, commands } from './commands/commands';
 import { logger } from './utils/logger';
 
-const token = config.getDiscordToken();
-if (!token) {
-  console.error('DISCORD_TOKEN not set in .env — cannot register commands');
-  process.exit(1);
-}
-const clientId = config.getClientId();
-if (!clientId) {
-  console.error('DISCORD_CLIENT_ID not set in .env — cannot register commands');
-  process.exit(1);
-}
+export async function registerSlashCommands(): Promise<{ success: boolean; message: string; commandName?: string }> {
+  const token = config.getDiscordToken();
+  if (!token) {
+    return { success: false, message: 'DISCORD_TOKEN not set — cannot register commands' };
+  }
+  const clientId = config.getClientId();
+  if (!clientId) {
+    return { success: false, message: 'DISCORD_CLIENT_ID not set — cannot register commands' };
+  }
 
-const rest = new REST({ version: '10' }).setToken(token);
+  // Rebuild commands to ensure the name reflects the current config
+  rebuildCommands();
 
-async function registerCommands(): Promise<void> {
+  const rest = new REST({ version: '10' }).setToken(token);
+
   try {
-    console.log('Started refreshing application (/) commands...');
-
     const commandData = commands.map((cmd) => cmd.data.toJSON());
 
+    // PUT replaces ALL registered commands — old commands are automatically deregistered
     await rest.put(Routes.applicationCommands(clientId), {
       body: commandData,
     });
 
-    console.log('Successfully registered application (/) commands:');
-    commandData.forEach((cmd) => {
-      console.log(`  /${cmd.name} - ${cmd.description}`);
-    });
+    const commandName = commandData[0]?.name || config.getSlashCommandName();
+    const message = `Successfully registered /${commandName} command`;
+
+    logger.log('success', 'system', message);
+    return { success: true, message, commandName };
   } catch (error) {
-    logger.logError('system', `Error registering commands: ${error}`);
-    process.exit(1);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    logger.logError('system', `Error registering commands: ${errorMsg}`);
+    return { success: false, message: `Registration failed: ${errorMsg}` };
   }
 }
 
-registerCommands();
+// Script-mode execution for `npm run register`
+if (require.main === module) {
+  registerSlashCommands()
+    .then((result) => {
+      console.log(result.message);
+      if (!result.success) process.exit(1);
+    })
+    .catch((error) => {
+      console.error('Error registering commands:', error);
+      process.exit(1);
+    });
+}

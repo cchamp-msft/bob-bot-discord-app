@@ -7,7 +7,7 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 ### Discord Integration
 - ✅ @mention and DM detection with inline replies
 - ✅ **DM conversation context** — DMs automatically include recent message history without requiring explicit replies
-- ✅ Slash commands with ephemeral responses (shareable by user)
+- ✅ Configurable slash command with ephemeral responses — single `/bot` command for all interactions
 - ✅ **Message deletion** — `delete_discord_message` tool lets users ask the bot to delete its own messages by reply, channel, DM username, or message ID
 
 ### AI & Image Generation
@@ -60,7 +60,7 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 
 ## Weather Features
 
-- ✅ **Weather slash command** — `/weather` command with optional location
+- ✅ **Weather via slash command** — `!weather` prefix through the `/bot` command with optional location
 - ✅ **Unified weather routing** — weather keywords route through AccuWeather via the shared API routing path
 
 ## Advanced Configuration

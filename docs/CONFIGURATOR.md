@@ -60,6 +60,7 @@ Events are written as sanitized first-person narratives (e.g. *"Someone wants my
 - **Limits**: Set file size threshold, default timeout, and max attachments per message
 - **Message Flow Overview**: Interactive Mermaid diagram showing the bot's message processing pipeline
 - **Tools Management**: Add/edit/remove tool→API mappings with custom timeouts
+- **Slash Command Registration**: Set the command name (`SLASH_COMMAND_NAME`) and register the slash command via the web UI
 - **Status Console**: Real-time log view tailing today's log file, showing all events (startup, requests, errors, config changes) with color-coded levels
 
 ## Hot-Reload vs Restart Required

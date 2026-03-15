@@ -633,6 +633,19 @@ flowchart TD
           </div>
         </div>
 
+        <hr style="border-color:var(--border);margin:16px 0">
+        <div style="font-size:0.9em;font-weight:600;color:var(--accent);margin:12px 0 8px">Slash Command</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Slash Command Name <span class="note">the /<name> users type — lowercase, no spaces</span></label>
+            <input type="text" id="slash_command_name" data-env="SLASH_COMMAND_NAME" placeholder="bot">
+          </div>
+          <div class="field tiny">
+            <button class="btn-ok btn-sm" id="btnRegisterSlash" onclick="registerSlashCommand()">Register</button>
+          </div>
+        </div>
+        <div id="slashCommandStatus" style="font-size:0.85em;color:var(--muted);margin:-8px 0 8px 0"></div>
+
         <div class="bot-controls">
           <span class="status-label">
             <span class="dot stopped" id="botDot"></span>
@@ -2037,6 +2050,9 @@ flowchart TD
       // Bot Display Name
       document.getElementById('bot_display_name').value = cfg.discord.botDisplayName || '';
 
+      // Slash Command Name
+      document.getElementById('slash_command_name').value = cfg.discord.slashCommandName || '';
+
       // Token field is always empty (write-only) — just show placeholder
       document.getElementById('discord_token').value = '';
       document.getElementById('discord_token').placeholder =
@@ -2845,6 +2861,46 @@ flowchart TD
     } catch (e) {
       conLog(`  ✗ Stop failed: ${e.message}`, 'err');
       document.getElementById('btnStop').disabled = false;
+    }
+  }
+
+  // ── Slash command registration ──────────────────────
+  async function registerSlashCommand() {
+    const statusEl = document.getElementById('slashCommandStatus');
+    const nameInput = document.getElementById('slash_command_name');
+    const btn = document.getElementById('btnRegisterSlash');
+    statusEl.textContent = 'Registering…';
+    statusEl.style.color = 'var(--muted)';
+    btn.disabled = true;
+
+    try {
+      // Save the current name first (in case it changed)
+      const nameVal = nameInput.value.trim();
+      if (nameVal) {
+        await fetch('/api/config/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ env: { SLASH_COMMAND_NAME: nameVal } }),
+        });
+      }
+
+      const res = await fetch('/api/discord/register-slash-command', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        statusEl.textContent = `✓ Registered /${data.commandName || nameVal || 'bot'}`;
+        statusEl.style.color = 'var(--ok)';
+        nameInput.disabled = true;
+        conLog(`[${new Date().toISOString()}] Slash command registered: /${data.commandName}`, 'ok');
+      } else {
+        statusEl.textContent = `✗ ${data.message}`;
+        statusEl.style.color = 'var(--err)';
+        conLog(`[${new Date().toISOString()}] Slash command registration failed: ${data.message}`, 'err');
+      }
+    } catch (e) {
+      statusEl.textContent = `✗ ${e.message}`;
+      statusEl.style.color = 'var(--err)';
+    } finally {
+      btn.disabled = false;
     }
   }
 

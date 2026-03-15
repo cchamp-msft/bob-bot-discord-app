@@ -28,15 +28,16 @@ The bot replies inline — the initial "Processing" message is edited in-place w
 
 You can DM the bot directly without needing an @mention. DMs automatically include recent message history for context.
 
-### Slash Commands
+### Slash Command
 
-Use slash commands for ephemeral responses (visible only to you):
+The bot provides a single configurable slash command (default: `/bot`) for ephemeral responses (visible only to you). Input is processed the same way as DMs and @mentions — `!tool` prefixes dispatch to the matching API, and everything else passes to Ollama:
 ```
-/generate prompt: a beautiful sunset landscape
-/ask question: what is the meaning of life? model: llama2
-/weather location: Seattle
-/weather location: 90210
+/bot what is the meaning of life?
+/bot !generate a beautiful sunset landscape
+/bot !weather Seattle
+/bot !nfl_scores
 ```
+The command name is configurable via `SLASH_COMMAND_NAME` in `.env` or the web configurator.
 
 ## Tools and Routing
 
@@ -105,8 +106,6 @@ The bot uses Ollama for general AI text generation and conversation.
 
 **System prompt**: Customize the bot's personality by setting a system prompt in the configurator.
 
-**Per-request model override**: The `/ask` slash command accepts an optional `model` parameter to override the default on a per-request basis.
-
 See [API_INTEGRATION.md](API_INTEGRATION.md) for detailed Ollama configuration.
 
 ### ComfyUI (Image Generation)
@@ -140,11 +139,11 @@ The bot provides real-time weather data via AccuWeather.
 @BobBot !weather 90210
 ```
 
-**Slash command** (supports default location):
+**Slash command**:
 ```
-/weather                          # Default location
-/weather location: Chicago        # Specified location
-/weather location: 90210          # Zip code
+/bot !weather                     # Default location
+/bot !weather Chicago             # Specified location
+/bot !weather 90210               # Zip code
 ```
 
 **Location formats supported**:

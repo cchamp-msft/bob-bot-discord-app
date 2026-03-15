@@ -1,6 +1,6 @@
 /**
- * Slash command tests — exercises the GenerateCommand response handling
- * for attachment capping, fallback content, and embed toggling.
+ * Slash command tests — exercises the BotCommand response handling
+ * for attachment capping, fallback content, embed toggling, and meme templates.
  */
 
 jest.mock('discord.js', () => ({
@@ -37,11 +37,15 @@ jest.mock('discord.js', () => ({
 jest.mock('../src/utils/config', () => ({
   config: {
     getKeywordConfig: jest.fn(),
+    getToolConfig: jest.fn(),
     getDefaultTimeout: jest.fn(() => 300),
     getErrorMessage: jest.fn(() => 'Error'),
     getImageResponseIncludeEmbed: jest.fn(() => false),
     getMaxAttachments: jest.fn(() => 2),
+    getSlashCommandName: jest.fn(() => 'bot'),
+    getOllamaModel: jest.fn(() => 'llama3'),
   },
+  COMMAND_PREFIX: '!',
 }));
 
 jest.mock('../src/utils/logger', () => ({
@@ -81,12 +85,16 @@ jest.mock('../src/api/memeClient', () => ({
   },
 }));
 
+jest.mock('../src/utils/promptBuilder', () => ({
+  buildAskPrompt: jest.fn((q: string) => `<ask>${q}</ask>`),
+}));
+
 import { config } from '../src/utils/config';
 import { commands } from '../src/commands/commands';
 
-const generateCommand = commands.find((c) => c.data.name === 'generate_image')!;
+const botCommand = commands[0];
 
-describe('GenerateCommand handleResponse', () => {
+describe('BotCommand handleComfyUIResponse', () => {
   const { fileHandler } = require('../src/utils/fileHandler');
 
   afterEach(() => {
@@ -126,7 +134,7 @@ describe('GenerateCommand handleResponse', () => {
       data: { images: ['a', 'b', 'c', 'd'] },
     };
 
-    await (generateCommand as any).handleResponse(interaction, apiResult, 'testuser');
+    await (botCommand as any).handleComfyUIResponse(interaction, apiResult, 'testuser');
 
     // editReply should have first batch of 2
     expect(interaction.editReply).toHaveBeenCalledWith(
@@ -165,7 +173,7 @@ describe('GenerateCommand handleResponse', () => {
       data: { images: ['a'] },
     };
 
-    await (generateCommand as any).handleResponse(interaction, apiResult, 'testuser');
+    await (botCommand as any).handleComfyUIResponse(interaction, apiResult, 'testuser');
 
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -186,7 +194,7 @@ describe('GenerateCommand handleResponse', () => {
       data: { images: ['a'] },
     };
 
-    await (generateCommand as any).handleResponse(interaction, apiResult, 'testuser');
+    await (botCommand as any).handleComfyUIResponse(interaction, apiResult, 'testuser');
 
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -208,7 +216,7 @@ describe('GenerateCommand handleResponse', () => {
       data: { images: ['a'] },
     };
 
-    await (generateCommand as any).handleResponse(interaction, apiResult, 'testuser');
+    await (botCommand as any).handleComfyUIResponse(interaction, apiResult, 'testuser');
 
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -218,44 +226,43 @@ describe('GenerateCommand handleResponse', () => {
   });
 });
 
-describe('MemeTemplatesCommand', () => {
-  const memeTemplatesCommand = commands.find((c) => c.data.name === 'get_meme_templates')!;
+describe('BotCommand meme templates via !meme_templates', () => {
   const { memeClient } = require('../src/api/memeClient');
 
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  function createInteraction() {
+  function createInteraction(input: string) {
     return {
       user: { username: 'testuser' },
-      options: { getString: jest.fn() },
+      options: { getString: jest.fn((_name: string) => input) },
       deferReply: jest.fn().mockResolvedValue(undefined),
       editReply: jest.fn().mockResolvedValue(undefined),
       followUp: jest.fn().mockResolvedValue(undefined),
     } as any;
   }
 
-  it('should be registered as a command', () => {
-    expect(memeTemplatesCommand).toBeDefined();
-    expect(memeTemplatesCommand.data.name).toBe('get_meme_templates');
+  it('should be registered as the bot command', () => {
+    expect(botCommand).toBeDefined();
+    expect(botCommand.data.name).toBe('bot');
   });
 
-  it('should return comma-separated template ids', async () => {
-    const interaction = createInteraction();
+  it('should return comma-separated template ids via !meme_templates', async () => {
+    const interaction = createInteraction('!meme_templates');
     (memeClient.getTemplateIds as jest.Mock).mockReturnValue('drake, aag, doge');
 
-    await memeTemplatesCommand.execute(interaction);
+    await botCommand.execute(interaction);
 
     expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
     expect(interaction.editReply).toHaveBeenCalledWith({ content: 'drake, aag, doge' });
   });
 
   it('should return helpful message when templates not loaded', async () => {
-    const interaction = createInteraction();
+    const interaction = createInteraction('!meme_templates');
     (memeClient.getTemplateIds as jest.Mock).mockReturnValue('');
 
-    await memeTemplatesCommand.execute(interaction);
+    await botCommand.execute(interaction);
 
     expect(interaction.editReply).toHaveBeenCalledWith({
       content: 'No meme templates found',

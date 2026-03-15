@@ -294,6 +294,12 @@ class Config {
     return process.env.DISCORD_CLIENT_ID || '';
   }
 
+  getSlashCommandName(): string {
+    const raw = (process.env.SLASH_COMMAND_NAME || 'bot').trim().toLowerCase();
+    // Discord command names: 1-32 chars, lowercase, alphanumeric + hyphens
+    return /^[\w-]{1,32}$/.test(raw) ? raw : 'bot';
+  }
+
   getComfyUIEndpoint(): string {
     return process.env.COMFYUI_ENDPOINT || 'http://localhost:8190';
   }
@@ -1619,6 +1625,7 @@ class Config {
         clientId: process.env.DISCORD_CLIENT_ID || '',
         tokenConfigured: !!process.env.DISCORD_TOKEN,
         botDisplayName: this.getBotDisplayName(),
+        slashCommandName: this.getSlashCommandName(),
       },
       discordTools: {
         artifactMaxMessages: this.getDiscordArtifactMaxMessages(),

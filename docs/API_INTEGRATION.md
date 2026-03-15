@@ -22,10 +22,10 @@ The configurator includes a reset-to-default button to restore the original syst
 
 ### Per-Request Model Override
 
-The `/ask` slash command accepts an optional `model` parameter to override the default model on a per-request basis:
+The configured Ollama model can be changed globally via the configurator or `OLLAMA_MODEL` env var. The `/bot` slash command routes natural-language input to Ollama automatically:
 
 ```
-/ask question: explain quantum physics model: llama2
+/bot explain quantum physics
 ```
 
 ### Vision (Image-to-Text)
@@ -179,7 +179,7 @@ The bot integrates with [AccuWeather](https://developer.accuweather.com) for rea
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ACCUWEATHER_API_KEY` | Yes | API key from AccuWeather Developer Portal |
-| `ACCUWEATHER_DEFAULT_LOCATION` | No | Default location for the `/weather` slash command when no location is specified. Keyword-based weather commands always require a location (e.g. `weather Seattle`). |
+| `ACCUWEATHER_DEFAULT_LOCATION` | No | Default location when no location is specified (e.g. `!weather` with no argument). |
 | `ACCUWEATHER_ENDPOINT` | No | Base URL override (default: `https://dataservice.accuweather.com`) |
 
 ### Location Resolution
@@ -201,16 +201,16 @@ A single weather keyword is configured in `config/tools.default.xml`, routing th
 
 The default weather output type can be changed in the configurator dropdown or via the `ACCUWEATHER_DEFAULT_WEATHER_TYPE` environment variable. It defaults to `full` (current conditions + 10-day forecast).
 
-> **Note:** Unlike the `/weather` slash command which falls back to `ACCUWEATHER_DEFAULT_LOCATION`, keyword-based weather commands require a location. Sending just `!weather` with no location will prompt the user to include a query.
+> **Note:** Both the `/bot !weather` slash command and DM/mention `!weather` commands fall back to `ACCUWEATHER_DEFAULT_LOCATION` when no location is specified.
 
 ### Weather Slash Command
 
-The `/weather` slash command supports an optional `location` parameter. When no location is specified, it falls back to `ACCUWEATHER_DEFAULT_LOCATION`:
+The `/bot` slash command supports weather via `!weather`. When no location is specified, it falls back to `ACCUWEATHER_DEFAULT_LOCATION`:
 
 ```
-/weather                          # Default location
-/weather location: Chicago        # Specified location
-/weather location: 90210          # Zip code
+/bot !weather                     # Default location
+/bot !weather Chicago             # Specified location
+/bot !weather 90210               # Zip code
 ```
 
 | Parameter | Type | Description |
