@@ -130,6 +130,107 @@ The pipeline infers whether a final synthesis pass is needed based on the user's
 
 When no tools are invoked the Stage 1 draft is returned directly without a final pass, regardless of intent or model/provider configuration.
 
+## Ollama Fixup Layer
+
+The fixup layer recovers tool calls from Ollama models that return them as text instead of native `tool_calls` format. It runs automatically after every Ollama response.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OLLAMA_FIXUP_ENABLED` | `true` | Global toggle for all fixup rules |
+| `OLLAMA_FIXUP_EXTRACT_XML_TOOLS` | `true` | Parse `<function_call>`/`<tool_call>` XML blocks into tool calls |
+| `OLLAMA_FIXUP_EXTRACT_JSON_TOOLS` | `true` | Parse bare `{"name":...,"arguments":...}` JSON into tool calls |
+| `OLLAMA_FIXUP_REPAIR_URLS` | `true` | Fix double-wrapped links, missing protocols, etc. |
+| `OLLAMA_FIXUP_STRIP_TOOL_PREAMBLE` | `true` | Remove preamble text ("I'll", "Let me", "Sure") when tool calls are extracted |
+
+### How It Works
+
+Four rules are applied sequentially:
+
+1. **Extract XML Tools** — Matches `<function_call>`, `<tool_call>`, `<function>`, `<tool_use>` blocks, extracts JSON, validates tool names, and removes matched blocks from text
+2. **Extract JSON Tools** — Finds bare JSON with `name` and `arguments` keys, parses and validates, removes from text
+3. **Repair URLs** — Fixes double-wrapped markdown links, double brackets, backtick-wrapped URLs, adds missing `https://` to `www.` URLs
+4. **Strip Preamble** — If tool calls were extracted and remaining text is short preamble, clears it
+
+### Example
+
+If a model returns:
+```
+Sure, I'll search for that. <tool_call>{ "name": "web_search", "arguments": {"query": "example"} }</tool_call>
+```
+Fixup extracts the `web_search` tool call, removes the XML tags, and strips the preamble text.
+
+## Ability Retry
+
+When an API call fails (e.g., AccuWeather returns "location not found"), the bot can re-prompt the LLM to refine parameters and retry the call.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ABILITY_RETRY_ENABLED` | `false` | Enable/disable retry globally |
+| `ABILITY_RETRY_MAX_RETRIES` | `2` | Maximum retries after initial attempt (0–10) |
+| `ABILITY_RETRY_MODEL` | Falls back to `OLLAMA_MODEL` | Ollama model used for parameter refinement |
+| `ABILITY_RETRY_PROMPT` | Built-in refinement prompt | Custom instruction for the refinement step |
+| `ABILITY_RETRY_TIMEOUT` | Falls back to `OLLAMA_TIMEOUT` | HTTP timeout in milliseconds for retry calls |
+
+### How It Works
+
+1. An API call fails with an error (e.g., "location not found")
+2. The bot sends the original user input, failed parameters, and error message to the LLM
+3. The LLM generates refined parameters (e.g., corrects a misspelled city name)
+4. The API call is retried with the refined parameters
+5. Stops on success or after `ABILITY_RETRY_MAX_RETRIES` attempts
+
+### Per-Tool Overrides
+
+Tools can override the global retry settings in `config/tools.xml`:
+
+```xml
+<tool>
+  <name>weather</name>
+  <api>accuweather</api>
+  <retry>
+    <enabled>true</enabled>
+    <maxRetries>3</maxRetries>
+    <model>llama3</model>
+    <prompt>Refine the location parameter...</prompt>
+  </retry>
+</tool>
+```
+
+## DM Context
+
+When enabled, the bot fetches the requester's recent private DM history and includes it as background context when responding to guild (server) messages. This allows the bot to reference prior private conversations.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DM_CONTEXT_ENABLED` | `false` | Enable DM history fetching for guild messages |
+| `DM_CONTEXT_MAX_MESSAGES` | `10` | Maximum DM messages to fetch (0–50; 0 disables) |
+
+### How It Works
+
+- Only activates when responding to guild channel messages (not DM-to-DM)
+- Fetches the requester's recent DM history with the bot
+- Context is tagged as `dm_private` so the AI treats it as background context
+- Returns empty on permission errors (e.g., user has DMs disabled)
+
+## Discord Artifact Settings
+
+Controls the `get_discord_artifact` tool's behavior when retrieving recent channel history without a specific message ID or search query.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DISCORD_ARTIFACT_MAX_MESSAGES` | `5` | Maximum messages returned for channel-only retrieval (1–20) |
+| `DISCORD_ARTIFACT_MAX_IMAGES` | `1` | Maximum image attachment URLs returned (0–5) |
+
+These limits apply only to channel-wide retrieval. Message ID lookups and search queries are not affected.
+
 ## Context Evaluation
 
 Context evaluation uses Ollama to filter conversation history before including it in requests. This improves response quality when conversations shift topics by keeping only relevant messages.

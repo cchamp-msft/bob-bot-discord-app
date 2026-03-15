@@ -9,6 +9,7 @@ This guide will get you up and running with Bob Bot in just a few minutes.
 - A Discord Bot Token (can be configured after install via the web configurator)
 - ComfyUI instance (optional, for image generation)
 - Ollama instance (optional, for text generation)
+- xAI API key (optional, alternative LLM provider — [x.ai](https://x.ai/))
 - AccuWeather API key (optional, for weather data — free tier at [developer.accuweather.com](https://developer.accuweather.com))
 - SerpAPI key (optional, for web search — free tier at [serpapi.com](https://serpapi.com))
 - No API key required for NFL data (ESPN public API)
@@ -44,7 +45,11 @@ cp .env.example .env
 npm run dev
 ```
 
-The HTTP server starts immediately. Open **http://localhost:3000/configurator** to:
+Two servers start automatically:
+- **http://localhost:3000** — Web configurator for managing all settings
+- **http://localhost:3003** — Outputs server for serving generated files (images, logs)
+
+Open **http://localhost:3000/configurator** to:
 1. Enter your Discord bot **token** and **client ID**
 2. Click **Test** to verify the token works
 3. Click **Save Changes** to persist to `.env`
@@ -75,7 +80,7 @@ The bot uses a single configurable `/bot` slash command (name controlled by `SLA
 
 ## What's Next?
 
-- **[Configure APIs](API_INTEGRATION.md)** — Set up ComfyUI, Ollama, AccuWeather, NFL, and SerpAPI
+- **[Configure APIs](API_INTEGRATION.md)** — Set up ComfyUI, Ollama, xAI, AccuWeather, NFL, SerpAPI, and Web Fetch
 - **[Web Configurator](CONFIGURATOR.md)** — Learn about the web-based configuration interface
 - **[Usage Guide](USAGE.md)** — Learn how to use the bot with examples
 - **[Troubleshooting](TROUBLESHOOTING.md)** — Fix common issues

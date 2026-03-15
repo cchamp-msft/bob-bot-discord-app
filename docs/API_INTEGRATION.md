@@ -344,6 +344,42 @@ Use `!meme_templates` (plural) for template listing; `!meme_template` (singular)
 
 The bot finds the closest matching template by name or ID and returns the generated meme image URL, which Discord auto-embeds as an inline image.
 
+## Web Fetch Configuration
+
+The bot can fetch web pages and images by URL for LLM analysis via the `fetch_webpage` tool.
+
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `WEBFETCH_ENABLED` | No | `true` | Master toggle for web fetch |
+| `WEBFETCH_TIMEOUT` | No | `15000` | HTTP timeout in milliseconds per request |
+| `WEBFETCH_MAX_TEXT_SIZE` | No | `5242880` (5 MB) | Maximum text response size in bytes |
+| `WEBFETCH_MAX_IMAGE_SIZE` | No | `10485760` (10 MB) | Maximum image response size in bytes |
+| `WEBFETCH_MAX_CONTENT_CHARS` | No | `8000` | Character limit for content sent to the LLM |
+| `WEBFETCH_MAX_REDIRECTS` | No | `3` | Maximum redirect hops |
+| `WEBFETCH_ROBOTS_TXT` | No | `disabled` | Robots.txt handling: `follow` (block and fallback), `ignore` (log only), `disabled` (skip) |
+| `WEBFETCH_USER_AGENT` | No | `BobBot/1.0` | User-Agent header sent with requests |
+
+### SSRF Protection
+
+Web Fetch includes comprehensive Server-Side Request Forgery protection:
+- Blocks private/reserved IPs (RFC 1918 ranges, link-local, CGNAT, loopback)
+- Blocks `.local`, `.internal`, `.localdomain`, `.localhost` TLDs
+- Pre-validates DNS resolution (fails closed if DNS cannot resolve)
+- Validates every redirect hop individually
+
+### Fallback Behavior
+
+When a page fetch fails (captcha detected, timeout, DNS error), the bot automatically falls back to a SerpAPI web search using the URL as the query. Tracking parameters and locale path segments are stripped from the fallback query.
+
+### Usage Examples
+
+```
+@BobBot !fetch_webpage https://example.com/article
+@BobBot !fetch_webpage https://news.ycombinator.com
+```
+
 ## Testing API Connections
 
 All API endpoints can be tested through the web configurator:

@@ -188,7 +188,7 @@ npm test
 npm run test:watch
 ```
 
-1,890+ unit tests across 41 suites covering core functionality. No Discord connection or external APIs required.
+1,894 unit tests across 41 suites covering core functionality. No Discord connection or external APIs required.
 
 ## Documentation
 

@@ -18,6 +18,7 @@ Mention the bot with a tool name and prompt:
 @BobBot !web_search what is the weather like today
 @BobBot !meme success kid | finished all my tasks | on a Monday
 @BobBot !meme_templates
+@BobBot !fetch_webpage https://example.com/article
 @BobBot delete that message
 @BobBot delete your last message in #general
 ```
@@ -54,6 +55,7 @@ The bot uses tool names prefixed with `!` to route requests to different APIs. T
 | `!web_search` | SerpAPI | `@BobBot !web_search latest AI news` |
 | `!meme` | Memegen | `@BobBot !meme success kid \| finished all my tasks \| on a Monday` |
 | `!meme_templates` | Memegen | `@BobBot !meme_templates` |
+| `!fetch_webpage` | Web Fetch | `@BobBot !fetch_webpage https://example.com/article` |
 | *(implicit)* | Discord | `@BobBot delete that message` |
 | *(implicit)* | Discord | `@BobBot delete your last message in #general` |
 
@@ -188,6 +190,22 @@ The bot provides web search via Google Search through SerpAPI.
 > **Note**: AI Overview availability is locale-dependent. Configure `SERPAPI_HL` (language) and `SERPAPI_GL` (country) for best results. Optional `SERPAPI_LOCATION` can further improve coverage.
 
 See [API_INTEGRATION.md](API_INTEGRATION.md) for SerpAPI configuration and [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for AI Overview issues.
+
+### Web Fetch (Page Retrieval)
+
+The bot can fetch web pages and images by URL for analysis.
+
+**Basic usage**:
+```
+@BobBot !fetch_webpage https://example.com/article
+@BobBot !fetch_webpage https://news.ycombinator.com
+```
+
+The bot retrieves the page content, extracts text (stripping scripts, styles, and hidden elements), and passes it to the LLM for analysis. Images are base64-encoded and validated by format.
+
+**Safety**: Web Fetch includes SSRF protection (blocks private/reserved IPs and local domains), DNS pre-validation, and redirect-hop validation. If a page returns a captcha or fails to load, the bot falls back to a SerpAPI web search automatically.
+
+See [API_INTEGRATION.md](API_INTEGRATION.md) for Web Fetch configuration.
 
 ## Activity Feed
 

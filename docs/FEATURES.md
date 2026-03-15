@@ -27,6 +27,7 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 - ✅ AccuWeather integration for real-time weather data (current conditions + 10-day forecast)
 - ✅ **NFL game data** — live scores and news via ESPN, with optional date-based lookups and news filtering
 - ✅ **Web search** — Google Search via SerpAPI with AI Overview support; `!web_search` returns Google search results with AI Overview summaries (AI Overview availability is locale-dependent — configure `SERPAPI_HL`/`SERPAPI_GL`; optional `SERPAPI_LOCATION` can further improve coverage)
+- ✅ **Web fetch** — `fetch_webpage` tool retrieves web pages and images by URL for LLM analysis; includes SSRF protection (blocks private/reserved IPs, validates DNS, checks redirect hops), robots.txt support, captcha detection with SerpAPI fallback, and configurable size limits
 - ✅ **Meme generation** — create meme images from popular templates via [memegen.link](https://memegen.link); `!meme` with template name and text lines, and `!meme_templates` to list template IDs; templates cached locally and refreshed every 7 days
 
 ## Advanced Features
@@ -35,6 +36,8 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 - ✅ Serial request processing with max 1 concurrent per API
 - ✅ Configurable per-tool timeouts (default: 300s)
 - ✅ **Two-stage evaluation** — Ollama responses are checked for first-line tool directives, enabling automatic ability routing without a fallback classifier
+- ✅ **Ollama fixup layer** — recovers tool calls from models that return them as text instead of native `tool_calls` format; extracts XML/JSON tool blocks, repairs malformed URLs, and strips preamble text
+- ✅ **Ability retry** — when an API call fails (e.g., location not found), the bot can re-prompt Ollama to refine parameters and retry; configurable globally and per-tool with custom model and prompt overrides
 - ✅ **Rate-limited error messages** — configurable user-facing error messages with minimum interval
 
 ### Context & Conversation Management
@@ -77,4 +80,4 @@ This document contains the comprehensive list of Bob Bot's features and capabili
 
 ## Development & Testing
 
-- ✅ **Unit test suite** — 1,800+ tests across 40+ suites covering core functionality
+- ✅ **Unit test suite** — 1,894 tests across 41 suites covering core functionality
