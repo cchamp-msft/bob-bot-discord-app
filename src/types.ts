@@ -668,6 +668,7 @@ export interface PublicConfig {
     extractJsonTools: boolean;
     repairUrls: boolean;
     stripToolPreamble: boolean;
+    fixTables: boolean;
   };
   xai: {
     endpoint: string;

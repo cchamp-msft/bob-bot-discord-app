@@ -960,6 +960,11 @@ class Config {
     return process.env.OLLAMA_FIXUP_STRIP_TOOL_PREAMBLE !== 'false';
   }
 
+  /** Convert markdown/ASCII tables to monospace code blocks for Discord. Default: true. */
+  getOllamaFixupFixTables(): boolean {
+    return process.env.OLLAMA_FIXUP_FIX_TABLES !== 'false';
+  }
+
   /**
    * Whether the final pass requires a separate call.
    * Returns true when the tool-eval and final-pass stages use different
@@ -1449,6 +1454,7 @@ class Config {
     const prevFixupExtractJson = this.getOllamaFixupExtractJsonTools();
     const prevFixupRepairUrls = this.getOllamaFixupRepairUrls();
     const prevFixupStripPreamble = this.getOllamaFixupStripToolPreamble();
+    const prevFixupFixTables = this.getOllamaFixupFixTables();
     const prevXaiEndpoint = this.getXaiEndpoint();
     const prevXaiApiKey = this.getXaiApiKey();
     const prevXaiModel = this.getXaiModel();
@@ -1574,6 +1580,7 @@ class Config {
     if (this.getOllamaFixupExtractJsonTools() !== prevFixupExtractJson) reloaded.push('OLLAMA_FIXUP_EXTRACT_JSON_TOOLS');
     if (this.getOllamaFixupRepairUrls() !== prevFixupRepairUrls) reloaded.push('OLLAMA_FIXUP_REPAIR_URLS');
     if (this.getOllamaFixupStripToolPreamble() !== prevFixupStripPreamble) reloaded.push('OLLAMA_FIXUP_STRIP_TOOL_PREAMBLE');
+    if (this.getOllamaFixupFixTables() !== prevFixupFixTables) reloaded.push('OLLAMA_FIXUP_FIX_TABLES');
     if (this.getXaiEndpoint() !== prevXaiEndpoint) reloaded.push('XAI_BASE_URL');
     if (this.getXaiApiKey() !== prevXaiApiKey) reloaded.push('XAI_API_KEY');
     if (this.getXaiModel() !== prevXaiModel) reloaded.push('XAI_MODEL');
@@ -1759,6 +1766,7 @@ class Config {
         extractJsonTools: this.getOllamaFixupExtractJsonTools(),
         repairUrls: this.getOllamaFixupRepairUrls(),
         stripToolPreamble: this.getOllamaFixupStripToolPreamble(),
+        fixTables: this.getOllamaFixupFixTables(),
       },
       xai: {
         endpoint: this.getXaiEndpoint(),

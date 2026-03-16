@@ -10,6 +10,7 @@ jest.mock('../src/utils/config', () => ({
     getOllamaFixupExtractJsonTools: jest.fn(() => true),
     getOllamaFixupRepairUrls: jest.fn(() => true),
     getOllamaFixupStripToolPreamble: jest.fn(() => true),
+    getOllamaFixupFixTables: jest.fn(() => true),
   },
 }));
 
@@ -29,6 +30,7 @@ import {
   extractJsonToolCalls,
   repairUrls,
   stripToolPreamble,
+  fixTables,
   applyFixups,
   type FixupContext,
 } from '../src/utils/ollamaFixup';
@@ -235,6 +237,89 @@ describe('stripToolPreamble', () => {
   });
 });
 
+// ── fixTables ────────────────────────────────────────────────
+
+describe('fixTables', () => {
+  it('converts a markdown table to a monospace code block', () => {
+    const md = [
+      '| Name  | Age |',
+      '| ----- | --- |',
+      '| Alice | 30  |',
+      '| Bob   | 25  |',
+    ].join('\n');
+    const ctx = makeCtx(md);
+    fixTables(ctx);
+    expect(ctx.text).toContain('```');
+    expect(ctx.text).toContain('Alice');
+    expect(ctx.text).toContain('Bob');
+    // Should not contain pipe delimiters inside the code block
+    const inner = ctx.text.split('```')[1];
+    expect(inner).not.toContain('|');
+    expect(ctx.log).toHaveLength(1);
+  });
+
+  it('preserves surrounding text when converting a table', () => {
+    const md = [
+      'Here are the results:',
+      '',
+      '| Name  | Age |',
+      '| ----- | --- |',
+      '| Alice | 30  |',
+      '',
+      'That is all.',
+    ].join('\n');
+    const ctx = makeCtx(md);
+    fixTables(ctx);
+    expect(ctx.text).toContain('Here are the results:');
+    expect(ctx.text).toContain('That is all.');
+    expect(ctx.text).toContain('```');
+  });
+
+  it('normalises an ASCII table already inside a code block', () => {
+    const block = [
+      '```',
+      '| Name | Age |',
+      '| --- | --- |',
+      '| Alice | 30 |',
+      '| Bob | 25 |',
+      '```',
+    ].join('\n');
+    const ctx = makeCtx(block);
+    fixTables(ctx);
+    // Should still be in a code block, with aligned columns
+    expect(ctx.text).toMatch(/^```\n/);
+    expect(ctx.text).toMatch(/\n```$/);
+    const inner = ctx.text.split('```')[1].trim();
+    const lines = inner.split('\n');
+    // All lines should have the same length (padded)
+    expect(lines.length).toBe(3); // header + 2 data rows (separator stripped)
+    expect(lines[0].length).toBe(lines[1].length);
+  });
+
+  it('does not modify text without tables', () => {
+    const ctx = makeCtx('Just some normal text with no tables.');
+    fixTables(ctx);
+    expect(ctx.text).toBe('Just some normal text with no tables.');
+    expect(ctx.log).toHaveLength(0);
+  });
+
+  it('handles a table with uneven column counts', () => {
+    const md = [
+      '| A | B | C |',
+      '| - | - | - |',
+      '| 1 | 2 |',
+      '| 3 | 4 | 5 |',
+    ].join('\n');
+    const ctx = makeCtx(md);
+    fixTables(ctx);
+    expect(ctx.text).toContain('```');
+    // Should not throw, and should pad missing columns
+    const inner = ctx.text.split('```')[1].trim();
+    const lines = inner.split('\n');
+    expect(lines.length).toBe(3); // header + 2 data rows
+  });
+});
+
 // ── applyFixups orchestrator ─────────────────────────────────
 
 describe('applyFixups', () => {
@@ -244,6 +329,7 @@ describe('applyFixups', () => {
     (config.getOllamaFixupExtractJsonTools as jest.Mock).mockReturnValue(true);
     (config.getOllamaFixupRepairUrls as jest.Mock).mockReturnValue(true);
     (config.getOllamaFixupStripToolPreamble as jest.Mock).mockReturnValue(true);
+    (config.getOllamaFixupFixTables as jest.Mock).mockReturnValue(true);
   });
 
   it('returns unmodified when fixup disabled', () => {
@@ -321,5 +407,19 @@ describe('applyFixups', () => {
   it('repairs URLs even when no tool calls present', () => {
     const result = applyFixups('Visit [[https://example.com]] today', [], mockTools);
     expect(result.text).toBe('Visit https://example.com today');
+  });
+
+  it('converts markdown tables when fixTables enabled', () => {
+    const md = '| A | B |\n| - | - |\n| 1 | 2 |';
+    const result = applyFixups(md, [], mockTools);
+    expect(result.text).toContain('```');
+    expect(result.text).not.toMatch(/\|.*\|/);
+  });
+
+  it('respects individual toggle: fixTables disabled', () => {
+    (config.getOllamaFixupFixTables as jest.Mock).mockReturnValue(false);
+    const md = '| A | B |\n| - | - |\n| 1 | 2 |';
+    const result = applyFixups(md, [], mockTools);
+    expect(result.text).toBe(md);
   });
 });

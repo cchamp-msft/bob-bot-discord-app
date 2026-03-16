@@ -124,6 +124,166 @@ export function stripToolPreamble(ctx: FixupContext): void {
   }
 }
 
+// ── Rule 5: Fix tables for Discord ───────────────────────────
+
+/**
+ * Matches a markdown table: one or more `| ... |` rows with a separator
+ * line of `| ---` between the header and body.
+ *
+ * Capture strategy: find contiguous runs of lines that start/end with `|`.
+ */
+const MD_TABLE_LINE_RE = /^\s*\|.*\|\s*$/;
+const MD_SEPARATOR_RE  = /^\s*\|[\s:]*-+[\s:|-]*\|\s*$/;
+
+/**
+ * Detect a fenced code block that contains an ASCII-art table
+ * (lines with `|` separators).  We fix column alignment inside those.
+ */
+const FENCED_BLOCK_RE = /```[^\n]*\n([\s\S]*?)```/g;
+
+/** Split a `| a | b | c |` line into cell strings (trimmed). */
+function splitTableRow(line: string): string[] {
+  // Strip leading/trailing pipe and split on interior pipes
+  return line
+    .replace(/^\s*\|/, '')
+    .replace(/\|\s*$/, '')
+    .split('|')
+    .map(c => c.trim());
+}
+
+/** Is this line a markdown separator row like `| --- | --- |`? */
+function isSeparatorRow(line: string): boolean {
+  return MD_SEPARATOR_RE.test(line);
+}
+
+/**
+ * Render rows (string[][]) into a monospace text table with space-padded columns.
+ * Returns the table without surrounding fences (caller adds those).
+ */
+function renderMonospaceTable(rows: string[][]): string {
+  if (rows.length === 0) return '';
+
+  // Determine max column count across all rows
+  const colCount = Math.max(...rows.map(r => r.length));
+
+  // Pad every row to have `colCount` columns
+  const normalised = rows.map(r => {
+    const padded = [...r];
+    while (padded.length < colCount) padded.push('');
+    return padded;
+  });
+
+  // Calculate max width per column
+  const widths: number[] = Array.from({ length: colCount }, () => 0);
+  for (const row of normalised) {
+    for (let i = 0; i < colCount; i++) {
+      widths[i] = Math.max(widths[i], row[i].length);
+    }
+  }
+
+  // Render each row with fixed-width padding
+  return normalised
+    .map(row =>
+      row.map((cell, i) => cell.padEnd(widths[i])).join('  ')
+    )
+    .join('\n');
+}
+
+/**
+ * Convert markdown tables (pipe-delimited with separator row) to
+ * monospace code blocks so they render properly on Discord.
+ * Also normalises ASCII tables already inside ``` fences.
+ */
+export function fixTables(ctx: FixupContext): void {
+  const original = ctx.text;
+
+  // --- Pass 1: fix malformed ASCII tables inside existing code blocks ---
+  ctx.text = ctx.text.replace(FENCED_BLOCK_RE, (_match, inner: string) => {
+    const lines: string[] = inner.split('\n');
+    // Only treat as a table if most lines contain pipes
+    const pipeLines = lines.filter(l => l.includes('|') && l.trim().length > 0);
+    if (pipeLines.length < 2) return _match;
+
+    const rows: string[][] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) continue;
+      if (isSeparatorRow(trimmed)) continue;           // skip separator rows
+      if (!trimmed.includes('|')) {
+        // Non-table line inside the block — keep it as-is by treating as single-cell
+        rows.push([trimmed]);
+        continue;
+      }
+      rows.push(splitTableRow(trimmed));
+    }
+
+    if (rows.length === 0) return _match;
+    return '```\n' + renderMonospaceTable(rows) + '\n```';
+  });
+
+  // --- Pass 2: convert bare markdown tables (not inside fences) to monospace blocks ---
+  ctx.text = convertMarkdownTables(ctx.text);
+
+  if (ctx.text !== original) {
+    ctx.log.push('FIXUP: converted tables for Discord rendering');
+  }
+}
+
+/**
+ * Find contiguous runs of markdown table lines (header + separator + body rows)
+ * that are NOT inside fenced code blocks, and replace each with a
+ * fenced monospace block.
+ */
+function convertMarkdownTables(text: string): string {
+  const lines = text.split('\n');
+  const result: string[] = [];
+  let i = 0;
+  let inFence = false;
+
+  while (i < lines.length) {
+    // Track fenced code blocks so we don't double-convert
+    if (/^\s*```/.test(lines[i])) {
+      inFence = !inFence;
+      result.push(lines[i]);
+      i++;
+      continue;
+    }
+
+    // Look for the start of a markdown table: a pipe-row followed by a separator row
+    if (
+      !inFence &&
+      MD_TABLE_LINE_RE.test(lines[i]) &&
+      i + 1 < lines.length &&
+      isSeparatorRow(lines[i + 1])
+    ) {
+      // Collect all contiguous pipe-delimited rows
+      const tableLines: string[] = [lines[i]];
+      let j = i + 1;
+      while (j < lines.length && MD_TABLE_LINE_RE.test(lines[j])) {
+        tableLines.push(lines[j]);
+        j++;
+      }
+
+      // Parse into rows, skipping separator lines
+      const rows: string[][] = [];
+      for (const tl of tableLines) {
+        if (isSeparatorRow(tl)) continue;
+        rows.push(splitTableRow(tl));
+      }
+
+      result.push('```');
+      result.push(renderMonospaceTable(rows));
+      result.push('```');
+      i = j;
+    } else {
+      result.push(lines[i]);
+      i++;
+    }
+  }
+
+  return result.join('\n');
+}
+
 // ── Shared helpers ───────────────────────────────────────────
 
 /**
@@ -194,6 +354,10 @@ export function applyFixups(
 
   if (config.getOllamaFixupStripToolPreamble()) {
     stripToolPreamble(ctx);
+  }
+
+  if (config.getOllamaFixupFixTables()) {
+    fixTables(ctx);
   }
 
   return ctx;
