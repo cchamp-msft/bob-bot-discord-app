@@ -1,4 +1,4 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosError, AxiosInstance } from 'axios';
 import { randomUUID } from 'crypto';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
@@ -245,10 +245,10 @@ export function resolveSeed(seed: number): number {
 }
 
 /**
- * Walk all sampler/noise nodes in a parsed workflow and resolve their seed values.
- * Seeds of -1 are replaced with a fresh random integer; other values are kept.
+ * Walk ALL nodes in a parsed workflow and resolve seed values of -1 to random.
+ * Checks every node for `seed` and `noise_seed` fields (not just known types)
+ * so that custom/community nodes with hardcoded -1 seeds are also randomized.
  * This must run per-request so that random seeds differ between generations.
- * Handles KSampler (seed), KSamplerAdvanced (noise_seed), and RandomNoise (noise_seed).
  */
 export function resolveWorkflowSeeds(workflow: Record<string, unknown>): void {
   for (const nodeId of Object.keys(workflow)) {
@@ -256,11 +256,10 @@ export function resolveWorkflowSeeds(workflow: Record<string, unknown>): void {
     const inputs = node.inputs as Record<string, unknown> | undefined;
     if (!inputs) continue;
 
-    if (node.class_type === 'KSampler' && typeof inputs.seed === 'number') {
+    if (typeof inputs.seed === 'number') {
       inputs.seed = resolveSeed(inputs.seed);
     }
-    if ((node.class_type === 'KSamplerAdvanced' || node.class_type === 'RandomNoise')
-        && typeof inputs.noise_seed === 'number') {
+    if (typeof inputs.noise_seed === 'number') {
       inputs.noise_seed = resolveSeed(inputs.noise_seed);
     }
   }
@@ -513,30 +512,37 @@ export function buildDefaultWorkflow(params: DefaultWorkflowParams): Record<stri
 /**
  * Applies sampler override settings to all KSampler nodes in a parsed API-format
  * workflow object. Only nodes with class_type === 'KSampler' are patched.
+ *
+ * Only fields present in `overrides` are applied — omitted keys leave the
+ * workflow's own values intact.  This allows imported/custom workflows to keep
+ * their authored sampler settings unless the user explicitly overrides them.
+ *
  * Returns the number of KSampler nodes that were overridden.
  */
-function applySamplerOverrides(
+export function applySamplerOverrides(
   workflow: Record<string, unknown>,
-  overrides: {
+  overrides: Partial<{
     steps: number;
     cfg: number;
     sampler_name: string;
     scheduler: string;
     denoise: number;
     seed: number;
-  }
+  }>
 ): number {
   let count = 0;
+  const keys = Object.keys(overrides) as (keyof typeof overrides)[];
+  if (keys.length === 0) return 0;
+
   for (const nodeId of Object.keys(workflow)) {
     const node = workflow[nodeId] as Record<string, unknown>;
     if (node.class_type === 'KSampler') {
       const inputs = node.inputs as Record<string, unknown>;
-      inputs.steps = overrides.steps;
-      inputs.cfg = overrides.cfg;
-      inputs.sampler_name = overrides.sampler_name;
-      inputs.scheduler = overrides.scheduler;
-      inputs.denoise = overrides.denoise;
-      inputs.seed = overrides.seed;
+      for (const key of keys) {
+        if (overrides[key] !== undefined) {
+          inputs[key] = overrides[key];
+        }
+      }
       count++;
     }
   }
@@ -955,18 +961,9 @@ class ComfyUIClient {
     formData.append('image', blob, uploadName);
     formData.append('type', 'input');
 
-    const baseUrl = this.client.defaults.baseURL || config.getComfyUIEndpoint();
-    const response = await fetch(`${baseUrl}/upload/image`, {
-      method: 'POST',
-      body: formData,
-    });
+    const response = await this.client.post('/upload/image', formData);
 
-    if (!response.ok) {
-      const detail = await response.text().catch(() => '');
-      throw new Error(`ComfyUI image upload failed (HTTP ${response.status}): ${detail}`);
-    }
-
-    const result = await response.json() as { name: string; subfolder: string; type: string };
+    const result = response.data as { name: string; subfolder: string; type: string };
     logger.log('success', 'comfyui', `Image uploaded: ${result.name} (subfolder: ${result.subfolder || '(root)'})`);
     return result;
   }
@@ -1061,24 +1058,21 @@ class ComfyUIClient {
       // Resolve seed per-request: replace -1 with a fresh random value on every KSampler node
       resolveWorkflowSeeds(workflowData as Record<string, unknown>);
 
-      // Apply sampler overrides to custom workflow KSampler nodes
+      // Apply only user-explicit sampler overrides to custom workflow KSampler nodes.
+      // Custom/imported workflows keep their own values for any parameter the user
+      // did not explicitly override (e.g. via --seed: in the prompt).
       if (!usingDefault) {
-        const patchedCount = applySamplerOverrides(workflowData as Record<string, unknown>, {
-          steps:        config.getComfyUIDefaultSteps(),
-          cfg:          config.getComfyUIDefaultCfg(),
-          sampler_name: config.getComfyUIDefaultSampler(),
-          scheduler:    config.getComfyUIDefaultScheduler(),
-          denoise:      config.getComfyUIDefaultDenoise(),
-          seed:         resolveSeed(config.getComfyUIDefaultSeed()),
-        });
-        if (patchedCount > 0) {
-          const resolvedSeed = resolveSeed(config.getComfyUIDefaultSeed());
+        const explicitOverrides: Partial<{ steps: number; cfg: number; sampler_name: string; scheduler: string; denoise: number; seed: number }> = {};
+        if (userSeed !== null) {
+          explicitOverrides.seed = resolveSeed(userSeed);
+        }
+        const patchedCount = applySamplerOverrides(workflowData as Record<string, unknown>, explicitOverrides);
+        if (patchedCount > 0 && Object.keys(explicitOverrides).length > 0) {
+          const overrideDesc = Object.entries(explicitOverrides).map(([k, v]) => `${k}=${v}`).join(', ');
           logger.log(
             'success',
             requester,
-            `Applied sampler overrides to ${patchedCount} KSampler node(s): ` +
-            `sampler=${config.getComfyUIDefaultSampler()}, scheduler=${config.getComfyUIDefaultScheduler()}, ` +
-            `steps=${config.getComfyUIDefaultSteps()}, cfg=${config.getComfyUIDefaultCfg()}, denoise=${config.getComfyUIDefaultDenoise()}, seed=${resolvedSeed}`
+            `Applied explicit sampler overrides to ${patchedCount} KSampler node(s): ${overrideDesc}`
           );
         }
       }
@@ -1340,7 +1334,17 @@ class ComfyUIClient {
         },
       };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      let errorMsg: string;
+      if (error && typeof error === 'object' && 'isAxiosError' in error) {
+        const axiosErr = error as AxiosError;
+        const status = axiosErr.response?.status ?? 'no response';
+        const body = axiosErr.response?.data ? JSON.stringify(axiosErr.response.data).slice(0, 200) : axiosErr.message;
+        errorMsg = `ComfyUI request failed (HTTP ${status}): ${body}`;
+      } else if (error instanceof Error) {
+        errorMsg = error.cause ? `${error.message}: ${error.cause}` : error.message;
+      } else {
+        errorMsg = String(error);
+      }
       logger.logError(requester, `ComfyUI error: ${errorMsg}`);
 
       return {

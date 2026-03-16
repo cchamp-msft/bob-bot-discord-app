@@ -80,7 +80,7 @@ jest.mock('../src/utils/mediaPersistence', () => ({
 
 // Import after mocks — singleton captures mockInstance
 import { comfyuiClient } from '../src/api/comfyuiClient';
-import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode, resolveSeed, resolveWorkflowSeeds, parseNegativePrompt, parseSeed, resolveNegativePrompt, validateNodeReferences } from '../src/api/comfyuiClient';
+import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode, resolveSeed, resolveWorkflowSeeds, parseNegativePrompt, parseSeed, resolveNegativePrompt, validateNodeReferences, applySamplerOverrides } from '../src/api/comfyuiClient';
 import { config } from '../src/utils/config';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -1454,6 +1454,73 @@ describe('ComfyUIClient', () => {
       resolveWorkflowSeeds(workflow);
       expect(((workflow['1'] as any).inputs as any).text).toBe('hello');
     });
+
+    it('should resolve -1 seed on unknown/custom node types', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'CustomSamplerNode', inputs: { seed: -1, other: 'abc' } },
+        '2': { class_type: 'MyNoiseGenerator', inputs: { noise_seed: -1 } },
+      };
+      resolveWorkflowSeeds(workflow);
+      const seed1 = ((workflow['1'] as any).inputs as any).seed;
+      const seed2 = ((workflow['2'] as any).inputs as any).noise_seed;
+      expect(seed1).not.toBe(-1);
+      expect(seed1).toBeGreaterThanOrEqual(0);
+      expect(seed2).not.toBe(-1);
+      expect(seed2).toBeGreaterThanOrEqual(0);
+      // Non-seed fields untouched
+      expect(((workflow['1'] as any).inputs as any).other).toBe('abc');
+    });
+  });
+
+  describe('applySamplerOverrides', () => {
+    it('should only override fields present in the overrides object', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'KSampler', inputs: { seed: 42, steps: 30, cfg: 8, sampler_name: 'dpmpp_2m', scheduler: 'karras', denoise: 0.9 } },
+      };
+      // Only override seed — the rest should remain untouched
+      const count = applySamplerOverrides(workflow, { seed: 999 });
+      expect(count).toBe(1);
+      const inputs = (workflow['1'] as any).inputs;
+      expect(inputs.seed).toBe(999);
+      expect(inputs.steps).toBe(30);
+      expect(inputs.cfg).toBe(8);
+      expect(inputs.sampler_name).toBe('dpmpp_2m');
+      expect(inputs.scheduler).toBe('karras');
+      expect(inputs.denoise).toBe(0.9);
+    });
+
+    it('should return 0 and not modify anything when overrides is empty', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'KSampler', inputs: { seed: 42, steps: 30 } },
+      };
+      const count = applySamplerOverrides(workflow, {});
+      expect(count).toBe(0);
+      expect(((workflow['1'] as any).inputs as any).seed).toBe(42);
+      expect(((workflow['1'] as any).inputs as any).steps).toBe(30);
+    });
+
+    it('should override multiple fields when provided', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'KSampler', inputs: { seed: 42, steps: 30, cfg: 8 } },
+      };
+      const count = applySamplerOverrides(workflow, { steps: 50, cfg: 12 });
+      expect(count).toBe(1);
+      const inputs = (workflow['1'] as any).inputs;
+      expect(inputs.seed).toBe(42); // untouched
+      expect(inputs.steps).toBe(50);
+      expect(inputs.cfg).toBe(12);
+    });
+
+    it('should skip non-KSampler nodes', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'CLIPTextEncode', inputs: { text: 'hello' } },
+        '2': { class_type: 'KSampler', inputs: { seed: -1, steps: 20 } },
+      };
+      const count = applySamplerOverrides(workflow, { seed: 100 });
+      expect(count).toBe(1);
+      expect(((workflow['1'] as any).inputs as any).text).toBe('hello');
+      expect(((workflow['2'] as any).inputs as any).seed).toBe(100);
+    });
   });
 
   describe('buildDefaultWorkflow', () => {
@@ -2440,32 +2507,26 @@ describe('ComfyUIClient', () => {
   });
 
   describe('uploadImage', () => {
-    it('should upload an image via fetch and return metadata', async () => {
+    it('should upload an image via axios and return metadata', async () => {
       const mockResponse = { name: 'test-uuid.png', subfolder: '', type: 'input' };
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockResponse),
-      }) as jest.Mock;
+      mockInstance.post.mockResolvedValueOnce({ data: mockResponse });
 
       const buffer = Buffer.from('fake-image-data');
       const result = await comfyuiClient.uploadImage(buffer, 'test.png');
 
       expect(result).toEqual(mockResponse);
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/upload/image'),
-        expect.objectContaining({ method: 'POST' })
-      );
+      expect(mockInstance.post).toHaveBeenCalledWith('/upload/image', expect.any(FormData));
     });
 
-    it('should throw on non-ok response', async () => {
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve('Internal Server Error'),
-      }) as jest.Mock;
+    it('should throw on axios error', async () => {
+      const axiosError = Object.assign(new Error('Request failed with status code 500'), {
+        isAxiosError: true,
+        response: { status: 500, data: 'Internal Server Error' },
+      });
+      mockInstance.post.mockRejectedValueOnce(axiosError);
 
       const buffer = Buffer.from('fake-image-data');
-      await expect(comfyuiClient.uploadImage(buffer)).rejects.toThrow('ComfyUI image upload failed');
+      await expect(comfyuiClient.uploadImage(buffer)).rejects.toThrow();
     });
   });
 
@@ -2515,16 +2576,13 @@ describe('ComfyUIClient', () => {
       });
       mockConfig.getComfyUIWorkflowForTool.mockReturnValue(workflowJson);
 
-      // Mock uploadImage via fetch
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ name: 'uploaded-abc.png', subfolder: '', type: 'input' }),
-      }) as jest.Mock;
-
-      mockInstance.post.mockResolvedValue({
-        status: 200,
-        data: { prompt_id: 'test-id', number: 1, node_errors: {} },
-      });
+      // Mock uploadImage via axios (first post call) then /api/prompt (second post call)
+      mockInstance.post
+        .mockResolvedValueOnce({ data: { name: 'uploaded-abc.png', subfolder: '', type: 'input' } })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: { prompt_id: 'test-id', number: 1, node_errors: {} },
+        });
       mockInstance.get.mockResolvedValue({
         status: 200,
         data: {
@@ -2546,10 +2604,7 @@ describe('ComfyUIClient', () => {
       });
 
       // Verify upload was called
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/upload/image'),
-        expect.objectContaining({ method: 'POST' })
-      );
+      expect(mockInstance.post).toHaveBeenCalledWith('/upload/image', expect.any(FormData));
       // Verify the workflow submission contained the uploaded filename
       const postCall = mockInstance.post.mock.calls.find((c: unknown[]) => c[0] === '/api/prompt');
       expect(postCall).toBeDefined();

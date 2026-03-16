@@ -584,11 +584,9 @@ flowchart TD
     B -->|"No match (default path)"| E["Context Evaluator (global, optional)"]
     C --> F["Final Pass Refinement (if configured)"]
     E --> G["LLM Tool Evaluation (native tools)"]
-    G -->|"tool_calls returned"| H["Execute API(s)"]
+    G -->|"tool_calls returned"| H["Execute API(s) in parallel"]
     G -->|"no tool_calls"| I["Direct Chat Response"]
-    H --> J{"More passes (max depth)?"}
-    J -->|yes| G
-    J -->|no| F
+    H --> F
     F --> K["Response Dispatch"]
     I --> K
     D --> K

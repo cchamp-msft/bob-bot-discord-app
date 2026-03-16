@@ -35,5 +35,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Check line endings
+        run: |
+          if git grep -I $'\r' -- '*.ts' '*.json' '*.yml' '*.md' '*.mjs'; then
+            echo "::error::CRLF line endings detected"
+            exit 1
+          fi
+
       - name: Security audit (report only)
         run: npm audit --audit-level=high || true

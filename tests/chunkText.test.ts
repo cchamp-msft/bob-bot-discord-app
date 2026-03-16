@@ -61,4 +61,38 @@ describe('chunkText', () => {
     expect(chunks.length).toBe(2);
     expect(chunks[0].length).toBe(2000);
   });
+
+  // ── Table-aware chunking ────────────────────────────────────
+
+  it('should keep a small code block atomic', () => {
+    const block = '```\nrow1\nrow2\n```';
+    const prefix = 'a'.repeat(1900);
+    const text = prefix + '\n' + block;
+    const chunks = chunkText(text, 2000);
+    // The code block should not be split across chunks
+    const blockChunk = chunks.find(c => c.includes('```'));
+    expect(blockChunk).toBeDefined();
+    expect(blockChunk!.includes('row1')).toBe(true);
+    expect(blockChunk!.includes('row2')).toBe(true);
+    expect(chunks.join('')).toBe(text);
+  });
+
+  it('should split an oversized code block between rows', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => `| column-one-${i.toString().padStart(3, '0')} | column-two-${i.toString().padStart(3, '0')} |`);
+    const block = '```\n' + rows.join('\n') + '\n```';
+    // The block itself is over 2000 chars
+    expect(block.length).toBeGreaterThan(2000);
+
+    const chunks = chunkText(block, 500);
+    // Every chunk should be a self-contained fenced block
+    for (const chunk of chunks) {
+      expect(chunk.startsWith('```')).toBe(true);
+      expect(chunk.endsWith('```')).toBe(true);
+    }
+    // All original rows should appear somewhere
+    for (const row of rows) {
+      const found = chunks.some(c => c.includes(row));
+      expect(found).toBe(true);
+    }
+  });
 });
