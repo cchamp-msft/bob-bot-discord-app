@@ -80,7 +80,7 @@ jest.mock('../src/utils/mediaPersistence', () => ({
 
 // Import after mocks — singleton captures mockInstance
 import { comfyuiClient } from '../src/api/comfyuiClient';
-import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode, resolveSeed, resolveWorkflowSeeds, parseNegativePrompt, parseSeed, resolveNegativePrompt, validateNodeReferences } from '../src/api/comfyuiClient';
+import { isUIFormat, convertUIToAPIFormat, buildDefaultWorkflow, hasOutputNode, resolveSeed, resolveWorkflowSeeds, parseNegativePrompt, parseSeed, resolveNegativePrompt, validateNodeReferences, applySamplerOverrides } from '../src/api/comfyuiClient';
 import { config } from '../src/utils/config';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -1453,6 +1453,73 @@ describe('ComfyUIClient', () => {
       };
       resolveWorkflowSeeds(workflow);
       expect(((workflow['1'] as any).inputs as any).text).toBe('hello');
+    });
+
+    it('should resolve -1 seed on unknown/custom node types', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'CustomSamplerNode', inputs: { seed: -1, other: 'abc' } },
+        '2': { class_type: 'MyNoiseGenerator', inputs: { noise_seed: -1 } },
+      };
+      resolveWorkflowSeeds(workflow);
+      const seed1 = ((workflow['1'] as any).inputs as any).seed;
+      const seed2 = ((workflow['2'] as any).inputs as any).noise_seed;
+      expect(seed1).not.toBe(-1);
+      expect(seed1).toBeGreaterThanOrEqual(0);
+      expect(seed2).not.toBe(-1);
+      expect(seed2).toBeGreaterThanOrEqual(0);
+      // Non-seed fields untouched
+      expect(((workflow['1'] as any).inputs as any).other).toBe('abc');
+    });
+  });
+
+  describe('applySamplerOverrides', () => {
+    it('should only override fields present in the overrides object', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'KSampler', inputs: { seed: 42, steps: 30, cfg: 8, sampler_name: 'dpmpp_2m', scheduler: 'karras', denoise: 0.9 } },
+      };
+      // Only override seed — the rest should remain untouched
+      const count = applySamplerOverrides(workflow, { seed: 999 });
+      expect(count).toBe(1);
+      const inputs = (workflow['1'] as any).inputs;
+      expect(inputs.seed).toBe(999);
+      expect(inputs.steps).toBe(30);
+      expect(inputs.cfg).toBe(8);
+      expect(inputs.sampler_name).toBe('dpmpp_2m');
+      expect(inputs.scheduler).toBe('karras');
+      expect(inputs.denoise).toBe(0.9);
+    });
+
+    it('should return 0 and not modify anything when overrides is empty', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'KSampler', inputs: { seed: 42, steps: 30 } },
+      };
+      const count = applySamplerOverrides(workflow, {});
+      expect(count).toBe(0);
+      expect(((workflow['1'] as any).inputs as any).seed).toBe(42);
+      expect(((workflow['1'] as any).inputs as any).steps).toBe(30);
+    });
+
+    it('should override multiple fields when provided', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'KSampler', inputs: { seed: 42, steps: 30, cfg: 8 } },
+      };
+      const count = applySamplerOverrides(workflow, { steps: 50, cfg: 12 });
+      expect(count).toBe(1);
+      const inputs = (workflow['1'] as any).inputs;
+      expect(inputs.seed).toBe(42); // untouched
+      expect(inputs.steps).toBe(50);
+      expect(inputs.cfg).toBe(12);
+    });
+
+    it('should skip non-KSampler nodes', () => {
+      const workflow: Record<string, unknown> = {
+        '1': { class_type: 'CLIPTextEncode', inputs: { text: 'hello' } },
+        '2': { class_type: 'KSampler', inputs: { seed: -1, steps: 20 } },
+      };
+      const count = applySamplerOverrides(workflow, { seed: 100 });
+      expect(count).toBe(1);
+      expect(((workflow['1'] as any).inputs as any).text).toBe('hello');
+      expect(((workflow['2'] as any).inputs as any).seed).toBe(100);
     });
   });
 

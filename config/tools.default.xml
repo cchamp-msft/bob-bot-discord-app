@@ -47,6 +47,66 @@
     </parameters>
   </tool>
 
+  <!-- Image-to-image generation tool (ComfyUI) -->
+  <tool>
+    <name>generate_image_from_image</name>
+    <keyword>img2img</keyword>
+    <api>comfyui</api>
+    <timeout>600</timeout>
+    <description>Generate a new image based on an input image and a text prompt (img2img). Attach an image to use this tool.</description>
+    <abilityWhen>User wants to transform, restyle, or modify an existing image using a text prompt.</abilityWhen>
+    <parameters>
+      <mode>implicit</mode>
+      <prompt>
+        <type>string</type>
+        <description>Detailed text description of the desired output image. Infer from reply target or current message if possible.</description>
+        <required>true</required>
+      </prompt>
+      <negative_prompt>
+        <type>string</type>
+        <description>Terms to exclude from the generated image (e.g. "blurry, low quality, watermark"). Optional.</description>
+        <required>false</required>
+      </negative_prompt>
+      <inferFrom>reply_target, current_message</inferFrom>
+      <validation>An image attachment is required. Use the reply target text if present; otherwise use descriptive text from the current message.</validation>
+      <examples>
+        <example>generate_image_from_image a watercolor painting version</example>
+        <example>generate_image_from_image convert to anime style</example>
+      </examples>
+    </parameters>
+    <enabled>false</enabled>
+  </tool>
+
+  <!-- Video-from-image generation tool (ComfyUI) -->
+  <tool>
+    <name>generate_video_from_image</name>
+    <keyword>img2vid</keyword>
+    <api>comfyui</api>
+    <timeout>600</timeout>
+    <description>Generate a short video from an input image and a text prompt (img2vid). Attach an image to use this tool.</description>
+    <abilityWhen>User wants to animate an existing image or create a video starting from a still image.</abilityWhen>
+    <parameters>
+      <mode>implicit</mode>
+      <prompt>
+        <type>string</type>
+        <description>Detailed text description of the desired video motion or scene. Infer from reply target or current message if possible.</description>
+        <required>true</required>
+      </prompt>
+      <negative_prompt>
+        <type>string</type>
+        <description>Terms to exclude from the generated video (e.g. "static, jittery, low quality"). Optional.</description>
+        <required>false</required>
+      </negative_prompt>
+      <inferFrom>reply_target, current_message</inferFrom>
+      <validation>An image attachment is required. Use the reply target text if present; otherwise use descriptive text from the current message.</validation>
+      <examples>
+        <example>generate_video_from_image the scene slowly zooms out</example>
+        <example>generate_video_from_image animate this character waving</example>
+      </examples>
+    </parameters>
+    <enabled>false</enabled>
+  </tool>
+
   <!-- xAI image generation tool -->
   <tool>
     <name>generate_image_grok</name>
