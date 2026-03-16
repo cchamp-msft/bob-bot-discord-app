@@ -1,4 +1,4 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosError, AxiosInstance } from 'axios';
 import { randomUUID } from 'crypto';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
@@ -955,18 +955,9 @@ class ComfyUIClient {
     formData.append('image', blob, uploadName);
     formData.append('type', 'input');
 
-    const baseUrl = this.client.defaults.baseURL || config.getComfyUIEndpoint();
-    const response = await fetch(`${baseUrl}/upload/image`, {
-      method: 'POST',
-      body: formData,
-    });
+    const response = await this.client.post('/upload/image', formData);
 
-    if (!response.ok) {
-      const detail = await response.text().catch(() => '');
-      throw new Error(`ComfyUI image upload failed (HTTP ${response.status}): ${detail}`);
-    }
-
-    const result = await response.json() as { name: string; subfolder: string; type: string };
+    const result = response.data as { name: string; subfolder: string; type: string };
     logger.log('success', 'comfyui', `Image uploaded: ${result.name} (subfolder: ${result.subfolder || '(root)'})`);
     return result;
   }
@@ -1340,7 +1331,17 @@ class ComfyUIClient {
         },
       };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      let errorMsg: string;
+      if (error && typeof error === 'object' && 'isAxiosError' in error) {
+        const axiosErr = error as AxiosError;
+        const status = axiosErr.response?.status ?? 'no response';
+        const body = axiosErr.response?.data ? JSON.stringify(axiosErr.response.data).slice(0, 200) : axiosErr.message;
+        errorMsg = `ComfyUI request failed (HTTP ${status}): ${body}`;
+      } else if (error instanceof Error) {
+        errorMsg = error.cause ? `${error.message}: ${error.cause}` : error.message;
+      } else {
+        errorMsg = String(error);
+      }
       logger.logError(requester, `ComfyUI error: ${errorMsg}`);
 
       return {

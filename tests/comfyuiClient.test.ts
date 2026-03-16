@@ -2440,32 +2440,26 @@ describe('ComfyUIClient', () => {
   });
 
   describe('uploadImage', () => {
-    it('should upload an image via fetch and return metadata', async () => {
+    it('should upload an image via axios and return metadata', async () => {
       const mockResponse = { name: 'test-uuid.png', subfolder: '', type: 'input' };
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockResponse),
-      }) as jest.Mock;
+      mockInstance.post.mockResolvedValueOnce({ data: mockResponse });
 
       const buffer = Buffer.from('fake-image-data');
       const result = await comfyuiClient.uploadImage(buffer, 'test.png');
 
       expect(result).toEqual(mockResponse);
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/upload/image'),
-        expect.objectContaining({ method: 'POST' })
-      );
+      expect(mockInstance.post).toHaveBeenCalledWith('/upload/image', expect.any(FormData));
     });
 
-    it('should throw on non-ok response', async () => {
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve('Internal Server Error'),
-      }) as jest.Mock;
+    it('should throw on axios error', async () => {
+      const axiosError = Object.assign(new Error('Request failed with status code 500'), {
+        isAxiosError: true,
+        response: { status: 500, data: 'Internal Server Error' },
+      });
+      mockInstance.post.mockRejectedValueOnce(axiosError);
 
       const buffer = Buffer.from('fake-image-data');
-      await expect(comfyuiClient.uploadImage(buffer)).rejects.toThrow('ComfyUI image upload failed');
+      await expect(comfyuiClient.uploadImage(buffer)).rejects.toThrow();
     });
   });
 
@@ -2515,16 +2509,13 @@ describe('ComfyUIClient', () => {
       });
       mockConfig.getComfyUIWorkflowForTool.mockReturnValue(workflowJson);
 
-      // Mock uploadImage via fetch
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ name: 'uploaded-abc.png', subfolder: '', type: 'input' }),
-      }) as jest.Mock;
-
-      mockInstance.post.mockResolvedValue({
-        status: 200,
-        data: { prompt_id: 'test-id', number: 1, node_errors: {} },
-      });
+      // Mock uploadImage via axios (first post call) then /api/prompt (second post call)
+      mockInstance.post
+        .mockResolvedValueOnce({ data: { name: 'uploaded-abc.png', subfolder: '', type: 'input' } })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: { prompt_id: 'test-id', number: 1, node_errors: {} },
+        });
       mockInstance.get.mockResolvedValue({
         status: 200,
         data: {
@@ -2546,10 +2537,7 @@ describe('ComfyUIClient', () => {
       });
 
       // Verify upload was called
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/upload/image'),
-        expect.objectContaining({ method: 'POST' })
-      );
+      expect(mockInstance.post).toHaveBeenCalledWith('/upload/image', expect.any(FormData));
       // Verify the workflow submission contained the uploaded filename
       const postCall = mockInstance.post.mock.calls.find((c: unknown[]) => c[0] === '/api/prompt');
       expect(postCall).toBeDefined();
